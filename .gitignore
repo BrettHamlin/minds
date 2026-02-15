@@ -40,3 +40,9 @@ coverage/
 .cache/
 tmp/
 temp/
+# Repo-specific relay installation directories (created by /relay.install)
+.claude/
+.relay/handlers/
+
+# Spec directories (project-specific)
+specs/
