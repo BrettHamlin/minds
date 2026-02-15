@@ -1,76 +1,110 @@
-# Relay Orchestrator Components
+# Relay Workflow System - Source Files
 
-This directory contains Relay-specific orchestration adapters that integrate with the pipeline-orchestrator system.
+This directory contains the source files for the Relay workflow system, a comprehensive feature development pipeline with autonomous orchestration capabilities.
 
 ## Structure
 
 ```
 src/
-├── commands/           # Orchestrated command files
-│   ├── relay.clarify.md     # Spec clarification with signal emission
-│   └── relay.blindqa.md     # Blind verification with retry loop
-└── handlers/           # Signal emission utilities
-    ├── emit-question-signal.ts   # CLARIFY_QUESTION signal emitter
-    └── emit-blindqa-signal.ts    # BlindQA lifecycle signal emitter
+├── commands/                       # Claude Code command files
+│   ├── relay.install.md           # Install relay into any repo from GitHub
+│   ├── relay.pipeline.md          # Autonomous orchestrator (tmux multi-agent)
+│   ├── relay.specify.md           # Create feature specification
+│   ├── relay.clarify.md           # Clarify spec ambiguities
+│   ├── relay.plan.md              # Generate implementation plan
+│   ├── relay.tasks.md             # Break plan into tasks
+│   ├── relay.analyze.md           # Analyze spec/plan/tasks consistency
+│   ├── relay.implement.md         # Execute implementation
+│   ├── relay.checklist.md         # Generate quality checklist
+│   ├── relay.constitution.md      # Manage project principles
+│   ├── relay.taskstoissues.md     # Convert tasks to GitHub issues
+│   └── relay.blindqa.md           # Blind verification testing
+├── handlers/                       # Signal emission utilities
+│   ├── pipeline-signal.ts         # Shared signal utilities
+│   ├── emit-question-signal.ts    # CLARIFY_QUESTION signal emitter
+│   └── emit-blindqa-signal.ts     # BlindQA lifecycle signal emitter
+└── scripts/
+    └── orchestrator/               # Pipeline orchestration scripts
+        ├── orchestrator-init.sh   # Initialize agent registry
+        ├── signal-validate.sh     # Parse and validate signals
+        ├── registry-read.sh       # Read registry file
+        ├── registry-update.sh     # Update registry atomically
+        ├── phase-advance.sh       # Calculate next phase
+        ├── group-manage.sh        # Manage ticket coordination groups
+        ├── status-table.sh        # Display orchestrator status
+        └── Tmux.ts                # Tmux automation CLI
 ```
 
 ## Installation
 
-Run the installation script to create symlinks from this repo to `~/.claude/`:
+Install relay into any repository using the global installation command:
 
 ```bash
-./scripts/install.sh
+/relay.install
 ```
 
-This creates:
-- `~/.claude/commands/relay.clarify.md` → `src/commands/relay.clarify.md`
-- `~/.claude/commands/relay.blindqa.md` → `src/commands/relay.blindqa.md`
-- `~/.claude/hooks/handlers/emit-question-signal.ts` → `src/handlers/emit-question-signal.ts`
-- `~/.claude/hooks/handlers/emit-blindqa-signal.ts` → `src/handlers/emit-blindqa-signal.ts`
+This command:
+1. Clones relay from GitHub (dev branch)
+2. Copies all files into the current repository:
+   - Commands → `.claude/commands/`
+   - Handlers → `.relay/handlers/`
+   - Orchestrator scripts → `.relay/scripts/orchestrator/`
+   - Workflow scripts → `.specify/scripts/`
+   - Templates → `.specify/templates/`
+3. Creates state directories (`.relay/state/pipeline-registry`, `.relay/state/pipeline-groups`)
+4. Sets executable permissions
+5. Preserves existing constitution if present
+
+**Result:** Each repository gets a complete, self-contained relay installation with zero global dependencies.
 
 ## Architecture
 
-These components follow the **Adapter Pattern** for orchestrator integration:
+### Repo-Local Design
+
+Relay uses a **fully local architecture**:
+- All commands auto-discovered from `.claude/commands/`
+- All handlers in `.relay/handlers/`
+- All orchestrator scripts in `.relay/scripts/orchestrator/`
+- Pipeline state in `.relay/state/pipeline-registry/`
+- No symlinks, no global paths, no shared dependencies
+
+### Pipeline Orchestration
+
+The `/relay.pipeline` command provides autonomous workflow orchestration:
 
 ```
-Domain Logic (Skill) → Orchestration Adapter (Command) → Signal Emitter (Handler)
-Example: BlindQA skill → relay.blindqa command → emit-blindqa-signal.ts
+Phase Progression:
+clarify → plan → tasks → analyze → implement → blindqa → done
+
+Orchestration Pattern:
+- Spawns agent panes in tmux splits
+- Signal-driven phase advancement
+- AI quality gates (plan review, analyze review, implementation validation)
+- Deployment coordination for grouped tickets
+- Blind verification with retry loop
 ```
 
-### Commands
+### Signal Emission Architecture
 
-**relay.clarify.md**
-- Purpose: Orchestrator-compatible spec clarification
-- Max Questions: 3 (vs 5 in standard clarify workflow)
-- Signal Flow: emit-question-signal.ts → AskUserQuestion → integrate answer → repeat
+Commands use **deterministic signal emission** for orchestrator integration:
 
-**relay.blindqa.md**
-- Purpose: Blind verification with retry loop (max 3 attempts)
-- Signal Flow: emit-blindqa-signal.ts start → invoke BlindQA skill → evaluate → retry or complete
-
-### Signal Emitters
-
-**emit-question-signal.ts**
-- Signals: `CLARIFY_QUESTION`, `CLARIFY_COMPLETE`
-- Called: BEFORE AskUserQuestion for deterministic timing
-- Registry: Reads ticket_id and nonce from pipeline registry
-
-**emit-blindqa-signal.ts**
-- Signals: `BLINDQA_WAITING`, `BLINDQA_COMPLETE`, `BLINDQA_FAILED`, `BLINDQA_ERROR`
-- Called: At phase start/end for lifecycle management
-- Registry: Updates current_step and emits to orchestrator pane
-
-## Shared Infrastructure
-
-Both signal emitters depend on `pipeline-signal.ts` (from pipeline-orchestrator):
-- Installed at: `~/.claude/hooks/handlers/pipeline-signal.ts`
-- Provides: `mapResponseState()`, `buildSignalMessage()`, `resolveRegistry()`, `truncateDetail()`
-
-## Registry Architecture
-
-Pipeline registry files live at:
 ```
-~/.claude/MEMORY/STATE/pipeline-registry/{ticket_id}.json
+Domain Logic (Command) → Signal Emitter (Handler) → Orchestrator
+Example: relay.clarify → emit-question-signal.ts → relay.pipeline
+```
+
+**Shared Infrastructure (pipeline-signal.ts):**
+- `mapResponseState()` - Maps state + phase to signal type
+- `buildSignalMessage()` - Formats signals for orchestrator consumption
+- `resolveRegistry()` - Finds current ticket's registry file
+- `truncateDetail()` - Truncates detail text for signal format
+
+### Registry Architecture
+
+Pipeline registry files store agent state locally:
+
+```
+.relay/state/pipeline-registry/{ticket_id}.json
 ```
 
 Format:
@@ -80,32 +114,64 @@ Format:
   "nonce": "abc123",
   "current_step": "clarify",
   "orchestrator_pane_id": "%0.0",
-  "agent_pane_id": "%0.1"
+  "agent_pane_id": "%0.1",
+  "worktree_path": "/path/to/worktree",
+  "group_id": "group-abc123"
 }
 ```
 
-## Design Decision: Deterministic Signal Emission
+## Commands Overview
 
-**Problem**: Hook-based signal emission was unreliable (race conditions, missed signals, unpredictable timing)
+| Command | Purpose | Orchestrated |
+|---------|---------|--------------|
+| **relay.install** | Install relay into current repo | No |
+| **relay.pipeline** | Autonomous orchestrator | Yes (driver) |
+| **relay.specify** | Create feature specification | No |
+| **relay.clarify** | Clarify spec ambiguities | Yes (emits signals) |
+| **relay.plan** | Generate implementation plan | No |
+| **relay.tasks** | Break plan into tasks | No |
+| **relay.analyze** | Analyze consistency | No |
+| **relay.implement** | Execute implementation | No |
+| **relay.blindqa** | Blind verification | Yes (emits signals) |
+| **relay.checklist** | Generate quality checklist | No |
+| **relay.constitution** | Manage project principles | No |
+| **relay.taskstoissues** | Convert tasks to GitHub issues | No |
 
-**Solution**: Explicit Bash calls at precise workflow moments
+## Design Decisions
 
-**Benefits**:
+### Why Deterministic Signal Emission?
+
+**Problem:** Hook-based signal emission was unreliable (race conditions, missed signals, unpredictable timing)
+
+**Solution:** Explicit Bash calls at precise workflow moments
+
+**Benefits:**
 - ✅ Explicit control over signal timing
 - ✅ Deterministic (same code path = same signals)
 - ✅ Verifiable (signals visible in command file)
 - ✅ No race conditions
-- ✅ Skills remain clean and reusable
+- ✅ Commands remain clean and reusable
 
-## Related Projects
+### Why Repo-Local Installation?
 
-- **pipeline-orchestrator**: `/Users/atlas/Code/projects/pipeline-orchestrator/` - Orchestration coordination framework
-- **PAI**: `~/.claude/` - Core system infrastructure
+**Benefits:**
+- ✅ Zero global dependencies - each repo is self-contained
+- ✅ Version control - relay evolves with the project
+- ✅ Isolation - different projects can use different relay versions
+- ✅ Collaboration - team shares exact same relay installation
+- ✅ Portability - clone repo, run `/relay.install`, ready to go
 
 ## Version Control
 
-Source of truth for these files is THIS repository. The symlink pattern allows:
-- ✅ Version control and collaboration
-- ✅ Installation script automation
-- ✅ Claude Code command discovery (requires `~/.claude/` location)
-- ✅ Clean separation between PAI core and Relay-specific tooling
+This repository is the **source of truth** for relay. Updates are distributed via:
+1. Push changes to GitHub (dev branch)
+2. Users run `/relay.install` in their repos to update
+3. Installation clones latest from GitHub and copies files locally
+
+## Development Workflow
+
+To modify relay:
+1. Make changes in this repository
+2. Test locally: `cd /path/to/test-repo && /relay.install`
+3. Commit and push to dev branch
+4. Other repos update by re-running `/relay.install`
