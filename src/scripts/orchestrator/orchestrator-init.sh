@@ -8,8 +8,8 @@ TICKET_ID="$1"
 ORCHESTRATOR_PANE="$TMUX_PANE"
 # Detect repo root and use local state directory
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-REGISTRY_DIR="$REPO_ROOT/.relay/state/pipeline-registry"
-GROUPS_DIR="$REPO_ROOT/.relay/state/pipeline-groups"
+REGISTRY_DIR="$REPO_ROOT/.collab/state/pipeline-registry"
+GROUPS_DIR="$REPO_ROOT/.collab/state/pipeline-groups"
 
 # Ensure directories exist
 mkdir -p "$REGISTRY_DIR" "$GROUPS_DIR"

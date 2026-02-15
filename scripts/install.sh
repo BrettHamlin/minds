@@ -22,30 +22,30 @@ mkdir -p ~/.claude/hooks/handlers
 echo "🔗 Creating symlinks for Relay commands..."
 
 # Symlink orchestrator commands
-ln -sf "$RELAY_ROOT/src/commands/relay.clarify.md" ~/.claude/commands/relay.clarify.md
-ln -sf "$RELAY_ROOT/src/commands/relay.blindqa.md" ~/.claude/commands/relay.blindqa.md
+ln -sf "$RELAY_ROOT/src/commands/collab.clarify.md" ~/.claude/commands/collab.clarify.md
+ln -sf "$RELAY_ROOT/src/commands/collab.blindqa.md" ~/.claude/commands/collab.blindqa.md
 
-echo "  ✓ ~/.claude/commands/relay.clarify.md"
-echo "  ✓ ~/.claude/commands/relay.blindqa.md"
+echo "  ✓ ~/.claude/commands/collab.clarify.md"
+echo "  ✓ ~/.claude/commands/collab.blindqa.md"
 
 # Symlink relay workflow commands
-ln -sf "$RELAY_ROOT/src/commands/relay.specify.md" ~/.claude/commands/relay.specify.md
-ln -sf "$RELAY_ROOT/src/commands/relay.plan.md" ~/.claude/commands/relay.plan.md
-ln -sf "$RELAY_ROOT/src/commands/relay.tasks.md" ~/.claude/commands/relay.tasks.md
-ln -sf "$RELAY_ROOT/src/commands/relay.analyze.md" ~/.claude/commands/relay.analyze.md
-ln -sf "$RELAY_ROOT/src/commands/relay.implement.md" ~/.claude/commands/relay.implement.md
-ln -sf "$RELAY_ROOT/src/commands/relay.checklist.md" ~/.claude/commands/relay.checklist.md
-ln -sf "$RELAY_ROOT/src/commands/relay.constitution.md" ~/.claude/commands/relay.constitution.md
-ln -sf "$RELAY_ROOT/src/commands/relay.taskstoissues.md" ~/.claude/commands/relay.taskstoissues.md
+ln -sf "$RELAY_ROOT/src/commands/collab.specify.md" ~/.claude/commands/collab.specify.md
+ln -sf "$RELAY_ROOT/src/commands/collab.plan.md" ~/.claude/commands/collab.plan.md
+ln -sf "$RELAY_ROOT/src/commands/collab.tasks.md" ~/.claude/commands/collab.tasks.md
+ln -sf "$RELAY_ROOT/src/commands/collab.analyze.md" ~/.claude/commands/collab.analyze.md
+ln -sf "$RELAY_ROOT/src/commands/collab.implement.md" ~/.claude/commands/collab.implement.md
+ln -sf "$RELAY_ROOT/src/commands/collab.checklist.md" ~/.claude/commands/collab.checklist.md
+ln -sf "$RELAY_ROOT/src/commands/collab.constitution.md" ~/.claude/commands/collab.constitution.md
+ln -sf "$RELAY_ROOT/src/commands/collab.taskstoissues.md" ~/.claude/commands/collab.taskstoissues.md
 
-echo "  ✓ ~/.claude/commands/relay.specify.md"
-echo "  ✓ ~/.claude/commands/relay.plan.md"
-echo "  ✓ ~/.claude/commands/relay.tasks.md"
-echo "  ✓ ~/.claude/commands/relay.analyze.md"
-echo "  ✓ ~/.claude/commands/relay.implement.md"
-echo "  ✓ ~/.claude/commands/relay.checklist.md"
-echo "  ✓ ~/.claude/commands/relay.constitution.md"
-echo "  ✓ ~/.claude/commands/relay.taskstoissues.md"
+echo "  ✓ ~/.claude/commands/collab.specify.md"
+echo "  ✓ ~/.claude/commands/collab.plan.md"
+echo "  ✓ ~/.claude/commands/collab.tasks.md"
+echo "  ✓ ~/.claude/commands/collab.analyze.md"
+echo "  ✓ ~/.claude/commands/collab.implement.md"
+echo "  ✓ ~/.claude/commands/collab.checklist.md"
+echo "  ✓ ~/.claude/commands/collab.constitution.md"
+echo "  ✓ ~/.claude/commands/collab.taskstoissues.md"
 
 # Symlink handlers
 ln -sf "$RELAY_ROOT/src/handlers/emit-question-signal.ts" ~/.claude/hooks/handlers/emit-question-signal.ts
@@ -64,8 +64,8 @@ echo ""
 echo "✅ Installation complete!"
 echo ""
 echo "Symlinks created:"
-echo "  Orchestrator: ~/.claude/commands/relay.{clarify,blindqa}.md"
-echo "  Workflow:      ~/.claude/commands/relay.{specify,plan,tasks,analyze,implement,checklist,constitution,taskstoissues}.md"
+echo "  Orchestrator: ~/.claude/commands/collab.{clarify,blindqa}.md"
+echo "  Workflow:      ~/.claude/commands/collab.{specify,plan,tasks,analyze,implement,checklist,constitution,taskstoissues}.md"
 echo "  Handlers:     ~/.claude/hooks/handlers/emit-{question,blindqa}-signal.ts"
 echo ""
 echo "Source of truth: $RELAY_ROOT/src/"

@@ -1,5 +1,5 @@
 {
-  "name": "relay",
+  "name": "collab",
   "version": "0.1.0",
   "description": "AI-powered spec creation platform for structured team development",
   "main": "dist/index.js",

@@ -1,13 +1,13 @@
-# Relay Workflow System - Source Files
+# CollabAI Workflow System - Source Files
 
-This directory contains the source files for the Relay workflow system, a comprehensive feature development pipeline with autonomous orchestration capabilities.
+This directory contains the source files for the Collab workflow system, a comprehensive feature development pipeline with autonomous orchestration capabilities.
 
 ## Structure
 
 ```
 src/
 ├── commands/                       # Claude Code command files
-│   ├── relay.install.md           # Install relay into any repo from GitHub
+│   ├── relay.install.md           # Install collab into any repo from GitHub
 │   ├── relay.pipeline.md          # Autonomous orchestrator (tmux multi-agent)
 │   ├── relay.specify.md           # Create feature specification
 │   ├── relay.clarify.md           # Clarify spec ambiguities
@@ -37,25 +37,25 @@ src/
 
 ## Installation
 
-Install relay into any repository using the global installation command:
+Install collab into any repository using the global installation command:
 
 ```bash
-/relay.install
+/collab.install
 ```
 
 This command:
-1. Clones relay from GitHub (dev branch)
+1. Clones collab from GitHub (dev branch)
 2. Copies all files into the current repository:
    - Commands → `.claude/commands/`
-   - Handlers → `.relay/handlers/`
-   - Orchestrator scripts → `.relay/scripts/orchestrator/`
+   - Handlers → `.collab/handlers/`
+   - Orchestrator scripts → `.collab/scripts/orchestrator/`
    - Workflow scripts → `.specify/scripts/`
    - Templates → `.specify/templates/`
-3. Creates state directories (`.relay/state/pipeline-registry`, `.relay/state/pipeline-groups`)
+3. Creates state directories (`.collab/state/pipeline-registry`, `.collab/state/pipeline-groups`)
 4. Sets executable permissions
 5. Preserves existing constitution if present
 
-**Result:** Each repository gets a complete, self-contained relay installation with zero global dependencies.
+**Result:** Each repository gets a complete, self-contained collab installation with zero global dependencies.
 
 ## Architecture
 
@@ -63,14 +63,14 @@ This command:
 
 Relay uses a **fully local architecture**:
 - All commands auto-discovered from `.claude/commands/`
-- All handlers in `.relay/handlers/`
-- All orchestrator scripts in `.relay/scripts/orchestrator/`
-- Pipeline state in `.relay/state/pipeline-registry/`
+- All handlers in `.collab/handlers/`
+- All orchestrator scripts in `.collab/scripts/orchestrator/`
+- Pipeline state in `.collab/state/pipeline-registry/`
 - No symlinks, no global paths, no shared dependencies
 
 ### Pipeline Orchestration
 
-The `/relay.pipeline` command provides autonomous workflow orchestration:
+The `/collab.run` command provides autonomous workflow orchestration:
 
 ```
 Phase Progression:
@@ -104,7 +104,7 @@ Example: relay.clarify → emit-question-signal.ts → relay.pipeline
 Pipeline registry files store agent state locally:
 
 ```
-.relay/state/pipeline-registry/{ticket_id}.json
+.collab/state/pipeline-registry/{ticket_id}.json
 ```
 
 Format:
@@ -124,7 +124,7 @@ Format:
 
 | Command | Purpose | Orchestrated |
 |---------|---------|--------------|
-| **relay.install** | Install relay into current repo | No |
+| **relay.install** | Install collab into current repo | No |
 | **relay.pipeline** | Autonomous orchestrator | Yes (driver) |
 | **relay.specify** | Create feature specification | No |
 | **relay.clarify** | Clarify spec ambiguities | Yes (emits signals) |
@@ -156,22 +156,22 @@ Format:
 
 **Benefits:**
 - ✅ Zero global dependencies - each repo is self-contained
-- ✅ Version control - relay evolves with the project
-- ✅ Isolation - different projects can use different relay versions
-- ✅ Collaboration - team shares exact same relay installation
-- ✅ Portability - clone repo, run `/relay.install`, ready to go
+- ✅ Version control - collab evolves with the project
+- ✅ Isolation - different projects can use different collab versions
+- ✅ Collaboration - team shares exact same collab installation
+- ✅ Portability - clone repo, run `/collab.install`, ready to go
 
 ## Version Control
 
 This repository is the **source of truth** for relay. Updates are distributed via:
 1. Push changes to GitHub (dev branch)
-2. Users run `/relay.install` in their repos to update
+2. Users run `/collab.install` in their repos to update
 3. Installation clones latest from GitHub and copies files locally
 
 ## Development Workflow
 
-To modify relay:
+To modify collab:
 1. Make changes in this repository
-2. Test locally: `cd /path/to/test-repo && /relay.install`
+2. Test locally: `cd /path/to/test-repo && /collab.install`
 3. Commit and push to dev branch
-4. Other repos update by re-running `/relay.install`
+4. Other repos update by re-running `/collab.install`

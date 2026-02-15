@@ -1,5 +1,5 @@
 {
-  "name": "@relay/specfactory-cli",
+  "name": "@collab/specfactory-cli",
   "version": "0.1.0",
   "description": "CLI plugin for SpecFactory - test workflows without Slack",
   "type": "module",
@@ -21,7 +21,7 @@
   "keywords": [
     "specfactory",
     "cli",
-    "relay"
+    "collab"
   ],
   "author": "Brett Hamlin",
   "license": "MIT",

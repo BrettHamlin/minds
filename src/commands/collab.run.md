@@ -6,9 +6,9 @@ description: Orchestrate the full relay pipeline by spawning agent panes and pro
 
 You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Code agents in tmux split panes and processing signal responses. Max 5 concurrent agents.
 
-**Scripts**: `SCRIPTS=.relay/scripts/orchestrator`
+**Scripts**: `SCRIPTS=.collab/scripts/orchestrator`
 **Phase progression**: clarify -> plan -> tasks -> analyze -> implement -> blindqa -> done
-**Phase-to-command map**: plan=`/relay.plan`, tasks=`/relay.tasks`, analyze=`/relay.analyze`, implement=`/relay.implement`, blindqa=`/relay.blindqa`
+**Phase-to-command map**: plan=`/collab.plan`, tasks=`/collab.tasks`, analyze=`/collab.analyze`, implement=`/collab.implement`, blindqa=`/collab.blindqa`
 
 ## Arguments
 
@@ -20,11 +20,11 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 ### 1. Crash Recovery
 
-Scan `.relay/state/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun $SCRIPTS/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `$SCRIPTS/status-table.sh`, output "Recovered N agent(s)." **END RESPONSE.**
+Scan `.collab/state/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun $SCRIPTS/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `$SCRIPTS/status-table.sh`, output "Recovered N agent(s)." **END RESPONSE.**
 
 ### 2. Validate
 
-No argument -> "Usage: /relay.pipeline <ticket-id>" and stop.
+No argument -> "Usage: /collab.run <ticket-id>" and stop.
 
 ### 3. Initialize (deterministic)
 
@@ -40,7 +40,7 @@ Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> ou
 ### 5. Launch
 
 ```bash
-bun $SCRIPTS/Tmux.ts send -w {AGENT_PANE} -t "/relay.clarify" -d 5
+bun $SCRIPTS/Tmux.ts send -w {AGENT_PANE} -t "/collab.clarify" -d 5
 ```
 `$SCRIPTS/status-table.sh`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
 
@@ -129,7 +129,7 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
    - 1 existing group -> `$SCRIPTS/group-manage.sh add {group_id} {ticket_id}`
    - 2+ groups -> `$SCRIPTS/group-manage.sh create {all_ids}` (merge).
    - Detect type (backend/frontend/other). `$SCRIPTS/registry-update.sh {ticket_id} group_id={gid}`
-6. `bun $SCRIPTS/Tmux.ts send -w {new_pane} -t "/relay.clarify" -d 5`
+6. `bun $SCRIPTS/Tmux.ts send -w {new_pane} -t "/collab.clarify" -d 5`
 7. `$SCRIPTS/status-table.sh`. "Added {ticket_id}." **END RESPONSE.**
 
 ### [CMD:status]
@@ -138,7 +138,7 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
 ### [CMD:remove {ticket_id}]
 
-Validate. `$SCRIPTS/registry-read.sh {ticket_id}` for group_id. If grouped: remove from group, delete group if empty, notify if orphaned waits. `rm .relay/state/pipeline-registry/{ticket_id}.json`. `$SCRIPTS/status-table.sh`. **END RESPONSE.**
+Validate. `$SCRIPTS/registry-read.sh {ticket_id}` for group_id. If grouped: remove from group, delete group if empty, notify if orphaned waits. `rm .collab/state/pipeline-registry/{ticket_id}.json`. `$SCRIPTS/status-table.sh`. **END RESPONSE.**
 
 ### [CMD:retry-deploy {ticket_id}]
 
@@ -171,7 +171,7 @@ On STEP_COMPLETE with "deployment" in detail: capture screen for success/failure
 
 On `_COMPLETE` signal when `current_step == "blindqa"`:
 1. If grouped: remove from group, delete group file if empty. Write atomically.
-2. `rm .relay/state/pipeline-registry/{ticket_id}.json`
+2. `rm .collab/state/pipeline-registry/{ticket_id}.json`
 3. `$SCRIPTS/status-table.sh`. "Pipeline complete for {ticket_id}!"
 4. Other agents running -> wait. None remain -> "All pipelines complete."
 

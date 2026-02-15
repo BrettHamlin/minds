@@ -21,7 +21,7 @@ function getRepoRoot(): string {
 }
 
 const REPO_ROOT = getRepoRoot();
-const REGISTRY_DIR = `${REPO_ROOT}/.relay/state/pipeline-registry`;
+const REGISTRY_DIR = `${REPO_ROOT}/.collab/state/pipeline-registry`;
 
 /**
  * Map response state and current step to phase-specific signal type

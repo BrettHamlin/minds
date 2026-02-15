@@ -26,8 +26,8 @@ function getRepoRoot(): string {
 }
 
 const REPO_ROOT = getRepoRoot();
-const REGISTRY_DIR = `${REPO_ROOT}/.relay/state/pipeline-registry`;
-const TMUX_PATH = `${REPO_ROOT}/.relay/scripts/orchestrator/Tmux.ts`;
+const REGISTRY_DIR = `${REPO_ROOT}/.collab/state/pipeline-registry`;
+const TMUX_PATH = `${REPO_ROOT}/.collab/scripts/orchestrator/Tmux.ts`;
 
 // Import shared functions from local pipeline-signal handler
 const { mapResponseState, buildSignalMessage, resolveRegistry, truncateDetail } =
