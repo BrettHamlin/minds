@@ -108,7 +108,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
    - Number of questions answered
    - Sections updated
    - Path to updated spec
-   - Suggest `/speckit.plan` as next command
+   - Suggest `/relay.plan` as next command
 
 ## Signal Flow
 
@@ -121,7 +121,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 7. Repeat for remaining questions
 8. After all questions: Stop hook emits `CLARIFY_COMPLETE`
 
-## Key Differences from Original SpecKit Clarify
+## Key Differences from Standard Clarify
 
 - **Uses AskUserQuestion tool** (signal-emitting) instead of custom formatting
 - **Max 3 questions** instead of 5 (orchestrated workflows are faster)

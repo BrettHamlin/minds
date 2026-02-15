@@ -41,7 +41,7 @@ Example: BlindQA skill → relay.blindqa command → emit-blindqa-signal.ts
 
 **relay.clarify.md**
 - Purpose: Orchestrator-compatible spec clarification
-- Max Questions: 3 (vs 5 in standard speckit.clarify)
+- Max Questions: 3 (vs 5 in standard clarify workflow)
 - Signal Flow: emit-question-signal.ts → AskUserQuestion → integrate answer → repeat
 
 **relay.blindqa.md**

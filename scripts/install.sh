@@ -19,14 +19,33 @@ RELAY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p ~/.claude/commands
 mkdir -p ~/.claude/hooks/handlers
 
-echo "🔗 Creating symlinks for Relay orchestrator commands..."
+echo "🔗 Creating symlinks for Relay commands..."
 
-# Symlink commands
+# Symlink orchestrator commands
 ln -sf "$RELAY_ROOT/src/commands/relay.clarify.md" ~/.claude/commands/relay.clarify.md
 ln -sf "$RELAY_ROOT/src/commands/relay.blindqa.md" ~/.claude/commands/relay.blindqa.md
 
 echo "  ✓ ~/.claude/commands/relay.clarify.md"
 echo "  ✓ ~/.claude/commands/relay.blindqa.md"
+
+# Symlink relay workflow commands
+ln -sf "$RELAY_ROOT/src/commands/relay.specify.md" ~/.claude/commands/relay.specify.md
+ln -sf "$RELAY_ROOT/src/commands/relay.plan.md" ~/.claude/commands/relay.plan.md
+ln -sf "$RELAY_ROOT/src/commands/relay.tasks.md" ~/.claude/commands/relay.tasks.md
+ln -sf "$RELAY_ROOT/src/commands/relay.analyze.md" ~/.claude/commands/relay.analyze.md
+ln -sf "$RELAY_ROOT/src/commands/relay.implement.md" ~/.claude/commands/relay.implement.md
+ln -sf "$RELAY_ROOT/src/commands/relay.checklist.md" ~/.claude/commands/relay.checklist.md
+ln -sf "$RELAY_ROOT/src/commands/relay.constitution.md" ~/.claude/commands/relay.constitution.md
+ln -sf "$RELAY_ROOT/src/commands/relay.taskstoissues.md" ~/.claude/commands/relay.taskstoissues.md
+
+echo "  ✓ ~/.claude/commands/relay.specify.md"
+echo "  ✓ ~/.claude/commands/relay.plan.md"
+echo "  ✓ ~/.claude/commands/relay.tasks.md"
+echo "  ✓ ~/.claude/commands/relay.analyze.md"
+echo "  ✓ ~/.claude/commands/relay.implement.md"
+echo "  ✓ ~/.claude/commands/relay.checklist.md"
+echo "  ✓ ~/.claude/commands/relay.constitution.md"
+echo "  ✓ ~/.claude/commands/relay.taskstoissues.md"
 
 # Symlink handlers
 ln -sf "$RELAY_ROOT/src/handlers/emit-question-signal.ts" ~/.claude/hooks/handlers/emit-question-signal.ts
@@ -45,7 +64,8 @@ echo ""
 echo "✅ Installation complete!"
 echo ""
 echo "Symlinks created:"
-echo "  Commands: ~/.claude/commands/relay.{clarify,blindqa}.md"
-echo "  Handlers: ~/.claude/hooks/handlers/emit-{question,blindqa}-signal.ts"
+echo "  Orchestrator: ~/.claude/commands/relay.{clarify,blindqa}.md"
+echo "  Workflow:      ~/.claude/commands/relay.{specify,plan,tasks,analyze,implement,checklist,constitution,taskstoissues}.md"
+echo "  Handlers:     ~/.claude/hooks/handlers/emit-{question,blindqa}-signal.ts"
 echo ""
 echo "Source of truth: $RELAY_ROOT/src/"
