@@ -55,6 +55,7 @@ echo "📂 Creating directory structure..."
 mkdir -p .claude/commands
 mkdir -p .relay/handlers
 mkdir -p .relay/memory
+mkdir -p .relay/scripts/orchestrator
 mkdir -p .specify/scripts
 mkdir -p .specify/templates
 
@@ -76,8 +77,13 @@ echo "  → Handlers..."
 cp "$TEMP_DIR"/src/handlers/*.ts .relay/handlers/
 HANDLER_COUNT=$(ls .relay/handlers/*.ts 2>/dev/null | wc -l)
 
+# Copy orchestrator scripts to .relay/scripts/orchestrator/
+echo "  → Orchestrator scripts..."
+cp "$TEMP_DIR"/src/scripts/orchestrator/*.sh .relay/scripts/orchestrator/
+ORCHESTRATOR_SCRIPT_COUNT=$(ls .relay/scripts/orchestrator/*.sh 2>/dev/null | wc -l)
+
 # Copy scripts to .specify/scripts/
-echo "  → Scripts..."
+echo "  → Workflow scripts..."
 cp -r "$TEMP_DIR"/.specify/scripts/* .specify/scripts/
 SCRIPT_COUNT=$(ls .specify/scripts/bash/*.sh 2>/dev/null | wc -l)
 
@@ -105,7 +111,10 @@ echo "🔧 Setting permissions..."
 # Make handlers executable
 chmod +x .relay/handlers/*.ts
 
-# Make scripts executable
+# Make orchestrator scripts executable
+chmod +x .relay/scripts/orchestrator/*.sh
+
+# Make workflow scripts executable
 chmod +x .specify/scripts/bash/*.sh
 
 echo "✅ Permissions set"
@@ -130,11 +139,12 @@ echo "✅ Relay installation complete!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "📊 Installation Summary:"
-echo "  • Commands:   $COMMAND_COUNT files → .claude/commands/"
-echo "  • Handlers:   $HANDLER_COUNT files → .relay/handlers/"
-echo "  • Scripts:    $SCRIPT_COUNT files → .specify/scripts/bash/"
-echo "  • Templates:  $TEMPLATE_COUNT files → .specify/templates/"
-echo "  • Memory:     .relay/memory/constitution.md"
+echo "  • Commands:       $COMMAND_COUNT files → .claude/commands/"
+echo "  • Handlers:       $HANDLER_COUNT files → .relay/handlers/"
+echo "  • Orchestrator:   $ORCHESTRATOR_SCRIPT_COUNT scripts → .relay/scripts/orchestrator/"
+echo "  • Workflow:       $SCRIPT_COUNT scripts → .specify/scripts/bash/"
+echo "  • Templates:      $TEMPLATE_COUNT files → .specify/templates/"
+echo "  • Memory:         .relay/memory/constitution.md"
 echo ""
 echo "📍 Installed in: $REPO_ROOT"
 echo ""

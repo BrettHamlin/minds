@@ -6,7 +6,7 @@ description: Orchestrate the full relay pipeline by spawning agent panes and pro
 
 You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Code agents in tmux split panes and processing signal responses. Max 5 concurrent agents.
 
-**Scripts**: `SCRIPTS=~/.claude/skills/TmuxAutomation/Tools`
+**Scripts**: `SCRIPTS=.relay/scripts/orchestrator`
 **Phase progression**: clarify -> plan -> tasks -> analyze -> implement -> blindqa -> done
 **Phase-to-command map**: plan=`/relay.plan`, tasks=`/relay.tasks`, analyze=`/relay.analyze`, implement=`/relay.implement`, blindqa=`/relay.blindqa`
 
