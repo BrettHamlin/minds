@@ -8,7 +8,7 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     testTimeout: 30000,
-    pool: 'forks',
+    pool: 'threads',
     alias: {
       '@/': new URL('./src/', import.meta.url).pathname,
     },

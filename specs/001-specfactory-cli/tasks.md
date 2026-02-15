@@ -58,36 +58,36 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T011 [P] [US1] Contract test: POST /start request matches StartSessionRequest schema with CLI pmUserId format in `cli/tests/contract/start-session.test.ts`
-- [ ] T012 [P] [US1] Contract test: POST /analyze request matches AnalyzeRequest schema in `cli/tests/contract/analyze.test.ts`
-- [ ] T013 [P] [US1] Contract test: POST /channel-names request matches ChannelNamesRequest schema in `cli/tests/contract/channel-names.test.ts`
-- [ ] T014 [P] [US1] Contract test: POST /channel request matches ChannelSelectRequest schema with empty member arrays in `cli/tests/contract/channel-select.test.ts`
-- [ ] T015 [P] [US1] Contract test: POST /questions/next request matches NextQuestionRequest schema in `cli/tests/contract/questions-next.test.ts`
-- [ ] T016 [P] [US1] Contract test: POST /questions/answer request matches SubmitAnswerRequest schema for both selectedOptionIndex and customText in `cli/tests/contract/questions-answer.test.ts`
-- [ ] T017 [P] [US1] Unit test: session ID generation produces format cli-{username}-{epoch} within varchar(64) in `cli/tests/unit/session.test.ts`
-- [ ] T018 [P] [US1] Unit test: exponential backoff calculates correct delays (1s, 2s, 4s) and retries only transient errors (429, 500, 502-504) in `cli/tests/unit/retry.test.ts`
+- [X] T011 [P] [US1] Contract test: POST /start request matches StartSessionRequest schema with CLI pmUserId format in `cli/tests/contract/start-session.test.ts`
+- [X] T012 [P] [US1] Contract test: POST /analyze request matches AnalyzeRequest schema in `cli/tests/contract/analyze.test.ts`
+- [X] T013 [P] [US1] Contract test: POST /channel-names request matches ChannelNamesRequest schema in `cli/tests/contract/channel-names.test.ts`
+- [X] T014 [P] [US1] Contract test: POST /channel request matches ChannelSelectRequest schema with empty member arrays in `cli/tests/contract/channel-select.test.ts`
+- [X] T015 [P] [US1] Contract test: POST /questions/next request matches NextQuestionRequest schema in `cli/tests/contract/questions-next.test.ts`
+- [X] T016 [P] [US1] Contract test: POST /questions/answer request matches SubmitAnswerRequest schema for both selectedOptionIndex and customText in `cli/tests/contract/questions-answer.test.ts`
+- [X] T017 [P] [US1] Unit test: session ID generation produces format cli-{username}-{epoch} within varchar(64) in `cli/tests/unit/session.test.ts`
+- [X] T018 [P] [US1] Unit test: exponential backoff calculates correct delays (1s, 2s, 4s) and retries only transient errors (429, 500, 502-504) in `cli/tests/unit/retry.test.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T019 [P] [US1] Implement session ID generation (cli-{username}-{epoch_seconds} from os.userInfo) in `cli/src/session.ts`
-- [ ] T020 [P] [US1] Implement exponential backoff retry logic (1s/2s/4s delays, max 3 attempts, transient-only: 429/500/502-504/ECONNREFUSED) in `cli/src/retry.ts`
-- [ ] T021 [US1] Implement HTTP client with retry integration, 60s timeout for LLM endpoints, 10s for others, backend URL resolution (flag > env > default) in `cli/src/client.ts`
-- [ ] T022 [US1] Implement client method: startSession(pmUserId, slackChannelId) calling POST /api/specfactory/start in `cli/src/client.ts`
-- [ ] T023 [US1] Implement client method: analyzeDescription(specId, pmUserId, description) calling POST /api/specfactory/analyze in `cli/src/client.ts`
-- [ ] T024 [US1] Implement client method: getChannelNames(specId) calling POST /api/specfactory/channel-names in `cli/src/client.ts`
-- [ ] T025 [US1] Implement client method: selectChannel(specId, channelName, roles) calling POST /api/specfactory/channel in `cli/src/client.ts`
-- [ ] T026 [US1] Implement client method: getNextQuestion(specId) calling POST /api/specfactory/questions/next in `cli/src/client.ts`
-- [ ] T027 [US1] Implement client method: submitAnswer(specId, questionId, selectedOptionIndex?, customText?) calling POST /api/specfactory/questions/answer in `cli/src/client.ts`
-- [ ] T028 [US1] Implement client method: healthCheck() calling GET /health in `cli/src/client.ts`
-- [ ] T029 [US1] Implement terminal prompt: feature description input (multi-line, 10-word minimum validation) using @clack/prompts in `cli/src/prompts.ts`
-- [ ] T030 [US1] Implement terminal prompt: channel name selection (display 5 suggestions with rationale, numeric choice 1-5) using @clack/prompts in `cli/src/prompts.ts`
-- [ ] T031 [US1] Implement terminal prompt: QA question display with multiple-choice options (numeric selection) using @clack/prompts in `cli/src/prompts.ts`
-- [ ] T032 [US1] Implement terminal prompt: completion summary display (spec ID, view URL, question count) using @clack/prompts in `cli/src/prompts.ts`
-- [ ] T033 [US1] Implement terminal prompt: error display with retry option for transient failures using @clack/prompts in `cli/src/prompts.ts`
-- [ ] T034 [US1] Implement CLI entrypoint with commander setup (--backend-url, --no-slack, --help, --version flags) in `cli/src/index.ts`
-- [ ] T035 [US1] Implement main workflow orchestration: health check, start session, prompt description, analyze, get channel names, select channel, QA loop, completion in `cli/src/index.ts`
-- [ ] T036 [US1] Add Ctrl+C (SIGINT) handler for clean session interruption without corrupting state in `cli/src/index.ts`
-- [ ] T037 [US1] Add client-side input validation: description word count (10+), channel name format (^[a-z0-9][a-z0-9-]{0,79}$), option index range in `cli/src/prompts.ts`
+- [X] T019 [P] [US1] Implement session ID generation (cli-{username}-{epoch_seconds} from os.userInfo) in `cli/src/session.ts`
+- [X] T020 [P] [US1] Implement exponential backoff retry logic (1s/2s/4s delays, max 3 attempts, transient-only: 429/500/502-504/ECONNREFUSED) in `cli/src/retry.ts`
+- [X] T021 [US1] Implement HTTP client with retry integration, 60s timeout for LLM endpoints, 10s for others, backend URL resolution (flag > env > default) in `cli/src/client.ts`
+- [X] T022 [US1] Implement client method: startSession(pmUserId, slackChannelId) calling POST /api/specfactory/start in `cli/src/client.ts`
+- [X] T023 [US1] Implement client method: analyzeDescription(specId, pmUserId, description) calling POST /api/specfactory/analyze in `cli/src/client.ts`
+- [X] T024 [US1] Implement client method: getChannelNames(specId) calling POST /api/specfactory/channel-names in `cli/src/client.ts`
+- [X] T025 [US1] Implement client method: selectChannel(specId, channelName, roles) calling POST /api/specfactory/channel in `cli/src/client.ts`
+- [X] T026 [US1] Implement client method: getNextQuestion(specId) calling POST /api/specfactory/questions/next in `cli/src/client.ts`
+- [X] T027 [US1] Implement client method: submitAnswer(specId, questionId, selectedOptionIndex?, customText?) calling POST /api/specfactory/questions/answer in `cli/src/client.ts`
+- [X] T028 [US1] Implement client method: healthCheck() calling GET /health in `cli/src/client.ts`
+- [X] T029 [US1] Implement terminal prompt: feature description input (multi-line, 10-word minimum validation) using @clack/prompts in `cli/src/prompts.ts`
+- [X] T030 [US1] Implement terminal prompt: channel name selection (display 5 suggestions with rationale, numeric choice 1-5) using @clack/prompts in `cli/src/prompts.ts`
+- [X] T031 [US1] Implement terminal prompt: QA question display with multiple-choice options (numeric selection) using @clack/prompts in `cli/src/prompts.ts`
+- [X] T032 [US1] Implement terminal prompt: completion summary display (spec ID, view URL, question count) using @clack/prompts in `cli/src/prompts.ts`
+- [X] T033 [US1] Implement terminal prompt: error display with retry option for transient failures using @clack/prompts in `cli/src/prompts.ts`
+- [X] T034 [US1] Implement CLI entrypoint with commander setup (--backend-url, --no-slack, --help, --version flags) in `cli/src/index.ts`
+- [X] T035 [US1] Implement main workflow orchestration: health check, start session, prompt description, analyze, get channel names, select channel, QA loop, completion in `cli/src/index.ts`
+- [X] T036 [US1] Add Ctrl+C (SIGINT) handler for clean session interruption without corrupting state in `cli/src/index.ts`
+- [X] T037 [US1] Add client-side input validation: description word count (10+), channel name format (^[a-z0-9][a-z0-9-]{0,79}$), option index range in `cli/src/prompts.ts`
 
 **Checkpoint**: Developer can run `bun run cli/src/index.ts` and complete the full SpecFactory workflow interactively in the terminal. All contract tests pass.
 
@@ -103,20 +103,20 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T038 [P] [US2] Unit test: JSON envelope formatter produces correct schema with status/data/error/meta fields in `cli/tests/unit/output.test.ts`
-- [ ] T039 [P] [US2] Unit test: JSON envelope includes retryable flag and duration_ms in meta in `cli/tests/unit/output.test.ts`
-- [ ] T040 [P] [US2] Unit test: exit code returns 0 for success and non-zero for failures in `cli/tests/unit/output.test.ts`
+- [X] T038 [P] [US2] Unit test: JSON envelope formatter produces correct schema with status/data/error/meta fields in `cli/tests/unit/output.test.ts`
+- [X] T039 [P] [US2] Unit test: JSON envelope includes retryable flag and duration_ms in meta in `cli/tests/unit/output.test.ts`
+- [X] T040 [P] [US2] Unit test: exit code returns 0 for success and non-zero for failures in `cli/tests/unit/output.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T041 [US2] Implement JSON envelope formatter (status: success/error, data/error object, meta: timestamp/duration_ms/backend_url) in `cli/src/output.ts`
-- [ ] T042 [US2] Implement success envelope with phase-specific result shapes mirroring backend API responses in `cli/src/output.ts`
-- [ ] T043 [US2] Implement error envelope with retryable flag and structured error details in `cli/src/output.ts`
-- [ ] T044 [US2] Add --json flag to commander setup in `cli/src/index.ts` -- sets outputMode to json
-- [ ] T045 [US2] Add --auto-answer flag to commander setup in `cli/src/index.ts` -- selects first option automatically at every choice point
-- [ ] T046 [US2] Implement stdin input handling: detect piped input, read description from stdin when not TTY in `cli/src/index.ts`
-- [ ] T047 [US2] Wire JSON output mode through workflow: suppress @clack/prompts UI, emit JSON envelopes to stdout in `cli/src/index.ts`
-- [ ] T048 [US2] Implement exit code logic: 0=success, 1=user error, 2=backend error, 3=network error in `cli/src/index.ts`
+- [X] T041 [US2] Implement JSON envelope formatter (status: success/error, data/error object, meta: timestamp/duration_ms/backend_url) in `cli/src/output.ts`
+- [X] T042 [US2] Implement success envelope with phase-specific result shapes mirroring backend API responses in `cli/src/output.ts`
+- [X] T043 [US2] Implement error envelope with retryable flag and structured error details in `cli/src/output.ts`
+- [X] T044 [US2] Add --json flag to commander setup in `cli/src/index.ts` -- sets outputMode to json
+- [X] T045 [US2] Add --auto-answer flag to commander setup in `cli/src/index.ts` -- selects first option automatically at every choice point
+- [X] T046 [US2] Implement stdin input handling: detect piped input, read description from stdin when not TTY in `cli/src/index.ts`
+- [X] T047 [US2] Wire JSON output mode through workflow: suppress @clack/prompts UI, emit JSON envelopes to stdout in `cli/src/index.ts`
+- [X] T048 [US2] Implement exit code logic: 0=success, 1=user error, 2=backend error, 3=network error in `cli/src/index.ts`
 
 **Checkpoint**: `echo "description" | bun run cli/src/index.ts --json --auto-answer` produces valid JSON output, exits with code 0, and output is parseable by jq.
 
@@ -132,15 +132,15 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T049 [P] [US3] Unit test: "Other" option detection identifies last option as custom text trigger in `cli/tests/unit/prompts.test.ts`
-- [ ] T050 [P] [US3] Unit test: QA loop correctly handles type:"complete" response and exits loop in `cli/tests/unit/prompts.test.ts`
+- [X] T049 [P] [US3] Unit test: "Other" option detection identifies last option as custom text trigger in `cli/tests/unit/prompts.test.ts`
+- [X] T050 [P] [US3] Unit test: QA loop correctly handles type:"complete" response and exits loop in `cli/tests/unit/prompts.test.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T051 [US3] Implement "Other" option detection in QA prompt: when last option selected, show text input for custom answer in `cli/src/prompts.ts`
-- [ ] T052 [US3] Implement QA loop completion detection: check type:"complete" from POST /questions/next and isComplete:true from POST /questions/answer in `cli/src/index.ts`
-- [ ] T053 [US3] Implement progress display during QA loop: show "Question X of Y" with progress bar using @clack/prompts spinner in `cli/src/prompts.ts`
-- [ ] T054 [US3] Wire custom text answer through submitAnswer client method (customText field instead of selectedOptionIndex) in `cli/src/index.ts`
+- [X] T051 [US3] Implement "Other" option detection in QA prompt: when last option selected, show text input for custom answer in `cli/src/prompts.ts`
+- [X] T052 [US3] Implement QA loop completion detection: check type:"complete" from POST /questions/next and isComplete:true from POST /questions/answer in `cli/src/index.ts`
+- [X] T053 [US3] Implement progress display during QA loop: show "Question X of Y" with progress bar using @clack/prompts spinner in `cli/src/prompts.ts`
+- [X] T054 [US3] Wire custom text answer through submitAnswer client method (customText field instead of selectedOptionIndex) in `cli/src/index.ts`
 
 **Checkpoint**: Developer can complete full QA workflow including "Other" custom answers. Completion shows spec ID and view URL.
 
@@ -156,16 +156,16 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T055 [P] [US4] Unit test: verbose logger formats request/response details (method, URL, status, body truncation) in `cli/tests/unit/client.test.ts`
-- [ ] T056 [P] [US4] Unit test: error messages map all ErrorResponse codes to human-readable messages in `cli/tests/unit/client.test.ts`
+- [X] T055 [P] [US4] Unit test: verbose logger formats request/response details (method, URL, status, body truncation) in `cli/tests/unit/client.test.ts`
+- [X] T056 [P] [US4] Unit test: error messages map all ErrorResponse codes to human-readable messages in `cli/tests/unit/client.test.ts`
 
 ### Implementation for User Story 4
 
-- [ ] T057 [US4] Add --verbose flag to commander setup in `cli/src/index.ts` -- enables request/response logging
-- [ ] T058 [US4] Implement verbose request logging in HTTP client: log method, URL, headers, request body (truncated at 500 chars) in `cli/src/client.ts`
-- [ ] T059 [US4] Implement verbose response logging in HTTP client: log status code, response time, response body (truncated at 500 chars) in `cli/src/client.ts`
-- [ ] T060 [US4] Implement error message formatting: map all ErrorResponse.code values (MISSING_REQUIRED_FIELDS, INVALID_UUID, DESCRIPTION_TOO_SHORT, ACTIVE_SESSION_EXISTS, SPEC_NOT_FOUND, LLM_ERROR, INVALID_CHANNEL_NAME, INVALID_OPTION_INDEX) to clear terminal messages in `cli/src/client.ts`
-- [ ] T061 [US4] Implement 409 ACTIVE_SESSION_EXISTS handling: display existing spec ID and suggest resolution in `cli/src/prompts.ts`
+- [X] T057 [US4] Add --verbose flag to commander setup in `cli/src/index.ts` -- enables request/response logging
+- [X] T058 [US4] Implement verbose request logging in HTTP client: log method, URL, headers, request body (truncated at 500 chars) in `cli/src/client.ts`
+- [X] T059 [US4] Implement verbose response logging in HTTP client: log status code, response time, response body (truncated at 500 chars) in `cli/src/client.ts`
+- [X] T060 [US4] Implement error message formatting: map all ErrorResponse.code values (MISSING_REQUIRED_FIELDS, INVALID_UUID, DESCRIPTION_TOO_SHORT, ACTIVE_SESSION_EXISTS, SPEC_NOT_FOUND, LLM_ERROR, INVALID_CHANNEL_NAME, INVALID_OPTION_INDEX) to clear terminal messages in `cli/src/client.ts`
+- [X] T061 [US4] Implement 409 ACTIVE_SESSION_EXISTS handling: display existing spec ID and suggest resolution in `cli/src/prompts.ts`
 
 **Checkpoint**: Developer can reproduce any workflow scenario with --verbose flag and see full HTTP traffic. All error codes produce clear, actionable terminal messages.
 
@@ -175,10 +175,10 @@
 
 **Purpose**: Documentation, scripts, and validation across all user stories
 
-- [ ] T062 [P] Add CLI usage documentation in `cli/README.md` covering: installation, quickstart, flags (--backend-url, --json, --auto-answer, --no-slack, --verbose), environment variables, examples
-- [ ] T063 [P] Add npm scripts to `cli/package.json`: start, build, test, test:contract, test:integration, test:unit, lint
-- [ ] T064 Validate quickstart flow per `specs/001-specfactory-cli/quickstart.md` -- end-to-end from clone to completed spec
-- [ ] T065 Add bin entry to `cli/package.json` for `specfactory` command and verify `bun run cli/src/index.ts --help` output
+- [X] T062 [P] Add CLI usage documentation in `cli/README.md` covering: installation, quickstart, flags (--backend-url, --json, --auto-answer, --no-slack, --verbose), environment variables, examples
+- [X] T063 [P] Add npm scripts to `cli/package.json`: start, build, test, test:contract, test:integration, test:unit, lint
+- [X] T064 Validate quickstart flow per `specs/001-specfactory-cli/quickstart.md` -- end-to-end from clone to completed spec
+- [X] T065 Add bin entry to `cli/package.json` for `specfactory` command and verify `bun run cli/src/index.ts --help` output
 
 ---
 
