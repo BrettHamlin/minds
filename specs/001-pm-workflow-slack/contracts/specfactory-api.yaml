@@ -1,0 +1,750 @@
+openapi: 3.1.0
+info:
+  title: SpecFactory API
+  description: |
+    REST API for the PM Workflow in Slack feature (MVP Core).
+    Enables spec creation, Blind QA questioning, and spec retrieval.
+
+    This API is consumed by the Slack bot integration layer and the
+    web frontend for spec viewing. All spec-creation endpoints are
+    called internally by the Slack interaction handlers.
+  version: 0.1.0
+  contact:
+    name: Relay Team
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://specfactory.app
+    description: Production
+
+tags:
+  - name: specfactory
+    description: Spec creation workflow endpoints
+  - name: spec
+    description: Spec retrieval and viewing
+
+paths:
+  /api/specfactory/start:
+    post:
+      operationId: startSpecCreation
+      summary: Initiate spec creation workflow
+      description: |
+        Creates a new spec record and session when a PM invokes `/specfactory`.
+        Returns a session ID and prompts the PM for a feature description.
+        Implements FR-001 and FR-002.
+      tags: [specfactory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartRequest'
+      responses:
+        '201':
+          description: Spec and session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: PM already has an active session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: ACTIVE_SESSION_EXISTS
+                message: You already have an active spec creation session. Complete or cancel it before starting a new one.
+                details:
+                  existingSpecId: 550e8400-e29b-41d4-a716-446655440000
+                  existingSessionStep: selecting_channel
+
+  /api/specfactory/analyze:
+    post:
+      operationId: analyzeDescription
+      summary: Analyze feature description with AI
+      description: |
+        Sends the PM's feature description to the LLM for analysis.
+        Returns determined roles, complexity score, and question count estimate.
+        Implements FR-003.
+      tags: [specfactory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+      responses:
+        '200':
+          description: Analysis complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+        '400':
+          description: Description too short or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: DESCRIPTION_TOO_SHORT
+                message: Feature description must be at least 10 words. Please provide more detail.
+        '404':
+          description: Spec or session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: AI analysis failed after retries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/specfactory/channel-names:
+    post:
+      operationId: generateChannelNames
+      summary: Generate channel name suggestions
+      description: |
+        Uses AI to generate exactly 5 Slack channel name suggestions
+        based on the feature description. Implements FR-004.
+      tags: [specfactory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelNamesRequest'
+      responses:
+        '200':
+          description: Channel name suggestions generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelNamesResponse'
+        '404':
+          description: Spec not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: AI generation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/specfactory/channel:
+    post:
+      operationId: createChannel
+      summary: Create Slack coordination channel
+      description: |
+        Creates the Slack channel with the selected name and invites all
+        team members. Posts welcome message. Triggers transition to
+        Blind QA phase. Implements FR-007 and FR-008.
+      tags: [specfactory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChannelRequest'
+      responses:
+        '201':
+          description: Channel created and members invited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateChannelResponse'
+        '400':
+          description: Invalid channel name or missing members
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Spec not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Channel name already exists in Slack workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: CHANNEL_NAME_TAKEN
+                message: "Channel name 'payments-feature' already exists. Try 'payments-feature-2' or choose a different name."
+                details:
+                  suggestedAlternative: payments-feature-2
+
+  /api/specfactory/questions/next:
+    post:
+      operationId: getNextQuestion
+      summary: Get the next Blind QA question
+      description: |
+        Returns the next unanswered question for the spec. If all questions
+        have been answered, returns a completion indicator. Questions are
+        generated dynamically based on feature complexity and prior answers.
+        Implements FR-010 and FR-011.
+      tags: [specfactory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NextQuestionRequest'
+      responses:
+        '200':
+          description: Next question returned or spec is complete
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/NextQuestionResponse'
+                  - $ref: '#/components/schemas/QuestionsCompleteResponse'
+                discriminator:
+                  propertyName: type
+                  mapping:
+                    question: '#/components/schemas/NextQuestionResponse'
+                    complete: '#/components/schemas/QuestionsCompleteResponse'
+        '404':
+          description: Spec not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/specfactory/questions/answer:
+    post:
+      operationId: submitAnswer
+      summary: Submit an answer to a Blind QA question
+      description: |
+        Records the PM's answer to a question. Supports selecting a
+        predefined option or providing custom text via the "Other" option.
+        Implements FR-012 and FR-013.
+      tags: [specfactory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAnswerRequest'
+      responses:
+        '200':
+          description: Answer recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitAnswerResponse'
+        '400':
+          description: Invalid answer (option index out of range, missing custom text)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Spec or question not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Question already answered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/spec/{id}:
+    get:
+      operationId: getSpec
+      summary: Retrieve a completed spec
+      description: |
+        Returns the completed spec in JSON format. Used by the web frontend
+        to render the spec view at specfactory.app/spec/{ID}.
+        Returns 404 for non-existent specs. Implements FR-016.
+      tags: [spec]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Spec UUID
+          schema:
+            type: string
+            format: uuid
+        - name: format
+          in: query
+          required: false
+          description: Response format. Defaults to JSON. Use 'html' for rendered page.
+          schema:
+            type: string
+            enum: [json, html]
+            default: json
+      responses:
+        '200':
+          description: Spec found and returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecResponse'
+            text/html:
+              schema:
+                type: string
+                description: Rendered HTML page with formatted spec (FR-017)
+        '404':
+          description: Spec not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: SPEC_NOT_FOUND
+                message: No specification found with the given ID.
+
+components:
+  schemas:
+    # --- Request Schemas ---
+
+    StartRequest:
+      type: object
+      required: [pmUserId, slackChannelId]
+      properties:
+        pmUserId:
+          type: string
+          description: Slack user ID of the PM invoking /specfactory
+          example: U024BE7LH
+        pmDisplayName:
+          type: string
+          description: PM display name from Slack profile
+          example: Jane Smith
+        slackChannelId:
+          type: string
+          description: Slack channel ID where the command was invoked
+          example: C061EG9T2
+
+    AnalyzeRequest:
+      type: object
+      required: [specId, description]
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec ID returned from /start
+        description:
+          type: string
+          minLength: 20
+          description: Feature description provided by the PM (minimum 10 words)
+          example: Build a payment processing system that integrates with Stripe and handles subscriptions, one-time payments, and refunds with proper webhook handling
+
+    ChannelNamesRequest:
+      type: object
+      required: [specId]
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec ID to generate channel names for
+
+    CreateChannelRequest:
+      type: object
+      required: [specId, channelName, roles]
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec ID
+        channelName:
+          type: string
+          maxLength: 80
+          pattern: '^[a-z0-9][a-z0-9-]*$'
+          description: Selected or custom channel name (Slack naming rules)
+          example: payments-feature
+        isCustomName:
+          type: boolean
+          default: false
+          description: Whether the PM entered a custom name vs selecting a suggestion
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleWithMembers'
+          minItems: 1
+          description: Roles with assigned team members
+
+    NextQuestionRequest:
+      type: object
+      required: [specId]
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec ID
+        previousAnswerContext:
+          type: string
+          description: Optional context from the previous answer to influence next question generation
+
+    SubmitAnswerRequest:
+      type: object
+      required: [specId, questionId]
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec ID
+        questionId:
+          type: string
+          format: uuid
+          description: Question ID being answered
+        selectedOptionIndex:
+          type: integer
+          minimum: 0
+          description: Index of the selected option (0-based). Required if not using custom text.
+        customText:
+          type: string
+          description: Custom answer text when PM selects "Other" option
+          example: We need to support both credit cards and ACH transfers
+
+    # --- Response Schemas ---
+
+    StartResponse:
+      type: object
+      required: [specId, sessionId, step]
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Created spec ID
+        sessionId:
+          type: string
+          format: uuid
+          description: Created session ID
+        step:
+          type: string
+          enum: [awaiting_description]
+          description: Current workflow step
+
+    AnalyzeResponse:
+      type: object
+      required: [specId, roles, complexityScore, estimatedQuestions]
+      properties:
+        specId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: AI-generated title for the spec
+          example: Payment Processing System with Stripe Integration
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+          description: AI-determined team roles needed
+        complexityScore:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: AI-assessed feature complexity (1=simple, 10=very complex)
+        estimatedQuestions:
+          type: integer
+          minimum: 5
+          maximum: 20
+          description: Estimated number of Blind QA questions based on complexity
+
+    ChannelNamesResponse:
+      type: object
+      required: [specId, suggestions]
+      properties:
+        specId:
+          type: string
+          format: uuid
+        suggestions:
+          type: array
+          items:
+            type: string
+          minItems: 5
+          maxItems: 5
+          description: Exactly 5 channel name suggestions (FR-004)
+          example:
+            - payments-stripe-integration
+            - payment-processing-mvp
+            - stripe-payments-feature
+            - subscription-payments
+            - payments-and-billing
+
+    CreateChannelResponse:
+      type: object
+      required: [specId, channelId, slackChannelId, channelName]
+      properties:
+        specId:
+          type: string
+          format: uuid
+        channelId:
+          type: string
+          format: uuid
+          description: Database channel record ID
+        slackChannelId:
+          type: string
+          description: Slack channel ID
+          example: C07NEW123
+        channelName:
+          type: string
+          description: Final channel name (may differ if original was taken)
+        membersInvited:
+          type: integer
+          description: Number of team members successfully invited
+        welcomeMessageTs:
+          type: string
+          description: Slack message timestamp of the welcome message
+
+    NextQuestionResponse:
+      type: object
+      required: [type, specId, question, progress]
+      properties:
+        type:
+          type: string
+          enum: [question]
+        specId:
+          type: string
+          format: uuid
+        question:
+          $ref: '#/components/schemas/Question'
+        progress:
+          $ref: '#/components/schemas/QuestionProgress'
+
+    QuestionsCompleteResponse:
+      type: object
+      required: [type, specId, totalAnswered]
+      properties:
+        type:
+          type: string
+          enum: [complete]
+        specId:
+          type: string
+          format: uuid
+        totalAnswered:
+          type: integer
+          description: Total number of questions answered
+        specUrl:
+          type: string
+          format: uri
+          description: URL to view the completed spec
+          example: https://specfactory.app/spec/550e8400-e29b-41d4-a716-446655440000
+
+    SubmitAnswerResponse:
+      type: object
+      required: [specId, questionId, answerId, progress]
+      properties:
+        specId:
+          type: string
+          format: uuid
+        questionId:
+          type: string
+          format: uuid
+        answerId:
+          type: string
+          format: uuid
+          description: Created answer record ID
+        progress:
+          $ref: '#/components/schemas/QuestionProgress'
+        isComplete:
+          type: boolean
+          description: True if this was the final question
+
+    SpecResponse:
+      type: object
+      required: [id, title, state, pmUserId, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          description: Original feature description
+        state:
+          type: string
+          enum: [drafting, questioning, generating, completed, abandoned]
+        pmUserId:
+          type: string
+        pmDisplayName:
+          type: string
+        complexityScore:
+          type: integer
+        content:
+          type: string
+          description: Generated spec content (Markdown)
+        contentHtml:
+          type: string
+          description: Generated spec content (HTML)
+        channel:
+          $ref: '#/components/schemas/ChannelSummary'
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleWithMembers'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionWithAnswer'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # --- Shared Component Schemas ---
+
+    Role:
+      type: object
+      required: [id, name, sortOrder]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Role name determined by AI
+          example: Backend Developer
+        rationale:
+          type: string
+          description: AI explanation of why this role is needed
+          example: Stripe integration requires backend API development and webhook handling
+        sortOrder:
+          type: integer
+          description: Display/prompting order
+
+    RoleWithMembers:
+      allOf:
+        - $ref: '#/components/schemas/Role'
+        - type: object
+          required: [members]
+          properties:
+            members:
+              type: array
+              items:
+                $ref: '#/components/schemas/Member'
+
+    Member:
+      type: object
+      required: [slackUserId]
+      properties:
+        slackUserId:
+          type: string
+          example: U024BE7LH
+        displayName:
+          type: string
+          example: John Doe
+
+    Question:
+      type: object
+      required: [id, text, options, sequenceOrder]
+      properties:
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+          description: Question text
+          example: What payment methods should the system support?
+        options:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 6
+          description: Answer options. Last item is always "Other".
+          example:
+            - Credit/debit cards only
+            - Credit/debit cards and ACH transfers
+            - All major payment methods including digital wallets
+            - Other
+        sequenceOrder:
+          type: integer
+          minimum: 1
+
+    QuestionWithAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Question'
+        - type: object
+          properties:
+            answer:
+              $ref: '#/components/schemas/Answer'
+
+    Answer:
+      type: object
+      required: [id, isCustom]
+      properties:
+        id:
+          type: string
+          format: uuid
+        selectedOptionIndex:
+          type: integer
+        selectedOptionText:
+          type: string
+        customText:
+          type: string
+        isCustom:
+          type: boolean
+
+    QuestionProgress:
+      type: object
+      required: [answered, total]
+      properties:
+        answered:
+          type: integer
+          description: Number of questions answered
+          example: 3
+        total:
+          type: integer
+          description: Total number of questions
+          example: 12
+        percentComplete:
+          type: number
+          format: float
+          description: Completion percentage
+          example: 25.0
+
+    ChannelSummary:
+      type: object
+      required: [id, slackChannelId, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slackChannelId:
+          type: string
+        name:
+          type: string
+        isCustomName:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          example: SPEC_NOT_FOUND
+        message:
+          type: string
+          description: Human-readable error message
+          example: No specification found with the given ID.
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error context (varies by error type)
