@@ -1,0 +1,41 @@
+{
+  "name": "@relay/specfactory-cli",
+  "version": "0.1.0",
+  "description": "CLI plugin for SpecFactory - test workflows without Slack",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "specfactory": "dist/index.js"
+  },
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "bun run src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:contract": "vitest run tests/contract/",
+    "test:integration": "vitest run tests/integration/",
+    "test:unit": "vitest run tests/unit/",
+    "lint": "eslint src/**/*.ts"
+  },
+  "keywords": [
+    "specfactory",
+    "cli",
+    "relay"
+  ],
+  "author": "Brett Hamlin",
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^0.8.2",
+    "commander": "^12.1.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

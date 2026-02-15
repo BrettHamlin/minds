@@ -1,0 +1,1023 @@
+openapi: 3.0.3
+info:
+  title: SpecFactory REST API
+  description: |
+    REST API endpoints consumed by both the Slack plugin and CLI plugin.
+    The CLI plugin calls these endpoints as a thin HTTP client to orchestrate
+    the SpecFactory workflow (session creation, feature analysis, channel
+    selection, Blind QA, and spec completion).
+
+    Authentication: None for MVP. The backend trusts callers on the local
+    network. Future versions may add API key or token-based auth.
+  version: 0.1.0
+  contact:
+    name: Relay Team
+
+servers:
+  - url: http://localhost:3000
+    description: Local development (default)
+  - url: '{backendUrl}'
+    description: Configurable backend URL
+    variables:
+      backendUrl:
+        default: http://localhost:3000
+        description: Set via --backend-url flag or SPECFACTORY_BACKEND_URL env var
+
+paths:
+  /api/specfactory/start:
+    post:
+      operationId: startSession
+      summary: Start a new SpecFactory session
+      description: |
+        Creates a new spec and associated session for the given user.
+        Returns 409 if the user already has an active session (not expired,
+        still marked active). The CLI uses pmUserId format `cli-{username}-{epoch}`
+        and sets slackChannelId to `cli-local`.
+      tags:
+        - Session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartSessionRequest'
+            examples:
+              cli:
+                summary: CLI plugin session start
+                value:
+                  pmUserId: cli-atlas-1739520000
+                  slackChannelId: cli-local
+              slack:
+                summary: Slack plugin session start
+                value:
+                  pmUserId: U01ABC123
+                  slackChannelId: C01XYZ789
+      responses:
+        '201':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartSessionResponse'
+              example:
+                specId: 550e8400-e29b-41d4-a716-446655440000
+                sessionId: a1b2c3d4-e5f6-4789-abcd-ef0123456789
+                step: awaiting_description
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: MISSING_REQUIRED_FIELDS
+                message: pmUserId and slackChannelId are required
+                statusCode: 400
+        '409':
+          description: Active session already exists for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ACTIVE_SESSION_EXISTS
+                message: An active spec creation session already exists for this user
+                statusCode: 409
+                details:
+                  existingSpecId: 550e8400-e29b-41d4-a716-446655440000
+                  step: awaiting_description
+
+  /api/specfactory/analyze:
+    post:
+      operationId: analyzeDescription
+      summary: Submit feature description for LLM analysis
+      description: |
+        Sends the feature description to the LLM for analysis. Returns
+        a title, identified roles, complexity score, and estimated question
+        count. Updates the spec record and creates role records in the
+        database. Advances session step to `selecting_channel`.
+
+        This is an LLM-powered endpoint. Expect response times of 10-30
+        seconds. Timeout should be set to 60 seconds.
+      tags:
+        - Analysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+            example:
+              specId: 550e8400-e29b-41d4-a716-446655440000
+              pmUserId: cli-atlas-1739520000
+              description: >-
+                Build a user authentication system that supports email and
+                password login, OAuth integration with Google and GitHub,
+                session management with JWT tokens, and password reset
+                functionality via email verification links.
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+              example:
+                specId: 550e8400-e29b-41d4-a716-446655440000
+                title: User Authentication System
+                roles:
+                  - name: Backend Engineer
+                    rationale: API implementation and JWT token management
+                  - name: Security Engineer
+                    rationale: OAuth integration and credential handling
+                  - name: Frontend Engineer
+                    rationale: Login UI and password reset flow
+                complexityScore: 7
+                estimatedQuestions: 12
+        '400':
+          description: Validation error (missing fields or description too short)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingFields:
+                  summary: Missing required fields
+                  value:
+                    code: MISSING_REQUIRED_FIELDS
+                    message: specId and description are required
+                    statusCode: 400
+                descriptionTooShort:
+                  summary: Description under 10 words
+                  value:
+                    code: DESCRIPTION_TOO_SHORT
+                    message: Feature description must be at least 10 words. Please provide more detail.
+                    statusCode: 400
+                    details:
+                      providedWords: 5
+                      requiredWords: 10
+                invalidUuid:
+                  summary: Invalid spec ID format
+                  value:
+                    code: INVALID_UUID
+                    message: 'Invalid UUID format: not-a-uuid'
+                    statusCode: 400
+                    details:
+                      providedId: not-a-uuid
+        '500':
+          description: LLM error (OpenRouter timeout, rate limit, or failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: LLM_ERROR
+                message: Failed to analyze description
+                statusCode: 500
+
+  /api/specfactory/channel-names:
+    post:
+      operationId: getChannelNameSuggestions
+      summary: Get AI-generated channel name suggestions
+      description: |
+        Generates 5 channel name suggestions based on the spec's title and
+        description. This is an LLM-powered endpoint. The spec must have
+        been analyzed first (title and description populated).
+
+        Note: The spec.md references this as GET /channel-names/:specId but
+        the actual backend implementation uses POST with specId in the body.
+        The CLI must use the POST method to match the existing backend.
+      tags:
+        - Channel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelNamesRequest'
+            example:
+              specId: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Channel name suggestions generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelNamesResponse'
+              example:
+                specId: 550e8400-e29b-41d4-a716-446655440000
+                suggestions:
+                  - feature-user-auth
+                  - spec-auth-system
+                  - auth-implementation
+                  - user-login-feature
+                  - auth-design-spec
+        '400':
+          description: Missing specId or invalid UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Spec not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: SPEC_NOT_FOUND
+                message: Spec not found
+                statusCode: 404
+        '500':
+          description: LLM error during name generation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/specfactory/channel:
+    post:
+      operationId: selectChannel
+      summary: Select channel name and advance workflow
+      description: |
+        Records the selected channel name and advances the workflow. In CLI
+        mode (PLUGIN_TYPE=cli), this endpoint skips Slack channel creation,
+        member invitation, and welcome message posting. It records the
+        channel name in the database, transitions the spec state from
+        `drafting` to `questioning`, and starts the Blind QA process by
+        generating the first question.
+
+        The `roles` field contains role assignments. In CLI --no-slack mode,
+        roles can have empty member arrays since there are no Slack users
+        to assign.
+
+        This is the most Slack-entangled endpoint. The backend refactoring
+        (PLUGIN_TYPE conditional logic) is required for CLI compatibility.
+      tags:
+        - Channel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelSelectRequest'
+            examples:
+              cliNoSlack:
+                summary: CLI mode (no Slack operations)
+                value:
+                  specId: 550e8400-e29b-41d4-a716-446655440000
+                  channelName: feature-user-auth
+                  roles:
+                    - roleName: Backend Engineer
+                      members: []
+                    - roleName: Security Engineer
+                      members: []
+              slackMode:
+                summary: Slack mode (with members)
+                value:
+                  specId: 550e8400-e29b-41d4-a716-446655440000
+                  channelName: feature-user-auth
+                  roles:
+                    - roleName: Backend Engineer
+                      members:
+                        - U01ABC123
+                        - U02DEF456
+                    - roleName: Security Engineer
+                      members:
+                        - U03GHI789
+      responses:
+        '201':
+          description: Channel recorded and Blind QA started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelSelectResponse'
+              examples:
+                cliResponse:
+                  summary: CLI mode response
+                  value:
+                    specId: 550e8400-e29b-41d4-a716-446655440000
+                    channelId: cli-local
+                    channelName: feature-user-auth
+                slackResponse:
+                  summary: Slack mode response
+                  value:
+                    specId: 550e8400-e29b-41d4-a716-446655440000
+                    channelId: C04JKL012
+                    channelName: feature-user-auth
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingFields:
+                  value:
+                    code: MISSING_REQUIRED_FIELDS
+                    message: specId, channelName, and roles are required
+                    statusCode: 400
+                invalidChannelName:
+                  value:
+                    code: INVALID_CHANNEL_NAME
+                    message: >-
+                      Channel name must be 1-80 characters, start with a letter
+                      or number, and contain only lowercase letters, numbers,
+                      and hyphens.
+                    statusCode: 400
+                    details:
+                      providedName: Invalid Name!
+        '404':
+          description: Spec not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: LLM error during first question generation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/specfactory/questions/next:
+    post:
+      operationId: getNextQuestion
+      summary: Get the next unanswered question or completion status
+      description: |
+        Retrieves the next unanswered Blind QA question for the spec.
+        If all questions have been answered, returns a completion response
+        with `type: 'complete'` and the spec view URL.
+
+        Note: The spec.md references this as GET /questions/next/:specId but
+        the actual backend implementation uses POST with specId in the body.
+        The CLI must use the POST method to match the existing backend.
+      tags:
+        - Questions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NextQuestionRequest'
+            example:
+              specId: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Next question or completion status
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/QuestionResponse'
+                  - $ref: '#/components/schemas/CompletionCheckResponse'
+                discriminator:
+                  propertyName: type
+                  mapping:
+                    question: '#/components/schemas/QuestionResponse'
+                    complete: '#/components/schemas/CompletionCheckResponse'
+              examples:
+                question:
+                  summary: Next question available
+                  value:
+                    type: question
+                    question:
+                      id: q1-550e8400-e29b-41d4-a716-446655440001
+                      text: What authentication methods should be supported?
+                      options:
+                        - Email/password only
+                        - OAuth + email/password
+                        - SSO enterprise
+                        - Other
+                    progress:
+                      current: 1
+                      total: 12
+                complete:
+                  summary: All questions answered
+                  value:
+                    type: complete
+                    totalAnswered: 12
+                    specUrl: http://localhost:3000/api/spec/550e8400-e29b-41d4-a716-446655440000?format=html
+        '400':
+          description: Missing specId or invalid UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/specfactory/questions/answer:
+    post:
+      operationId: submitAnswer
+      summary: Submit an answer to a Blind QA question
+      description: |
+        Submits the user's answer to a specific question. The answer can be
+        a selected option (by index) or custom text (when "Other" is chosen).
+
+        After recording the answer, the backend checks if all questions are
+        answered. If complete, it triggers spec generation (completeBlindQA
+        -> generateSpecContent). If not complete, it generates the next
+        question using all previous Q&A pairs as context.
+
+        The response includes an `isComplete` flag. When true, the spec
+        content has been generated and is available at the spec view URL.
+      tags:
+        - Questions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAnswerRequest'
+            examples:
+              selectedOption:
+                summary: Standard option selection
+                value:
+                  specId: 550e8400-e29b-41d4-a716-446655440000
+                  questionId: q1-550e8400-e29b-41d4-a716-446655440001
+                  selectedOptionIndex: 1
+              customText:
+                summary: Custom text answer (Other)
+                value:
+                  specId: 550e8400-e29b-41d4-a716-446655440000
+                  questionId: q1-550e8400-e29b-41d4-a716-446655440001
+                  customText: We need SAML SSO with LDAP fallback
+      responses:
+        '200':
+          description: Answer recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitAnswerResponse'
+              examples:
+                notComplete:
+                  summary: More questions remaining
+                  value:
+                    specId: 550e8400-e29b-41d4-a716-446655440000
+                    questionId: q1-550e8400-e29b-41d4-a716-446655440001
+                    answerId: a1-550e8400-e29b-41d4-a716-446655440002
+                    progress:
+                      answered: 1
+                      total: 12
+                    isComplete: false
+                complete:
+                  summary: Final question answered, spec generated
+                  value:
+                    specId: 550e8400-e29b-41d4-a716-446655440000
+                    questionId: q12-550e8400-e29b-41d4-a716-44665544000c
+                    answerId: a12-550e8400-e29b-41d4-a716-44665544000d
+                    progress:
+                      answered: 12
+                      total: 12
+                    isComplete: true
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingFields:
+                  value:
+                    code: MISSING_REQUIRED_FIELDS
+                    message: specId and questionId are required
+                    statusCode: 400
+                invalidOptionIndex:
+                  value:
+                    code: INVALID_OPTION_INDEX
+                    message: Option index must be between 0 and 3.
+                    statusCode: 400
+                    details:
+                      providedIndex: 5
+                      maxIndex: 3
+        '500':
+          description: LLM error during next question generation or spec generation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/spec/{specId}:
+    get:
+      operationId: getSpec
+      summary: View completed spec content
+      description: |
+        Retrieves the completed specification. Supports two formats via
+        query parameter: JSON (default) returns the spec data, HTML returns
+        rendered spec content for browser viewing.
+      tags:
+        - Spec
+      parameters:
+        - name: specId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The spec identifier
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - json
+              - html
+            default: json
+          description: Response format
+      responses:
+        '200':
+          description: Spec content retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecViewResponse'
+            text/html:
+              schema:
+                type: string
+                description: Rendered HTML spec content
+        '404':
+          description: Spec not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Backend health check
+      description: |
+        Simple health check endpoint. The CLI calls this on startup to
+        verify the backend is reachable before beginning the workflow.
+      tags:
+        - System
+      responses:
+        '200':
+          description: Backend is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                service: relay
+                version: 0.1.0
+
+components:
+  schemas:
+    # --- Request Schemas ---
+
+    StartSessionRequest:
+      type: object
+      required:
+        - pmUserId
+        - slackChannelId
+      properties:
+        pmUserId:
+          type: string
+          maxLength: 64
+          description: |
+            User identifier. CLI format: `cli-{username}-{epoch_seconds}`.
+            Slack format: Slack user ID (e.g., U01ABC123).
+          examples:
+            - cli-atlas-1739520000
+            - U01ABC123
+        slackChannelId:
+          type: string
+          maxLength: 64
+          description: |
+            Channel identifier. CLI uses `cli-local` as a synthetic value.
+            Slack uses actual channel ID.
+          examples:
+            - cli-local
+            - C01XYZ789
+
+    AnalyzeRequest:
+      type: object
+      required:
+        - specId
+        - description
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec identifier from startSession response
+        pmUserId:
+          type: string
+          maxLength: 64
+          description: User identifier (used to look up active session for step update)
+        description:
+          type: string
+          minLength: 1
+          description: |
+            Feature description text. Must contain at least 10 words.
+            The backend validates word count and returns DESCRIPTION_TOO_SHORT
+            if under the minimum.
+
+    ChannelNamesRequest:
+      type: object
+      required:
+        - specId
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec identifier (must have been analyzed first)
+
+    ChannelSelectRequest:
+      type: object
+      required:
+        - specId
+        - channelName
+        - roles
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec identifier
+        channelName:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,79}$'
+          maxLength: 80
+          description: |
+            Selected channel name. Must follow Slack naming conventions
+            (lowercase alphanumeric + hyphens, 1-80 chars).
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleAssignment'
+          description: |
+            Role assignments with member lists. In CLI --no-slack mode,
+            member arrays should be empty.
+
+    RoleAssignment:
+      type: object
+      required:
+        - roleName
+      properties:
+        roleName:
+          type: string
+          description: Role name (must match a role from analysis)
+        members:
+          type: array
+          items:
+            type: string
+          default: []
+          description: |
+            Array of user IDs to assign to this role.
+            CLI mode: empty array (no Slack users).
+            Slack mode: array of Slack user IDs.
+
+    NextQuestionRequest:
+      type: object
+      required:
+        - specId
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec identifier
+
+    SubmitAnswerRequest:
+      type: object
+      required:
+        - specId
+        - questionId
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Spec identifier
+        questionId:
+          type: string
+          format: uuid
+          description: Question identifier from getNextQuestion response
+        selectedOptionIndex:
+          type: integer
+          minimum: 0
+          description: |
+            0-based index of the selected option. Mutually exclusive with
+            customText (provide one or the other).
+        customText:
+          type: string
+          description: |
+            Custom text answer when "Other" is selected. Mutually exclusive
+            with selectedOptionIndex.
+
+    # --- Response Schemas ---
+
+    StartSessionResponse:
+      type: object
+      required:
+        - specId
+        - sessionId
+        - step
+      properties:
+        specId:
+          type: string
+          format: uuid
+          description: Created spec identifier
+        sessionId:
+          type: string
+          format: uuid
+          description: Created session identifier
+        step:
+          type: string
+          enum:
+            - awaiting_description
+          description: Initial session step (always awaiting_description)
+
+    AnalyzeResponse:
+      type: object
+      required:
+        - specId
+        - title
+        - roles
+        - complexityScore
+        - estimatedQuestions
+      properties:
+        specId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: LLM-generated title for the feature
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+          description: Identified roles relevant to the feature
+        complexityScore:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: LLM-assessed complexity on 1-10 scale
+        estimatedQuestions:
+          type: integer
+          minimum: 1
+          description: Estimated number of Blind QA questions
+
+    Role:
+      type: object
+      required:
+        - name
+        - rationale
+      properties:
+        name:
+          type: string
+          description: Role title (e.g., "Backend Engineer")
+        rationale:
+          type: string
+          description: Why this role is relevant to the feature
+
+    ChannelNamesResponse:
+      type: object
+      required:
+        - specId
+        - suggestions
+      properties:
+        specId:
+          type: string
+          format: uuid
+        suggestions:
+          type: array
+          items:
+            type: string
+          minItems: 5
+          maxItems: 5
+          description: Five AI-generated channel name suggestions
+
+    ChannelSelectResponse:
+      type: object
+      required:
+        - specId
+        - channelId
+        - channelName
+      properties:
+        specId:
+          type: string
+          format: uuid
+        channelId:
+          type: string
+          description: |
+            Slack channel ID (real in Slack mode, `cli-local` in CLI mode)
+        channelName:
+          type: string
+          description: Final channel name (may differ from requested if collision occurred)
+
+    QuestionResponse:
+      type: object
+      required:
+        - type
+        - question
+        - progress
+      properties:
+        type:
+          type: string
+          enum:
+            - question
+        question:
+          type: object
+          required:
+            - id
+            - text
+            - options
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: Question identifier (used when submitting answer)
+            text:
+              type: string
+              description: Question text
+            options:
+              type: array
+              items:
+                type: string
+              description: |
+                Multiple choice options. The last option is typically "Other"
+                which allows custom text input.
+        progress:
+          $ref: '#/components/schemas/QuestionProgress'
+
+    CompletionCheckResponse:
+      type: object
+      required:
+        - type
+        - totalAnswered
+        - specUrl
+      properties:
+        type:
+          type: string
+          enum:
+            - complete
+        totalAnswered:
+          type: integer
+          description: Total number of questions answered
+        specUrl:
+          type: string
+          format: uri
+          description: URL to view the completed spec (HTML format)
+
+    SubmitAnswerResponse:
+      type: object
+      required:
+        - specId
+        - questionId
+        - answerId
+        - progress
+        - isComplete
+      properties:
+        specId:
+          type: string
+          format: uuid
+        questionId:
+          type: string
+          format: uuid
+        answerId:
+          type: string
+          format: uuid
+          description: Created answer record identifier
+        progress:
+          type: object
+          required:
+            - answered
+            - total
+          properties:
+            answered:
+              type: integer
+              description: Number of questions answered so far
+            total:
+              type: integer
+              description: Total number of questions
+        isComplete:
+          type: boolean
+          description: |
+            True when all questions have been answered. When true, spec
+            content generation has been triggered server-side.
+
+    QuestionProgress:
+      type: object
+      required:
+        - current
+        - total
+      properties:
+        current:
+          type: integer
+          minimum: 1
+          description: Current question number (1-based)
+        total:
+          type: integer
+          minimum: 1
+          description: Total expected questions
+
+    SpecViewResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        state:
+          type: string
+          enum:
+            - drafting
+            - questioning
+            - generating
+            - completed
+            - abandoned
+        complexityScore:
+          type: integer
+        totalQuestions:
+          type: integer
+        answeredQuestions:
+          type: integer
+        content:
+          type: string
+          description: Generated markdown spec content
+        contentHtml:
+          type: string
+          description: Rendered HTML spec content
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - version
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        service:
+          type: string
+        version:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - statusCode
+      properties:
+        code:
+          type: string
+          description: |
+            Machine-readable error code. Known codes:
+            - MISSING_REQUIRED_FIELDS: Required request body fields missing
+            - INVALID_UUID: UUID format validation failed
+            - DESCRIPTION_TOO_SHORT: Feature description under 10 words
+            - INVALID_CHANNEL_NAME: Channel name format validation failed
+            - INVALID_OPTION_INDEX: Selected option index out of range
+            - ACTIVE_SESSION_EXISTS: User already has an active session
+            - SPEC_NOT_FOUND: Referenced spec does not exist
+            - CHANNEL_NAME_TAKEN: All channel name variants exhausted (Slack mode)
+            - LLM_ERROR: LLM API call failed (timeout, rate limit, etc.)
+          enum:
+            - MISSING_REQUIRED_FIELDS
+            - INVALID_UUID
+            - DESCRIPTION_TOO_SHORT
+            - INVALID_CHANNEL_NAME
+            - INVALID_OPTION_INDEX
+            - ACTIVE_SESSION_EXISTS
+            - SPEC_NOT_FOUND
+            - CHANNEL_NAME_TAKEN
+            - LLM_ERROR
+        message:
+          type: string
+          description: Human-readable error message
+        statusCode:
+          type: integer
+          description: HTTP status code
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error context (varies by error code)
+
+  # No security schemes for MVP
+  # securitySchemes: {}
+
+tags:
+  - name: Session
+    description: Session lifecycle management
+  - name: Analysis
+    description: LLM-powered feature analysis
+  - name: Channel
+    description: Channel name selection and workflow advancement
+  - name: Questions
+    description: Blind QA question-answer loop
+  - name: Spec
+    description: Completed spec retrieval
+  - name: System
+    description: Health and system endpoints

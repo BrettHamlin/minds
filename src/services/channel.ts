@@ -1,10 +1,13 @@
 /**
  * Channel service - manages Slack channels and database records
+ *
+ * Supports skipSlack mode for CLI plugin (PLUGIN_TYPE=cli):
+ * - Records channel metadata in database without calling Slack API
+ * - Uses a synthetic channel ID (cli-{name}) when Slack is skipped
  */
 
 import { db } from '../db/index.js';
 import { channels } from '../db/schema.js';
-import { slackApp } from '../plugins/slack/client.js';
 import { ConflictError, ERROR_CODES } from '../lib/errors.js';
 
 export async function createChannelRecord(
@@ -24,22 +27,40 @@ export async function createChannelRecord(
       isCustomName,
     })
     .returning();
-  
+
   return channel;
 }
 
-export async function createSlackChannel(name: string): Promise<{ id: string; name: string }> {
+/**
+ * Create a Slack channel or return a synthetic channel reference when skipSlack is true.
+ *
+ * When skipSlack=true, no Slack API calls are made. A synthetic channel ID is
+ * generated so the database record can still be created with a valid reference.
+ */
+export async function createSlackChannel(
+  name: string,
+  options?: { skipSlack?: boolean }
+): Promise<{ id: string; name: string }> {
+  if (options?.skipSlack) {
+    return {
+      id: `cli-${name}`,
+      name,
+    };
+  }
+
+  const { slackApp } = await import('../plugins/slack/client.js');
+
   let channelName = name;
   let attempt = 1;
   const maxAttempts = 9;
-  
+
   while (attempt <= maxAttempts) {
     try {
       const result = await slackApp.client.conversations.create({
         name: channelName,
         is_private: false,
       });
-      
+
       return {
         id: result.channel!.id!,
         name: result.channel!.name!,
@@ -61,11 +82,24 @@ export async function createSlackChannel(name: string): Promise<{ id: string; na
       }
     }
   }
-  
+
   throw new Error('Unexpected error in createSlackChannel');
 }
 
-export async function inviteMembers(slackChannelId: string, userIds: string[]) {
+/**
+ * Invite members to a Slack channel. No-op when skipSlack is true.
+ */
+export async function inviteMembers(
+  slackChannelId: string,
+  userIds: string[],
+  options?: { skipSlack?: boolean }
+) {
+  if (options?.skipSlack) {
+    return;
+  }
+
+  const { slackApp } = await import('../plugins/slack/client.js');
+
   try {
     await slackApp.client.conversations.invite({
       channel: slackChannelId,
@@ -77,21 +111,31 @@ export async function inviteMembers(slackChannelId: string, userIds: string[]) {
   }
 }
 
+/**
+ * Post a welcome message to a Slack channel. No-op when skipSlack is true.
+ */
 export async function postWelcomeMessage(
   slackChannelId: string,
   specTitle: string,
-  pmDisplayName: string
+  pmDisplayName: string,
+  options?: { skipSlack?: boolean }
 ) {
+  if (options?.skipSlack) {
+    return;
+  }
+
+  const { slackApp } = await import('../plugins/slack/client.js');
+
   try {
     await slackApp.client.chat.postMessage({
       channel: slackChannelId,
-      text: `🎯 *New Spec: ${specTitle}*\n\nStarted by ${pmDisplayName}. Let's get this specified!`,
+      text: `*New Spec: ${specTitle}*\n\nStarted by ${pmDisplayName}. Let's get this specified!`,
       blocks: [
         {
           type: 'header',
           text: {
             type: 'plain_text',
-            text: `🎯 ${specTitle}`,
+            text: specTitle,
           },
         },
         {
