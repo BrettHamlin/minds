@@ -80,6 +80,7 @@ HANDLER_COUNT=$(ls .relay/handlers/*.ts 2>/dev/null | wc -l)
 # Copy orchestrator scripts to .relay/scripts/orchestrator/
 echo "  → Orchestrator scripts..."
 cp "$TEMP_DIR"/src/scripts/orchestrator/*.sh .relay/scripts/orchestrator/
+cp "$TEMP_DIR"/src/scripts/orchestrator/Tmux.ts .relay/scripts/orchestrator/
 ORCHESTRATOR_SCRIPT_COUNT=$(ls .relay/scripts/orchestrator/*.sh 2>/dev/null | wc -l)
 
 # Copy scripts to .specify/scripts/
