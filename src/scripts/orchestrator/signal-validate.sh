@@ -23,7 +23,9 @@
 
 set -euo pipefail
 
-REGISTRY_DIR="$HOME/.claude/MEMORY/STATE/pipeline-registry"
+# Detect repo root and use local state directory
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+REGISTRY_DIR="$REPO_ROOT/.relay/state/pipeline-registry"
 
 # --- Phase validation function ---
 # Returns valid signal types for a given phase (bash 3.2 compatible)

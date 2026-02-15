@@ -21,7 +21,9 @@
 
 set -euo pipefail
 
-REGISTRY_DIR="$HOME/.claude/MEMORY/STATE/pipeline-registry"
+# Detect repo root and use local state directory
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+REGISTRY_DIR="$REPO_ROOT/.relay/state/pipeline-registry"
 
 # --- Validate arguments ---
 if [ $# -lt 1 ]; then

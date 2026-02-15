@@ -24,7 +24,9 @@
 
 set -euo pipefail
 
-REGISTRY_DIR="$HOME/.claude/MEMORY/STATE/pipeline-registry"
+# Detect repo root and use local state directory
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+REGISTRY_DIR="$REPO_ROOT/.relay/state/pipeline-registry"
 
 # --- Allowed fields (whitelist to prevent garbage data) ---
 ALLOWED_FIELDS="current_step nonce status color_index group_id agent_pane_id orchestrator_pane_id worktree_path last_signal last_signal_at error_count"

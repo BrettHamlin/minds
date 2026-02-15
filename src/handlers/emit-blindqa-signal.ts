@@ -14,13 +14,24 @@
  */
 
 import { $ } from "bun";
+import { execSync } from "child_process";
 
-const REGISTRY_DIR = `${process.env.HOME}/.claude/MEMORY/STATE/pipeline-registry`;
-const TMUX_PATH = `${process.env.HOME}/.claude/skills/TmuxAutomation/Tools/Tmux.ts`;
+// Detect repo root and use local paths
+function getRepoRoot(): string {
+  try {
+    return execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+  } catch {
+    return process.cwd();
+  }
+}
 
-// Import shared functions from pipeline-signal handler
+const REPO_ROOT = getRepoRoot();
+const REGISTRY_DIR = `${REPO_ROOT}/.relay/state/pipeline-registry`;
+const TMUX_PATH = `${REPO_ROOT}/.relay/scripts/orchestrator/Tmux.ts`;
+
+// Import shared functions from local pipeline-signal handler
 const { mapResponseState, buildSignalMessage, resolveRegistry, truncateDetail } =
-  await import(`${process.env.HOME}/.claude/hooks/handlers/pipeline-signal.ts`);
+  await import("./pipeline-signal.ts");
 
 /**
  * Map lifecycle event to response state for mapResponseState function

@@ -51,7 +51,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
    Run this Bash command to emit the signal BEFORE calling AskUserQuestion:
    ```bash
-   bun ~/.claude/hooks/handlers/emit-question-signal.ts "<question text>"
+   bun .relay/handlers/emit-question-signal.ts "<question text>"
    ```
 
    This is MANDATORY. The signal must be sent before the question appears on screen so the orchestrator can capture it.

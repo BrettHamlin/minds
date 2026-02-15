@@ -56,6 +56,8 @@ mkdir -p .claude/commands
 mkdir -p .relay/handlers
 mkdir -p .relay/memory
 mkdir -p .relay/scripts/orchestrator
+mkdir -p .relay/state/pipeline-registry
+mkdir -p .relay/state/pipeline-groups
 mkdir -p .specify/scripts
 mkdir -p .specify/templates
 

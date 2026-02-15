@@ -31,12 +31,12 @@ If no ticket ID provided, error and exit.
 
 Check that orchestrated mode is active:
 ```bash
-test -f ~/.claude/MEMORY/STATE/pipeline-registry/${ticket_id}.json || { echo "Not in orchestrated mode"; exit 1; }
+test -f .relay/state/pipeline-registry/${ticket_id}.json || { echo "Not in orchestrated mode"; exit 1; }
 ```
 
 Verify current_step is "blindqa":
 ```bash
-cat ~/.claude/MEMORY/STATE/pipeline-registry/${ticket_id}.json | grep '"current_step".*"blindqa"' || { echo "Warning: not in blindqa phase"; }
+cat .relay/state/pipeline-registry/${ticket_id}.json | grep '"current_step".*"blindqa"' || { echo "Warning: not in blindqa phase"; }
 ```
 
 ### 3. Initialize Retry Loop
@@ -47,7 +47,7 @@ Set retry count: `attempt = 1`, `max_attempts = 3`
 
 On first attempt only, run:
 ```bash
-bun ~/.claude/hooks/handlers/emit-blindqa-signal.ts start "Starting blind verification (attempt ${attempt}/${max_attempts})"
+bun .relay/handlers/emit-blindqa-signal.ts start "Starting blind verification (attempt ${attempt}/${max_attempts})"
 ```
 
 This is MANDATORY before invoking BlindQA skill. The signal must be sent before verification begins so orchestrator can track progress.
@@ -73,7 +73,7 @@ Parse BlindQA output for verdict:
 - All checks passed with evidence
 - Emit success signal:
   ```bash
-  bun ~/.claude/hooks/handlers/emit-blindqa-signal.ts pass "All ${check_count} checks passed with evidence"
+  bun .relay/handlers/emit-blindqa-signal.ts pass "All ${check_count} checks passed with evidence"
   ```
 - Exit successfully (pipeline advances to done/next phase)
 
@@ -86,7 +86,7 @@ Parse BlindQA output for verdict:
 - If `attempt >= max_attempts`:
   - Emit failure signal:
     ```bash
-    bun ~/.claude/hooks/handlers/emit-blindqa-signal.ts fail "${issue_count} issues remain after ${max_attempts} attempts"
+    bun .relay/handlers/emit-blindqa-signal.ts fail "${issue_count} issues remain after ${max_attempts} attempts"
     ```
   - Report issues and exit (pipeline halts for manual intervention)
 

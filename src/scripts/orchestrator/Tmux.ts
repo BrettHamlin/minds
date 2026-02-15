@@ -258,7 +258,15 @@ async function rebuildBorderFormat(targetPane: string): Promise<void> {
     const paneTitles = panesResult.stdout.toString().trim().split("\n").filter(Boolean);
 
     // Read all registry files to map titles to color indices
-    const registryDir = `${process.env.HOME}/.claude/MEMORY/STATE/pipeline-registry`;
+    // Detect repo root and use local state directory
+    const { execSync } = await import("child_process");
+    let repoRoot: string;
+    try {
+      repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+    } catch {
+      repoRoot = process.cwd();
+    }
+    const registryDir = `${repoRoot}/.relay/state/pipeline-registry`;
     let titleColorMap: Record<string, number> = {};
     try {
       const { readdirSync, readFileSync } = await import("fs");

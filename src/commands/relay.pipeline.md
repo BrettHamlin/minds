@@ -20,7 +20,7 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 ### 1. Crash Recovery
 
-Scan `~/.claude/MEMORY/STATE/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun $SCRIPTS/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `$SCRIPTS/status-table.sh`, output "Recovered N agent(s)." **END RESPONSE.**
+Scan `.relay/state/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun $SCRIPTS/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `$SCRIPTS/status-table.sh`, output "Recovered N agent(s)." **END RESPONSE.**
 
 ### 2. Validate
 
@@ -138,7 +138,7 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
 ### [CMD:remove {ticket_id}]
 
-Validate. `$SCRIPTS/registry-read.sh {ticket_id}` for group_id. If grouped: remove from group, delete group if empty, notify if orphaned waits. `rm ~/.claude/MEMORY/STATE/pipeline-registry/{ticket_id}.json`. `$SCRIPTS/status-table.sh`. **END RESPONSE.**
+Validate. `$SCRIPTS/registry-read.sh {ticket_id}` for group_id. If grouped: remove from group, delete group if empty, notify if orphaned waits. `rm .relay/state/pipeline-registry/{ticket_id}.json`. `$SCRIPTS/status-table.sh`. **END RESPONSE.**
 
 ### [CMD:retry-deploy {ticket_id}]
 
@@ -171,7 +171,7 @@ On STEP_COMPLETE with "deployment" in detail: capture screen for success/failure
 
 On `_COMPLETE` signal when `current_step == "blindqa"`:
 1. If grouped: remove from group, delete group file if empty. Write atomically.
-2. `rm ~/.claude/MEMORY/STATE/pipeline-registry/{ticket_id}.json`
+2. `rm .relay/state/pipeline-registry/{ticket_id}.json`
 3. `$SCRIPTS/status-table.sh`. "Pipeline complete for {ticket_id}!"
 4. Other agents running -> wait. None remain -> "All pipelines complete."
 
