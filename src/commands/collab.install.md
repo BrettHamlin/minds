@@ -1,10 +1,10 @@
 ---
-description: Install relay workflow system into the current repository from GitHub
+description: Install collab workflow system into the current repository from GitHub
 ---
 
 ## Goal
 
-Install the relay workflow system into the current repository by cloning from GitHub and copying files into the appropriate directories.
+Install the collab workflow system into the current repository by cloning from GitHub and copying files into the appropriate directories.
 
 ## Prerequisites
 
@@ -26,16 +26,16 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
-echo "📁 Installing relay into: $REPO_ROOT"
+echo "📁 Installing collab into: $REPO_ROOT"
 ```
 
-### 2. Clone Relay from GitHub
+### 2. Clone Collab from GitHub
 
 ```bash
 # Create temp directory for cloning
 TEMP_DIR="/tmp/collab-install-$$"
 
-echo "📦 Cloning relay from GitHub (dev branch)..."
+echo "📦 Cloning collab from GitHub (dev branch)..."
 
 git clone --depth 1 --branch dev https://github.com/BrettHamlin/collab "$TEMP_DIR"
 
@@ -64,10 +64,10 @@ mkdir -p .specify/templates
 echo "✅ Directories created"
 ```
 
-### 4. Copy Relay Files
+### 4. Copy Collab Files
 
 ```bash
-echo "📋 Copying relay files..."
+echo "📋 Copying collab files..."
 
 # Copy commands to .claude/commands/
 echo "  → Commands..."
@@ -138,7 +138,7 @@ echo "✅ Cleanup complete"
 ```bash
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "✅ Relay installation complete!"
+echo "✅ Collab installation complete!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "📊 Installation Summary:"
@@ -169,7 +169,7 @@ echo "  1. Run /collab.run BRE-XXX for fully autonomous workflow"
 echo "  2. Or run /collab.specify to create feature spec manually"
 echo "  3. Customize .collab/memory/constitution.md for your project"
 echo ""
-echo "🔄 To update relay, run /collab.install again"
+echo "🔄 To update collab, run /collab.install again"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 ```
 
@@ -187,17 +187,17 @@ After installation, your repo will have:
 ```
 <your-repo>/
 ├── .claude/
-│   └── commands/           # Relay command files (auto-discovered)
-│       ├── relay.specify.md
-│       ├── relay.clarify.md
-│       ├── relay.plan.md
-│       ├── relay.tasks.md
-│       ├── relay.analyze.md
-│       ├── relay.implement.md
-│       ├── relay.checklist.md
-│       ├── relay.constitution.md
-│       ├── relay.taskstoissues.md
-│       └── relay.blindqa.md
+│   └── commands/           # Collab command files (auto-discovered)
+│       ├── collab.specify.md
+│       ├── collab.clarify.md
+│       ├── collab.plan.md
+│       ├── collab.tasks.md
+│       ├── collab.analyze.md
+│       ├── collab.implement.md
+│       ├── collab.checklist.md
+│       ├── collab.constitution.md
+│       ├── collab.taskstoissues.md
+│       └── collab.blindqa.md
 ├── .collab/
 │   ├── handlers/           # Signal emitters for orchestration
 │   │   ├── emit-question-signal.ts
