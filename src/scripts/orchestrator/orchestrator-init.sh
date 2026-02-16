@@ -46,6 +46,14 @@ else
   SPAWN_CMD="claude --dangerously-skip-permissions"
 fi
 
+# Ensure .claude/ symlink exists in worktree
+if [ -n "$WORKTREE_PATH" ] && [ -d "$REPO_ROOT/.claude" ]; then
+  if [ ! -e "$WORKTREE_PATH/.claude" ]; then
+    ln -sf "$REPO_ROOT/.claude" "$WORKTREE_PATH/.claude"
+    echo "Created .claude/ symlink in worktree" >&2
+  fi
+fi
+
 # Spawn agent pane (70% horizontal split)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_PANE=$(bun "$SCRIPT_DIR/Tmux.ts" split \
