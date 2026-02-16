@@ -96,7 +96,28 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
    - Frontend + backend deployed/skipped: continue.
    - Frontend + backend failed: notify user, suggest `[CMD:retry-deploy]`/`[CMD:skip-deploy]`. **END RESPONSE.**
 
-   **Implementation Completion Gate (implement):** Capture screen (`-s 100`). Find and read tasks.md. Count `[X]`/`[x]` vs `[ ]` per `## Phase`. Track validation_attempt_count (max 3). Incomplete -> send "continue remaining tasks" to agent, **END RESPONSE.** All 100% -> continue.
+   **Implementation Completion Gate (implement):**
+
+   1. Capture screen (`-s 100`). Find and read tasks.md.
+   2. Count `[X]`/`[x]` vs `[ ]` per `## Phase`.
+   3. Track validation_attempt_count (max 3).
+   4. IF incomplete -> send "continue remaining tasks" to agent, **END RESPONSE.**
+
+   5. **NO EXCUSES VERIFICATION** (all tasks checked):
+      a. Send to agent: "Run full test suite now and show output"
+      b. Wait 10 seconds, capture screen (`-s 200`)
+      c. Scan output for FAILURE INDICATORS:
+         - "FAILED", "ERROR", "✗", "❌", "test failed"
+         - "n failing", "build failed", stack traces
+         - Type errors, linting errors, compilation errors
+
+      d. IF ANY FAILURES FOUND:
+         Send to agent:
+         "⛔ NO EXCUSES: Tests/builds are failing. ALL failures must be fixed before completion, including pre-existing issues you didn't create. 'I didn't touch that code' is NOT an excuse. Fix everything and re-run tests."
+         Increment validation_attempt_count (max 3)
+         **END RESPONSE.**
+
+      e. IF ALL TESTS PASS -> continue to blindqa
 
 3. **Advance (deterministic):** `NEXT=$($SCRIPTS/phase-advance.sh {current_step})`
 
@@ -197,3 +218,4 @@ Delete registries where `orchestrator_pane_id == $TMUX_PANE`. Delete orphaned gr
 10. **Merge groups bidirectionally.** Add order must not affect behavior.
 11. **Escalate deployment failures.** Max 3 retries, then notify. Never silent-fail.
 12. **Colors 1-5**, reusable on remove.
+13. **NO EXCUSES POLICY**: When agent claims work complete, orchestrator MUST verify ALL tests pass and ALL builds succeed. Pre-existing failures discovered during work are NOT excuses for leaving them broken. Agent is responsible for delivering a working system, not just working new code. Reject completion if ANY failures exist, regardless of who created them.
