@@ -168,7 +168,7 @@ Given that feature description, do this:
 
 7. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/collab.plan`).
 
-**NOTE:** The script creates and checks out the new branch (or creates a worktree with `--worktree`) and initializes the spec file before writing. When using `--worktree`, the spec is created inside the worktree directory and the JSON output includes `WORKTREE_DIR` so users know where to open their next Claude Code session.
+**NOTE:** The script creates and checks out the new branch (or creates a worktree with `--worktree`) and initializes the spec file before writing. When using `--worktree`, the spec is created inside the worktree directory and the JSON output includes `WORKTREE_DIR` for reference. **Do NOT change directory** — stay in the main repo so you can run `/collab.run` as the orchestrator. The agent pane will automatically spawn in the worktree.
 
 ## General Guidelines
 
