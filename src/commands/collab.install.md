@@ -37,7 +37,7 @@ TEMP_DIR="/tmp/collab-install-$$"
 
 echo "📦 Cloning relay from GitHub (dev branch)..."
 
-git clone --depth 1 --branch dev https://github.com/BrettHamlin/collab-ai "$TEMP_DIR"
+git clone --depth 1 --branch dev https://github.com/BrettHamlin/collab "$TEMP_DIR"
 
 if [ $? -ne 0 ]; then
   echo "❌ ERROR: Failed to clone collab repository"
@@ -175,7 +175,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 ## Notes
 
-- **Source**: Clones from https://github.com/BrettHamlin/collab-ai (dev branch)
+- **Source**: Clones from https://github.com/BrettHamlin/collab (dev branch)
 - **Updates**: Re-running `/collab.install` updates all files to the latest version
 - **Constitution**: Only initialized on first install, preserved on updates
 - **Discovery**: Commands in `.claude/commands/` are automatically discovered by Claude Code
