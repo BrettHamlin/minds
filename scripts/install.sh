@@ -1,71 +1,80 @@
 #!/usr/bin/env bash
 #
-# Relay Orchestrator Installation Script
+# Collab Workflow Installation Script
 #
-# Creates symlinks from relay project to ~/.claude/ for:
-# - Orchestrated commands (relay.clarify, relay.blindqa)
-# - Signal emitters (emit-question-signal.ts, emit-blindqa-signal.ts)
+# Installs collab workflow system to repo-local .claude/ directory:
+# - Commands: .claude/commands/
+# - Skills: .claude/skills/
+# - Handlers: .claude/hooks/handlers/
 #
-# This allows version control in the relay repo while maintaining
-# Claude Code command discovery in ~/.claude/
+# This makes the repo fully self-contained with zero external dependencies.
+# All components are copied (not symlinked) from src/ to .claude/
 #
 
 set -euo pipefail
 
-# Get absolute path to relay project root
-RELAY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Get absolute path to collab project root
+COLLAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Ensure target directories exist
-mkdir -p ~/.claude/commands
-mkdir -p ~/.claude/hooks/handlers
+# Create repo-local .claude directories
+mkdir -p "$COLLAB_ROOT/.claude/commands"
+mkdir -p "$COLLAB_ROOT/.claude/skills"
+mkdir -p "$COLLAB_ROOT/.claude/hooks/handlers"
 
-echo "🔗 Creating symlinks for Relay commands..."
+echo "📦 Installing collab workflow to repo-local .claude/..."
+echo ""
 
-# Symlink orchestrator commands
-ln -sf "$RELAY_ROOT/src/commands/collab.clarify.md" ~/.claude/commands/collab.clarify.md
-ln -sf "$RELAY_ROOT/src/commands/collab.blindqa.md" ~/.claude/commands/collab.blindqa.md
+# Copy commands (all .md files from src/commands/)
+echo "🔗 Copying commands..."
+cp "$COLLAB_ROOT/src/commands/"*.md "$COLLAB_ROOT/.claude/commands/"
 
-echo "  ✓ ~/.claude/commands/collab.clarify.md"
-echo "  ✓ ~/.claude/commands/collab.blindqa.md"
+echo "  ✓ .claude/commands/collab.clarify.md"
+echo "  ✓ .claude/commands/collab.blindqa.md"
+echo "  ✓ .claude/commands/collab.spec-critique.md"
+echo "  ✓ .claude/commands/collab.specify.md"
+echo "  ✓ .claude/commands/collab.plan.md"
+echo "  ✓ .claude/commands/collab.tasks.md"
+echo "  ✓ .claude/commands/collab.analyze.md"
+echo "  ✓ .claude/commands/collab.implement.md"
+echo "  ✓ .claude/commands/collab.checklist.md"
+echo "  ✓ .claude/commands/collab.constitution.md"
+echo "  ✓ .claude/commands/collab.taskstoissues.md"
+echo "  ✓ .claude/commands/collab.cleanup.md"
+echo "  ✓ .claude/commands/collab.install.md"
+echo "  ✓ .claude/commands/collab.run.md"
 
-# Symlink relay workflow commands
-ln -sf "$RELAY_ROOT/src/commands/collab.specify.md" ~/.claude/commands/collab.specify.md
-ln -sf "$RELAY_ROOT/src/commands/collab.plan.md" ~/.claude/commands/collab.plan.md
-ln -sf "$RELAY_ROOT/src/commands/collab.tasks.md" ~/.claude/commands/collab.tasks.md
-ln -sf "$RELAY_ROOT/src/commands/collab.analyze.md" ~/.claude/commands/collab.analyze.md
-ln -sf "$RELAY_ROOT/src/commands/collab.implement.md" ~/.claude/commands/collab.implement.md
-ln -sf "$RELAY_ROOT/src/commands/collab.checklist.md" ~/.claude/commands/collab.checklist.md
-ln -sf "$RELAY_ROOT/src/commands/collab.constitution.md" ~/.claude/commands/collab.constitution.md
-ln -sf "$RELAY_ROOT/src/commands/collab.taskstoissues.md" ~/.claude/commands/collab.taskstoissues.md
+echo ""
+echo "📚 Copying skills..."
 
-echo "  ✓ ~/.claude/commands/collab.specify.md"
-echo "  ✓ ~/.claude/commands/collab.plan.md"
-echo "  ✓ ~/.claude/commands/collab.tasks.md"
-echo "  ✓ ~/.claude/commands/collab.analyze.md"
-echo "  ✓ ~/.claude/commands/collab.implement.md"
-echo "  ✓ ~/.claude/commands/collab.checklist.md"
-echo "  ✓ ~/.claude/commands/collab.constitution.md"
-echo "  ✓ ~/.claude/commands/collab.taskstoissues.md"
+# Copy skills from src/skills/ to .claude/skills/
+cp -r "$COLLAB_ROOT/src/skills/BlindQA" "$COLLAB_ROOT/.claude/skills/"
+cp -r "$COLLAB_ROOT/src/skills/SpecCritique" "$COLLAB_ROOT/.claude/skills/"
+cp -r "$COLLAB_ROOT/src/skills/SpecCreator" "$COLLAB_ROOT/.claude/skills/"
 
-# Symlink handlers
-ln -sf "$RELAY_ROOT/src/handlers/emit-question-signal.ts" ~/.claude/hooks/handlers/emit-question-signal.ts
-ln -sf "$RELAY_ROOT/src/handlers/emit-blindqa-signal.ts" ~/.claude/hooks/handlers/emit-blindqa-signal.ts
+echo "  ✓ .claude/skills/BlindQA/ (copied from src/skills/)"
+echo "  ✓ .claude/skills/SpecCritique/ (copied from src/skills/)"
+echo "  ✓ .claude/skills/SpecCreator/ (copied from src/skills/)"
 
-echo "  ✓ ~/.claude/hooks/handlers/emit-question-signal.ts"
-echo "  ✓ ~/.claude/hooks/handlers/emit-blindqa-signal.ts"
+echo ""
+echo "⚡ Copying signal handlers..."
 
-# Make handlers executable
-chmod +x ~/.claude/hooks/handlers/emit-question-signal.ts
-chmod +x ~/.claude/hooks/handlers/emit-blindqa-signal.ts
+# Copy handlers (all .ts files from src/handlers/)
+cp "$COLLAB_ROOT/src/handlers/"*.ts "$COLLAB_ROOT/.claude/hooks/handlers/"
+chmod +x "$COLLAB_ROOT/.claude/hooks/handlers/"*.ts
 
+echo "  ✓ .claude/hooks/handlers/emit-question-signal.ts"
+echo "  ✓ .claude/hooks/handlers/emit-blindqa-signal.ts"
+echo "  ✓ .claude/hooks/handlers/emit-spec-critique-signal.ts"
 echo "  ✓ Made handlers executable"
 
 echo ""
 echo "✅ Installation complete!"
 echo ""
-echo "Symlinks created:"
-echo "  Orchestrator: ~/.claude/commands/collab.{clarify,blindqa}.md"
-echo "  Workflow:      ~/.claude/commands/collab.{specify,plan,tasks,analyze,implement,checklist,constitution,taskstoissues}.md"
-echo "  Handlers:     ~/.claude/hooks/handlers/emit-{question,blindqa}-signal.ts"
+echo "Repo-local installation:"
+echo "  Commands:  $COLLAB_ROOT/.claude/commands/"
+echo "  Skills:    $COLLAB_ROOT/.claude/skills/"
+echo "  Handlers:  $COLLAB_ROOT/.claude/hooks/handlers/"
 echo ""
-echo "Source of truth: $RELAY_ROOT/src/"
+echo "Source of truth: $COLLAB_ROOT/src/"
+echo ""
+echo "This repo is now fully self-contained with zero external dependencies."
