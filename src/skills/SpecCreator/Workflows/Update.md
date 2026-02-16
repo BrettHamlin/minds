@@ -116,44 +116,12 @@ Store the auto-determined approach and proceed to Step 4.
 
 ---
 
-## Step 4: Gather Priorities and Enhance Spec
+## Step 4: Enhance Spec Sections
 
 ⚠️ **CHECKPOINT: Before proceeding, confirm:**
 - [ ] Existing ticket fetched and analyzed (Steps 1-2 complete)
 - [ ] Enhancement approach auto-determined (Step 3 complete)
-- [ ] Ready to gather implementation priorities
-
-### 4.1: Gather Project Context (ALWAYS)
-
-**This step is mandatory before any Council research. Council needs strategic context to make phase-appropriate recommendations.**
-
-**FirstPrinciples:** Architectural decisions depend on constraints (time, scale, risk, compliance) which vary by project phase. Gather INPUT constraints, not OUTPUT sections.
-
-Use AskUserQuestion:
-
-**Question:** "What project phase/constraints should guide Council's recommendations?"
-
-**Header:** "Project Phase"
-
-**Options:**
-
-1. **MVP/Startup - Ship fast, iterate**
-   - **Description:** "Optimize for speed over scale. Simplest solution that works. Expect ~1K users. Iterate based on feedback. Minimal compliance needs."
-
-2. **Growth - Scale to 100K+ users**
-   - **Description:** "Must handle significant scale (100K+ users). Balance speed with robustness. Maintain development velocity. Standard security practices."
-
-3. **Enterprise - Security/compliance first**
-   - **Description:** "Security and compliance are paramount (SOC2/HIPAA/etc). Robust over fast. Expect rigorous review. Handle millions of users."
-
-4. **Mature - Stability and minimal risk**
-   - **Description:** "Maintain existing stable system. Minimize risk and breaking changes. Incremental improvements. Well-tested patterns only."
-
-**Rationale:** This gives Council the constraints (time/scale/risk/compliance) needed to recommend contextually-appropriate architecture. A startup needs "simple and fast," enterprise needs "secure and robust" - same feature, different approaches.
-
-Store the selected phase context for Council.
-
-### 4.2: Enhance Missing Sections
+- [ ] Ready to enhance missing sections
 
 Based on auto-determined path from Step 3:
 
@@ -162,8 +130,7 @@ Based on auto-determined path from Step 3:
 1. Pre-populate spec with existing content (already AI-clarified from Step 3)
 2. For each MISSING section:
    - **Implementation details missing?**
-     - Run Council with priorities from 4.1
-     - Follow Create.md Step 2.2-2.4 (Council → Present → Get Feedback loop)
+     - Follow Create.md Step 2 (Council generates multiple approaches → user selects)
    - **Testing strategy missing?**
      - Follow Create.md Step 5 (ask testing questions)
    - **Dependencies missing?**
@@ -176,13 +143,12 @@ Based on auto-determined path from Step 3:
 1. Start with AI-clarified description from Step 3 (already revised automatically)
 2. Auto-detected type from Step 3 is used (no confirmation needed)
 3. Run Council research for implementation approach:
-   - Use priorities from Step 4.1
-   - Follow Create.md Step 2.2-2.4 (Council → Present → Get Feedback loop)
+   - Follow Create.md Step 2 (Council generates multiple approaches → user selects)
 4. Ask testing strategy questions:
    - Follow Create.md Step 5
 5. Ask dependency questions:
    - Follow Create.md Step 6
-6. Generate success criteria based on Council approach + testing
+6. Generate success criteria based on selected approach + testing
 7. Continue to Step 5 (SpecCritique validation)
 
 ---

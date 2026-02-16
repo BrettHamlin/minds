@@ -51,93 +51,74 @@ If the ticket doesn't exist, error and exit.
 
 ---
 
-## Step 2: Gather Project Context and Run Council
+## Step 2: Council Research and Approach Selection
 
 ⚠️ **CHECKPOINT: Before proceeding, confirm:**
 - [ ] Linear issue fetched successfully (Step 1 complete)
 - [ ] Title and description extracted
-- [ ] Ready to gather project context for Council
+- [ ] Ready for Council to research implementation approaches
 
-### 2.1: Ask for Project Context (ALWAYS)
-
-**FirstPrinciples:** Architectural decisions depend on constraints (time, scale, risk, compliance) which vary by project phase. Gather INPUT constraints, not OUTPUT sections.
-
-Use AskUserQuestion:
-
-**Question:** "What project phase/constraints should guide Council's recommendations?"
-
-**Header:** "Project Phase"
-
-**Options:**
-
-1. **MVP/Startup - Ship fast, iterate**
-   - **Description:** "Optimize for speed over scale. Simplest solution that works. Expect ~1K users. Iterate based on feedback. Minimal compliance needs."
-
-2. **Growth - Scale to 100K+ users**
-   - **Description:** "Must handle significant scale (100K+ users). Balance speed with robustness. Maintain development velocity. Standard security practices."
-
-3. **Enterprise - Security/compliance first**
-   - **Description:** "Security and compliance are paramount (SOC2/HIPAA/etc). Robust over fast. Expect rigorous review. Handle millions of users."
-
-4. **Mature - Stability and minimal risk**
-   - **Description:** "Maintain existing stable system. Minimize risk and breaking changes. Incremental improvements. Well-tested patterns only."
-
-**Rationale:** This gives Council the constraints (time/scale/risk/compliance) needed to recommend contextually-appropriate architecture. A startup needs "simple and fast," enterprise needs "secure and robust" - same feature, different approaches.
-
-Store the selected phase context for Council.
-
-### 2.2: Run Council of Councils
+### 2.1: Run Council of Councils
 
 Invoke the Council skill with the following prompt:
 
 ```
-Research the best implementation approach for this feature:
+Research implementation approaches for this feature. Provide 3-4 distinct approaches ranked by your recommendation.
 
 Linear Ticket: [ticket-id]
 Title: [title from Step 1]
 Description:
 [description from Step 1]
 
-Top priorities to consider:
-[Priorities from user]
+For EACH approach, provide:
+- Approach name (e.g., "REST API with PostgreSQL")
+- Technical stack/tools
+- Architecture pattern
+- Key tradeoffs
+- Why you ranked it this position
 
-Provide a detailed technical recommendation including:
-- Chosen approach and why
-- Technical stack/tools to use
-- Architecture decisions
-- Tradeoffs considered
-- Implementation steps at high level
+Output format:
+Approach 1 (Recommended): [name]
+- Stack: [tools]
+- Pattern: [architecture]
+- Tradeoffs: [pros/cons]
+- Rationale: [why top choice]
+
+Approach 2: [name]
+- Stack: [tools]
+- Pattern: [architecture]
+- Tradeoffs: [pros/cons]
+- Rationale: [why second]
+
+[Continue for 3-4 approaches]
 ```
 
-Wait for Council to complete and return recommendation.
+Wait for Council to complete and return all approaches.
 
-### 2.3: Present Recommendation and Get Feedback
+### 2.2: Present Approaches for Selection
 
-Present the Council's recommendation to the user and use AskUserQuestion:
+Use AskUserQuestion to present Council's research:
 
-**Question:** "The Council recommends the following approach: [summarize key points]. How would you like to proceed?"
+**Question:** "Council researched implementation approaches. Which do you want to use?"
 
-**Options:**
-1. **Approve - this looks good** - Accept the recommendation and continue
-2. **Request changes** - Modify specific aspects (provide text field for changes)
-3. **Reject - have Council reconsider** - Send back to Council with new guidance
+**Header:** "Implementation Approach"
 
-### 2.4: Handle Feedback
+**Options:** (Dynamically generate from Council output)
 
-- If **Approve**: Store the implementation approach and go to Step 3
-- If **Request changes**:
-  - Take the user's requested changes
-  - Apply them to the Council's recommendation
-  - Present the updated version: "Here's the updated approach with your changes: [show changes]"
-  - Ask: "Does this look good now?" (Yes/No)
-  - If Yes: Continue to Step 3
-  - If No: Return to Step 2.3
-- If **Reject**:
-  - Ask: "What should the Council reconsider? What's missing or wrong?"
-  - Take user's guidance
-  - Return to Step 2.2 with updated prompt including the feedback
+1. **[Approach 1 name] (Recommended)**
+   - **Description:** "[Stack, pattern, key tradeoffs - 2-3 sentences]"
 
-**Loop until user approves.**
+2. **[Approach 2 name]**
+   - **Description:** "[Stack, pattern, key tradeoffs - 2-3 sentences]"
+
+3. **[Approach 3 name]**
+   - **Description:** "[Stack, pattern, key tradeoffs - 2-3 sentences]"
+
+4. **Other** (user enters custom approach in text field)
+
+**Rationale:** Council provides research value (multiple approaches with tradeoffs) while user retains full control in single selection step. No approval loops needed.
+
+Store the selected approach (or user's custom approach from "Other").
 
 ---
 
