@@ -2,19 +2,6 @@
 
 Enhance an existing Linear ticket with comprehensive AI-consumable specification.
 
-## Voice Notification
-
-```bash
-curl -s -X POST http://localhost:8888/notify \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Running the Update workflow in the SpecCreator skill to enhance existing Linear ticket"}' \
-  > /dev/null 2>&1 &
-```
-
-Running the **Update** workflow in the **SpecCreator** skill to enhance existing Linear ticket...
-
----
-
 ## Step 1: Fetch Existing Linear Issue
 
 Use AskUserQuestion to get the Linear ticket identifier:

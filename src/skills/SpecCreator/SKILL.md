@@ -7,25 +7,6 @@ description: Linear ticket spec creation and enhancement system. USE WHEN user w
 
 AI-consumable Linear ticket specification creation system.
 
-## 🚨 MANDATORY: Voice Notification (REQUIRED BEFORE ANY ACTION)
-
-**You MUST send this notification BEFORE doing anything else when this skill is invoked.**
-
-1. **Send voice notification**:
-   ```bash
-   curl -s -X POST http://localhost:8888/notify \
-     -H "Content-Type: application/json" \
-     -d '{"message": "Running the WORKFLOWNAME workflow in the SpecCreator skill to create Linear ticket specification"}' \
-     > /dev/null 2>&1 &
-   ```
-
-2. **Output text notification**:
-   ```
-   Running the **WorkflowName** workflow in the **SpecCreator** skill to create Linear ticket specification...
-   ```
-
-**This is not optional. Execute this curl command immediately upon skill invocation.**
-
 ## Workflow Routing
 
 | Workflow | Trigger | File |

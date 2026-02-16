@@ -99,6 +99,12 @@ find_feature_dir_by_prefix() {
 
     local prefix="${BASH_REMATCH[1]}"
 
+    # First try exact match with full branch name (avoids ambiguity when multiple features share prefix)
+    if [[ -d "$specs_dir/$branch_name" ]]; then
+        echo "$specs_dir/$branch_name"
+        return
+    fi
+
     # Search for directories in specs/ that start with this prefix
     local matches=()
     if [[ -d "$specs_dir" ]]; then

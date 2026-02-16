@@ -1,18 +1,5 @@
 # BlindVerify Workflow
 
-## Voice Notification
-
-```bash
-curl -s -X POST http://localhost:8888/notify \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Running the BlindVerify workflow in the BlindQA skill to perform adversarial verification"}' \
-  > /dev/null 2>&1 &
-```
-
-Running **BlindVerify** in **BlindQA**...
-
----
-
 Perform independent, adversarial verification of a completed implementation with zero implementation context.
 
 ## ABSOLUTE REQUIREMENT: tmux send-keys MUST end with `Enter`

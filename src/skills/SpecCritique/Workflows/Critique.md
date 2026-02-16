@@ -2,19 +2,6 @@
 
 Adversarial analysis of specification text to find gaps, ambiguities, and missing details before implementation.
 
-## Voice Notification
-
-```bash
-curl -s -X POST http://localhost:8888/notify \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Running the Critique workflow in the SpecCritique skill to analyze specification"}' \
-  > /dev/null 2>&1 &
-```
-
-Running **Critique** in **SpecCritique**...
-
----
-
 ## Loop Logic Summary (Critical Requirements)
 
 **This workflow uses pass-specific logic with mandatory minimum passes:**

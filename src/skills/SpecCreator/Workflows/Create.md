@@ -2,19 +2,6 @@
 
 Enhance an existing Linear ticket specification by adding comprehensive, AI-consumable details.
 
-## Voice Notification
-
-```bash
-curl -s -X POST http://localhost:8888/notify \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Running the Create workflow in the SpecCreator skill to enhance Linear ticket specification"}' \
-  > /dev/null 2>&1 &
-```
-
-Running the **Create** workflow in the **SpecCreator** skill to enhance Linear ticket specification...
-
----
-
 ## Input Parameter
 
 **Required:** Linear issue ID (e.g., BRE-191)

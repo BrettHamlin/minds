@@ -7,23 +7,6 @@ description: Adversarial blind verification skill. Spins up a clean QA agent wit
 
 **The final gate before any implementation is declared complete.**
 
-## Voice Notification
-
-**When executing a workflow, do BOTH:**
-
-1. **Send voice notification**:
-   ```bash
-   curl -s -X POST http://localhost:8888/notify \
-     -H "Content-Type: application/json" \
-     -d '{"message": "Running the BlindVerify workflow in the BlindQA skill to perform adversarial verification"}' \
-     > /dev/null 2>&1 &
-   ```
-
-2. **Output text notification**:
-   ```
-   Running the **BlindVerify** workflow in the **BlindQA** skill to perform adversarial verification...
-   ```
-
 ## Workflow Routing
 
 | Workflow | Trigger | File |
