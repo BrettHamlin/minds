@@ -24,7 +24,7 @@ if [ ! -d .git ]; then
 fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-cd "$REPO_ROOT"
+# Note: Avoid cd to prevent zoxide/shell hook interference
 
 echo "📁 Installing collab into: $REPO_ROOT"
 ```
@@ -70,38 +70,37 @@ echo "✅ Directories created"
 echo "📋 Copying collab files..."
 
 # Copy commands to .claude/commands/ (excluding collab.install.md)
+# Use find instead of globs to avoid shell expansion issues
 echo "  → Commands..."
-for f in "$TEMP_DIR"/src/commands/*.md; do
-  [ "$(basename "$f")" = "collab.install.md" ] && continue
-  cp "$f" .claude/commands/
-done
-COMMAND_COUNT=$(ls .claude/commands/collab.*.md 2>/dev/null | wc -l)
+find "$TEMP_DIR/src/commands" -name "*.md" ! -name "collab.install.md" -exec cp {} "$REPO_ROOT/.claude/commands/" \;
+COMMAND_COUNT=$(find "$REPO_ROOT/.claude/commands" -name "collab.*.md" 2>/dev/null | wc -l | tr -d ' ')
 
 # Copy handlers to .collab/handlers/
 echo "  → Handlers..."
-cp "$TEMP_DIR"/src/handlers/*.ts .collab/handlers/
-HANDLER_COUNT=$(ls .collab/handlers/*.ts 2>/dev/null | wc -l)
+find "$TEMP_DIR/src/handlers" -name "*.ts" -exec cp {} "$REPO_ROOT/.collab/handlers/" \;
+find "$REPO_ROOT/.collab/handlers" -name "*.ts" -exec chmod +x {} \;
+HANDLER_COUNT=$(find "$REPO_ROOT/.collab/handlers" -name "*.ts" 2>/dev/null | wc -l | tr -d ' ')
 
 # Copy orchestrator scripts to .collab/scripts/orchestrator/
 echo "  → Orchestrator scripts..."
-cp "$TEMP_DIR"/src/scripts/orchestrator/*.sh .collab/scripts/orchestrator/
-cp "$TEMP_DIR"/src/scripts/orchestrator/Tmux.ts .collab/scripts/orchestrator/
-ORCHESTRATOR_SCRIPT_COUNT=$(ls .collab/scripts/orchestrator/*.sh 2>/dev/null | wc -l)
+find "$TEMP_DIR/src/scripts/orchestrator" \( -name "*.sh" -o -name "Tmux.ts" \) -exec cp {} "$REPO_ROOT/.collab/scripts/orchestrator/" \;
+ORCHESTRATOR_SCRIPT_COUNT=$(find "$REPO_ROOT/.collab/scripts/orchestrator" -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
 
 # Copy scripts to .specify/scripts/
 echo "  → Workflow scripts..."
-cp -r "$TEMP_DIR"/.specify/scripts/* .specify/scripts/
-SCRIPT_COUNT=$(ls .specify/scripts/bash/*.sh 2>/dev/null | wc -l)
+cp -r "$TEMP_DIR/.specify/scripts"/* "$REPO_ROOT/.specify/scripts/"
+find "$REPO_ROOT/.specify/scripts/bash" -name "*.sh" -exec chmod +x {} \;
+SCRIPT_COUNT=$(find "$REPO_ROOT/.specify/scripts/bash" -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
 
 # Copy templates to .specify/templates/
 echo "  → Templates..."
-cp -r "$TEMP_DIR"/.specify/templates/* .specify/templates/
-TEMPLATE_COUNT=$(ls .specify/templates/*.md 2>/dev/null | wc -l)
+cp -r "$TEMP_DIR/.specify/templates"/* "$REPO_ROOT/.specify/templates/"
+TEMPLATE_COUNT=$(find "$REPO_ROOT/.specify/templates" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
 
 # Copy constitution if it doesn't exist
-if [ ! -f .collab/memory/constitution.md ]; then
+if [ ! -f "$REPO_ROOT/.collab/memory/constitution.md" ]; then
   echo "  → Constitution (initializing)..."
-  cp "$TEMP_DIR"/.collab/memory/constitution.md .collab/memory/
+  cp "$TEMP_DIR/.collab/memory/constitution.md" "$REPO_ROOT/.collab/memory/"
 else
   echo "  → Constitution (already exists, skipping)"
 fi
@@ -114,29 +113,49 @@ echo "✅ Files copied"
 ```bash
 echo "🔧 Setting permissions..."
 
-# Make handlers executable
-chmod +x .collab/handlers/*.ts
-
 # Make orchestrator scripts executable
-chmod +x .collab/scripts/orchestrator/*.sh
-
-# Make workflow scripts executable
-chmod +x .specify/scripts/bash/*.sh
+find "$REPO_ROOT/.collab/scripts/orchestrator" -name "*.sh" -exec chmod +x {} \;
 
 echo "✅ Permissions set"
 ```
 
-### 6. Clean Up
+### 6. Verify Installation
+
+```bash
+echo "🔍 Verifying installation..."
+
+# Verify collab.install.md was NOT copied (self-exclusion check)
+if [ -f "$REPO_ROOT/.claude/commands/collab.install.md" ]; then
+  echo "⚠️  WARNING: collab.install.md was copied (should be excluded)"
+else
+  echo "  ✓ collab.install.md correctly excluded"
+fi
+
+# Verify expected files exist
+if [ -f "$REPO_ROOT/.claude/commands/collab.specify.md" ]; then
+  echo "  ✓ Command files present"
+fi
+
+if [ -f "$REPO_ROOT/.collab/handlers/emit-question-signal.ts" ]; then
+  echo "  ✓ Handlers present"
+fi
+
+echo "✅ Verification complete"
+```
+
+### 7. Clean Up
 
 ```bash
 echo "🧹 Cleaning up..."
 
-rm -rf "$TEMP_DIR"
+# Note: Security hooks may block rm -rf commands
+# Temp directory will be auto-cleaned by system if blocked
+rm -rf "$TEMP_DIR" 2>/dev/null || echo "  ℹ️  Temp files in /tmp will be auto-cleaned by system"
 
 echo "✅ Cleanup complete"
 ```
 
-### 7. Report Installation Summary
+### 8. Report Installation Summary
 
 ```bash
 echo ""
@@ -184,6 +203,9 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 - **Constitution**: Only initialized on first install, preserved on updates
 - **Discovery**: Commands in `.claude/commands/` are automatically discovered by Claude Code
 - **Exclusion**: `collab.install.md` is intentionally NOT copied to local repos (it's a system command, not a workflow command)
+- **Security Hooks**: Cleanup may be blocked by PAI Security Validator; temp files in `/tmp` are auto-cleaned by system
+- **Shell Compatibility**: Uses `find` instead of globs for reliable file operations across shells
+- **Verification**: Confirms self-exclusion and validates installation integrity
 
 ## Directory Structure
 
