@@ -330,6 +330,28 @@ else
 fi
 mkdir -p "$FEATURE_DIR"
 
+# Create metadata.json in main repo for worktree discovery
+if [ -n "$WORKTREE_DIR" ]; then
+    MAIN_REPO_SPEC_DIR="$SPECS_DIR/$BRANCH_NAME"
+    mkdir -p "$MAIN_REPO_SPEC_DIR"
+
+    # Extract ticket ID from feature description if it matches pattern
+    TICKET_ID=""
+    if [[ "$FEATURE_DESCRIPTION" =~ (BRE|PROJ|FEAT)-[0-9]+ ]]; then
+        TICKET_ID="${BASH_REMATCH[0]}"
+    fi
+
+    cat > "$MAIN_REPO_SPEC_DIR/metadata.json" << EOF
+{
+  "ticket_id": "$TICKET_ID",
+  "worktree_path": "$WORKTREE_DIR",
+  "branch_name": "$BRANCH_NAME",
+  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+    >&2 echo "[specify] Created metadata.json in $MAIN_REPO_SPEC_DIR"
+fi
+
 TEMPLATE="$REPO_ROOT/.specify/templates/spec-template.md"
 SPEC_FILE="$FEATURE_DIR/spec.md"
 if [ -f "$TEMPLATE" ]; then cp "$TEMPLATE" "$SPEC_FILE"; else touch "$SPEC_FILE"; fi
