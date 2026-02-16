@@ -69,9 +69,12 @@ echo "✅ Directories created"
 ```bash
 echo "📋 Copying collab files..."
 
-# Copy commands to .claude/commands/
+# Copy commands to .claude/commands/ (excluding collab.install.md)
 echo "  → Commands..."
-cp "$TEMP_DIR"/src/commands/*.md .claude/commands/
+for f in "$TEMP_DIR"/src/commands/*.md; do
+  [ "$(basename "$f")" = "collab.install.md" ] && continue
+  cp "$f" .claude/commands/
+done
 COMMAND_COUNT=$(ls .claude/commands/collab.*.md 2>/dev/null | wc -l)
 
 # Copy handlers to .collab/handlers/
@@ -180,6 +183,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 - **Updates**: Re-running `/collab.install` updates all files to the latest version
 - **Constitution**: Only initialized on first install, preserved on updates
 - **Discovery**: Commands in `.claude/commands/` are automatically discovered by Claude Code
+- **Exclusion**: `collab.install.md` is intentionally NOT copied to local repos (it's a system command, not a workflow command)
 
 ## Directory Structure
 
