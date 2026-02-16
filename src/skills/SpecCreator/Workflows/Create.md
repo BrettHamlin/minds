@@ -56,9 +56,26 @@ If the ticket doesn't exist, error and exit.
 ⚠️ **CHECKPOINT: Before proceeding, confirm:**
 - [ ] Linear issue fetched successfully (Step 1 complete)
 - [ ] Title and description extracted
-- [ ] Ready for Council to research implementation approaches
+- [ ] Ready to analyze feature type and run Council
 
-### 2.1: Run Council of Councils
+### 2.1: Analyze Feature Type and Determine Council Focus
+
+**Meta-reasoning step:** Before invoking Council, analyze what the feature IS to determine what Council should focus on.
+
+**Analyze the feature description to determine primary type:**
+
+| Feature Type | Focus Areas for Council |
+|--------------|------------------------|
+| **UI/Frontend** | Component architecture, state management, accessibility, responsive design, UX patterns |
+| **API/Backend** | Endpoint design, authentication/authorization, data validation, error handling, API patterns |
+| **Database/Data** | Schema design, migration strategy, query optimization, indexing, data integrity |
+| **Integration** | External API design, webhook patterns, error handling, retry logic, rate limiting |
+| **Security/Auth** | Threat modeling, compliance requirements, encryption strategy, audit logging, permission model |
+| **Infrastructure** | Deployment strategy, scaling approach, monitoring/observability, infrastructure as code |
+
+**Store the detected feature type and focus areas for Step 2.2.**
+
+### 2.2: Run Council of Councils
 
 Invoke the Council skill with the following prompt:
 
@@ -69,6 +86,11 @@ Linear Ticket: [ticket-id]
 Title: [title from Step 1]
 Description:
 [description from Step 1]
+
+Feature Type: [type from Step 2.1]
+Council Focus Areas: [focus areas from Step 2.1]
+
+When researching approaches, prioritize analysis of the focus areas above. These are the critical dimensions for this feature type.
 
 For EACH approach, provide:
 - Approach name (e.g., "REST API with PostgreSQL")
@@ -95,7 +117,7 @@ Approach 2: [name]
 
 Wait for Council to complete and return all approaches.
 
-### 2.2: Present Approaches for Selection
+### 2.3: Present Approaches for Selection
 
 Use AskUserQuestion to present Council's research:
 

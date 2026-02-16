@@ -130,7 +130,7 @@ Based on auto-determined path from Step 3:
 1. Pre-populate spec with existing content (already AI-clarified from Step 3)
 2. For each MISSING section:
    - **Implementation details missing?**
-     - Follow Create.md Step 2 (Council generates multiple approaches → user selects)
+     - Follow Create.md Step 2 (Analyze feature type → Council generates multiple approaches → user selects)
    - **Testing strategy missing?**
      - Follow Create.md Step 5 (ask testing questions)
    - **Dependencies missing?**
@@ -143,7 +143,7 @@ Based on auto-determined path from Step 3:
 1. Start with AI-clarified description from Step 3 (already revised automatically)
 2. Auto-detected type from Step 3 is used (no confirmation needed)
 3. Run Council research for implementation approach:
-   - Follow Create.md Step 2 (Council generates multiple approaches → user selects)
+   - Follow Create.md Step 2 (Analyze feature type → Council generates multiple approaches → user selects)
 4. Ask testing strategy questions:
    - Follow Create.md Step 5
 5. Ask dependency questions:
