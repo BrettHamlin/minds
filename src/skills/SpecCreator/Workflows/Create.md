@@ -51,27 +51,42 @@ If the ticket doesn't exist, error and exit.
 
 ---
 
-## Step 2: Ask Council for Priorities and Research
+## Step 2: Gather Project Context and Run Council
 
 ⚠️ **CHECKPOINT: Before proceeding, confirm:**
 - [ ] Linear issue fetched successfully (Step 1 complete)
 - [ ] Title and description extracted
-- [ ] Ready to gather Council research priorities
+- [ ] Ready to gather project context for Council
+
+### 2.1: Ask for Project Context (ALWAYS)
+
+**FirstPrinciples:** Architectural decisions depend on constraints (time, scale, risk, compliance) which vary by project phase. Gather INPUT constraints, not OUTPUT sections.
 
 Use AskUserQuestion:
 
-**Question:** "What are the most important priorities the Council should keep in mind for implementing this feature?"
+**Question:** "What project phase/constraints should guide Council's recommendations?"
 
-**Examples to show user:**
-- "Must be fast to implement - under 2 days of work"
-- "Security is paramount - no shortcuts"
-- "Must integrate with existing auth system"
-- "Keep dependencies minimal"
-- "User experience should feel native, not bolted on"
+**Header:** "Project Phase"
 
-Store these priorities.
+**Options:**
 
-### 2.1: Run Council of Councils
+1. **MVP/Startup - Ship fast, iterate**
+   - **Description:** "Optimize for speed over scale. Simplest solution that works. Expect ~1K users. Iterate based on feedback. Minimal compliance needs."
+
+2. **Growth - Scale to 100K+ users**
+   - **Description:** "Must handle significant scale (100K+ users). Balance speed with robustness. Maintain development velocity. Standard security practices."
+
+3. **Enterprise - Security/compliance first**
+   - **Description:** "Security and compliance are paramount (SOC2/HIPAA/etc). Robust over fast. Expect rigorous review. Handle millions of users."
+
+4. **Mature - Stability and minimal risk**
+   - **Description:** "Maintain existing stable system. Minimize risk and breaking changes. Incremental improvements. Well-tested patterns only."
+
+**Rationale:** This gives Council the constraints (time/scale/risk/compliance) needed to recommend contextually-appropriate architecture. A startup needs "simple and fast," enterprise needs "secure and robust" - same feature, different approaches.
+
+Store the selected phase context for Council.
+
+### 2.2: Run Council of Councils
 
 Invoke the Council skill with the following prompt:
 
@@ -96,7 +111,7 @@ Provide a detailed technical recommendation including:
 
 Wait for Council to complete and return recommendation.
 
-### 2.2: Present Recommendation and Get Feedback
+### 2.3: Present Recommendation and Get Feedback
 
 Present the Council's recommendation to the user and use AskUserQuestion:
 
@@ -107,7 +122,7 @@ Present the Council's recommendation to the user and use AskUserQuestion:
 2. **Request changes** - Modify specific aspects (provide text field for changes)
 3. **Reject - have Council reconsider** - Send back to Council with new guidance
 
-### 2.3: Handle Feedback
+### 2.4: Handle Feedback
 
 - If **Approve**: Store the implementation approach and go to Step 3
 - If **Request changes**:
@@ -116,11 +131,11 @@ Present the Council's recommendation to the user and use AskUserQuestion:
   - Present the updated version: "Here's the updated approach with your changes: [show changes]"
   - Ask: "Does this look good now?" (Yes/No)
   - If Yes: Continue to Step 3
-  - If No: Return to Step 2.2
+  - If No: Return to Step 2.3
 - If **Reject**:
   - Ask: "What should the Council reconsider? What's missing or wrong?"
   - Take user's guidance
-  - Return to Step 2.1 with updated prompt including the feedback
+  - Return to Step 2.2 with updated prompt including the feedback
 
 **Loop until user approves.**
 

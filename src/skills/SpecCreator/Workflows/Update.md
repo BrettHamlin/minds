@@ -123,28 +123,35 @@ Store the auto-determined approach and proceed to Step 4.
 - [ ] Enhancement approach auto-determined (Step 3 complete)
 - [ ] Ready to gather implementation priorities
 
-### 4.1: Ask for Implementation Priorities (ALWAYS)
+### 4.1: Gather Project Context (ALWAYS)
 
-**This step is mandatory before any Council research or enhancement work.**
+**This step is mandatory before any Council research. Council needs strategic context to make phase-appropriate recommendations.**
+
+**FirstPrinciples:** Architectural decisions depend on constraints (time, scale, risk, compliance) which vary by project phase. Gather INPUT constraints, not OUTPUT sections.
 
 Use AskUserQuestion:
 
-**Question:** "What are the most important priorities the Council should keep in mind for implementing this feature?"
+**Question:** "What project phase/constraints should guide Council's recommendations?"
 
-**Instructions to show user:**
-"Provide the key factors that should guide the implementation approach:
+**Header:** "Project Phase"
 
-Examples:
-- 'Must be fast to implement - under 2 days of work'
-- 'Security is paramount - no shortcuts'
-- 'Must integrate with existing auth system'
-- 'Keep dependencies minimal'
-- 'User experience should feel native, not bolted on'
-- 'Performance is critical - must handle 10k+ requests/sec'
+**Options:**
 
-Be specific about tradeoffs you care about."
+1. **MVP/Startup - Ship fast, iterate**
+   - **Description:** "Optimize for speed over scale. Simplest solution that works. Expect ~1K users. Iterate based on feedback. Minimal compliance needs."
 
-Store these priorities for Council and for the final spec.
+2. **Growth - Scale to 100K+ users**
+   - **Description:** "Must handle significant scale (100K+ users). Balance speed with robustness. Maintain development velocity. Standard security practices."
+
+3. **Enterprise - Security/compliance first**
+   - **Description:** "Security and compliance are paramount (SOC2/HIPAA/etc). Robust over fast. Expect rigorous review. Handle millions of users."
+
+4. **Mature - Stability and minimal risk**
+   - **Description:** "Maintain existing stable system. Minimize risk and breaking changes. Incremental improvements. Well-tested patterns only."
+
+**Rationale:** This gives Council the constraints (time/scale/risk/compliance) needed to recommend contextually-appropriate architecture. A startup needs "simple and fast," enterprise needs "secure and robust" - same feature, different approaches.
+
+Store the selected phase context for Council.
 
 ### 4.2: Enhance Missing Sections
 
@@ -156,7 +163,7 @@ Based on auto-determined path from Step 3:
 2. For each MISSING section:
    - **Implementation details missing?**
      - Run Council with priorities from 4.1
-     - Follow Create.md Step 2.1-2.3 (Council → Present → Get Feedback loop)
+     - Follow Create.md Step 2.2-2.4 (Council → Present → Get Feedback loop)
    - **Testing strategy missing?**
      - Follow Create.md Step 5 (ask testing questions)
    - **Dependencies missing?**
@@ -170,7 +177,7 @@ Based on auto-determined path from Step 3:
 2. Auto-detected type from Step 3 is used (no confirmation needed)
 3. Run Council research for implementation approach:
    - Use priorities from Step 4.1
-   - Follow Create.md Step 2.1-2.3 (Council → Present → Get Feedback loop)
+   - Follow Create.md Step 2.2-2.4 (Council → Present → Get Feedback loop)
 4. Ask testing strategy questions:
    - Follow Create.md Step 5
 5. Ask dependency questions:
