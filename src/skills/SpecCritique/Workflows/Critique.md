@@ -378,32 +378,69 @@ Present comprehensive analysis results:
 ✅ Spec is ready for planning/implementation
 OR
 ⚠️ Consider addressing MEDIUM issues before proceeding
+
+**Hardened Spec (for Step 7):**
+
+Generate the complete hardened specification by integrating all clarifications into the original spec:
+
+1. **Take original spec structure** (Type, Description, Implementation Details, Testing, Dependencies, Success Criteria)
+2. **Integrate all clarifications** from resolved issues:
+   - Add new sections where gaps were filled (e.g., "Error Handling & Logging", "Concurrency Model", "Out of Scope")
+   - Update existing sections with clarifications (e.g., add retry logic to error handling)
+   - Ensure AI-consumable format (clear, structured, unambiguous)
+3. **Format for Linear** - Complete markdown with all sections preserved
+4. **Store as `hardened_spec`** for Step 7 to persist
+
+**Example integration:**
+- HIGH issue "Logging undefined" → Add "Error Handling & Logging" section with structured JSON format details
+- MEDIUM issue "Out-of-scope unclear" → Add "Out of Scope" section with explicit boundaries
+- All resolutions become part of the canonical spec, not just metadata
 ```
 
 ---
 
-## Step 7: Update Linear Ticket (Optional)
+## Step 7: Update Linear Ticket (Mandatory when changes exist)
 
-If ticket_id was provided:
+**Condition:** If any issues were resolved (total_issues_resolved > 0), this step is MANDATORY.
 
-Ask user: "Update Linear ticket with hardened spec?"
+**Rationale:** Clarifications gathered during analysis must be persisted to Linear. Skipping this step loses all work and leaves the spec in its original ambiguous state.
 
-**If yes:**
+If ticket_id was provided AND issues were resolved:
 
-```
-Use Linear MCP tool:
+**Automatically update Linear ticket** (no user confirmation needed):
+
+```typescript
+// Use the hardened_spec generated in Step 6
+const updatedDescription = `${hardened_spec}
+
+---
+## SpecCritique Analysis
+
+**Status:** HARDENED (${high_issues_resolved} HIGH issues resolved)
+**Analysis Date:** ${new Date().toISOString()}
+**Total Issues Resolved:** ${total_issues_resolved} (${high_issues_resolved} HIGH, ${medium_issues_resolved} MEDIUM, ${low_issues_resolved} LOW)
+
+### Resolved Issues:
+${resolved_issues.map(issue => `- **[${issue.severity}] ${issue.category}**: ${issue.resolution}`).join('\n')}
+
+---
+*Analyzed by SpecCritique skill - Spec hardened and ready for implementation*
+`
+
+// Update Linear
 mcp__plugin_linear_linear__update_issue({
   id: ticket_id,
-  description: [updated spec with clarifications]
+  description: updatedDescription
 })
 ```
 
-Add note at end:
-```
----
-*Analyzed by SpecCritique skill - [TOTAL ISSUES] issues resolved*
-*Analysis date: [TIMESTAMP]*
-```
+**If no issues were resolved (spec was already clean):**
+- Skip Linear update (no changes to persist)
+- Log: "Spec was already clean - no Linear update needed"
+
+**Output:**
+- "✅ Linear ticket {ticket_id} updated with hardened spec"
+- "📝 {total_sections_added} new sections added, {existing_sections_updated} sections updated"
 
 ---
 
