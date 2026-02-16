@@ -163,6 +163,7 @@ echo "  • /collab.checklist  - Generate quality checklist"
 echo "  • /collab.constitution - Manage project principles"
 echo "  • /collab.taskstoissues - Convert tasks to GitHub issues"
 echo "  • /collab.blindqa    - Blind verification testing"
+echo "  • /collab.cleanup    - Clean up completed feature (branch/worktree)"
 echo ""
 echo "💡 Next Steps:"
 echo "  1. Run /collab.run BRE-XXX for fully autonomous workflow"
@@ -197,7 +198,8 @@ After installation, your repo will have:
 │       ├── collab.checklist.md
 │       ├── collab.constitution.md
 │       ├── collab.taskstoissues.md
-│       └── collab.blindqa.md
+│       ├── collab.blindqa.md
+│       └── collab.cleanup.md
 ├── .collab/
 │   ├── handlers/           # Signal emitters for orchestration
 │   │   ├── emit-question-signal.ts
