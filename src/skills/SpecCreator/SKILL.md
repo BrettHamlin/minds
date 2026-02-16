@@ -42,7 +42,7 @@ User: "Create a spec for adding user authentication to the dashboard"
 → Asks what type of spec (Feature selected)
 → Prompts for feature description and implementation details
 → Optionally uses Council for implementation research
-→ Runs BlindQA for spec validation
+→ Runs SpecCritique for spec validation
 → Creates Linear ticket with comprehensive AI-consumable spec
 ```
 
@@ -52,7 +52,7 @@ User: "Spec out this bug - login fails on mobile Safari"
 → Invokes Create workflow
 → Asks what type of spec (Bug selected)
 → Prompts for bug description and reproduction steps
-→ Runs BlindQA for clarity check
+→ Runs SpecCritique for clarity check
 → Creates Linear ticket with detailed bug specification
 ```
 
@@ -63,7 +63,7 @@ User: "Create an analysis spec for performance bottlenecks"
 → Asks what type of spec (Research/Analysis selected)
 → Prompts for research goals and priorities
 → Uses Council to develop research approach
-→ Runs BlindQA for completeness
+→ Runs SpecCritique for completeness
 → Creates Linear ticket with research specification
 ```
 
@@ -73,7 +73,7 @@ User: "Update BRE-157 with proper spec format"
 → Invokes Update workflow
 → Fetches existing Linear ticket content
 → Analyzes current state and missing sections
-→ Asks how to enhance (complete/restructure/fresh)
+→ Auto-analyzes spec completeness and determines enhancement path
 → Fills gaps with same process as Create
 → Updates Linear ticket with enhanced spec
 ```
@@ -94,7 +94,7 @@ User: "Update BRE-157 with proper spec format"
 
 **Quality Gates:**
 - Council of Councils for implementation research (when requested)
-- BlindQA for adversarial validation
+- SpecCritique for adversarial validation
 - Iterative refinement until approved
 
 ## Output Structure

@@ -72,60 +72,115 @@ Existing Dependencies: [Yes/No - summary if present]
 
 ---
 
-## Step 3: Determine Enhancement Approach
+## Step 3: Auto-Analyze Spec Completeness
 
-Use AskUserQuestion:
+⚠️ **CHECKPOINT: Before proceeding, confirm:**
+- [ ] Existing ticket fetched (Step 1 complete)
+- [ ] Content analyzed (Step 2 complete)
+- [ ] Type detected or unknown
+- [ ] Ready to determine enhancement strategy
 
-**Question:** "How would you like to enhance this spec?"
+**Automatic analysis - no user input required:**
 
-**Options:**
-1. **Complete missing sections** - Keep existing content, add what's missing
-2. **Restructure and enhance** - Reorganize into AI-consumable format and fill gaps
-3. **Start fresh** - Replace with new spec (preserves ticket metadata)
+Based on Step 2 findings, automatically determine the enhancement approach:
 
-Store the approach.
+1. **Auto-detect spec type:**
+   - Check Linear labels for "bug", "feature", "research", "analysis"
+   - Check description keywords: "broken", "error", "fails" → Bug
+   - Check description keywords: "add", "new", "implement" → Feature
+   - Check description keywords: "investigate", "analyze", "research" → Research
+   - If still unclear: default to Feature
+
+2. **Auto-analyze completeness:**
+   - Missing implementation details? → Need Council research + priorities
+   - Missing testing strategy? → Need testing questions (Create.md Step 5)
+   - Missing dependencies? → Need dependency questions (Create.md Step 6)
+   - Missing all sections? → Full enhancement needed
+
+3. **Auto-revise description for AI clarity:**
+   - Always rewrite description to be AI-consumable
+   - Remove ambiguity, add explicit context
+   - Preserve user intent but clarify wording
+   - This is automatic - the goal is AI consumption, not preservation
+
+4. **Determine enhancement path:**
+   - If missing 0-1 sections: "Complete missing sections" path
+   - If missing 2+ sections OR type unclear: "Restructure and enhance" path
+   - (Ignore "Start fresh" - preserving work is default)
+
+Store the auto-determined approach and proceed to Step 4.
+
+**Edge case only:** If truly ambiguous (rare - e.g., description is empty or nonsensical), use AskUserQuestion:
+- "The ticket description is unclear. What is this ticket about?" (free text)
+- Parse response and continue with auto-analysis
 
 ---
 
-## Step 4: Follow Create Workflow with Pre-population
+## Step 4: Gather Priorities and Enhance Spec
 
 ⚠️ **CHECKPOINT: Before proceeding, confirm:**
 - [ ] Existing ticket fetched and analyzed (Steps 1-2 complete)
-- [ ] Enhancement approach determined (Step 3 complete)
-- [ ] Ready to enhance spec sections
+- [ ] Enhancement approach auto-determined (Step 3 complete)
+- [ ] Ready to gather implementation priorities
 
-Based on the selected enhancement approach:
+### 4.1: Ask for Implementation Priorities (ALWAYS)
 
-### If "Complete missing sections":
-1. Pre-populate the spec with existing content
-2. Identify which sections are missing:
-   - If no clear type: Ask using Create.md Step 1
-   - If no implementation details: Ask using Create.md Step 2 (or offer Council)
-     - **If Council is used:** Follow Create.md Steps 3.3-3.4 for feedback loop (Present recommendation → Get feedback → Handle feedback)
-   - If no testing strategy: Ask using Create.md Step 6
-   - If no dependencies: Ask using Create.md Step 7
-3. Skip BlindQA for sections that already exist and are complete
-4. Run BlindQA on the enhanced spec as a whole
+**This step is mandatory before any Council research or enhancement work.**
 
-### If "Restructure and enhance":
-1. Pre-populate with existing content as starting point
-2. Ask: "Does the spec type look correct: [detected type]?" (Yes/No with correction)
-3. Present existing description and ask: "Keep this description or revise it?" (Keep/Revise)
-4. For each section (Implementation/Testing/Dependencies):
-   - Show existing content if present
-   - Ask: "Keep, revise, or replace this section?"
-   - If revise/replace: Follow Create.md flow for that section
-     - **If Council is used:** Follow Create.md Steps 3.3-3.4 for feedback loop (Present recommendation → Get feedback → Handle feedback)
-5. Run BlindQA on the complete restructured spec
+Use AskUserQuestion:
 
-### If "Start fresh":
-1. Preserve only the ticket metadata (team, labels, priority)
-2. Follow Create.md workflow Steps 1-7 completely
-3. Run full BlindQA validation
+**Question:** "What are the most important priorities the Council should keep in mind for implementing this feature?"
+
+**Instructions to show user:**
+"Provide the key factors that should guide the implementation approach:
+
+Examples:
+- 'Must be fast to implement - under 2 days of work'
+- 'Security is paramount - no shortcuts'
+- 'Must integrate with existing auth system'
+- 'Keep dependencies minimal'
+- 'User experience should feel native, not bolted on'
+- 'Performance is critical - must handle 10k+ requests/sec'
+
+Be specific about tradeoffs you care about."
+
+Store these priorities for Council and for the final spec.
+
+### 4.2: Enhance Missing Sections
+
+Based on auto-determined path from Step 3:
+
+**Path A: "Complete missing sections" (missing 0-1 sections)**
+
+1. Pre-populate spec with existing content (already AI-clarified from Step 3)
+2. For each MISSING section:
+   - **Implementation details missing?**
+     - Run Council with priorities from 4.1
+     - Follow Create.md Step 2.1-2.3 (Council → Present → Get Feedback loop)
+   - **Testing strategy missing?**
+     - Follow Create.md Step 5 (ask testing questions)
+   - **Dependencies missing?**
+     - Follow Create.md Step 6 (ask dependency questions)
+3. Generate success criteria if missing
+4. Continue to Step 5 (SpecCritique validation)
+
+**Path B: "Restructure and enhance" (missing 2+ sections OR unclear type)**
+
+1. Start with AI-clarified description from Step 3 (already revised automatically)
+2. Auto-detected type from Step 3 is used (no confirmation needed)
+3. Run Council research for implementation approach:
+   - Use priorities from Step 4.1
+   - Follow Create.md Step 2.1-2.3 (Council → Present → Get Feedback loop)
+4. Ask testing strategy questions:
+   - Follow Create.md Step 5
+5. Ask dependency questions:
+   - Follow Create.md Step 6
+6. Generate success criteria based on Council approach + testing
+7. Continue to Step 5 (SpecCritique validation)
 
 ---
 
-## Step 5: BlindQA Validation (Iterative Loop)
+## Step 5: SpecCritique Validation (Iterative Loop)
 
 ⚠️ **CHECKPOINT: Before proceeding, confirm:**
 - [ ] All spec sections enhanced (Step 4 complete)
@@ -133,72 +188,51 @@ Based on the selected enhancement approach:
 - [ ] Dependencies documented
 - [ ] Spec is complete and ready for validation
 
-**Quality Gate: BlindQA runs iteratively until zero HIGH severity issues remain.**
+**Quality Gate: SpecCritique runs iteratively until zero HIGH severity issues remain.**
 
-### BlindQA Loop
+### Why SpecCritique (Not BlindQA)
 
-**Iteration 1:** Run BlindQA in interactive mode:
+- **SpecCritique** analyzes SPEC TEXT for gaps, ambiguities, missing requirements BEFORE implementation
+- **BlindQA** verifies RUNNING CODE after implementation
+- This is the early quality gate (spec hardening), BlindQA is the late quality gate (code verification)
 
-```
-Invoke BlindQA skill with:
---interactive
-Prompt: "Analyze this enhanced Linear ticket specification. Find gaps, ambiguities, missing details, and potential issues. This spec will be consumed by an AI engineer, so it must be completely unambiguous.
+### SpecCritique Invocation
 
-Original ticket: [ticket-id]
-Enhancement approach: [approach from Step 3]
-
-[Enhanced spec]"
-```
-
-**After BlindQA completes:**
-- Update the spec with feedback and fixes
-- **Check severity counts:**
-  - If HIGH severity issues were found → Go to Iteration 2
-  - If only MEDIUM/LOW or ZERO issues found → Exit loop, continue to Step 6
-
-**Iteration 2:** (Only if HIGH severity issues found in Iteration 1)
-
-Run BlindQA again on the updated spec:
+Invoke the SpecCritique skill:
 
 ```
-Invoke BlindQA skill with:
---interactive
-Prompt: "Re-analyze this enhanced Linear ticket specification after fixes. Find any remaining gaps, ambiguities, or issues introduced by the changes. This spec will be consumed by an AI engineer."
+Use Skill tool:
+Skill: SpecCritique
+Args: [ticket-id from Step 1]
 
-[Updated spec with Iteration 1 fixes]
+Provide the enhanced spec as context:
+[Enhanced spec from Step 4]
 ```
 
-**After second BlindQA completes:**
-- Update spec with new findings
-- **Check severity counts:**
-  - If HIGH severity issues were found → Go to Iteration 3
-  - If only MEDIUM/LOW or ZERO issues found → Exit loop, continue to Step 6
+**SpecCritique will:**
+1. Analyze spec across all categories (functional scope, data model, UX flow, edge cases, terminology, etc.)
+2. Identify gaps and rank severity: HIGH (blockers), MEDIUM (important), LOW (nice to have)
+3. Ask clarifying questions via AskUserQuestion for HIGH issues
+4. Update spec with answers
+5. Re-analyze until zero HIGH issues remain (max 5 iterations)
+6. Return hardened spec with final report
 
-**Iteration 3:** (Only if HIGH severity issues found in Iteration 2)
+**After SpecCritique completes:**
+- Take the hardened spec from SpecCritique
+- Store the updated spec with all gaps filled
+- **Check the verdict:**
+  - If **HARDENED** (zero HIGH issues) → Continue to Step 6
+  - If **WARNING** (only MEDIUM/LOW issues) → Continue to Step 6 with warning
+  - If **BLOCKED** (HIGH issues remain after max iterations) → Error and exit
 
-Final BlindQA run (safety limit):
-
-```
-Invoke BlindQA skill with:
---interactive
-Prompt: "Final re-analysis of this enhanced Linear ticket specification. Find any remaining gaps or issues."
-
-[Updated spec with Iteration 2 fixes]
-```
-
-**After third BlindQA completes:**
-- Update spec with findings
-- **If HIGH severity issues still remain:** Warn user that maximum iterations reached, but continue to Step 6 anyway
-- Otherwise: Continue to Step 6
-
-**Loop Rationale:** Fixing high severity issues can introduce new problems or reveal hidden gaps. Iterative validation ensures the spec reaches a stable, unambiguous state before updating Linear.
+**Loop Rationale:** SpecCritique has an INTERNAL iterative loop that re-analyzes after fixes until zero HIGH issues. The skill itself handles the iteration, not this workflow.
 
 ---
 
 ## Step 6: Update Linear Ticket
 
 ⚠️ **CHECKPOINT: Before proceeding, confirm:**
-- [ ] BlindQA validation complete (Step 5 complete)
+- [ ] SpecCritique validation complete (Step 5 complete)
 - [ ] All feedback incorporated
 - [ ] Spec is final and ready to update Linear
 
@@ -277,7 +311,7 @@ Present a comprehensive diff-style summary:
 - [Added | Enhanced | Replaced | Kept unchanged]
 - New dependencies identified: [list]
 
-**BlindQA Findings Addressed:**
+**SpecCritique Findings Addressed:**
 - [List of issues found and how they were resolved]
 
 **Next Steps:**
