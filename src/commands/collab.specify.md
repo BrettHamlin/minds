@@ -53,11 +53,11 @@ Given that feature description, do this:
       - Find the highest number N
       - Use N+1 for the new branch number
 
-   d. Run the script `.specify/scripts/bash/create-new-feature.sh --json "$ARGUMENTS"` with the calculated number and short-name:
+   d. Run the script `.specify/scripts/bash/create-new-feature.sh --json --worktree "$ARGUMENTS"` with the calculated number and short-name:
       - Pass `--number N+1` and `--short-name "your-short-name"` along with the feature description
-      - To create a git worktree instead of switching branches, add `--worktree` (optionally `--worktree-path <dir>`)
-      - Bash example: `.specify/scripts/bash/create-new-feature.sh --json --number 5 --short-name "user-auth" "Add user authentication"`
-      - Worktree example: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 5 --short-name "user-auth" "Add user authentication"`
+      - **--worktree is mandatory** for orchestrator workflows to keep the orchestrator pane on the main branch
+      - Optionally specify `--worktree-path <dir>` to override the default worktree location (default: `../worktrees/`)
+      - Example: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 5 --short-name "user-auth" "Add user authentication"`
 
    **IMPORTANT**:
    - Check all three sources (remote branches, local branches, specs directories) to find the highest number
@@ -65,7 +65,7 @@ Given that feature description, do this:
    - If no existing branches/directories found with this short-name, start with number 1
    - You must only ever run this script once per feature
    - The JSON is provided in the terminal as output - always refer to it to get the actual content you're looking for
-   - The JSON output will contain BRANCH_NAME, SPEC_FILE paths, and WORKTREE_DIR (when --worktree is used)
+   - The JSON output will contain BRANCH_NAME, SPEC_FILE paths, and WORKTREE_DIR
    - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot")
 
 3. Load `.specify/templates/spec-template.md` to understand required sections.
@@ -168,7 +168,7 @@ Given that feature description, do this:
 
 7. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/collab.plan`).
 
-**NOTE:** The script creates and checks out the new branch (or creates a worktree with `--worktree`) and initializes the spec file before writing. When using `--worktree`, the spec is created inside the worktree directory and the JSON output includes `WORKTREE_DIR` for reference. **Do NOT change directory** — stay in the main repo so you can run `/collab.run` as the orchestrator. The agent pane will automatically spawn in the worktree.
+**NOTE:** The script creates a git worktree and initializes the spec file before writing. The spec is created inside the worktree directory and the JSON output includes `WORKTREE_DIR` for reference. **Do NOT change directory** — stay in the main repo so you can run `/collab.run` as the orchestrator. The agent pane will automatically spawn in the worktree.
 
 ## General Guidelines
 
