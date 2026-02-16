@@ -15,6 +15,35 @@ Running **Critique** in **SpecCritique**...
 
 ---
 
+## Loop Logic Summary (Critical Requirements)
+
+**This workflow uses pass-specific logic with mandatory minimum passes:**
+
+1. **PASS 1 (First iteration):**
+   - Asks about ALL severity levels (HIGH, MEDIUM, LOW)
+   - Cannot skip any issues
+   - Always executes regardless of results
+
+2. **PASS 2+ (Subsequent iterations):**
+   - Checks for HIGH-severity issues
+   - If HIGH issues found → Ask about ALL severities (HIGH, MEDIUM, LOW)
+   - If NO HIGH issues → EXIT (MEDIUM/LOW acceptable)
+
+3. **Minimum Requirement:**
+   - Always runs at least 2 passes
+   - Pass 1 always proceeds to Pass 2
+   - Pass 2+ uses HIGH-severity gate for exit decision
+
+4. **Exit Condition:**
+   - A pass completes with ZERO HIGH severity issues
+   - MEDIUM/LOW issues do not prevent exit after Pass 2+
+
+5. **Safety Valve:**
+   - Maximum 5 passes
+   - Exit with warning if HIGH issues remain after 5 passes
+
+---
+
 ## Input
 
 - **ticket_id** (optional): Linear ticket ID (e.g., BRE-191)
@@ -134,21 +163,64 @@ Create a summary of all found issues:
 
 ---
 
-## Step 4: Resolve HIGH Issues (Iterative Loop)
+## Step 4: Resolve Issues (Iterative Loop with Pass-Specific Logic)
 
 **Quality Gate:** Must resolve ALL HIGH severity issues before proceeding.
 
+### Pass-Specific Behavior
+
+**PASS 1 (First iteration - MANDATORY):**
+- **Ask about ALL severity levels:** HIGH, MEDIUM, LOW
+- **Cannot skip any issues**
+- **Always runs** regardless of results
+
+**PASS 2+ (Subsequent iterations):**
+- **Check for HIGH issues:**
+  - **If HIGH issues found:** Ask about ALL severity levels (HIGH, MEDIUM, LOW)
+  - **If NO HIGH issues:** EXIT loop (MEDIUM/LOW acceptable)
+- **Minimum requirement:** Always runs at least 2 passes
+
+**Exit Condition:** A pass completes with ZERO HIGH severity issues
+
 ### Loop Structure
 
-**For each HIGH severity issue:**
+**Initialize pass counter:**
+```
+current_pass = 1
+max_passes = 5
+```
+
+### For Each Pass
+
+**Determine which issues to address:**
+
+```
+if (current_pass === 1) {
+  // PASS 1: Address ALL issues
+  issues_to_address = [ALL HIGH, MEDIUM, LOW issues]
+  reason = "First pass - cannot skip any severity level"
+} else {
+  // PASS 2+: Check for HIGH issues
+  if (HIGH_issues_exist) {
+    issues_to_address = [ALL HIGH, MEDIUM, LOW issues]
+    reason = "HIGH issues found - addressing all severities"
+  } else {
+    // EXIT: No HIGH issues, only MEDIUM/LOW remain
+    exit_loop = true
+    reason = "No HIGH issues found - spec is hardened"
+  }
+}
+```
+
+**For each issue to address:**
 
 1. **Use AskUserQuestion tool** to clarify:
 
 ```
 {
   questions: [{
-    question: "<Specific question about the HIGH issue>",
-    header: "<Issue category>",
+    question: "<Specific question about the issue>",
+    header: "<Issue category> [SEVERITY]",
     multiSelect: false,
     options: [
       {
@@ -175,18 +247,18 @@ Create a summary of all found issues:
    - Or create new section if needed
    - Document in "Clarifications" section with timestamp
 
-4. **Move to next HIGH issue**
+4. **Move to next issue**
 
-### After All HIGH Issues Resolved
+### After Pass Completion
 
 Present summary:
 
 ```markdown
-✅ **All HIGH severity issues resolved**
+✅ **Pass [N] complete - [COUNT] issues resolved**
 
 **Resolutions:**
-1. [Issue 1] → Resolved: [Answer]
-2. [Issue 2] → Resolved: [Answer]
+1. [Issue 1 - SEVERITY] → Resolved: [Answer]
+2. [Issue 2 - SEVERITY] → Resolved: [Answer]
 3. [etc...]
 
 **Updated sections:**
@@ -196,28 +268,79 @@ Present summary:
 
 ---
 
-## Step 5: Re-Analyze (Iteration Check)
+## Step 5: Re-Analyze (Iteration Check with Pass Logic)
 
-After resolving HIGH issues, re-analyze the updated spec:
+After resolving issues, re-analyze the updated spec:
 
 **Purpose:** Fixes can introduce new ambiguities or expose hidden gaps.
 
 Run full analysis again (Step 2) on the updated spec.
 
+### Iteration Decision Logic
+
+```
+current_pass++
+
+if (current_pass === 2) {
+  // FIRST RE-ANALYSIS (after Pass 1)
+  // ALWAYS run Pass 2 (minimum 2-pass requirement)
+  if (HIGH_issues_found) {
+    action = "Continue - HIGH issues found, will address all severities"
+  } else if (MEDIUM_or_LOW_issues_found) {
+    action = "Continue - but this is Pass 2, will check if HIGH exist"
+  } else {
+    action = "Continue - Pass 2 required even with zero issues"
+  }
+  // Return to Step 3 for Pass 2
+}
+
+if (current_pass > 2) {
+  // SUBSEQUENT RE-ANALYSIS (Pass 3+)
+  // HIGH-severity gate: only continue if HIGH issues exist
+  if (HIGH_issues_found) {
+    action = "Continue - HIGH issues require resolution"
+    // Return to Step 3 for next pass
+  } else {
+    action = "EXIT - No HIGH issues, spec is hardened"
+    // Continue to Step 6
+  }
+}
+
+if (current_pass >= max_passes) {
+  // SAFETY VALVE
+  action = "EXIT - Max iterations reached (5 passes)"
+  warning = "HIGH issues remain but max iterations reached"
+  // Continue to Step 6 with warning
+}
+```
+
 ### Iteration Outcomes
 
-**Case A: Zero HIGH issues found**
-- Exit loop
-- Continue to Step 6
+**Case A: Pass 1 complete**
+- **ALWAYS proceed to Pass 2** (minimum 2-pass requirement)
+- Regardless of issue count
 
-**Case B: New HIGH issues found**
-- If iteration count < 5: Return to Step 3
-- If iteration count >= 5: Warn user, continue to Step 6 anyway (safety valve)
+**Case B: Pass 2 complete**
+- **Check HIGH issues:**
+  - HIGH issues found → Continue to Pass 3
+  - NO HIGH issues → EXIT (MEDIUM/LOW acceptable)
 
-**Rationale:** Iterative analysis catches:
-- Ambiguities introduced by clarifications
-- Gaps exposed by new details
-- Inconsistencies between sections
+**Case C: Pass 3+ complete**
+- **HIGH-severity gate:**
+  - HIGH issues found → Continue to next pass (if under max_passes)
+  - NO HIGH issues → EXIT (spec hardened)
+
+**Case D: Max passes reached (5)**
+- **Safety valve:** Exit with warning if HIGH issues remain
+- Prevents infinite loops
+
+**Rationale:**
+- **Minimum 2 passes:** Ensures at least one re-analysis after fixes
+- **HIGH-severity gate:** Prevents endless iteration on MEDIUM/LOW issues
+- **Iterative analysis catches:**
+  - Ambiguities introduced by clarifications
+  - Gaps exposed by new details
+  - Inconsistencies between sections
 
 ---
 
@@ -315,23 +438,44 @@ Input: "Analyze this spec: [text]"
 → Report: "✅ Spec hardened - 3 blocking issues resolved"
 ```
 
-### Example 3: Iterative Refinement
+### Example 3: Iterative Refinement (New Pass Logic)
 
 ```
-Iteration 1:
-→ Found: 2 HIGH issues
+Pass 1 (Initial):
+→ Found: 2 HIGH, 3 MEDIUM, 1 LOW
+→ Asked about ALL 6 issues (first pass - cannot skip)
+→ Resolved all 6
+→ Re-analyze
+→ Must proceed to Pass 2 (minimum 2-pass requirement)
+
+Pass 2 (Required):
+→ Found: 1 NEW HIGH issue (exposed by previous fixes)
+→ HIGH issue found - ask about ALL severities
+→ Found: 1 HIGH, 1 MEDIUM
 → Resolved both
 → Re-analyze
+→ Check HIGH-severity gate
 
-Iteration 2:
-→ Found: 1 NEW HIGH issue (exposed by previous fixes)
-→ Resolved
+Pass 3:
+→ Found: 0 HIGH issues, 2 MEDIUM issues remain
+→ HIGH-severity gate: EXIT (no HIGH issues)
+→ Report: "✅ Spec hardened in 3 passes"
+```
+
+### Example 4: Quick Exit (But Still 2 Passes)
+
+```
+Pass 1:
+→ Found: 0 HIGH, 1 MEDIUM, 1 LOW
+→ First pass - asked about all 2 issues
+→ Resolved both
 → Re-analyze
+→ Must proceed to Pass 2 (minimum requirement)
 
-Iteration 3:
-→ Found: 0 HIGH issues
-→ Exit loop
-→ Report: "✅ Spec hardened in 3 iterations"
+Pass 2:
+→ Found: 0 HIGH, 0 MEDIUM, 0 LOW
+→ HIGH-severity gate: EXIT (no HIGH issues)
+→ Report: "✅ Spec hardened in 2 passes (minimum met)"
 ```
 
 ---
