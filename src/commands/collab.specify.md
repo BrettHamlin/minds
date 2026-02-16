@@ -21,6 +21,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 The text the user typed after `/collab.specify` in the triggering message **is** the feature description. Assume you always have it available in this conversation even if `$ARGUMENTS` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
 
+**IMPORTANT**: If $ARGUMENTS matches the pattern `[A-Z]+-[0-9]+` (e.g., BRE-202, JIRA-456), it's a ticket ID. You MUST:
+1. Fetch the ticket from Linear using `get_issue` with `includeRelations: true`
+2. Extract the ticket title and description
+3. Use the ticket ID and description for all subsequent steps
+4. When calling create-new-feature.sh, prepend the ticket ID to the feature description so the script can extract it
+
 Given that feature description, do this:
 
 1. **Generate a concise short name** (2-4 words) for the branch:
@@ -55,9 +61,11 @@ Given that feature description, do this:
 
    d. Run the script `.specify/scripts/bash/create-new-feature.sh --json --worktree "$ARGUMENTS"` with the calculated number and short-name:
       - Pass `--number N+1` and `--short-name "your-short-name"` along with the feature description
+      - **CRITICAL**: If the input was a ticket ID, prepend it to the feature description (e.g., "BRE-202 Build a tool that...") so the script's regex can extract it
       - **--worktree is mandatory** for orchestrator workflows to keep the orchestrator pane on the main branch
       - Optionally specify `--worktree-path <dir>` to override the default worktree location (default: `../worktrees/`)
       - Example: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 5 --short-name "user-auth" "Add user authentication"`
+      - Example with ticket: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 5 --short-name "user-auth" "BRE-202 Add user authentication"`
 
    **IMPORTANT**:
    - Check all three sources (remote branches, local branches, specs directories) to find the highest number
