@@ -339,6 +339,9 @@ if [ -n "$WORKTREE_DIR" ]; then
     TICKET_ID=""
     if [[ "$FEATURE_DESCRIPTION" =~ (BRE|PROJ|FEAT)-[0-9]+ ]]; then
         TICKET_ID="${BASH_REMATCH[0]}"
+    else
+        # Fallback: use branch name if no ticket ID found
+        TICKET_ID="$BRANCH_NAME"
     fi
 
     cat > "$MAIN_REPO_SPEC_DIR/metadata.json" << EOF
