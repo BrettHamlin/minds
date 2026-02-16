@@ -336,13 +336,9 @@ if [ -n "$WORKTREE_DIR" ]; then
     mkdir -p "$MAIN_REPO_SPEC_DIR"
 
     # Extract ticket ID from feature description if it matches pattern
-    # Pattern: any uppercase letters followed by dash and numbers (e.g., BRE-123, JIRA-456, CUSTOM-789)
     TICKET_ID=""
-    if [[ "$FEATURE_DESCRIPTION" =~ ([A-Z]+)-([0-9]+) ]]; then
+    if [[ "$FEATURE_DESCRIPTION" =~ (BRE|PROJ|FEAT)-[0-9]+ ]]; then
         TICKET_ID="${BASH_REMATCH[0]}"
-    else
-        # Fallback: use branch name if no ticket ID found
-        TICKET_ID="$BRANCH_NAME"
     fi
 
     cat > "$MAIN_REPO_SPEC_DIR/metadata.json" << EOF

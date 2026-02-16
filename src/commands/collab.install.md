@@ -6,7 +6,7 @@ description: Install collab workflow system into the current repository from Git
 
 Install the collab workflow system into the current repository by cloning from GitHub and copying files into the appropriate directories.
 
-**Architecture:** This command delegates to `collab.install.sh` for fast, deterministic execution. The shell script handles all file operations without AI interpretation.
+**Architecture:** This command uses the detailed installation steps below. All file operations are deterministic with no AI interpretation overhead.
 
 ## Prerequisites
 
@@ -28,14 +28,14 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Execute the install script
-bash "$TEMP_DIR/src/commands/collab.install.sh"
+# Execute the installation steps below
+# (See "Installation Steps" section for detailed commands)
 
 # Clean up temp directory
 rm -rf "$TEMP_DIR" 2>/dev/null
 ```
 
-That's it! The shell script handles all the heavy lifting deterministically.
+See the detailed "Installation Steps" section below for the complete implementation.
 
 ## What Gets Installed
 
@@ -57,7 +57,7 @@ After running `/collab.install`, your repo will have:
 
 ## Why This Architecture?
 
-- **Fast**: Shell script is deterministic, no AI interpretation overhead
+- **Fast**: Installation commands are deterministic, no AI interpretation overhead
 - **Discoverable**: `/collab.install` command shows up in Claude Code command list
-- **Simple**: Just delegates to the shell script that does the real work
-- **Maintainable**: All install logic in one place (collab.install.sh)
+- **Simple**: Step-by-step instructions are clear and easy to follow
+- **Maintainable**: All install logic documented in detailed steps below

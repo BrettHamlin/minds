@@ -1,11 +1,14 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version Change: INITIAL → 1.0.0
-Rationale: First formal constitution with foundational principles
+Version Change: 1.0.0 → 1.1.0
+Rationale: Added scope discipline principle to prevent unnecessary changes
 
 Added Principles:
-- I. Source Directory Authority (new)
+- II. Minimal Scope Discipline (new)
+
+Previous Principles:
+- I. Source Directory Authority (1.0.0)
 
 Template Status:
 - .specify/templates/plan-template.md: ⚠ pending review
@@ -14,8 +17,8 @@ Template Status:
 - .specify/templates/commands/*.md: ⚠ pending review
 
 Follow-up TODOs:
-- Review dependent templates for alignment with source-first principle
-- Consider adding additional principles as project matures
+- Review dependent templates for alignment with scope discipline principle
+- Consider adding scope discipline reminders to command templates
 -->
 
 # Collab Project Constitution
@@ -40,6 +43,29 @@ This principle ensures:
 - ❌ **Incorrect**: Modify `~/.claude/skills/SpecCritique/Workflows/Critique.md`
 
 **Exception**: Reading from global directories for reference is acceptable; writing/modifying is not.
+
+### II. Minimal Scope Discipline
+
+**All modifications MUST be limited to the minimum necessary changes that directly address the discussed requirement.**
+
+This principle ensures:
+
+- **Clarity**: Changes are easy to review and understand
+- **Safety**: Reduced risk of unintended side effects
+- **Efficiency**: No wasted effort on unnecessary modifications
+- **Trust**: Predictable behavior aligned with explicit instructions
+
+**Rationale**: When implementing changes, it's tempting to "improve" or refactor surrounding code. However, making changes beyond the explicit scope introduces risk, increases review burden, and can break working functionality. Changes should be surgical: modify only what's necessary to achieve the stated goal.
+
+**Examples**:
+- ✅ **Correct**: Asked to fix shell script reference → Remove only the lines that mention the non-existent script
+- ❌ **Incorrect**: Asked to fix shell script reference → Rewrite entire installation section with new structure
+
+**Guidelines**:
+- Make targeted edits using Edit tool for line-level changes
+- Avoid replacing entire sections when minimal edits suffice
+- Ask for clarification if the scope is unclear
+- When refactoring seems beneficial, propose it separately rather than bundling with the current task
 
 ## Governance
 
@@ -66,4 +92,4 @@ This constitution will evolve as the project matures. Principles should be:
 - **Testable**: Verifiable through inspection or automated checks
 - **Justified**: Include rationale explaining why the principle matters
 
-**Version**: 1.0.0 | **Ratified**: 2026-02-16 | **Last Amended**: 2026-02-16
+**Version**: 1.1.0 | **Ratified**: 2026-02-16 | **Last Amended**: 2026-02-16
