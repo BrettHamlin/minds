@@ -54,6 +54,14 @@ if [ -n "$WORKTREE_PATH" ] && [ -d "$REPO_ROOT/.claude" ]; then
   fi
 fi
 
+# Ensure .collab/ symlink exists in worktree (for signal handlers)
+if [ -n "$WORKTREE_PATH" ] && [ -d "$REPO_ROOT/.collab" ]; then
+  if [ ! -e "$WORKTREE_PATH/.collab" ]; then
+    ln -sf "$REPO_ROOT/.collab" "$WORKTREE_PATH/.collab"
+    echo "Created .collab/ symlink in worktree" >&2
+  fi
+fi
+
 # Spawn agent pane (70% horizontal split)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_PANE=$(bun "$SCRIPT_DIR/Tmux.ts" split \

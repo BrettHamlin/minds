@@ -33,7 +33,9 @@ const { mapResponseState, buildSignalMessage, resolveRegistry, truncateDetail } 
   await import("./pipeline-signal.ts");
 
 async function main() {
-  const questionText = process.argv[2] || "Agent asked a question";
+  // Parse mode and text from arguments
+  const mode = process.argv[2] || "question";
+  const text = process.argv[3] || (mode === "complete" ? "Phase completed" : "Agent asked a question");
 
   try {
     // Get current registry
@@ -43,9 +45,12 @@ async function main() {
       process.exit(0);
     }
 
-    // Build CLARIFY_QUESTION signal (phase-specific)
-    const status = mapResponseState("awaitingInput", registry.current_step);
-    const detail = truncateDetail(questionText);
+    // Map mode to state: "complete" -> "completed", "question" -> "awaitingInput"
+    const state = mode === "complete" ? "completed" : "awaitingInput";
+
+    // Build phase-specific signal (e.g., CLARIFY_COMPLETE or CLARIFY_QUESTION)
+    const status = mapResponseState(state, registry.current_step);
+    const detail = truncateDetail(text);
     const signalMessage = buildSignalMessage(registry, status, detail);
 
     // Send to orchestrator pane
@@ -53,7 +58,7 @@ async function main() {
     await $`bun ${TMUX_PATH} send -w ${target} -t ${signalMessage} -d 1`.quiet();
 
     console.error(`[EmitQuestionSignal] Sent ${status} to ${target}`);
-    console.error(`[EmitQuestionSignal] Question: ${questionText}`);
+    console.error(`[EmitQuestionSignal] Mode: ${mode}, Text: ${text}`);
   } catch (error) {
     console.error('[EmitQuestionSignal] Error:', error);
     process.exit(1);
