@@ -45,18 +45,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
 5. **Ask Questions Using AskUserQuestion Tool**
 
-   For EACH question:
-
-   a) **FIRST: Send CLARIFY_QUESTION signal to orchestrator**
-
-   Run this Bash command to emit the signal BEFORE calling AskUserQuestion:
-   ```bash
-   bun .collab/handlers/emit-question-signal.ts "<question text>"
-   ```
-
-   This is MANDATORY. The signal must be sent before the question appears on screen so the orchestrator can capture it.
-
-   b) **THEN: Call AskUserQuestion tool**
+   For EACH question, call AskUserQuestion:
    ```
    {
      questions: [{
@@ -87,7 +76,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
    **IMPORTANT**: Always include "Custom answer" option so user can provide their own response if predefined options don't fit.
 
-   **CRITICAL**: Signal MUST be sent via Bash before AskUserQuestion is called. This is deterministic and under our control.
+   **NOTE**: The PreToolUse hook automatically emits CLARIFY_QUESTION signals when AskUserQuestion is called. No manual signal emission needed.
 
 6. **Integrate Each Answer**
 
