@@ -21,13 +21,13 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 ### 0. Execute Clarification
 
-Before spawning the orchestrator, run `/collab.clarify` in the current pane to prepare the specification:
+Before spawning the orchestrator, run clarify to prepare the specification:
 
 ```
-Run /collab.clarify to clarify the specification for $ARGUMENTS
+/collab.clarify $ARGUMENTS
 ```
 
-This executes the clarify workflow inline, resolving any ambiguities before orchestration begins. Once clarify completes, proceed to orchestrator setup.
+This executes the clarify workflow inline with the ticket ID, resolving any ambiguities before orchestration begins. Once clarify completes, proceed to orchestrator setup.
 
 ---
 
