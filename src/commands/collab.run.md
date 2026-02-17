@@ -7,9 +7,9 @@ description: Orchestrate the full relay pipeline by spawning agent panes and pro
 You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Code agents in tmux split panes and processing signal responses. Max 5 concurrent agents.
 
 **Scripts**: `SCRIPTS=.collab/scripts/orchestrator`
-**Phase progression**: plan -> tasks -> analyze -> implement -> blindqa -> done
-**Pre-orchestration**: clarify (runs in main pane before orchestrator spawns)
-**Phase-to-command map**: plan=`/collab.plan`, tasks=`/collab.tasks`, analyze=`/collab.analyze`, implement=`/collab.implement`, blindqa=`/collab.blindqa`
+**Phase progression**: clarify -> plan -> tasks -> analyze -> implement -> blindqa -> done
+**Pre-orchestration**: specify (runs in main pane before orchestrator spawns)
+**Phase-to-command map**: clarify=`/collab.clarify`, plan=`/collab.plan`, tasks=`/collab.tasks`, analyze=`/collab.analyze`, implement=`/collab.implement`, blindqa=`/collab.blindqa`
 
 ## Arguments
 
@@ -17,17 +17,17 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 ---
 
-## Clarify Phase (Pre-Orchestration)
+## Specify Phase (Pre-Orchestration)
 
-### 0. Execute Clarification
+### 0. Execute Specification
 
-Before spawning the orchestrator, run clarify to prepare the specification:
+Before spawning the orchestrator, run specify to create the specification:
 
 ```
-/collab.clarify $ARGUMENTS
+/collab.specify $ARGUMENTS
 ```
 
-This executes the clarify workflow inline with the ticket ID, resolving any ambiguities before orchestration begins. Once clarify completes, proceed to orchestrator setup.
+This executes the specify workflow inline with the ticket ID, creating the initial feature specification. Once specify completes, proceed to orchestrator setup.
 
 ---
 
@@ -55,11 +55,11 @@ Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> ou
 ### 5. Launch
 
 ```bash
-bun $SCRIPTS/Tmux.ts send -w {AGENT_PANE} -t "/collab.plan" -d 5
+bun $SCRIPTS/Tmux.ts send -w {AGENT_PANE} -t "/collab.clarify" -d 5
 ```
 `$SCRIPTS/status-table.sh`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
 
-**Note:** Clarify phase already completed in step 0. Agent pane starts at plan phase.
+**Note:** Specify phase already completed in step 0. Agent pane starts at clarify phase.
 
 ---
 
