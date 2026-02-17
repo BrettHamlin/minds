@@ -93,7 +93,13 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
    - No contradictory statements remain
    - Terminology consistent across sections
 
-8. **Report Completion**
+8. **Emit Completion Signal**
+   ```bash
+   bun .collab/handlers/emit-question-signal.ts complete "Clarification phase finished"
+   ```
+   **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
+
+9. **Report Completion**
    - Number of questions answered
    - Sections updated
    - Path to updated spec
@@ -108,7 +114,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 5. Orchestrator navigates tmux to select answer (based on "Recommended" option)
 6. Agent receives answer, integrates into spec
 7. Repeat for remaining questions
-8. After all questions: Stop hook emits `CLARIFY_COMPLETE`
+8. After all questions: Agent explicitly calls `emit-question-signal.ts complete` to emit `CLARIFY_COMPLETE`
 
 ## Key Differences from Standard Clarify
 
