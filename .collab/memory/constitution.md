@@ -51,6 +51,14 @@ This principle ensures:
 - `src/scripts/` - Orchestrator and utility scripts (source of truth)
 - `.collab/` - Runtime/deployment directory (should contain symlinks to `src/`, not duplicate files)
 
+**Runtime Path References**:
+This principle governs WHERE to make edits, not WHAT paths code should reference at runtime.
+
+- ✅ **Correct**: Edit `src/commands/collab.plan.md` to add `bun .collab/handlers/emit-question-signal.ts`
+- ❌ **Incorrect**: Edit `.collab/commands/collab.plan.md` (not source of truth)
+
+**Rationale**: When users install collab via the install script, files are deployed to `.collab/` in their repos. Commands must reference these runtime paths (`.collab/handlers/`, `.collab/scripts/`), not source paths (`src/`), because `src/` doesn't exist in installed repos.
+
 **Exception**: Reading from global directories for reference is acceptable; writing/modifying is not.
 
 ### II. Minimal Scope Discipline
