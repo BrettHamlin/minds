@@ -41,6 +41,15 @@ This principle ensures:
 **Examples**:
 - ✅ **Correct**: Modify `src/skills/SpecCritique/Workflows/Critique.md`
 - ❌ **Incorrect**: Modify `~/.claude/skills/SpecCritique/Workflows/Critique.md`
+- ✅ **Correct**: Modify `src/handlers/emit-question-signal.ts`
+- ❌ **Incorrect**: Modify `.collab/handlers/emit-question-signal.ts`
+- ✅ **Correct**: Modify `src/scripts/orchestrator/orchestrator-init.sh`
+- ❌ **Incorrect**: Modify `.collab/scripts/orchestrator/orchestrator-init.sh`
+
+**Source Directory Structure**:
+- `src/handlers/` - Signal emission scripts (source of truth)
+- `src/scripts/` - Orchestrator and utility scripts (source of truth)
+- `.collab/` - Runtime/deployment directory (should contain symlinks to `src/`, not duplicate files)
 
 **Exception**: Reading from global directories for reference is acceptable; writing/modifying is not.
 

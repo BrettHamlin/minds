@@ -48,6 +48,12 @@ fi
 
 # Ensure .claude/ symlink exists in worktree
 if [ -n "$WORKTREE_PATH" ] && [ -d "$REPO_ROOT/.claude" ]; then
+  # Remove if exists and is not a symlink to correct location
+  if [ -e "$WORKTREE_PATH/.claude" ] && [ ! -L "$WORKTREE_PATH/.claude" ]; then
+    rm -rf "$WORKTREE_PATH/.claude"
+    echo "Removed non-symlink .claude/ directory in worktree" >&2
+  fi
+  # Create symlink if doesn't exist or was just removed
   if [ ! -e "$WORKTREE_PATH/.claude" ]; then
     ln -sf "$REPO_ROOT/.claude" "$WORKTREE_PATH/.claude"
     echo "Created .claude/ symlink in worktree" >&2
@@ -56,6 +62,12 @@ fi
 
 # Ensure .collab/ symlink exists in worktree (for signal handlers)
 if [ -n "$WORKTREE_PATH" ] && [ -d "$REPO_ROOT/.collab" ]; then
+  # Remove if exists and is not a symlink to correct location
+  if [ -e "$WORKTREE_PATH/.collab" ] && [ ! -L "$WORKTREE_PATH/.collab" ]; then
+    rm -rf "$WORKTREE_PATH/.collab"
+    echo "Removed non-symlink .collab/ directory in worktree" >&2
+  fi
+  # Create symlink if doesn't exist or was just removed
   if [ ! -e "$WORKTREE_PATH/.collab" ]; then
     ln -sf "$REPO_ROOT/.collab" "$WORKTREE_PATH/.collab"
     echo "Created .collab/ symlink in worktree" >&2
