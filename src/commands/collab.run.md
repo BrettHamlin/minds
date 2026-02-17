@@ -29,9 +29,17 @@ Before spawning the orchestrator, run specify to create the specification:
 
 This executes the specify workflow inline with the ticket ID, creating the initial feature specification. Once specify completes, proceed to orchestrator setup.
 
+**⚠️ CRITICAL: DO NOT STOP AFTER STEP 0**
+
+Once `/collab.specify` completes, you MUST continue immediately to steps 1-5 in the SAME response. The specify skill returning is NOT the end of the task. The only END RESPONSE marker in the entire workflow is at step 5.
+
+**Execution flow:** Step 0 (specify) → Steps 1-5 (setup) → END RESPONSE (step 5 only)
+
 ---
 
 ## Setup Phase
+
+**NOTE:** You are continuing from step 0 above. Do not stop until step 5 completes.
 
 ### 1. Crash Recovery
 
