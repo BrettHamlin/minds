@@ -19,6 +19,18 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Orchestrator Signal Contract (ALWAYS ACTIVE)
+
+> **This applies throughout your entire execution — not just at the end.**
+
+Whenever you have **finished generating tasks for this phase**, emit:
+
+```bash
+bun .collab/handlers/emit-question-signal.ts complete "Task generation phase finished"
+```
+
+This applies in every scenario: normal completion, after follow-up messages from the orchestrator, after any retry. Any response that represents "this phase is done" must end with this signal.
+
 ## Outline
 
 1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").

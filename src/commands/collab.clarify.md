@@ -8,6 +8,20 @@ description: Orchestrator-compatible spec clarification using AskUserQuestion fo
 $ARGUMENTS
 ```
 
+## Orchestrator Signal Contract (ALWAYS ACTIVE)
+
+> **This applies throughout your entire execution — not just at the end.**
+
+Whenever you have **finished all clarification work for this phase**, emit:
+
+```bash
+bun .collab/handlers/emit-question-signal.ts complete "Clarification phase finished"
+```
+
+This applies in every scenario: normal completion, after follow-up messages from the orchestrator, after any retry. Any response that represents "this phase is done" must end with this signal.
+
+---
+
 ## Goal
 
 Detect and reduce ambiguity in the active feature specification using AskUserQuestion tool for orchestrator compatibility.
