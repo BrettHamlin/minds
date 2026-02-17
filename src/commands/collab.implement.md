@@ -10,6 +10,27 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Orchestrator Signal Contract (ALWAYS ACTIVE)
+
+> **This applies throughout your entire execution — not just at the end.**
+
+You are operating in an orchestrated pipeline. The orchestrator waits for your signal to advance. Whenever you have **finished all work for this phase and all tests pass**, run:
+
+```bash
+.collab/scripts/verify-and-complete.sh implement "Implementation phase finished"
+```
+
+This verification script will check that all tasks are complete and automatically emit the signal.
+
+This applies in **every scenario**:
+- Normal completion of the outline steps below ✓
+- After fixing issues flagged by the orchestrator (⛔ NO EXCUSES) ✓
+- After any follow-up work or test reruns ✓
+
+You do not need to wait for step 10. Any time your response represents "this phase is done and working", run the verification script to emit the signal.
+
+---
+
 ## Outline
 
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
@@ -132,10 +153,21 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Confirm the implementation follows the technical plan
    - Report final status with summary of completed work
 
-10. **Emit Completion Signal**
+10. **Verify Completion and Emit Signal**
+    
+    Run the verification script to confirm all tasks are complete and automatically emit the completion signal:
+    
     ```bash
-    bun .collab/handlers/emit-question-signal.ts complete "Implementation phase finished"
+    .collab/scripts/verify-and-complete.sh implement "Implementation phase finished"
     ```
-    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
+    
+    This script will:
+    - Verify all tasks in tasks.md are marked complete [X]
+    - Automatically emit the IMPLEMENT_COMPLETE signal to the orchestrator
+    - Exit with error if any tasks remain incomplete
+    
+    **CRITICAL**: This step is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
+
+    **If the orchestrator sends a rejection (⛔ NO EXCUSES):** Fix all identified issues, re-run the full test suite to confirm 0 failures, then run the verification script again to re-emit the signal. Do NOT consider the task done until you have successfully run the verification script after fixing.
 
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/collab.tasks` first to regenerate the task list.
