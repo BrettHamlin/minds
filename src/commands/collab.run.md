@@ -6,7 +6,9 @@ description: Orchestrate the full relay pipeline by spawning agent panes and pro
 
 You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Code agents in tmux split panes and processing signal responses. Max 5 concurrent agents.
 
-**Scripts**: `SCRIPTS=.collab/scripts/orchestrator`
+**Scripts Directory**: `.collab/scripts/orchestrator`
+
+> **IMPORTANT**: All script paths in this document use `.collab/scripts/orchestrator/` as the base. When running commands, use full relative paths from the repo root. For example: `.collab/scripts/orchestrator/status-table.sh` (not `.collab/scripts/orchestrator/status-table.sh`)
 **Phase progression**: clarify -> plan -> tasks -> analyze -> implement -> blindqa -> done
 **Pre-orchestration**: specify (runs in main pane before orchestrator spawns)
 **Phase-to-command map**: clarify=`/collab.clarify`, plan=`/collab.plan`, tasks=`/collab.tasks`, analyze=`/collab.analyze`, implement=`/collab.implement`, blindqa=`/collab.blindqa`
@@ -43,7 +45,7 @@ Once `/collab.specify` completes, you MUST continue immediately to steps 1-5 in 
 
 ### 1. Crash Recovery
 
-Scan `.collab/state/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun $SCRIPTS/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `$SCRIPTS/status-table.sh`, output "Recovered N agent(s)." **END RESPONSE.**
+Scan `.collab/state/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun .collab/scripts/orchestrator/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `.collab/scripts/orchestrator/status-table.sh`, output "Recovered N agent(s)." **END RESPONSE.**
 
 ### 2. Validate
 
@@ -52,7 +54,7 @@ No argument -> "Usage: /collab.run <ticket-id>" and stop.
 ### 3. Initialize (deterministic)
 
 ```bash
-$SCRIPTS/orchestrator-init.sh $ARGUMENTS
+.collab/scripts/orchestrator/orchestrator-init.sh $ARGUMENTS
 ```
 Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> output error, stop.
 
@@ -63,9 +65,9 @@ Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> ou
 ### 5. Launch
 
 ```bash
-bun $SCRIPTS/Tmux.ts send -w {AGENT_PANE} -t "/collab.clarify" -d 5
+bun .collab/scripts/orchestrator/Tmux.ts send -w {AGENT_PANE} -t "/collab.clarify" -d 5
 ```
-`$SCRIPTS/status-table.sh`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
+`.collab/scripts/orchestrator/status-table.sh`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
 
 **Note:** Specify phase already completed in step 0. Agent pane starts at clarify phase.
 
@@ -84,13 +86,13 @@ bun $SCRIPTS/Tmux.ts send -w {AGENT_PANE} -t "/collab.clarify" -d 5
 ### 1. Validate (deterministic)
 
 ```bash
-echo "$INPUT" | $SCRIPTS/signal-validate.sh
+echo "$INPUT" | .collab/scripts/orchestrator/signal-validate.sh
 ```
 Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-zero -> log, **END RESPONSE.**
 
 ### 2. Get agent pane
 
-`$SCRIPTS/registry-read.sh {ticket_id}` -> extract `agent_pane_id`.
+`.collab/scripts/orchestrator/registry-read.sh {ticket_id}` -> extract `agent_pane_id`.
 
 ### 3. Route by signal suffix
 
@@ -98,12 +100,12 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
 *AI LOGIC: Requires judgment to answer domain questions.*
 
-1. Capture screen: `bun $SCRIPTS/Tmux.ts capture -w {agent_pane_id} -s 200`
+1. Capture screen: `bun .collab/scripts/orchestrator/Tmux.ts capture -w {agent_pane_id} -s 200`
 2. Read the AskUserQuestion prompt with options.
 3. Determine best answer using: Linear ticket details, feature spec, project context, domain best practices.
 4. Navigate with tmux keys: `Down`/`Up` to select, `Enter` to confirm.
-5. `$SCRIPTS/registry-update.sh {ticket_id} status=answered`
-6. `$SCRIPTS/status-table.sh`. Output: "Answered for {ticket_id}: {choice}." **END RESPONSE.**
+5. `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=answered`
+6. `.collab/scripts/orchestrator/status-table.sh`. Output: "Answered for {ticket_id}: {choice}." **END RESPONSE.**
 
 #### `_COMPLETE` -- Step finished
 
@@ -115,9 +117,9 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
    **Analyze Review Gate (analyze):** Capture screen, review findings for blockers. Must explicitly approve or identify re-analysis concerns. If concerns: send message, **END RESPONSE.** If approved: continue.
 
-   **Deployment Gate (implement + has group_id):** `$SCRIPTS/group-manage.sh query {ticket_id}`. Check ticket type.
-   - Backend with frontends: update group gate_state=backend_deploying, deployment_status=in_progress, send deploy command with signal instruction: `bun $SCRIPTS/Tmux.ts send -w {agent_pane_id} -t "Deploy the backend. When done, send: echo '[SIGNAL:{ticket_id}:{nonce}] IMPLEMENT_COMPLETE | deployment finished'" -d 1`. **END RESPONSE.**
-   - Frontend + backend deploying: `$SCRIPTS/registry-update.sh {ticket_id} status=held`. **END RESPONSE.**
+   **Deployment Gate (implement + has group_id):** `.collab/scripts/orchestrator/group-manage.sh query {ticket_id}`. Check ticket type.
+   - Backend with frontends: update group gate_state=backend_deploying, deployment_status=in_progress, send deploy command with signal instruction: `bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "Deploy the backend. When done, send: echo '[SIGNAL:{ticket_id}:{nonce}] IMPLEMENT_COMPLETE | deployment finished'" -d 1`. **END RESPONSE.**
+   - Frontend + backend deploying: `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=held`. **END RESPONSE.**
    - Frontend + backend deployed/skipped: continue.
    - Frontend + backend failed: notify user, suggest `[CMD:retry-deploy]`/`[CMD:skip-deploy]`. **END RESPONSE.**
 
@@ -138,27 +140,27 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
       d. IF ANY FAILURES FOUND:
          Send to agent:
-         "⛔ NO EXCUSES: Tests/builds are failing. ALL failures must be fixed before completion, including pre-existing issues you didn't create. 'I didn't touch that code' is NOT an excuse. Fix everything and re-run tests."
+         "⛔ NO EXCUSES: Tests/builds are failing. ALL failures must be fixed before completion, including pre-existing issues you didn't create. 'I didn't touch that code' is NOT an excuse. Fix everything and re-run tests. After ALL tests pass, re-emit the completion signal: `bun .collab/handlers/emit-question-signal.ts complete 'Implementation phase finished'`"
          Increment validation_attempt_count (max 3)
          **END RESPONSE.**
 
       e. IF ALL TESTS PASS -> continue to blindqa
 
-3. **Advance (deterministic):** `NEXT=$($SCRIPTS/phase-advance.sh {current_step})`
+3. **Advance (deterministic):** `NEXT=$(.collab/scripts/orchestrator/phase-advance.sh {current_step})`
 
 4. If `NEXT == "done"`: go to Pipeline Complete. Otherwise:
    ```bash
-   $SCRIPTS/registry-update.sh {ticket_id} current_step={NEXT} status=running
-   bun $SCRIPTS/Tmux.ts send -w {agent_pane_id} -t "{command from map}" -d 1
+   .collab/scripts/orchestrator/registry-update.sh {ticket_id} current_step={NEXT} status=running
+   bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "{command from map}" -d 1
    ```
 
-5. `$SCRIPTS/status-table.sh`. Output: "'{old}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
+5. `.collab/scripts/orchestrator/status-table.sh`. Output: "'{old}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
 
 #### `_ERROR` or `_FAILED` -- Error
 
-1. Capture screen (`-s 200`). `$SCRIPTS/registry-update.sh {ticket_id} status=error`
+1. Capture screen (`-s 200`). `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=error`
 2. Re-send current step's command (from phase-to-command map).
-3. `$SCRIPTS/status-table.sh`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." **END RESPONSE.**
+3. `.collab/scripts/orchestrator/status-table.sh`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." **END RESPONSE.**
 
 ---
 
@@ -167,36 +169,36 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 ### [CMD:add {ticket_id}]
 
 1. Validate: missing -> usage. Already tracked -> error. Count >= 5 -> error. **END RESPONSE** on any.
-2. Resolve worktree (same logic as orchestrator-init.sh). Split vertically off last agent pane: `bun $SCRIPTS/Tmux.ts split -w {last_agent_pane} -c "{spawn_cmd}"`. Generate nonce, create registry atomically, assign next color (1-5), label pane.
+2. Resolve worktree (same logic as orchestrator-init.sh). Split vertically off last agent pane: `bun .collab/scripts/orchestrator/Tmux.ts split -w {last_agent_pane} -c "{spawn_cmd}"`. Generate nonce, create registry atomically, assign next color (1-5), label pane.
 3. Rebalance: `tmux set-window-option main-pane-width {30%}; tmux select-layout main-vertical`
 4. Fetch Linear ticket with `includeRelations: true`.
 5. *AI LOGIC: Detect relationships.* Extract `relatedTo`. Check if related tickets have registries.
    - No related orchestrated -> optionally create solo group.
-   - 1 existing group -> `$SCRIPTS/group-manage.sh add {group_id} {ticket_id}`
-   - 2+ groups -> `$SCRIPTS/group-manage.sh create {all_ids}` (merge).
-   - Detect type (backend/frontend/other). `$SCRIPTS/registry-update.sh {ticket_id} group_id={gid}`
-6. `bun $SCRIPTS/Tmux.ts send -w {new_pane} -t "/collab.clarify" -d 5`
-7. `$SCRIPTS/status-table.sh`. "Added {ticket_id}." **END RESPONSE.**
+   - 1 existing group -> `.collab/scripts/orchestrator/group-manage.sh add {group_id} {ticket_id}`
+   - 2+ groups -> `.collab/scripts/orchestrator/group-manage.sh create {all_ids}` (merge).
+   - Detect type (backend/frontend/other). `.collab/scripts/orchestrator/registry-update.sh {ticket_id} group_id={gid}`
+6. `bun .collab/scripts/orchestrator/Tmux.ts send -w {new_pane} -t "/collab.clarify" -d 5`
+7. `.collab/scripts/orchestrator/status-table.sh`. "Added {ticket_id}." **END RESPONSE.**
 
 ### [CMD:status]
 
-`$SCRIPTS/status-table.sh`. **END RESPONSE.**
+`.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
 
 ### [CMD:remove {ticket_id}]
 
-Validate. `$SCRIPTS/registry-read.sh {ticket_id}` for group_id. If grouped: remove from group, delete group if empty, notify if orphaned waits. `rm .collab/state/pipeline-registry/{ticket_id}.json`. `$SCRIPTS/status-table.sh`. **END RESPONSE.**
+Validate. `.collab/scripts/orchestrator/registry-read.sh {ticket_id}` for group_id. If grouped: remove from group, delete group if empty, notify if orphaned waits. `rm .collab/state/pipeline-registry/{ticket_id}.json`. `.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
 
 ### [CMD:retry-deploy {ticket_id}]
 
-Validate: tracked, group_id, deployment_status=="failed", retry_count < 3. Read agent_pane_id/nonce. Update group: in_progress, backend_deploying, increment retry. Send deploy command with signal. `$SCRIPTS/status-table.sh`. **END RESPONSE.**
+Validate: tracked, group_id, deployment_status=="failed", retry_count < 3. Read agent_pane_id/nonce. Update group: in_progress, backend_deploying, increment retry. Send deploy command with signal. `.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
 
 ### [CMD:skip-deploy {ticket_id}]
 
-Validate: tracked, group_id. Update group: skipped, backend_deployed. Release waiting frontends (if at implement, advance to blindqa). `$SCRIPTS/status-table.sh`. **END RESPONSE.**
+Validate: tracked, group_id. Update group: skipped, backend_deployed. Release waiting frontends (if at implement, advance to blindqa). `.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
 
 ### [CMD:group {id1} {id2} ...]
 
-Validate: >= 2 IDs, all orchestrated. `$SCRIPTS/group-manage.sh create {all_ids}`. Detect types, update registries. `$SCRIPTS/status-table.sh`. **END RESPONSE.**
+Validate: >= 2 IDs, all orchestrated. `.collab/scripts/orchestrator/group-manage.sh create {all_ids}`. Detect types, update registries. `.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
 
 ### Unknown
 
@@ -207,7 +209,7 @@ Validate: >= 2 IDs, all orchestrated. `$SCRIPTS/group-manage.sh create {all_ids}
 ## Deployment Outcome Handling
 
 On STEP_COMPLETE with "deployment" in detail: capture screen for success/failure indicators.
-- **Success**: group gate_state=backend_deployed, release frontends (read group via `$SCRIPTS/group-manage.sh list {group_id}`, advance each frontend at implement through completion gate to blindqa).
+- **Success**: group gate_state=backend_deployed, release frontends (read group via `.collab/scripts/orchestrator/group-manage.sh list {group_id}`, advance each frontend at implement through completion gate to blindqa).
 - **Failure**: gate_state=deployment_failed, increment retry_count. If >= 3: escalate. Notify user.
 - **Timeout** (15min): `tmux send-keys -t {agent_pane_id} C-c`, mark failed.
 
@@ -218,7 +220,7 @@ On STEP_COMPLETE with "deployment" in detail: capture screen for success/failure
 On `_COMPLETE` signal when `current_step == "blindqa"`:
 1. If grouped: remove from group, delete group file if empty. Write atomically.
 2. `rm .collab/state/pipeline-registry/{ticket_id}.json`
-3. `$SCRIPTS/status-table.sh`. "Pipeline complete for {ticket_id}!"
+3. `.collab/scripts/orchestrator/status-table.sh`. "Pipeline complete for {ticket_id}!"
 4. Other agents running -> wait. None remain -> "All pipelines complete."
 
 ---
