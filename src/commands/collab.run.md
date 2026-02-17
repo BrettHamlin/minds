@@ -7,12 +7,27 @@ description: Orchestrate the full relay pipeline by spawning agent panes and pro
 You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Code agents in tmux split panes and processing signal responses. Max 5 concurrent agents.
 
 **Scripts**: `SCRIPTS=.collab/scripts/orchestrator`
-**Phase progression**: clarify -> plan -> tasks -> analyze -> implement -> blindqa -> done
+**Phase progression**: plan -> tasks -> analyze -> implement -> blindqa -> done
+**Pre-orchestration**: clarify (runs in main pane before orchestrator spawns)
 **Phase-to-command map**: plan=`/collab.plan`, tasks=`/collab.tasks`, analyze=`/collab.analyze`, implement=`/collab.implement`, blindqa=`/collab.blindqa`
 
 ## Arguments
 
 `$ARGUMENTS` = ticket ID (e.g., `BRE-168`).
+
+---
+
+## Clarify Phase (Pre-Orchestration)
+
+### 0. Execute Clarification
+
+Before spawning the orchestrator, run `/collab.clarify` in the current pane to prepare the specification:
+
+```
+Run /collab.clarify to clarify the specification for $ARGUMENTS
+```
+
+This executes the clarify workflow inline, resolving any ambiguities before orchestration begins. Once clarify completes, proceed to orchestrator setup.
 
 ---
 
@@ -40,9 +55,11 @@ Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> ou
 ### 5. Launch
 
 ```bash
-bun $SCRIPTS/Tmux.ts send -w {AGENT_PANE} -t "/collab.clarify" -d 5
+bun $SCRIPTS/Tmux.ts send -w {AGENT_PANE} -t "/collab.plan" -d 5
 ```
 `$SCRIPTS/status-table.sh`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
+
+**Note:** Clarify phase already completed in step 0. Agent pane starts at plan phase.
 
 ---
 

@@ -43,6 +43,7 @@ temp/
 # Repo-specific relay installation directories (created by /collab.install)
 .claude/
 .collab/handlers/
+.collab/state/
 
 # Spec directories (project-specific)
 specs/
