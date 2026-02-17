@@ -68,6 +68,7 @@ Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> ou
 bun .collab/scripts/orchestrator/Tmux.ts send -w {AGENT_PANE} -t "/collab.clarify" -d 5
 ```
 `.collab/scripts/orchestrator/status-table.sh`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
+`.collab/scripts/webhook-notify.sh $ARGUMENTS none clarify started`
 
 **Note:** Specify phase already completed in step 0. Agent pane starts at clarify phase.
 
@@ -179,12 +180,14 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
    ```
 
 5. `.collab/scripts/orchestrator/status-table.sh`. Output: "'{old}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
+6. `.collab/scripts/webhook-notify.sh {ticket_id} {old} {NEXT} running`
 
 #### `_ERROR` or `_FAILED` -- Error
 
 1. Capture screen (`-s 200`). `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=error`
 2. Re-send current step's command (from phase-to-command map).
 3. `.collab/scripts/orchestrator/status-table.sh`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." **END RESPONSE.**
+4. `.collab/scripts/webhook-notify.sh {ticket_id} {step} {step} error`
 
 ---
 
@@ -245,7 +248,8 @@ On `_COMPLETE` signal when `current_step == "blindqa"`:
 1. If grouped: remove from group, delete group file if empty. Write atomically.
 2. `rm .collab/state/pipeline-registry/{ticket_id}.json`
 3. `.collab/scripts/orchestrator/status-table.sh`. "Pipeline complete for {ticket_id}!"
-4. Other agents running -> wait. None remain -> "All pipelines complete."
+4. `.collab/scripts/webhook-notify.sh {ticket_id} {current_step} done complete`
+5. Other agents running -> wait. None remain -> "All pipelines complete."
 
 ---
 
