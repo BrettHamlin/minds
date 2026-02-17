@@ -54,15 +54,28 @@ This is MANDATORY before invoking BlindQA skill. The signal must be sent before 
 
 ### 5. Invoke BlindQA Skill
 
-Call the BlindQA skill's BlindVerify workflow:
+Use the Skill tool to invoke BlindQA:
 
 ```
-Run the BlindQA skill for ${ticket_id}. Execute adversarial verification with zero implementation context. Report PASS or FAIL with evidence.
+Skill: BlindQA
+Args: ${ticket_id}
+
+This will invoke the BlindVerify workflow which will:
+1. Execute adversarial verification with zero implementation context
+2. Report PASS or FAIL with evidence for each check
+3. Return verification results
 ```
 
 **If --interactive flag present:**
 ```
-Run the BlindQA skill for ${ticket_id} --interactive. Execute adversarial verification, present issues one-by-one, apply fixes immediately when selected.
+Skill: BlindQA
+Args: ${ticket_id} --interactive
+
+This will invoke the BlindVerify workflow in interactive mode which will:
+1. Execute adversarial verification
+2. Present issues one-by-one via AskUserQuestion
+3. Apply fixes immediately when selected
+4. Continue until all issues resolved or user stops early
 ```
 
 ### 6. Evaluate Result
@@ -132,17 +145,17 @@ When `--interactive` flag is present:
 
 **Default (batch mode):**
 ```
-relay.blindqa BRE-191
+collab.blindqa BRE-191
 ```
 
 **Interactive mode:**
 ```
-relay.blindqa BRE-191 --interactive
+collab.blindqa BRE-191 --interactive
 ```
 
 ## Design Rationale
 
-This command follows the proven `relay.clarify` pattern:
+This command follows the proven `collab.clarify` pattern:
 - **Deterministic signals** via explicit Bash calls (not hooks)
 - **Orchestration boundary** separated from skill logic
 - **BlindQA skill stays clean** for standalone use
