@@ -71,28 +71,35 @@ Replaced all 32 occurrences of `$SCRIPTS/...` with explicit relative paths `.col
 
 ---
 
-### 3. Analyze Phase - No Orchestrator-Agent Fix Cycle
+### 3. Analyze Phase - No Orchestrator-Agent Fix Cycle ✅ FIXED
 
 **Severity**: Medium-High  
 **Phase**: Analyze  
-**File**: `src/commands/collab.analyze.md`
+**File**: `src/commands/collab.analyze.md`, `src/commands/collab.run.md`  
+**Status**: ✅ **RESOLVED** (2026-02-17, commit f550c73)
 
 **Problem**:
-The analyze phase detects issues in the codebase/design but does not provide a mechanism for the orchestrator to send fixes back to the agent. If critical issues are found, the workflow must manually intervene or proceed anyway.
+The analyze phase detected issues but had no mechanism to enforce fixes. CRITICAL issues would be reported but the workflow would proceed anyway, potentially causing problems in later phases.
 
-**Expected Behavior**:
-Similar to BlindQA, the orchestrator should be able to send high-severity issues back to the agent for fixes before allowing progression to the next phase.
+**Root Cause**:
+The Analyze Review Gate in the orchestrator was minimal ("Must explicitly approve") and didn't enforce resolution of CRITICAL findings.
 
-**Current Behavior**:
-Analyze phase completes and reports issues, but no automated fix loop exists.
+**Solution Implemented**:
+Added orchestrator-driven fix cycle matching the "NO EXCUSES" pattern from implement phase:
 
-**Proposed Fix**:
-Add orchestrator-driven fix cycle to analyze phase:
-- If high-severity issues found, orchestrator sends them to agent
-- Agent addresses issues and re-runs analysis
-- Cycle repeats until high-severity issues are resolved or max attempts reached
+1. **Orchestrator captures and parses analysis report** for severity counts
+2. **If CRITICAL > 0**: Rejects completion and sends issues back to agent
+3. **Agent fixes issues** in spec.md/plan.md/tasks.md
+4. **Re-runs analysis** and re-emits signal
+5. **Cycle repeats** until CRITICAL = 0 or max attempts (3) reached
+6. **HIGH/MEDIUM/LOW findings** are acceptable and don't block progression
 
-**Impact**: High-severity issues found in analyze phase currently go unfixed, potentially causing problems in later phases.
+Updated `collab.analyze.md` to use `verify-and-complete.sh` and document the fix cycle.
+
+**Validation Status**: Needs testing in next workflow run
+
+**Impact (before fix)**: CRITICAL issues would be reported but not enforced, potentially causing downstream failures.  
+**Impact (after fix)**: CRITICAL issues must be resolved before proceeding to implementation.
 
 ---
 
