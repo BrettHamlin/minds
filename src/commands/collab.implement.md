@@ -132,4 +132,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Confirm the implementation follows the technical plan
    - Report final status with summary of completed work
 
+10. **Emit Completion Signal**
+    ```bash
+    bun .collab/handlers/emit-question-signal.ts complete "Implementation phase finished"
+    ```
+    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
+
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/collab.tasks` first to regenerate the task list.
