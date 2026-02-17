@@ -10,6 +10,22 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Orchestrator Signal Contract (ALWAYS ACTIVE)
+
+> **This applies throughout your entire execution — not just at the end.**
+
+Whenever you have **finished all analysis work for this phase**, run:
+
+```bash
+.collab/scripts/verify-and-complete.sh analyze "Analysis phase finished"
+```
+
+This verification script will automatically emit the completion signal to the orchestrator.
+
+This applies in every scenario: normal completion, after fixing CRITICAL issues flagged by the orchestrator, after any retry. Any response that represents "this phase is done" must end with running this script.
+
+---
+
 ## Goal
 
 Identify inconsistencies, duplications, ambiguities, and underspecified items across the three core artifacts (`spec.md`, `plan.md`, `tasks.md`) before implementation. This command MUST run only after `/collab.tasks` has successfully produced a complete `tasks.md`.
@@ -158,12 +174,19 @@ At end of report, output a concise Next Actions block:
 - If only LOW/MEDIUM: User may proceed, but provide improvement suggestions
 - Provide explicit command suggestions: e.g., "Run /collab.specify with refinement", "Run /collab.plan to adjust architecture", "Manually edit tasks.md to add coverage for 'performance-metrics'"
 
-### 8. Emit Completion Signal
+### 8. Verify Completion and Emit Signal
+
+Run the verification script to automatically emit the completion signal:
 
 ```bash
-bun .collab/handlers/emit-question-signal.ts complete "Analysis phase finished"
+.collab/scripts/verify-and-complete.sh analyze "Analysis phase finished"
 ```
-**CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
+
+This script automatically emits the ANALYZE_COMPLETE signal to the orchestrator.
+
+**CRITICAL**: This step is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
+
+**If the orchestrator sends CRITICAL issues back:** Fix the issues in the affected files (spec.md/plan.md/tasks.md), then re-run the verification script to emit the signal again.
 
 ### 9. Offer Remediation
 

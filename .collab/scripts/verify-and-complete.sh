@@ -28,25 +28,38 @@ COLLAB_DIR="$REPO_ROOT/.collab"
 echo "[VerifyComplete] Phase: $PHASE"
 echo "[VerifyComplete] Checking completion conditions..."
 
-# For implement phase, verify all tasks are complete
-if [ "$PHASE" = "implement" ]; then
-  TASKS_FILE="$REPO_ROOT/tasks.md"
-  
-  if [ ! -f "$TASKS_FILE" ]; then
-    echo "[VerifyComplete] ❌ tasks.md not found"
-    exit 1
-  fi
-  
-  # Count incomplete tasks (lines with - [ ])
-  INCOMPLETE=$(grep -c "^- \[ \]" "$TASKS_FILE" || true)
-  
-  if [ "$INCOMPLETE" -gt 0 ]; then
-    echo "[VerifyComplete] ❌ $INCOMPLETE incomplete tasks remaining"
-    exit 1
-  fi
-  
-  echo "[VerifyComplete] ✓ All tasks complete"
-fi
+# Phase-specific verification
+case "$PHASE" in
+  implement)
+    TASKS_FILE="$REPO_ROOT/tasks.md"
+    
+    if [ ! -f "$TASKS_FILE" ]; then
+      echo "[VerifyComplete] ❌ tasks.md not found"
+      exit 1
+    fi
+    
+    # Count incomplete tasks (lines with - [ ])
+    INCOMPLETE=$(grep -c "^- \[ \]" "$TASKS_FILE" || true)
+    
+    if [ "$INCOMPLETE" -gt 0 ]; then
+      echo "[VerifyComplete] ❌ $INCOMPLETE incomplete tasks remaining"
+      exit 1
+    fi
+    
+    echo "[VerifyComplete] ✓ All tasks complete"
+    ;;
+    
+  analyze)
+    # For analyze phase, no specific verification needed
+    # The orchestrator will check for CRITICAL issues
+    echo "[VerifyComplete] ✓ Analysis phase checks complete"
+    ;;
+    
+  *)
+    # For other phases, just verify the phase exists
+    echo "[VerifyComplete] ✓ Phase $PHASE complete (no specific checks)"
+    ;;
+esac
 
 # Emit the completion signal
 echo "[VerifyComplete] Emitting completion signal..."

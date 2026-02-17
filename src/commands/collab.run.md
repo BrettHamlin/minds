@@ -115,7 +115,31 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
    **Plan Review Gate (plan):** Read spec.md, plan.md, data-model.md, research.md. Cross-reference Linear acceptance criteria: requirements coverage, data model completeness, research decisions, phase ordering. If corrections needed: send to agent, **END RESPONSE.** If passes: continue.
 
-   **Analyze Review Gate (analyze):** Capture screen, review findings for blockers. Must explicitly approve or identify re-analysis concerns. If concerns: send message, **END RESPONSE.** If approved: continue.
+   **Analyze Review Gate (analyze):**
+
+   1. Capture screen (`-s 200`). Locate and parse the "Specification Analysis Report" table.
+   2. Count findings by severity: CRITICAL, HIGH, MEDIUM, LOW
+   3. Track analyze_attempt_count (max 3)
+   
+   4. IF CRITICAL findings exist (CRITICAL > 0):
+      a. Extract CRITICAL issue details (ID, category, location, summary, recommendation)
+      b. Send to agent with fix instructions:
+         "⛔ CRITICAL ISSUES FOUND: The following issues must be resolved before proceeding:
+         
+         [List each CRITICAL issue with ID, location, and recommendation]
+         
+         Fix these issues in the affected files (spec.md/plan.md/tasks.md), then re-run the analysis:
+         
+         .collab/scripts/verify-and-complete.sh analyze 'Analysis phase re-run after fixes'"
+      c. Increment analyze_attempt_count
+      d. **END RESPONSE.**
+   
+   5. IF analyze_attempt_count >= 3 AND CRITICAL > 0:
+      Output: "⚠️ Analysis fix cycle exhausted (3 attempts). {CRITICAL} CRITICAL issues remain. Manual review required."
+      Suggest: "[CMD:skip-analyze]" to proceed anyway, or "[CMD:retry-analyze]" to reset counter.
+      **END RESPONSE.**
+   
+   6. IF CRITICAL = 0: Continue to next phase (HIGH/MEDIUM/LOW findings are acceptable)
 
    **Deployment Gate (implement + has group_id):** `.collab/scripts/orchestrator/group-manage.sh query {ticket_id}`. Check ticket type.
    - Backend with frontends: update group gate_state=backend_deploying, deployment_status=in_progress, send deploy command with signal instruction: `bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "Deploy the backend. When done, send: echo '[SIGNAL:{ticket_id}:{nonce}] IMPLEMENT_COMPLETE | deployment finished'" -d 1`. **END RESPONSE.**
