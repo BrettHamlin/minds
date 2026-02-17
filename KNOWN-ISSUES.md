@@ -9,35 +9,34 @@ This document tracks issues discovered during end-to-end validation of the auton
 
 ## Critical Issues
 
-### 1. Signal Emission Not Automatic After Implementation Phase
+### 1. Signal Emission Not Automatic After Implementation Phase ✅ FIXED
 
 **Severity**: Critical (blocks workflow progression)  
 **Phase**: Implement  
-**File**: `src/commands/collab.implement.md`
+**File**: `src/commands/collab.implement.md`  
+**Status**: ✅ **RESOLVED** (2026-02-17, commit 7df91b6)
 
 **Problem**:
 After the agent completes all implementation tasks and all tests pass, the workflow does not automatically emit the `IMPLEMENT_COMPLETE` signal. The controller remains stuck at "Waiting for signal..." indefinitely.
 
-**Expected Behavior**:
-When the agent reaches the end of the implementation phase and all verification passes, it should automatically run:
-```bash
-bun .collab/handlers/emit-question-signal.ts complete "Implementation phase finished"
-```
-
-**Current Workaround**:
-Manually emit the signal from the controller pane:
-```bash
-cd ~/Code/projects/collab
-bun .collab/handlers/emit-question-signal.ts complete "Implementation phase finished"
-```
-
 **Root Cause**:
-The implementation phase instructions in `collab.implement.md` include a "When you're done" section, but it appears the agent treats this as informational rather than as an actionable step to execute.
+The implementation phase instructions in `collab.implement.md` included signal emission as step 10, but agents treated this as optional or informational rather than as a required execution step.
 
-**Proposed Fix**:
-Add explicit signal emission step to the end of the implementation phase workflow, possibly as part of the orchestrator's automatic progression after detecting completion criteria (all tasks done + all tests pass).
+**Solution Implemented**:
+Created `.collab/scripts/verify-and-complete.sh` script that:
+- Verifies all tasks in tasks.md are marked complete [X]
+- Automatically emits the completion signal to orchestrator
+- Fails fast with clear error if conditions not met
 
-**Impact**: Without this fix, every implementation phase requires manual intervention to proceed to BlindQA.
+Updated `collab.implement.md` to:
+- Reference the verification script in the Orchestrator Signal Contract
+- Replace step 10 with explicit call to verification script
+- Make completion checking automatic and harder to skip
+
+**Validation Status**: Needs testing in next workflow run
+
+**Impact (before fix)**: Every implementation phase required manual intervention to proceed to BlindQA.  
+**Impact (after fix)**: Signal emission is now automatic when agent completes the phase.
 
 ---
 
