@@ -42,9 +42,11 @@ echo "✅ Directories created"
 # Copy collab files
 echo "📋 Copying collab files..."
 
-# Copy commands (excluding collab.install.md and collab.install.sh)
+# Copy commands
 echo "  → Commands..."
-find "$TEMP_DIR/src/commands" -name "*.md" ! -name "collab.install.md" -exec cp {} "$REPO_ROOT/.claude/commands/" \;
+find "$TEMP_DIR/src/commands" -name "*.md" -exec cp {} "$REPO_ROOT/.claude/commands/" \;
+cp "$TEMP_DIR/src/commands/collab.install.sh" "$REPO_ROOT/.claude/commands/collab.install.sh"
+chmod +x "$REPO_ROOT/.claude/commands/collab.install.sh"
 COMMAND_COUNT=$(find "$REPO_ROOT/.claude/commands" -name "collab.*.md" 2>/dev/null | wc -l | tr -d ' ')
 
 # Copy skills
@@ -97,18 +99,18 @@ echo "✅ Permissions set"
 # Verify installation
 echo "🔍 Verifying installation..."
 
-# Verify collab.install.md was NOT copied
+# Verify collab.install.md was copied
 if [ -f "$REPO_ROOT/.claude/commands/collab.install.md" ]; then
-  echo "  ⚠️  WARNING: collab.install.md was copied (should be excluded)"
+  echo "  ✓ collab.install.md present (/collab.install command available)"
 else
-  echo "  ✓ collab.install.md correctly excluded"
+  echo "  ⚠️  WARNING: collab.install.md missing"
 fi
 
-# Verify collab.install.sh was NOT copied
+# Verify collab.install.sh was copied
 if [ -f "$REPO_ROOT/.claude/commands/collab.install.sh" ]; then
-  echo "  ⚠️  WARNING: collab.install.sh was copied (should be excluded)"
+  echo "  ✓ collab.install.sh present (update via: bash .claude/commands/collab.install.sh)"
 else
-  echo "  ✓ collab.install.sh correctly excluded"
+  echo "  ⚠️  WARNING: collab.install.sh missing"
 fi
 
 # Verify expected files exist
