@@ -87,7 +87,7 @@ bun .collab/scripts/orchestrator/Tmux.ts send -w {AGENT_PANE} -t "/collab.clarif
 ### 1. Validate (deterministic)
 
 ```bash
-echo "$INPUT" | .collab/scripts/orchestrator/signal-validate.sh
+SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/signal-validate.sh "$INPUT"
 ```
 Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-zero -> log, **END RESPONSE.**
 
@@ -118,29 +118,33 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
    **Analyze Review Gate (analyze):**
 
-   1. Capture screen (`-s 200`). Locate and parse the "Specification Analysis Report" table.
-   2. Count findings by severity: CRITICAL, HIGH, MEDIUM, LOW
-   3. Track analyze_attempt_count (max 3)
-   
-   4. IF CRITICAL findings exist (CRITICAL > 0):
-      a. Extract CRITICAL issue details (ID, category, location, summary, recommendation)
-      b. Send to agent with fix instructions:
-         "⛔ CRITICAL ISSUES FOUND: The following issues must be resolved before proceeding:
-         
-         [List each CRITICAL issue with ID, location, and recommendation]
-         
-         Fix these issues in the affected files (spec.md/plan.md/tasks.md), then re-run the analysis:
-         
-         .collab/scripts/verify-and-complete.sh analyze 'Analysis phase re-run after fixes'"
-      c. Increment analyze_attempt_count
-      d. **END RESPONSE.**
-   
-   5. IF analyze_attempt_count >= 3 AND CRITICAL > 0:
-      Output: "⚠️ Analysis fix cycle exhausted (3 attempts). {CRITICAL} CRITICAL issues remain. Manual review required."
-      Suggest: "[CMD:skip-analyze]" to proceed anyway, or "[CMD:retry-analyze]" to reset counter.
-      **END RESPONSE.**
-   
-   6. IF CRITICAL = 0: Continue to next phase (HIGH/MEDIUM/LOW findings are acceptable)
+   Track `analysis_remediation_done` in memory (boolean, default false).
+
+   **Phase A — Analysis Remediation (runs once, when `analysis_remediation_done` is false):**
+   1. Capture screen (`-s 200`). Read the full analysis report.
+   2. Set `analysis_remediation_done = true`.
+   3. If zero findings across all severities: skip to Phase B immediately.
+   4. If any findings exist (any severity — CRITICAL, HIGH, MEDIUM, LOW):
+      a. Using stored Linear ticket details (acceptance criteria, requirements, user stories, technical constraints from step 4), synthesize specific, ticket-grounded remediation instructions for every finding — not a relay of the report, but exact corrections tied to ticket requirements.
+      b. Send to agent:
+         "The analysis identified [N] findings. Apply ALL of the following remediations to the appropriate files (plan.md, tasks.md, spec.md):
+
+         [One specific correction per finding, grounded in ticket context — no additional commentary]
+
+         When all changes are applied, re-run: `.collab/scripts/verify-and-complete.sh analyze 'Analysis phase finished'`"
+      c. `SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/status-table.sh`. **END RESPONSE.**
+
+   **Phase B — Ticket Alignment Check (runs on every signal when `analysis_remediation_done` is true):**
+   1. Read plan.md, tasks.md, and any artifacts present in the feature directory (data-model.md, research.md, etc.) — excluding spec.md.
+   2. Cross-reference every item against stored Linear ticket details (acceptance criteria, requirements, user stories, technical constraints).
+   3. If fully aligned: continue to advance.
+   4. If specific gaps remain: send ONLY the exact misalignments — nothing more, nothing less:
+      "The following items do not align with the ticket. Update only these:
+
+      [File: exact item → exact correction tied to ticket requirement]
+
+      When done, re-run: `.collab/scripts/verify-and-complete.sh analyze 'Analysis phase finished'`"
+      If the agent is making no progress on the same gaps, escalate to user instead. **END RESPONSE.**
 
    **Deployment Gate (implement + has group_id):** `.collab/scripts/orchestrator/group-manage.sh query {ticket_id}`. Check ticket type.
    - Backend with frontends: update group gate_state=backend_deploying, deployment_status=in_progress, send deploy command with signal instruction: `bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "Deploy the backend. When done, send: echo '[SIGNAL:{ticket_id}:{nonce}] IMPLEMENT_COMPLETE | deployment finished'" -d 1`. **END RESPONSE.**
@@ -152,7 +156,7 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
    1. Capture screen (`-s 100`). Find and read tasks.md.
    2. Count `[X]`/`[x]` vs `[ ]` per `## Phase`.
-   3. Track validation_attempt_count (max 3).
+   3. Track validation_attempt_count.
    4. IF incomplete -> send "continue remaining tasks" to agent, **END RESPONSE.**
 
    5. **NO EXCUSES VERIFICATION** (all tasks checked):
@@ -166,7 +170,7 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
       d. IF ANY FAILURES FOUND:
          Send to agent:
          "⛔ NO EXCUSES: Tests/builds are failing. ALL failures must be fixed before completion, including pre-existing issues you didn't create. 'I didn't touch that code' is NOT an excuse. Fix everything and re-run tests. After ALL tests pass, re-emit the completion signal: `bun .collab/handlers/emit-question-signal.ts complete 'Implementation phase finished'`"
-         Increment validation_attempt_count (max 3)
+         Increment validation_attempt_count. If the agent is making the same errors repeatedly without progress, escalate to user rather than continuing to retry.
          **END RESPONSE.**
 
       e. IF ALL TESTS PASS -> continue to blindqa

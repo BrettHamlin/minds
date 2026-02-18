@@ -32,7 +32,7 @@ Identify inconsistencies, duplications, ambiguities, and underspecified items ac
 
 ## Operating Constraints
 
-**STRICTLY READ-ONLY**: Do **not** modify any files. Output a structured analysis report. Offer an optional remediation plan (user must explicitly approve before any follow-up editing commands would be invoked manually).
+**Read-only during initial analysis**: Do **not** modify any files during the analysis pass. Output a structured analysis report. When the orchestrator sends remediation instructions after the initial signal, apply all directed changes to the appropriate files, then re-run the verification script.
 
 **Constitution Authority**: The project constitution (`.collab/memory/constitution.md`) is **non-negotiable** within this analysis scope. Constitution conflicts are automatically CRITICAL and require adjustment of the spec, plan, or tasks—not dilution, reinterpretation, or silent ignoring of the principle. If a principle itself needs to change, that must occur in a separate, explicit constitution update outside `/collab.analyze`.
 
@@ -186,11 +186,15 @@ This script automatically emits the ANALYZE_COMPLETE signal to the orchestrator.
 
 **CRITICAL**: This step is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 
-**If the orchestrator sends CRITICAL issues back:** Fix the issues in the affected files (spec.md/plan.md/tasks.md), then re-run the verification script to emit the signal again.
+**If the orchestrator sends remediation instructions:** Apply all directed changes to the appropriate files (plan.md, tasks.md, spec.md, or other artifacts as specified). Then re-run the verification script to emit the signal again.
 
-### 9. Offer Remediation
+### 9. Apply Orchestrator Remediations
 
-Ask the user: "Would you like me to suggest concrete remediation edits for the top N issues?" (Do NOT apply them automatically.)
+When the orchestrator sends remediation instructions, apply all directed changes to the appropriate files (plan.md, tasks.md, spec.md, or other artifacts as specified). Do not ask for confirmation — the orchestrator's instructions are authoritative. Once all changes are applied, re-run the verification script:
+
+```bash
+.collab/scripts/verify-and-complete.sh analyze "Analysis phase finished"
+```
 
 ## Operating Principles
 
@@ -203,7 +207,7 @@ Ask the user: "Would you like me to suggest concrete remediation edits for the t
 
 ### Analysis Guidelines
 
-- **NEVER modify files** (this is read-only analysis)
+- **NEVER modify files during the analysis pass** (read-only until orchestrator sends remediation instructions)
 - **NEVER hallucinate missing sections** (if absent, report them accurately)
 - **Prioritize constitution violations** (these are always CRITICAL)
 - **Use examples over exhaustive rules** (cite specific instances, not generic patterns)
