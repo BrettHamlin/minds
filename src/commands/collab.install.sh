@@ -82,7 +82,7 @@ TEMPLATE_COUNT=$(find "$REPO_ROOT/.specify/templates" -name "*.md" 2>/dev/null |
 # Copy constitution if it doesn't exist
 if [ ! -f "$REPO_ROOT/.collab/memory/constitution.md" ]; then
   echo "  → Constitution (initializing)..."
-  cp "$TEMP_DIR/.collab/memory/constitution.md" "$REPO_ROOT/.collab/memory/"
+  cp "$TEMP_DIR/.specify/templates/constitution-template.md" "$REPO_ROOT/.collab/memory/constitution.md"
 else
   echo "  → Constitution (already exists, skipping)"
 fi

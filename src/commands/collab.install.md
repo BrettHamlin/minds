@@ -16,10 +16,10 @@ Install the collab workflow system into the current repository by cloning from G
 
 ## Installation
 
-Execute the install script:
+Execute the following bash commands exactly:
 
 ```bash
-# Clone collab repo to get the install script
+# Clone collab repo
 TEMP_DIR="/tmp/collab-install-$$"
 git clone --depth 1 --branch dev https://github.com/BrettHamlin/collab "$TEMP_DIR"
 
@@ -28,14 +28,12 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Execute the installation steps below
-# (See "Installation Steps" section for detailed commands)
+# Run the install script from the cloned repo
+bash "$TEMP_DIR/src/commands/collab.install.sh"
 
 # Clean up temp directory
 rm -rf "$TEMP_DIR" 2>/dev/null
 ```
-
-See the detailed "Installation Steps" section below for the complete implementation.
 
 ## What Gets Installed
 
@@ -60,4 +58,4 @@ After running `/collab.install`, your repo will have:
 - **Fast**: Installation commands are deterministic, no AI interpretation overhead
 - **Discoverable**: `/collab.install` command shows up in Claude Code command list
 - **Simple**: Step-by-step instructions are clear and easy to follow
-- **Maintainable**: All install logic documented in detailed steps below
+- **Maintainable**: All install logic lives in `src/commands/collab.install.sh`
