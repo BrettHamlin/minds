@@ -94,6 +94,18 @@ else
   echo "  → Constitution (already exists, skipping)"
 fi
 
+# Scaffold attractor config files if they don't exist (idempotent)
+if [ ! -f "$REPO_ROOT/.collab/config/verify-config.json" ]; then
+  mkdir -p "$REPO_ROOT/.collab/config/gates"
+  cp "$TEMP_DIR/src/config/verify-config.json" "$REPO_ROOT/.collab/config/verify-config.json"
+  cp "$TEMP_DIR/src/config/pipeline.json" "$REPO_ROOT/.collab/config/pipeline.json"
+  cp "$TEMP_DIR/src/config/verify-patterns.json" "$REPO_ROOT/.collab/config/verify-patterns.json"
+  cp "$TEMP_DIR/src/config/gates/"*.md "$REPO_ROOT/.collab/config/gates/"
+  echo "  → Config files scaffolded"
+else
+  echo "  → Config files already exist, skipping"
+fi
+
 echo "✅ Files copied"
 
 # Set permissions
@@ -152,6 +164,7 @@ echo "  • Orchestrator:   $ORCHESTRATOR_SCRIPT_COUNT scripts → .collab/scrip
 echo "  • Workflow:       $SCRIPT_COUNT scripts → .specify/scripts/bash/"
 echo "  • Templates:      $TEMPLATE_COUNT files → .specify/templates/"
 echo "  • Memory:         .collab/memory/constitution.md"
+echo "  • Config:          .collab/config/verify-config.json, pipeline.json, verify-patterns.json"
 echo ""
 echo "📍 Installed in: $REPO_ROOT"
 echo ""

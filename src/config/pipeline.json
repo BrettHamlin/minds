@@ -1,0 +1,10 @@
+{
+  "phases": [
+    {"name": "clarify",   "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"]},
+    {"name": "plan",      "signals": ["PLAN_COMPLETE", "PLAN_REVIEW_NEEDED", "PLAN_ERROR"]},
+    {"name": "tasks",     "signals": ["TASKS_COMPLETE", "TASKS_ERROR"]},
+    {"name": "analyze",   "signals": ["ANALYZE_COMPLETE", "ANALYZE_ERROR"]},
+    {"name": "implement", "signals": ["IMPLEMENT_COMPLETE", "IMPLEMENT_WAITING", "IMPLEMENT_ERROR"]},
+    {"name": "blindqa",   "signals": ["BLINDQA_COMPLETE", "BLINDQA_FAILED", "BLINDQA_ERROR"]}
+  ]
+}
