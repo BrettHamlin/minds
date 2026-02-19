@@ -39,12 +39,12 @@ CONFIG_FILE="$REPO_ROOT/.collab/config/pipeline.json"
 
 if [ ! -f "$CONFIG_FILE" ]; then
   echo "Error: pipeline.json not found at $CONFIG_FILE" >&2
-  exit 2
+  exit 3
 fi
 
 PIPELINE=$(jq '.' "$CONFIG_FILE" 2>/dev/null) || {
   echo "Error: pipeline.json is malformed at $CONFIG_FILE" >&2
-  exit 2
+  exit 3
 }
 
 # --- Sentinel: done is always done ---
