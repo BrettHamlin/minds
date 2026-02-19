@@ -9,9 +9,8 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 **Scripts Directory**: `.collab/scripts/orchestrator`
 
 > **IMPORTANT**: All script paths in this document use `.collab/scripts/orchestrator/` as the base. When running commands, use full relative paths from the repo root. For example: `.collab/scripts/orchestrator/status-table.sh` (not `.collab/scripts/orchestrator/status-table.sh`)
-**Phase progression**: clarify -> plan -> tasks -> analyze -> implement -> blindqa -> done
+**Phase progression and commands**: driven by `.collab/config/pipeline.json`
 **Pre-orchestration**: specify (runs in main pane before orchestrator spawns)
-**Phase-to-command map**: clarify=`/collab.clarify`, plan=`/collab.plan`, tasks=`/collab.tasks`, analyze=`/collab.analyze`, implement=`/collab.implement`, blindqa=`/collab.blindqa`
 
 ## Arguments
 
@@ -65,7 +64,8 @@ Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> ou
 ### 5. Launch
 
 ```bash
-bun .collab/scripts/orchestrator/Tmux.ts send -w {AGENT_PANE} -t "/collab.clarify" -d 5
+FIRST_CMD=$(jq -r '.phases[0].command' .collab/config/pipeline.json)
+bun .collab/scripts/orchestrator/Tmux.ts send -w {AGENT_PANE} -t "$FIRST_CMD" -d 5
 ```
 `.collab/scripts/orchestrator/status-table.sh`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
 `.collab/scripts/webhook-notify.sh $ARGUMENTS none clarify started`
@@ -180,7 +180,8 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 4. If `NEXT == "done"`: go to Pipeline Complete. Otherwise:
    ```bash
    .collab/scripts/orchestrator/registry-update.sh {ticket_id} current_step={NEXT} status=running
-   bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "{command from map}" -d 1
+   NEXT_CMD=$(jq -r --arg name "$NEXT" '.phases[] | select(.name == $name) | .command' .collab/config/pipeline.json)
+   bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "$NEXT_CMD" -d 1
    ```
 
 5. `.collab/scripts/orchestrator/status-table.sh`. Output: "'{old}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
@@ -189,7 +190,11 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 #### `_ERROR` or `_FAILED` -- Error
 
 1. Capture screen (`-s 200`). `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=error`
-2. Re-send current step's command (from phase-to-command map).
+2. Re-send current step's command:
+   ```bash
+   RETRY_CMD=$(jq -r --arg name "$current_step" '.phases[] | select(.name == $name) | .command' .collab/config/pipeline.json)
+   bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "$RETRY_CMD" -d 1
+   ```
 3. `.collab/scripts/orchestrator/status-table.sh`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." **END RESPONSE.**
 4. `.collab/scripts/webhook-notify.sh {ticket_id} {step} {step} error`
 
@@ -208,7 +213,10 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
    - 1 existing group -> `.collab/scripts/orchestrator/group-manage.sh add {group_id} {ticket_id}`
    - 2+ groups -> `.collab/scripts/orchestrator/group-manage.sh create {all_ids}` (merge).
    - Detect type (backend/frontend/other). `.collab/scripts/orchestrator/registry-update.sh {ticket_id} group_id={gid}`
-6. `bun .collab/scripts/orchestrator/Tmux.ts send -w {new_pane} -t "/collab.clarify" -d 5`
+6. ```bash
+   FIRST_CMD=$(jq -r '.phases[0].command' .collab/config/pipeline.json)
+   bun .collab/scripts/orchestrator/Tmux.ts send -w {new_pane} -t "$FIRST_CMD" -d 5
+   ```
 7. `.collab/scripts/orchestrator/status-table.sh`. "Added {ticket_id}." **END RESPONSE.**
 
 ### [CMD:status]

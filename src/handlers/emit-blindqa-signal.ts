@@ -44,7 +44,7 @@ function getResponseState(event: string): string {
   switch (event) {
     case "start":
       // There's no "starting" state in mapResponseState, use awaitingInput as placeholder
-      // This will map to BLINDQA_WAITING based on current_step=blindqa
+      // awaitingInput maps to _QUESTION suffix, emitting BLINDQA_QUESTION (not BLINDQA_WAITING; that signal exists in pipeline.json for future use)
       return "awaitingInput";
     case "pass":
       return "completed";
