@@ -12,21 +12,25 @@ import (
 
 // ExecutionEngine coordinates handler registration, dispatch, and pass-through routing.
 type ExecutionEngine struct {
-	handlers    map[string]Handler
-	passthrough map[string]bool
-	cmd         runner.Commander
-	repoRoot    string
-	registryDir string
+	handlers       map[string]Handler
+	passthrough    map[string]bool
+	noops          map[string]bool
+	fixedTransition map[string]string // signalType -> target phase
+	cmd            runner.Commander
+	repoRoot       string
+	registryDir    string
 }
 
 // NewExecutionEngine creates a new ExecutionEngine.
 func NewExecutionEngine(cmd runner.Commander, repoRoot, registryDir string) *ExecutionEngine {
 	return &ExecutionEngine{
-		handlers:    make(map[string]Handler),
-		passthrough: make(map[string]bool),
-		cmd:         cmd,
-		repoRoot:    repoRoot,
-		registryDir: registryDir,
+		handlers:        make(map[string]Handler),
+		passthrough:     make(map[string]bool),
+		noops:           make(map[string]bool),
+		fixedTransition: make(map[string]string),
+		cmd:             cmd,
+		repoRoot:        repoRoot,
+		registryDir:     registryDir,
 	}
 }
 
@@ -42,8 +46,37 @@ func (e *ExecutionEngine) RegisterPassthrough(signalTypes ...string) {
 	}
 }
 
+// RegisterNoOp marks signal types as acknowledged-but-ignored (no phase change).
+// Used for _WAITING, _QUESTION, and _ERROR signals the orchestrator handles directly.
+func (e *ExecutionEngine) RegisterNoOp(signalTypes ...string) {
+	for _, st := range signalTypes {
+		e.noops[st] = true
+	}
+}
+
+// RegisterFixedTransition maps a signal type to a specific target phase,
+// bypassing phase-advance.sh. Used for backward transitions like BLINDQA_FAILED → implement.
+func (e *ExecutionEngine) RegisterFixedTransition(signalType, targetPhase string) {
+	e.fixedTransition[signalType] = targetPhase
+}
+
 // Process routes a validated signal to its handler or pass-through path.
 func (e *ExecutionEngine) Process(sig CollabSignal, reg *registry.RegistryData) error {
+	// No-op: signal is valid but requires no phase change (orchestrator handles it).
+	if e.noops[sig.SignalType] {
+		return nil
+	}
+
+	// Fixed transition: jump directly to a named phase (used for backward transitions).
+	if targetPhase, ok := e.fixedTransition[sig.SignalType]; ok {
+		registryUpdatePath := filepath.Join(e.repoRoot, ".collab", "scripts", "orchestrator", "registry-update.sh")
+		if _, err := e.cmd.Run("bash", registryUpdatePath, sig.TicketID, "current_step="+targetPhase, "status=running"); err != nil {
+			fmt.Fprintf(os.Stderr, "[attractor] registry-update.sh fixed-transition failed for %s: %v\n", sig.TicketID, err)
+			return fmt.Errorf("fixed-transition registry-update for %s: %w", sig.TicketID, err)
+		}
+		return nil
+	}
+
 	if e.passthrough[sig.SignalType] {
 		advancePath := filepath.Join(e.repoRoot, ".collab", "scripts", "orchestrator", "phase-advance.sh")
 		nextPhaseBytes, err := e.cmd.Run("bash", advancePath, reg.CurrentStep)

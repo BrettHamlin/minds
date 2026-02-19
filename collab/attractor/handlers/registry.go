@@ -25,20 +25,29 @@ func RegisterAll(eng *engine.ExecutionEngine, cmd runner.Commander, repoRoot, re
 
 	_ = deploy // deploy is used inside GroupManagerHandler
 
-	// Pass-through signals: call phase-advance.sh directly.
+	// True pass-throughs: advance to the next phase in sequence.
 	eng.RegisterPassthrough(
-		"PLAN_ERROR",
-		"ANALYZE_ERROR",
 		"CLARIFY_COMPLETE",
+		"TASKS_COMPLETE",
+		"BLINDQA_COMPLETE",
+	)
+
+	// Fixed backward transition: BLINDQA_FAILED sends the ticket back to implement.
+	eng.RegisterFixedTransition("BLINDQA_FAILED", "implement")
+
+	// No-ops: signal is valid and acknowledged, but phase does not change.
+	// The orchestrator (Claude Code) handles these directly (retries, answers questions, etc.).
+	eng.RegisterNoOp(
 		"CLARIFY_QUESTION",
 		"CLARIFY_ERROR",
-		"TASKS_COMPLETE",
+		"PLAN_ERROR",
 		"TASKS_ERROR",
+		"ANALYZE_ERROR",
 		"IMPLEMENT_WAITING",
 		"IMPLEMENT_ERROR",
+		"BLINDQA_QUESTION",
+		"BLINDQA_WAITING",
 		"BLINDQA_ERROR",
-		"BLINDQA_COMPLETE",
-		"BLINDQA_FAILED",
 	)
 }
 
