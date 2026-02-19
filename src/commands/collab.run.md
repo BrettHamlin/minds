@@ -154,7 +154,7 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
    **Implementation Completion Gate (implement):**
 
-   1. Capture screen (`-s 100`). Find and read tasks.md.
+   1. Capture screen (`-s 100`). Read tasks.md: Glob for `{worktree_path}/specs/*/tasks.md` (tasks live in the feature spec directory, not the repo root).
    2. Count `[X]`/`[x]` vs `[ ]` per `## Phase`.
    3. Track validation_attempt_count.
    4. IF incomplete -> send "continue remaining tasks" to agent, **END RESPONSE.**

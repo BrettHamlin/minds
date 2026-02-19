@@ -59,13 +59,24 @@ Given that feature description, do this:
       - Find the highest number N
       - Use N+1 for the new branch number
 
+   c.5. **Source Repo Detection** (only when $ARGUMENTS is a ticket ID):
+      - Get the current repo name: run `basename $(git rev-parse --show-toplevel)`
+      - Compare against the ticket's team key or project name from the Linear response
+      - If they differ (e.g. ticket is in "paper-clips-backend" but current repo is "collab"):
+        - Use **AskUserQuestion** to ask: "This ticket belongs to [team/project]. Where is that repo on disk?"
+        - Suggest a likely path: e.g. `~/Code/projects/[project-name-lowercase]`
+        - If the user provides a path, store it as `SOURCE_REPO`
+      - If they match, skip this step (no `--source-repo` needed)
+
    d. Run the script `.specify/scripts/bash/create-new-feature.sh --json --worktree "$ARGUMENTS"` with the calculated number and short-name:
       - Pass `--number N+1` and `--short-name "your-short-name"` along with the feature description
       - **CRITICAL**: If the input was a ticket ID, prepend it to the feature description (e.g., "BRE-202 Build a tool that...") so the script's regex can extract it
       - **--worktree is mandatory** for orchestrator workflows to keep the orchestrator pane on the main branch
       - Optionally specify `--worktree-path <dir>` to override the default worktree location (default: `../worktrees/`)
+      - If `SOURCE_REPO` was set in step c.5, add `--source-repo "$SOURCE_REPO"` to the command
       - Example: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 5 --short-name "user-auth" "Add user authentication"`
       - Example with ticket: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 5 --short-name "user-auth" "BRE-202 Add user authentication"`
+      - Example with source repo: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 3 --short-name "add-clips" --source-repo ~/Code/projects/paper-clips-backend "BRE-158 Add clips endpoint"`
 
    **IMPORTANT**:
    - Check all three sources (remote branches, local branches, specs directories) to find the highest number
