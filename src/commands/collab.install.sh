@@ -94,11 +94,15 @@ else
   echo "  → Constitution (already exists, skipping)"
 fi
 
-# Scaffold attractor config files if they don't exist (idempotent)
+# pipeline.json: always update (shared collab infrastructure, safe to overwrite)
+mkdir -p "$REPO_ROOT/.collab/config"
+cp "$TEMP_DIR/src/config/pipeline.json" "$REPO_ROOT/.collab/config/pipeline.json"
+echo "  → pipeline.json updated"
+
+# Other config files: skip if present (project-specific, user-customizable)
 if [ ! -f "$REPO_ROOT/.collab/config/verify-config.json" ]; then
   mkdir -p "$REPO_ROOT/.collab/config/gates"
   cp "$TEMP_DIR/src/config/verify-config.json" "$REPO_ROOT/.collab/config/verify-config.json"
-  cp "$TEMP_DIR/src/config/pipeline.json" "$REPO_ROOT/.collab/config/pipeline.json"
   cp "$TEMP_DIR/src/config/verify-patterns.json" "$REPO_ROOT/.collab/config/verify-patterns.json"
   cp "$TEMP_DIR/src/config/gates/"*.md "$REPO_ROOT/.collab/config/gates/"
   echo "  → Config files scaffolded"

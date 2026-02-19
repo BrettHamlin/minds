@@ -50,7 +50,7 @@ function getTicketId(): string {
       const ticketId = firstFile.match(/([A-Z]+-\d+)\.json$/)?.[1];
       if (ticketId) return ticketId;
     }
-  } catch {}
+  } catch { /* intentionally empty */ }
 
   return "UNKNOWN";
 }

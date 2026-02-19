@@ -1,10 +1,11 @@
 {
   "phases": [
-    {"name": "clarify",   "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"]},
-    {"name": "plan",      "signals": ["PLAN_COMPLETE", "PLAN_REVIEW_NEEDED", "PLAN_ERROR"]},
-    {"name": "tasks",     "signals": ["TASKS_COMPLETE", "TASKS_ERROR"]},
-    {"name": "analyze",   "signals": ["ANALYZE_COMPLETE", "ANALYZE_ERROR"]},
-    {"name": "implement", "signals": ["IMPLEMENT_COMPLETE", "IMPLEMENT_WAITING", "IMPLEMENT_ERROR"]},
-    {"name": "blindqa",   "signals": ["BLINDQA_COMPLETE", "BLINDQA_FAILED", "BLINDQA_ERROR"]}
+    {"name": "clarify",   "command": "/collab.clarify",   "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"]},
+    {"name": "plan",      "command": "/collab.plan",      "signals": ["PLAN_COMPLETE", "PLAN_ERROR"]},
+    {"name": "tasks",     "command": "/collab.tasks",     "signals": ["TASKS_COMPLETE", "TASKS_ERROR"]},
+    {"name": "analyze",   "command": "/collab.analyze",   "signals": ["ANALYZE_COMPLETE", "ANALYZE_ERROR"]},
+    {"name": "implement", "command": "/collab.implement", "signals": ["IMPLEMENT_COMPLETE", "IMPLEMENT_WAITING", "IMPLEMENT_ERROR"]},
+    {"name": "blindqa",   "command": "/collab.blindqa",   "signals": ["BLINDQA_COMPLETE", "BLINDQA_FAILED", "BLINDQA_ERROR", "BLINDQA_QUESTION", "BLINDQA_WAITING"]},
+    {"name": "done",      "command": "",                  "signals": []}
   ]
 }

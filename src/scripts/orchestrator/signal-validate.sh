@@ -26,19 +26,23 @@ set -euo pipefail
 # Detect repo root and use local state directory
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 REGISTRY_DIR="$REPO_ROOT/.collab/state/pipeline-registry"
+CONFIG_FILE="$REPO_ROOT/.collab/config/pipeline.json"
 
 # --- Phase validation function ---
-# Returns valid signal types for a given phase (bash 3.2 compatible)
+# Returns valid signal types for a given phase, read from pipeline.json
 valid_signals_for_phase() {
-  case "$1" in
-    clarify)    echo "CLARIFY_COMPLETE CLARIFY_QUESTION CLARIFY_ERROR" ;;
-    plan)       echo "PLAN_COMPLETE PLAN_REVIEW_NEEDED PLAN_ERROR" ;;
-    tasks)      echo "TASKS_COMPLETE TASKS_ERROR" ;;
-    analyze)    echo "ANALYZE_COMPLETE ANALYZE_ERROR" ;;
-    implement)  echo "IMPLEMENT_COMPLETE IMPLEMENT_WAITING IMPLEMENT_ERROR" ;;
-    blindqa)    echo "BLINDQA_COMPLETE BLINDQA_FAILED BLINDQA_ERROR BLINDQA_QUESTION BLINDQA_WAITING" ;;
-    *)          echo "" ;;
-  esac
+  local phase="$1"
+  if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: pipeline.json not found at $CONFIG_FILE" >&2
+    exit 2
+  fi
+  if ! jq '.' "$CONFIG_FILE" > /dev/null 2>&1; then
+    echo "Error: pipeline.json is malformed at $CONFIG_FILE" >&2
+    exit 2
+  fi
+  jq -r --arg name "$phase" \
+    '.phases[] | select(.name == $name) | .signals | join(" ")' \
+    "$CONFIG_FILE" 2>/dev/null || echo ""
 }
 
 # --- Read signal from stdin ---
