@@ -36,7 +36,7 @@ valid_signals_for_phase() {
     tasks)      echo "TASKS_COMPLETE TASKS_ERROR" ;;
     analyze)    echo "ANALYZE_COMPLETE ANALYZE_ERROR" ;;
     implement)  echo "IMPLEMENT_COMPLETE IMPLEMENT_WAITING IMPLEMENT_ERROR" ;;
-    blindqa)    echo "BLINDQA_COMPLETE BLINDQA_FAILED BLINDQA_ERROR" ;;
+    blindqa)    echo "BLINDQA_COMPLETE BLINDQA_FAILED BLINDQA_ERROR BLINDQA_QUESTION BLINDQA_WAITING" ;;
     *)          echo "" ;;
   esac
 }
