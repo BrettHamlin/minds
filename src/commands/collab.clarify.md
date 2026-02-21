@@ -59,7 +59,18 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
 5. **Ask Questions Using AskUserQuestion Tool**
 
-   For EACH question, call AskUserQuestion:
+   For EACH question:
+
+   a) **FIRST: Emit CLARIFY_QUESTION signal to orchestrator**
+
+   Run this Bash command BEFORE calling AskUserQuestion:
+   ```bash
+   bun .collab/handlers/emit-question-signal.ts question "<question text>"
+   ```
+
+   This is MANDATORY in orchestrated mode. The orchestrator must receive the signal so it knows to capture the screen and navigate the UI. Without this signal, the orchestrator waits indefinitely.
+
+   b) **THEN: Call AskUserQuestion tool**
    ```
    {
      questions: [{
@@ -90,8 +101,6 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
    **IMPORTANT**: Always include "Custom answer" option so user can provide their own response if predefined options don't fit.
 
-   **NOTE**: The PreToolUse hook automatically emits CLARIFY_QUESTION signals when AskUserQuestion is called. No manual signal emission needed.
-
 6. **Integrate Each Answer**
 
    After EACH answer:
@@ -121,14 +130,13 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
 ## Signal Flow
 
-1. Agent calls AskUserQuestion
-2. PreToolUse hook fires → emits `[SIGNAL:BRE-X:nonce] CLARIFY_QUESTION | <question>`
-3. Orchestrator receives signal
-4. Orchestrator captures screen, reads options
-5. Orchestrator navigates tmux to select answer (based on "Recommended" option)
-6. Agent receives answer, integrates into spec
-7. Repeat for remaining questions
-8. After all questions: Agent explicitly calls `emit-question-signal.ts complete` to emit `CLARIFY_COMPLETE`
+1. Agent emits `CLARIFY_QUESTION` via `bun .collab/handlers/emit-question-signal.ts question "..."`
+2. Orchestrator receives signal → captures agent screen, reads options
+3. Agent calls AskUserQuestion
+4. Orchestrator navigates tmux to select answer (based on "Recommended" option)
+5. Agent receives answer, integrates into spec
+6. Repeat for remaining questions
+7. After all questions: Agent explicitly calls `emit-question-signal.ts complete` to emit `CLARIFY_COMPLETE`
 
 ## Key Differences from Standard Clarify
 
