@@ -8,8 +8,8 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 **Scripts Directory**: `.collab/scripts/orchestrator`
 
-> **IMPORTANT**: All script paths in this document use `.collab/scripts/orchestrator/` as the base. When running commands, use full relative paths from the repo root. For example: `.collab/scripts/orchestrator/status-table.sh` (not `.collab/scripts/orchestrator/status-table.sh`)
-**Phase progression and commands**: driven by `.collab/config/pipeline.json`
+> **IMPORTANT**: All script paths in this document use `.collab/scripts/orchestrator/` as the base. When running commands, use full relative paths from the repo root. For example: `.collab/scripts/orchestrator/status-table.sh`
+**Phase progression and commands**: driven entirely by `.collab/config/pipeline.json` (v3)
 **Pre-orchestration**: specify (runs in main pane before orchestrator spawns)
 
 ## Arguments
@@ -57,20 +57,54 @@ No argument -> "Usage: /collab.run <ticket-id>" and stop.
 ```
 Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> output error, stop.
 
+> **Note**: `orchestrator-init.sh` now validates `pipeline.json` schema at startup and runs the coordination cycle check. If either fails, it exits before spawning panes.
+
 ### 4. Fetch Linear ticket
 
-`get_issue` MCP with `includeRelations: true`. Store for later use.
+`get_issue` MCP with `includeRelations: true`. Store for later use (ticket title, acceptance criteria, description needed for gate evaluation).
 
 ### 5. Launch
 
-```bash
-FIRST_CMD=$(jq -r '.phases[0].command' .collab/config/pipeline.json)
-bun .collab/scripts/orchestrator/Tmux.ts send -w {AGENT_PANE} -t "$FIRST_CMD" -d 5
-```
-`.collab/scripts/orchestrator/status-table.sh`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
-`.collab/scripts/webhook-notify.sh $ARGUMENTS none clarify started`
+Read the first phase from pipeline.json and dispatch its actions:
 
-**Note:** Specify phase already completed in step 0. Agent pane starts at clarify phase.
+```bash
+FIRST_PHASE_ID=$(jq -r '.phases[0].id' .collab/config/pipeline.json)
+```
+
+Check if this ticket has a `coordination.json` with unsatisfied `wait_for` dependencies:
+
+```bash
+COORD_FILE="specs/$ARGUMENTS/coordination.json"
+```
+
+If `coordination.json` exists: For each `wait_for` dependency, check if the dependency ticket's registry has the required phase in `phase_history` with a `_COMPLETE` signal. If any dependency is NOT yet satisfied:
+```bash
+SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/registry-update.sh $ARGUMENTS \
+  status=held held_at="$FIRST_PHASE_ID" \
+  waiting_for="{dep_id}:{dep_phase}"
+```
+`.collab/scripts/orchestrator/status-table.sh`. Output: **"$ARGUMENTS held at {FIRST_PHASE_ID} — waiting for {dep_id}:{dep_phase}."** **END RESPONSE.**
+
+If no coordination hold applies, dispatch first phase actions (see **Action Dispatch** below):
+- Build token context: `{"TICKET_ID": "$ARGUMENTS", "TICKET_TITLE": "{title}", "PHASE": "{FIRST_PHASE_ID}", "INCOMING_SIGNAL": "", "INCOMING_DETAIL": "", "BRANCH": "$(git rev-parse --abbrev-ref HEAD)", "WORKTREE": "{worktree_path}"}`
+- Execute each action in the first phase using the **Action Dispatch** rules
+
+`.collab/scripts/orchestrator/status-table.sh`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
+`.collab/scripts/webhook-notify.sh $ARGUMENTS none $FIRST_PHASE_ID started`
+
+---
+
+## Action Dispatch
+
+When dispatching a phase's actions to an agent, use this procedure for the phase object from pipeline.json:
+
+1. If phase has `command` shorthand: treat as `[{"command": "{phase.command}"}]`
+2. If phase has `actions` array: use the array directly
+3. Build token context JSON with all seven Tier 1 built-ins
+4. For each action in order:
+   - **`display`**: Resolve `{{TOKEN}}` via `bun .collab/handlers/resolve-tokens.ts "{action.display}" '{context_json}'`; print resolved text to orchestrator window. Do NOT send to agent.
+   - **`prompt`**: Resolve `{{TOKEN}}`; `bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "{resolved}" -d 1`. Do NOT wait for signal.
+   - **`command`**: Resolve `{{TOKEN}}`; `bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "{resolved}" -d 1`. This is the signal-wait step — orchestrator waits for next signal.
 
 ---
 
@@ -110,91 +144,134 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
 #### `_COMPLETE` -- Step finished
 
-1. `current_step` from signal-validate output.
+*AI LOGIC: Generic config-driven interpreter. Requires judgment for gate evaluation and orchestrator_context framing.*
 
-2. **AI Gates** (judgment required, cannot be scripted):
+##### a. Append to phase_history (deterministic)
 
-   **Plan Review Gate (plan):** Read spec.md, plan.md, data-model.md, research.md. Cross-reference Linear acceptance criteria: requirements coverage, data model completeness, research decisions, phase ordering. If corrections needed: send to agent, **END RESPONSE.** If passes: continue.
+```bash
+SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/registry-update.sh {ticket_id} \
+  --append-phase-history "{\"phase\":\"{current_step}\",\"signal\":\"{signal_type}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+```
 
-   **Analyze Review Gate (analyze):**
+##### b. Load orchestrator_context (AI logic)
 
-   Track `analysis_remediation_done` in memory (boolean, default false).
+Read `phases[current_step].orchestrator_context` from `.collab/config/pipeline.json`:
+- If the value ends in `.md`: attempt to read the file. If missing, log "Warning: orchestrator_context file not found: {path}" and continue without context.
+- If inline string: use directly as context.
+- **Apply this context as framing for your entire signal-handling response.** Every judgment you make about this signal — gate evaluation, evidence assessment, routing decisions — flows through this context.
 
-   **Phase A — Analysis Remediation (runs once, when `analysis_remediation_done` is false):**
-   1. Capture screen (`-s 200`). Read the full analysis report.
-   2. Set `analysis_remediation_done = true`.
-   3. If zero findings across all severities: skip to Phase B immediately.
-   4. If any findings exist (any severity — CRITICAL, HIGH, MEDIUM, LOW):
-      a. Using stored Linear ticket details (acceptance criteria, requirements, user stories, technical constraints from step 4), synthesize specific, ticket-grounded remediation instructions for every finding — not a relay of the report, but exact corrections tied to ticket requirements.
-      b. Send to agent:
-         "The analysis identified [N] findings. Apply ALL of the following remediations to the appropriate files (plan.md, tasks.md, spec.md):
+##### c. Transition lookup (AI logic)
 
-         [One specific correction per finding, grounded in ticket context — no additional commentary]
+Load `.collab/config/pipeline.json`. Find all entries in `transitions` where `from == current_step AND signal == signal_type`.
 
-         When all changes are applied, re-run: `.collab/scripts/verify-and-complete.sh analyze 'Analysis phase finished'`"
-      c. `SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/status-table.sh`. **END RESPONSE.**
+**Priority rules (FR-014):**
+1. Evaluate rows with an `if` field first, in array order — first match wins.
+2. If no conditional row matches: use the first plain row (no `if` field).
+3. If no match at all: log "No transition found for {current_step} → {signal_type}", **END RESPONSE.**
 
-   **Phase B — Ticket Alignment Check (runs on every signal when `analysis_remediation_done` is true):**
-   1. Read plan.md, tasks.md, and any artifacts present in the feature directory (data-model.md, research.md, etc.) — excluding spec.md.
-   2. Cross-reference every item against stored Linear ticket details (acceptance criteria, requirements, user stories, technical constraints).
-   3. If fully aligned: continue to advance.
-   4. If specific gaps remain: send ONLY the exact misalignments — nothing more, nothing less:
-      "The following items do not align with the ticket. Update only these:
+##### d. Gate evaluation (if matched transition has `gate`)
 
-      [File: exact item → exact correction tied to ticket requirement]
+*AI LOGIC: Requires full judgment to evaluate gate prompt.*
 
-      When done, re-run: `.collab/scripts/verify-and-complete.sh analyze 'Analysis phase finished'`"
-      If the agent is making no progress on the same gaps, escalate to user instead. **END RESPONSE.**
+1. Load `gates[gate_name]` config from `.collab/config/pipeline.json`.
+2. Read the gate prompt file at `gates[gate_name].prompt`. Resolve `{{TOKEN}}` expressions using **Tier 1 only** (call `bun .collab/handlers/resolve-tokens.ts` for each token in the context variables declared in the prompt's YAML front matter).
+3. Evaluate the gate prompt using: Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, etc. as referenced in the YAML front matter).
+4. Your gate evaluation response must contain exactly one keyword from `gates[gate_name].responses`. Match it.
+5. **Feedback**: If the matched response has `"feedback": true`, relay your full gate evaluation analysis as a message to the agent before routing (e.g., "Your plan needs these specific corrections: ..."). Use `bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "..." -d 1`.
+6. **Route by matched response**:
+   - If response has `to`: proceed to step **e. Goal Gate Check**.
+   - If response has no `to` (retry current phase):
+     a. Increment retry count:
+        ```bash
+        CURRENT_RETRY=$(jq -r '.retry_count // 0' .collab/state/pipeline-registry/{ticket_id}.json)
+        NEXT_RETRY=$((CURRENT_RETRY + 1))
+        SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/registry-update.sh {ticket_id} retry_count=$NEXT_RETRY
+        ```
+     b. Check `on_exhaust`: if `retry_count >= max_retries` in the matched response AND gate has `on_exhaust`:
+        - `"skip"`: use `to` from the first response entry that has a `to` field, proceed to Goal Gate Check.
+        - `"abort"`: output "Pipeline aborted: gate '{gate_name}' exhausted after {retry_count} retries in phase '{current_step}'." **END RESPONSE.**
+     c. Re-dispatch current phase actions (same as advance but for current_step). Status table. **END RESPONSE.**
 
-   **Deployment Gate (implement + has group_id):** `.collab/scripts/orchestrator/group-manage.sh query {ticket_id}`. Check ticket type.
-   - Backend with frontends: update group gate_state=backend_deploying, deployment_status=in_progress, send deploy command with signal instruction: `bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "Deploy the backend. When done, send: echo '[SIGNAL:{ticket_id}:{nonce}] IMPLEMENT_COMPLETE | deployment finished'" -d 1`. **END RESPONSE.**
-   - Frontend + backend deploying: `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=held`. **END RESPONSE.**
-   - Frontend + backend deployed/skipped: continue.
-   - Frontend + backend failed: notify user, suggest `[CMD:retry-deploy]`/`[CMD:skip-deploy]`. **END RESPONSE.**
+##### e. Goal Gate Check (before terminal advance)
 
-   **Implementation Completion Gate (implement):**
+*AI LOGIC: Read phase_history from registry to verify goal gate requirements.*
 
-   1. Capture screen (`-s 100`). Read tasks.md: Glob for `{worktree_path}/specs/*/tasks.md` (tasks live in the feature spec directory, not the repo root).
-   2. Count `[X]`/`[x]` vs `[ ]` per `## Phase`.
-   3. Track validation_attempt_count.
-   4. IF incomplete -> send "continue remaining tasks" to agent, **END RESPONSE.**
+When the target `to` phase exists in pipeline.json:
 
-   5. **NO EXCUSES VERIFICATION** (all tasks checked):
-      a. Send to agent: "Run full test suite now and show output"
-      b. Wait 10 seconds, capture screen (`-s 200`)
-      c. Scan output for FAILURE INDICATORS:
-         - "FAILED", "ERROR", "✗", "❌", "test failed"
-         - "n failing", "build failed", stack traces
-         - Type errors, linting errors, compilation errors
-
-      d. IF ANY FAILURES FOUND:
-         Send to agent:
-         "⛔ NO EXCUSES: Tests/builds are failing. ALL failures must be fixed before completion, including pre-existing issues you didn't create. 'I didn't touch that code' is NOT an excuse. Fix everything and re-run tests. After ALL tests pass, re-emit the completion signal: `bun .collab/handlers/emit-question-signal.ts complete 'Implementation phase finished'`"
-         Increment validation_attempt_count. If the agent is making the same errors repeatedly without progress, escalate to user rather than continuing to retry.
-         **END RESPONSE.**
-
-      e. IF ALL TESTS PASS -> continue to blindqa
-
-3. **Advance (deterministic):** `NEXT=$(.collab/scripts/orchestrator/phase-advance.sh {current_step})`
-
-4. If `NEXT == "done"`: go to Pipeline Complete. Otherwise:
+1. Read `phase_history` from the registry:
    ```bash
-   .collab/scripts/orchestrator/registry-update.sh {ticket_id} current_step={NEXT} status=running
-   NEXT_CMD=$(jq -r --arg name "$NEXT" '.phases[] | select(.name == $name) | .command' .collab/config/pipeline.json)
-   bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "$NEXT_CMD" -d 1
+   jq '.phase_history // []' .collab/state/pipeline-registry/{ticket_id}.json
+   ```
+2. Scan all phases in `.collab/config/pipeline.json` for `goal_gate` field.
+3. For each phase with `goal_gate`:
+   - **`"always"`**: phase_history MUST contain an entry where `phase == {phase_id}` AND `signal` ends in `_COMPLETE`. If missing, this phase blocks terminal advance.
+   - **`"if_triggered"`**: ONLY check if phase_history contains ANY entry with `phase == {phase_id}`. If triggered, require a `_COMPLETE` entry.
+4. If any check fails: redirect to the **first failing phase** (by phases-array order in pipeline.json):
+   ```bash
+   SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/registry-update.sh {ticket_id} current_step={FAILING_PHASE} status=running
+   ```
+   Re-dispatch that phase's actions (see **Action Dispatch**). Status table. Output: "Goal gate check: redirecting to '{FAILING_PHASE}' before terminal." **END RESPONSE.**
+5. If all pass: proceed to step **f. Advance**.
+
+##### f. Advance (deterministic + AI action dispatch)
+
+`NEXT` is the resolved `to` from the matched transition (or gate response).
+
+1. If prior phase had `orchestrator_context`, output note: "orchestrator_context deactivated for '{current_step}'."
+
+2. Update registry:
+   ```bash
+   SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/registry-update.sh {ticket_id} current_step={NEXT} status=running
    ```
 
-5. `.collab/scripts/orchestrator/status-table.sh`. Output: "'{old}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
-6. `.collab/scripts/webhook-notify.sh {ticket_id} {old} {NEXT} running`
+3. Check if NEXT phase has `"terminal": true` in pipeline.json:
+   ```bash
+   IS_TERMINAL=$(jq -r --arg id "{NEXT}" '.phases[] | select(.id == $id) | .terminal // false' .collab/config/pipeline.json)
+   ```
+   If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
+
+4. Build token context for NEXT phase:
+   ```json
+   {
+     "TICKET_ID": "{ticket_id}",
+     "TICKET_TITLE": "{title from Linear}",
+     "PHASE": "{NEXT}",
+     "INCOMING_SIGNAL": "{signal_type}",
+     "INCOMING_DETAIL": "{detail}",
+     "BRANCH": "{current git branch}",
+     "WORKTREE": "{worktree path}"
+   }
+   ```
+
+5. Dispatch NEXT phase actions using **Action Dispatch** rules above.
+
+6. **Coordination: held agent scan/release** — After advancing, scan all registries for `status == "held"`:
+   ```bash
+   for reg_file in .collab/state/pipeline-registry/*.json; do
+     # Check if held
+     # For each wait_for dep, check phase_history
+     # If all satisfied: release
+   done
+   ```
+   For each held agent, check if all `wait_for` entries from `specs/{held_ticket}/coordination.json` appear in their respective dependency ticket's `phase_history` as `*_COMPLETE`. If all satisfied:
+   ```bash
+   SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/registry-update.sh {held_id} status=running held_at= waiting_for=
+   ```
+   Dispatch that held agent's pending phase actions (using **Action Dispatch** with `held_at` phase).
+
+7. `.collab/scripts/orchestrator/status-table.sh`. Output: "'{current_step}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
+8. `.collab/scripts/webhook-notify.sh {ticket_id} {current_step} {NEXT} running`
 
 #### `_ERROR` or `_FAILED` -- Error
 
 1. Capture screen (`-s 200`). `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=error`
-2. Re-send current step's command:
+2. Re-dispatch current step's actions:
    ```bash
-   RETRY_CMD=$(jq -r --arg name "$current_step" '.phases[] | select(.name == $name) | .command' .collab/config/pipeline.json)
-   bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "$RETRY_CMD" -d 1
+   jq -r --arg id "$current_step" \
+     '.phases[] | select(.id == $id) | if .command then .command else (.actions[] | select(.command) | .command) end' \
+     .collab/config/pipeline.json
    ```
+   Use **Action Dispatch** to re-send.
 3. `.collab/scripts/orchestrator/status-table.sh`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." **END RESPONSE.**
 4. `.collab/scripts/webhook-notify.sh {ticket_id} {step} {step} error`
 
@@ -208,16 +285,8 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 2. Resolve worktree (same logic as orchestrator-init.sh). Split vertically off last agent pane: `bun .collab/scripts/orchestrator/Tmux.ts split -w {last_agent_pane} -c "{spawn_cmd}"`. Generate nonce, create registry atomically, assign next color (1-5), label pane.
 3. Rebalance: `tmux set-window-option main-pane-width {30%}; tmux select-layout main-vertical`
 4. Fetch Linear ticket with `includeRelations: true`.
-5. *AI LOGIC: Detect relationships.* Extract `relatedTo`. Check if related tickets have registries.
-   - No related orchestrated -> optionally create solo group.
-   - 1 existing group -> `.collab/scripts/orchestrator/group-manage.sh add {group_id} {ticket_id}`
-   - 2+ groups -> `.collab/scripts/orchestrator/group-manage.sh create {all_ids}` (merge).
-   - Detect type (backend/frontend/other). `.collab/scripts/orchestrator/registry-update.sh {ticket_id} group_id={gid}`
-6. ```bash
-   FIRST_CMD=$(jq -r '.phases[0].command' .collab/config/pipeline.json)
-   bun .collab/scripts/orchestrator/Tmux.ts send -w {new_pane} -t "$FIRST_CMD" -d 5
-   ```
-7. `.collab/scripts/orchestrator/status-table.sh`. "Added {ticket_id}." **END RESPONSE.**
+5. Check if ticket has `coordination.json` with unsatisfied `wait_for` dependencies (same logic as Launch step 5). If hold applies: mark held, skip first command. Otherwise dispatch first phase actions.
+6. `.collab/scripts/orchestrator/status-table.sh`. "Added {ticket_id}." **END RESPONSE.**
 
 ### [CMD:status]
 
@@ -225,49 +294,27 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
 ### [CMD:remove {ticket_id}]
 
-Validate. `.collab/scripts/orchestrator/registry-read.sh {ticket_id}` for group_id. If grouped: remove from group, delete group if empty, notify if orphaned waits. `rm .collab/state/pipeline-registry/{ticket_id}.json`. `.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
-
-### [CMD:retry-deploy {ticket_id}]
-
-Validate: tracked, group_id, deployment_status=="failed", retry_count < 3. Read agent_pane_id/nonce. Update group: in_progress, backend_deploying, increment retry. Send deploy command with signal. `.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
-
-### [CMD:skip-deploy {ticket_id}]
-
-Validate: tracked, group_id. Update group: skipped, backend_deployed. Release waiting frontends (if at implement, advance to blindqa). `.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
-
-### [CMD:group {id1} {id2} ...]
-
-Validate: >= 2 IDs, all orchestrated. `.collab/scripts/orchestrator/group-manage.sh create {all_ids}`. Detect types, update registries. `.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
+Validate. `rm .collab/state/pipeline-registry/{ticket_id}.json`. `.collab/scripts/orchestrator/status-table.sh`. **END RESPONSE.**
 
 ### Unknown
 
-"Unknown command: {action}. Supported: add, status, remove, retry-deploy, skip-deploy, group" **END RESPONSE.**
-
----
-
-## Deployment Outcome Handling
-
-On STEP_COMPLETE with "deployment" in detail: capture screen for success/failure indicators.
-- **Success**: group gate_state=backend_deployed, release frontends (read group via `.collab/scripts/orchestrator/group-manage.sh list {group_id}`, advance each frontend at implement through completion gate to blindqa).
-- **Failure**: gate_state=deployment_failed, increment retry_count. If >= 3: escalate. Notify user.
-- **Timeout** (15min): `tmux send-keys -t {agent_pane_id} C-c`, mark failed.
+"Unknown command: {action}. Supported: add, status, remove" **END RESPONSE.**
 
 ---
 
 ## Pipeline Complete
 
-On `_COMPLETE` signal when `current_step == "blindqa"`:
-1. If grouped: remove from group, delete group file if empty. Write atomically.
-2. `rm .collab/state/pipeline-registry/{ticket_id}.json`
-3. `.collab/scripts/orchestrator/status-table.sh`. "Pipeline complete for {ticket_id}!"
-4. `.collab/scripts/webhook-notify.sh {ticket_id} {current_step} done complete`
-5. Other agents running -> wait. None remain -> "All pipelines complete."
+When the Advance step determines the next phase has `"terminal": true`:
+
+1. `rm .collab/state/pipeline-registry/{ticket_id}.json`
+2. `.collab/scripts/orchestrator/status-table.sh`. "Pipeline complete for {ticket_id}!"
+3. Other agents running -> wait. None remain -> "All pipelines complete."
 
 ---
 
 ## Graceful Exit
 
-Delete registries where `orchestrator_pane_id == $TMUX_PANE`. Delete orphaned group files. Agent panes survive.
+Delete registries where `orchestrator_pane_id == $TMUX_PANE`. Agent panes survive.
 
 ---
 
@@ -276,13 +323,13 @@ Delete registries where `orchestrator_pane_id == $TMUX_PANE`. Delete orphaned gr
 1. **One input = one response.** Never loop or poll.
 2. **Ignore non-signal, non-command input.**
 3. **All agent commands via programmatic tmux send.** "Already appeared" does NOT count.
-4. **Never skip plan review gate.** Never skip analyze review gate.
+4. **Never skip gate evaluation.** Gates in the `transitions` array are mandatory AI evaluation steps.
 5. **Nonce validation handled by signal-validate.sh.** Trust its output.
 6. **Process only most recent signal** if multiples arrive.
 7. **Atomic writes handled by scripts.** Manual writes use tmp + mv.
 8. **Track state in memory**: ticket_id, pane_id, current_step, status, detail.
-9. **Check group on every implement STEP_COMPLETE.** Deployment gates are critical.
-10. **Merge groups bidirectionally.** Add order must not affect behavior.
-11. **Escalate deployment failures.** Max 3 retries, then notify. Never silent-fail.
+9. **All routing comes from pipeline.json.** Zero hardcoded phase-specific conditions in this file.
+10. **Coordination hold/release is automatic.** Check after every advance.
+11. **orchestrator_context scopes judgment.** When loaded, every evaluation runs through it. Deactivate explicitly on transition.
 12. **Colors 1-5**, reusable on remove.
-13. **NO EXCUSES POLICY**: When agent claims work complete, orchestrator MUST verify ALL tests pass and ALL builds succeed. Pre-existing failures discovered during work are NOT excuses for leaving them broken. Agent is responsible for delivering a working system, not just working new code. Reject completion if ANY failures exist, regardless of who created them.
+13. **NO EXCUSES POLICY**: When a gate or orchestrator_context instructs skepticism, apply it fully. Challenge claims, demand evidence, reject insufficient proof.

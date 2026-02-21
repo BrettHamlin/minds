@@ -94,10 +94,24 @@ else
   echo "  → Constitution (already exists, skipping)"
 fi
 
-# pipeline.json: always update (shared collab infrastructure, safe to overwrite)
+# pipeline.json + v3 schema files: always update (shared collab infrastructure, safe to overwrite)
 mkdir -p "$REPO_ROOT/.collab/config"
 cp "$TEMP_DIR/src/config/pipeline.json" "$REPO_ROOT/.collab/config/pipeline.json"
 echo "  → pipeline.json updated"
+
+# Schema files (v3: pipeline.v3.schema.json, coordination.schema.json)
+cp "$TEMP_DIR/src/config/"*.schema.json "$REPO_ROOT/.collab/config/"
+echo "  → schema files updated"
+
+# Orchestrator contexts (phase-scoped orchestrator behavior files)
+mkdir -p "$REPO_ROOT/.collab/config/orchestrator-contexts"
+cp -r "$TEMP_DIR/src/config/orchestrator-contexts/"* "$REPO_ROOT/.collab/config/orchestrator-contexts/"
+echo "  → orchestrator-contexts updated"
+
+# Display templates
+mkdir -p "$REPO_ROOT/.collab/config/displays"
+cp -r "$TEMP_DIR/src/config/displays/"* "$REPO_ROOT/.collab/config/displays/"
+echo "  → displays updated"
 
 # Other config files: skip if present (project-specific, user-customizable)
 if [ ! -f "$REPO_ROOT/.collab/config/verify-config.json" ]; then

@@ -140,12 +140,22 @@ derive_gate() {
 # --- Derive detail string ---
 derive_detail() {
   local reg="$1"
+  local reg_status
+  reg_status=$(echo "$reg" | jq -r '.status // empty')
   local last_signal
   last_signal=$(echo "$reg" | jq -r '.last_signal // empty')
   local last_signal_at
   last_signal_at=$(echo "$reg" | jq -r '.last_signal_at // empty')
   local step
   step=$(echo "$reg" | jq -r '.current_step')
+
+  # Held agents show their wait target
+  if [ "$reg_status" = "held" ]; then
+    local waiting_for
+    waiting_for=$(echo "$reg" | jq -r '.waiting_for // "unknown"')
+    echo "held | waiting for ${waiting_for}"
+    return
+  fi
 
   if [ -n "$last_signal" ] && [ -n "$last_signal_at" ]; then
     # Truncate to fit column

@@ -1,0 +1,42 @@
+{
+  "_description": "Tests FR-014: conditional rows evaluated before plain rows; first match wins",
+  "_test_cases": [
+    {
+      "case": "conditional-true",
+      "description": "When if condition matches, first conditional row wins over plain row",
+      "input": {
+        "from": "work",
+        "signal": "WORK_COMPLETE",
+        "context": {"INCOMING_DETAIL": "fast-track"}
+      },
+      "expected_to": "done_fast",
+      "rationale": "Row 1 has if=true condition; evaluated first; wins"
+    },
+    {
+      "case": "conditional-false-plain-fallback",
+      "description": "When no conditional row matches, first plain row fires",
+      "input": {
+        "from": "work",
+        "signal": "WORK_COMPLETE",
+        "context": {"INCOMING_DETAIL": "normal"}
+      },
+      "expected_to": "review",
+      "rationale": "Row 1 condition false; Row 2 has no condition; plain fallback fires"
+    }
+  ],
+  "pipeline_fragment": {
+    "transitions": [
+      {
+        "from": "work",
+        "signal": "WORK_COMPLETE",
+        "if": "INCOMING_DETAIL contains 'fast-track'",
+        "to": "done_fast"
+      },
+      {
+        "from": "work",
+        "signal": "WORK_COMPLETE",
+        "to": "review"
+      }
+    ]
+  }
+}

@@ -1,11 +1,80 @@
 {
+  "version": "3.0",
   "phases": [
-    {"name": "clarify",   "command": "/collab.clarify",   "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"]},
-    {"name": "plan",      "command": "/collab.plan",      "signals": ["PLAN_COMPLETE", "PLAN_ERROR"]},
-    {"name": "tasks",     "command": "/collab.tasks",     "signals": ["TASKS_COMPLETE", "TASKS_ERROR"]},
-    {"name": "analyze",   "command": "/collab.analyze",   "signals": ["ANALYZE_COMPLETE", "ANALYZE_ERROR"]},
-    {"name": "implement", "command": "/collab.implement", "signals": ["IMPLEMENT_COMPLETE", "IMPLEMENT_WAITING", "IMPLEMENT_ERROR"]},
-    {"name": "blindqa",   "command": "/collab.blindqa",   "signals": ["BLINDQA_COMPLETE", "BLINDQA_FAILED", "BLINDQA_ERROR", "BLINDQA_QUESTION", "BLINDQA_WAITING"]},
-    {"name": "done",      "command": "",                  "signals": []}
+    {
+      "id": "clarify",
+      "command": "/collab.clarify",
+      "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"]
+    },
+    {
+      "id": "plan",
+      "command": "/collab.plan",
+      "signals": ["PLAN_COMPLETE", "PLAN_ERROR"]
+    },
+    {
+      "id": "tasks",
+      "command": "/collab.tasks",
+      "signals": ["TASKS_COMPLETE", "TASKS_ERROR"]
+    },
+    {
+      "id": "analyze",
+      "command": "/collab.analyze",
+      "signals": ["ANALYZE_COMPLETE", "ANALYZE_ERROR"]
+    },
+    {
+      "id": "implement",
+      "actions": [
+        {"display": "Starting implement phase for {{TICKET_ID}}: {{TICKET_TITLE}}"},
+        {"command": "/collab.implement"}
+      ],
+      "signals": ["IMPLEMENT_COMPLETE", "IMPLEMENT_WAITING", "IMPLEMENT_ERROR"]
+    },
+    {
+      "id": "blindqa",
+      "actions": [
+        {"display": "{{TICKET_ID}} — Starting Blind QA verification phase"},
+        {"command": "/collab.blindqa"}
+      ],
+      "signals": ["BLINDQA_COMPLETE", "BLINDQA_FAILED", "BLINDQA_ERROR", "BLINDQA_QUESTION", "BLINDQA_WAITING"],
+      "goal_gate": "always",
+      "orchestrator_context": ".collab/config/orchestrator-contexts/blindqa.md"
+    },
+    {
+      "id": "done",
+      "terminal": true,
+      "signals": []
+    }
+  ],
+  "gates": {
+    "plan_review": {
+      "prompt": ".collab/config/gates/plan.md",
+      "responses": {
+        "APPROVED": {"to": "tasks"},
+        "REVISION_NEEDED": {"to": "plan", "feedback": true, "max_retries": 3}
+      },
+      "on_exhaust": "skip"
+    },
+    "analyze_review": {
+      "prompt": ".collab/config/gates/analyze.md",
+      "responses": {
+        "REMEDIATION_COMPLETE": {"to": "implement"},
+        "ESCALATION": {"feedback": true}
+      },
+      "on_exhaust": "abort"
+    }
+  },
+  "transitions": [
+    {"from": "clarify",   "signal": "CLARIFY_COMPLETE",   "to": "plan"},
+    {"from": "plan",      "signal": "PLAN_COMPLETE",       "gate": "plan_review"},
+    {"from": "plan",      "signal": "PLAN_ERROR",          "to": "plan"},
+    {"from": "tasks",     "signal": "TASKS_COMPLETE",      "to": "analyze"},
+    {"from": "tasks",     "signal": "TASKS_ERROR",         "to": "tasks"},
+    {"from": "analyze",   "signal": "ANALYZE_COMPLETE",    "gate": "analyze_review"},
+    {"from": "analyze",   "signal": "ANALYZE_ERROR",       "to": "analyze"},
+    {"from": "implement", "signal": "IMPLEMENT_COMPLETE",  "to": "blindqa"},
+    {"from": "implement", "signal": "IMPLEMENT_ERROR",     "to": "implement"},
+    {"from": "blindqa",   "signal": "BLINDQA_COMPLETE",    "to": "done"},
+    {"from": "blindqa",   "signal": "BLINDQA_FAILED",      "to": "blindqa"},
+    {"from": "blindqa",   "signal": "BLINDQA_ERROR",       "to": "blindqa"}
   ]
 }

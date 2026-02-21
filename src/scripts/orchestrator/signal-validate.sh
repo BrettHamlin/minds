@@ -40,8 +40,8 @@ valid_signals_for_phase() {
     echo "Error: pipeline.json is malformed at $CONFIG_FILE" >&2
     exit 2
   fi
-  jq -r --arg name "$phase" \
-    '.phases[] | select(.name == $name) | .signals | join(" ")' \
+  jq -r --arg id "$phase" \
+    '.phases[] | select(.id == $id) | .signals | join(" ")' \
     "$CONFIG_FILE" 2>/dev/null || echo ""
 }
 

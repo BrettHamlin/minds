@@ -29,16 +29,61 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 REGISTRY_DIR="$REPO_ROOT/.collab/state/pipeline-registry"
 
 # --- Allowed fields (whitelist to prevent garbage data) ---
-ALLOWED_FIELDS="current_step nonce status color_index group_id agent_pane_id orchestrator_pane_id worktree_path last_signal last_signal_at error_count"
+ALLOWED_FIELDS="current_step nonce status color_index group_id agent_pane_id orchestrator_pane_id worktree_path last_signal last_signal_at error_count retry_count held_at waiting_for"
 
 # --- Validate arguments ---
 if [ $# -lt 2 ]; then
   echo "Usage: registry-update.sh <TICKET_ID> <field=value> [field=value ...]" >&2
+  echo "       registry-update.sh <TICKET_ID> --append-phase-history '<json-entry>'" >&2
   exit 1
 fi
 
 TICKET_ID="$1"
 shift
+
+# --- Handle --append-phase-history mode ---
+if [ "${1:-}" = "--append-phase-history" ]; then
+  if [ $# -lt 2 ]; then
+    echo "Usage: registry-update.sh <TICKET_ID> --append-phase-history '<json-entry>'" >&2
+    exit 1
+  fi
+  ENTRY="$2"
+
+  REGISTRY_FILE="$REGISTRY_DIR/${TICKET_ID}.json"
+  TMP_FILE="$REGISTRY_DIR/${TICKET_ID}.json.tmp"
+
+  if [ ! -f "$REGISTRY_FILE" ]; then
+    echo "Error: Registry not found: $REGISTRY_FILE" >&2
+    exit 3
+  fi
+
+  REGISTRY=$(jq '.' "$REGISTRY_FILE" 2>/dev/null)
+  if [ $? -ne 0 ] || [ -z "$REGISTRY" ]; then
+    echo "Error: Malformed JSON in $REGISTRY_FILE" >&2
+    exit 3
+  fi
+
+  # Parse entry and append to phase_history array (initialize if missing)
+  echo "$REGISTRY" | jq \
+    --argjson entry "$ENTRY" \
+    '.phase_history = ((.phase_history // []) + [$entry]) | .updated_at = now | .updated_at |= strftime("%Y-%m-%dT%H:%M:%SZ")' \
+    > "$TMP_FILE" 2>/dev/null
+  if [ $? -ne 0 ]; then
+    rm -f "$TMP_FILE"
+    echo "Error: Failed to append phase_history entry" >&2
+    exit 3
+  fi
+
+  if ! jq '.' "$TMP_FILE" > /dev/null 2>&1; then
+    rm -f "$TMP_FILE"
+    echo "Error: Generated invalid JSON, aborting" >&2
+    exit 3
+  fi
+
+  mv "$TMP_FILE" "$REGISTRY_FILE"
+  echo "Appended phase_history entry for ${TICKET_ID}"
+  exit 0
+fi
 
 REGISTRY_FILE="$REGISTRY_DIR/${TICKET_ID}.json"
 TMP_FILE="$REGISTRY_DIR/${TICKET_ID}.json.tmp"

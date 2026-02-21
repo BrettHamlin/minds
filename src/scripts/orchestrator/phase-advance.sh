@@ -54,12 +54,12 @@ if [ "$CURRENT_PHASE" = "done" ]; then
 fi
 
 # --- Find current phase index ---
-PHASE_INDEX=$(echo "$PIPELINE" | jq -r --arg name "$CURRENT_PHASE" \
-  '.phases | to_entries[] | select(.value.name == $name) | .key')
+PHASE_INDEX=$(echo "$PIPELINE" | jq -r --arg id "$CURRENT_PHASE" \
+  '.phases | to_entries[] | select(.value.id == $id) | .key')
 
 if [ -z "$PHASE_INDEX" ]; then
   echo "Error: Invalid phase '$CURRENT_PHASE'" >&2
-  echo "Valid phases: $(echo "$PIPELINE" | jq -r '[.phases[].name] | join(", ")')" >&2
+  echo "Valid phases: $(echo "$PIPELINE" | jq -r '[.phases[].id] | join(", ")')" >&2
   exit 2
 fi
 
@@ -70,5 +70,5 @@ NEXT_INDEX=$((PHASE_INDEX + 1))
 if [ "$NEXT_INDEX" -ge "$PHASE_COUNT" ]; then
   echo "done"
 else
-  echo "$PIPELINE" | jq -r ".phases[$NEXT_INDEX].name"
+  echo "$PIPELINE" | jq -r ".phases[$NEXT_INDEX].id"
 fi

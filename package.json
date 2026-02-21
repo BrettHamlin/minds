@@ -38,6 +38,8 @@
     "@typescript-eslint/eslint-plugin": "^8.56.0",
     "@typescript-eslint/parser": "^8.56.0",
     "@vitest/coverage-v8": "^1.6.1",
+    "ajv": "^8.18.0",
+    "ajv-cli": "^5.0.0",
     "drizzle-kit": "^0.31.9",
     "eslint": "^8.56.0",
     "prettier": "^3.2.4",
