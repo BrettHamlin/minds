@@ -96,18 +96,18 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
 #### `_QUESTION` or `_WAITING` -- Agent needs input
 
-*AI LOGIC: Requires judgment to answer domain questions.*
+Option 1 is always marked `(Recommended)` and pre-selected by the clarify phase. Accept it immediately — no screen capture or AI reasoning needed.
 
-1. Capture screen: `bun .collab/scripts/orchestrator/Tmux.ts capture -w {agent_pane_id} -s 200`
-2. Read the AskUserQuestion prompt with options.
-3. Determine best answer using: Linear ticket details, feature spec, project context, domain best practices.
-4. Navigate using `tmux send-keys` (NOT `Tmux.ts send` — that is text-only and has no key flag):
+1. Wait 2 seconds for AskUserQuestion UI to render:
    ```bash
-   tmux send-keys -t {agent_pane_id} Down   # repeat for each step down
-   tmux send-keys -t {agent_pane_id} Enter  # confirm selection
+   sleep 2
    ```
-5. `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=answered`
-6. `.collab/scripts/orchestrator/status-table.sh`. Output: "Answered for {ticket_id}: {choice}." **END RESPONSE.**
+2. Press Enter to accept the recommended option:
+   ```bash
+   tmux send-keys -t {agent_pane_id} Enter
+   ```
+3. `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=answered`
+4. `.collab/scripts/orchestrator/status-table.sh`. Output: "Answered for {ticket_id}: accepted recommended option." **END RESPONSE.**
 
 #### `_COMPLETE` -- Step finished
 
