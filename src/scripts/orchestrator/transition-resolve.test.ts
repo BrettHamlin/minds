@@ -1,0 +1,137 @@
+import { describe, expect, test } from "bun:test";
+import { resolveTransition, type TransitionResult } from "./transition-resolve";
+
+// ============================================================================
+// Test pipeline fixture
+// ============================================================================
+
+const PIPELINE = {
+  version: "3.0",
+  phases: [
+    { id: "clarify", signals: ["CLARIFY_COMPLETE", "CLARIFY_ERROR"] },
+    { id: "plan", signals: ["PLAN_COMPLETE", "PLAN_ERROR"] },
+    { id: "tasks", signals: ["TASKS_COMPLETE"] },
+    { id: "implement", signals: ["IMPLEMENT_COMPLETE"] },
+    { id: "done", terminal: true, signals: [] },
+  ],
+  transitions: [
+    { from: "clarify", signal: "CLARIFY_COMPLETE", to: "plan" },
+    { from: "plan", signal: "PLAN_COMPLETE", gate: "plan_review" },
+    { from: "plan", signal: "PLAN_ERROR", to: "plan" },
+    { from: "tasks", signal: "TASKS_COMPLETE", to: "implement" },
+    { from: "implement", signal: "IMPLEMENT_COMPLETE", to: "done" },
+  ],
+};
+
+// Pipeline with conditional rows for priority testing
+const PIPELINE_WITH_CONDITIONALS = {
+  ...PIPELINE,
+  transitions: [
+    // Conditional row (has "if" field) -- should take priority
+    {
+      from: "implement",
+      signal: "IMPLEMENT_COMPLETE",
+      to: "hotfix",
+      if: "has_critical_bugs",
+    },
+    // Plain row (no "if" field) -- fallback
+    { from: "implement", signal: "IMPLEMENT_COMPLETE", to: "done" },
+    // Other transitions
+    { from: "clarify", signal: "CLARIFY_COMPLETE", to: "plan" },
+  ],
+};
+
+// ============================================================================
+// resolveTransition
+// ============================================================================
+
+describe("resolveTransition", () => {
+  test("simple to transition (clarify -> CLARIFY_COMPLETE -> plan)", () => {
+    const result = resolveTransition("clarify", "CLARIFY_COMPLETE", PIPELINE);
+    expect(result).toEqual({
+      to: "plan",
+      gate: null,
+      if: null,
+      conditional: false,
+    });
+  });
+
+  test("gate transition (plan -> PLAN_COMPLETE -> plan_review gate)", () => {
+    const result = resolveTransition("plan", "PLAN_COMPLETE", PIPELINE);
+    expect(result).toEqual({
+      to: null,
+      gate: "plan_review",
+      if: null,
+      conditional: false,
+    });
+  });
+
+  test("no match returns null", () => {
+    const result = resolveTransition("clarify", "NONEXISTENT_SIGNAL", PIPELINE);
+    expect(result).toBeNull();
+  });
+
+  test("no match for unknown phase returns null", () => {
+    const result = resolveTransition("unknown_phase", "CLARIFY_COMPLETE", PIPELINE);
+    expect(result).toBeNull();
+  });
+
+  test("conditional rows take priority over plain rows", () => {
+    const result = resolveTransition(
+      "implement",
+      "IMPLEMENT_COMPLETE",
+      PIPELINE_WITH_CONDITIONALS
+    );
+    expect(result).not.toBeNull();
+    expect(result!.conditional).toBe(true);
+    expect(result!.to).toBe("hotfix");
+    expect(result!.if).toBe("has_critical_bugs");
+  });
+
+  test("plainOnly flag skips conditional rows", () => {
+    const result = resolveTransition(
+      "implement",
+      "IMPLEMENT_COMPLETE",
+      PIPELINE_WITH_CONDITIONALS,
+      true
+    );
+    expect(result).not.toBeNull();
+    expect(result!.conditional).toBe(false);
+    expect(result!.to).toBe("done");
+    expect(result!.if).toBeNull();
+  });
+
+  test("returns null for null pipeline", () => {
+    expect(resolveTransition("clarify", "CLARIFY_COMPLETE", null)).toBeNull();
+  });
+
+  test("returns null for pipeline without transitions array", () => {
+    expect(
+      resolveTransition("clarify", "CLARIFY_COMPLETE", { version: "3.0" })
+    ).toBeNull();
+  });
+
+  test("error-to-self transition works", () => {
+    const result = resolveTransition("plan", "PLAN_ERROR", PIPELINE);
+    expect(result).toEqual({
+      to: "plan",
+      gate: null,
+      if: null,
+      conditional: false,
+    });
+  });
+
+  test("terminal transition works", () => {
+    const result = resolveTransition(
+      "implement",
+      "IMPLEMENT_COMPLETE",
+      PIPELINE
+    );
+    expect(result).toEqual({
+      to: "done",
+      gate: null,
+      if: null,
+      conditional: false,
+    });
+  });
+});

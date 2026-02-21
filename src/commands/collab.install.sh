@@ -67,8 +67,9 @@ HANDLER_COUNT=$(find "$REPO_ROOT/.collab/handlers" -name "*.ts" 2>/dev/null | wc
 
 # Copy orchestrator scripts
 echo "  → Orchestrator scripts..."
-find "$TEMP_DIR/src/scripts/orchestrator" \( -name "*.sh" -o -name "Tmux.ts" \) -exec cp {} "$REPO_ROOT/.collab/scripts/orchestrator/" \;
-ORCHESTRATOR_SCRIPT_COUNT=$(find "$REPO_ROOT/.collab/scripts/orchestrator" -name "*.sh" 2>/dev/null | wc -l | tr -d ' ')
+find "$TEMP_DIR/src/scripts/orchestrator" \( -name "*.sh" -o -name "*.ts" \) ! -name "*.test.ts" -exec cp {} "$REPO_ROOT/.collab/scripts/orchestrator/" \;
+find "$REPO_ROOT/.collab/scripts/orchestrator" -name "*.ts" -exec chmod +x {} \;
+ORCHESTRATOR_SCRIPT_COUNT=$(find "$REPO_ROOT/.collab/scripts/orchestrator" \( -name "*.sh" -o -name "*.ts" \) ! -name "*.test.ts" 2>/dev/null | wc -l | tr -d ' ')
 
 # Copy non-orchestrator collab scripts (e.g. verify-and-complete.sh)
 echo "  → Collab scripts..."

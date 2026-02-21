@@ -1,0 +1,203 @@
+#!/usr/bin/env bun
+
+/**
+ * registry-update.ts - Update ticket registry atomically
+ *
+ * Applies field=value updates or appends phase_history entries to a
+ * ticket registry file using atomic write (tmp + rename).
+ *
+ * Usage:
+ *   bun registry-update.ts BRE-158 current_step=plan
+ *   bun registry-update.ts BRE-158 current_step=implement status=active
+ *   bun registry-update.ts BRE-158 --append-phase-history '{"phase":"plan","signal":"PLAN_COMPLETE","ts":"..."}'
+ *
+ * Exit codes:
+ *   0 = success
+ *   1 = usage error (missing arguments, invalid field=value format)
+ *   2 = validation error (invalid field name)
+ *   3 = file error (registry not found, write failure)
+ */
+
+import {
+  getRepoRoot,
+  readJsonFile,
+  writeJsonAtomic,
+  getRegistryPath,
+} from "./orchestrator-utils";
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+export const ALLOWED_FIELDS = new Set([
+  "current_step",
+  "nonce",
+  "status",
+  "color_index",
+  "group_id",
+  "agent_pane_id",
+  "orchestrator_pane_id",
+  "worktree_path",
+  "last_signal",
+  "last_signal_at",
+  "error_count",
+  "retry_count",
+  "held_at",
+  "waiting_for",
+]);
+
+// ============================================================================
+// Pure Functions
+// ============================================================================
+
+/**
+ * Parse a "field=value" string into its components.
+ * Returns null if the format is invalid (no '=' or field not lowercase/underscore).
+ */
+export function parseFieldValue(
+  pair: string
+): { field: string; value: string | number } | null {
+  const match = pair.match(/^([a-z_]+)=(.+)$/);
+  if (!match) return null;
+
+  const field = match[1];
+  const rawValue = match[2];
+
+  // Numeric values stay as numbers
+  const value = /^\d+$/.test(rawValue) ? parseInt(rawValue, 10) : rawValue;
+  return { field, value };
+}
+
+/**
+ * Apply field=value updates to a registry object.
+ * Returns a new object with updates applied and updated_at timestamp set.
+ * Does NOT validate field names - caller must validate against ALLOWED_FIELDS.
+ */
+export function applyUpdates(
+  registry: Record<string, any>,
+  updates: Record<string, any>
+): Record<string, any> {
+  return {
+    ...registry,
+    ...updates,
+    updated_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+  };
+}
+
+/**
+ * Append an entry to the phase_history array.
+ * Initializes the array if missing. Returns a new registry object.
+ */
+export function appendPhaseHistory(
+  registry: Record<string, any>,
+  entry: any
+): Record<string, any> {
+  const history = Array.isArray(registry.phase_history)
+    ? [...registry.phase_history]
+    : [];
+  history.push(entry);
+  return {
+    ...registry,
+    phase_history: history,
+    updated_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+  };
+}
+
+// ============================================================================
+// CLI Entry Point
+// ============================================================================
+
+function main(): void {
+  const args = process.argv.slice(2);
+
+  if (args.length < 2) {
+    console.error(
+      "Usage: registry-update.ts <TICKET_ID> <field=value> [field=value ...]"
+    );
+    console.error(
+      "       registry-update.ts <TICKET_ID> --append-phase-history '<json-entry>'"
+    );
+    process.exit(1);
+  }
+
+  const ticketId = args[0];
+  const repoRoot = getRepoRoot();
+  const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
+  const registryPath = getRegistryPath(registryDir, ticketId);
+
+  // Read existing registry
+  const registry = readJsonFile(registryPath);
+  if (registry === null) {
+    console.error(`Error: Registry not found: ${registryPath}`);
+    process.exit(3);
+  }
+
+  // Handle --append-phase-history mode
+  if (args[1] === "--append-phase-history") {
+    if (args.length < 3) {
+      console.error(
+        "Usage: registry-update.ts <TICKET_ID> --append-phase-history '<json-entry>'"
+      );
+      process.exit(1);
+    }
+
+    let entry: any;
+    try {
+      entry = JSON.parse(args[2]);
+    } catch {
+      console.error("Error: Invalid JSON for phase_history entry");
+      process.exit(1);
+    }
+
+    const updated = appendPhaseHistory(registry, entry);
+    try {
+      writeJsonAtomic(registryPath, updated);
+    } catch {
+      console.error("Error: Failed to append phase_history entry");
+      process.exit(3);
+    }
+
+    console.log(`Appended phase_history entry for ${ticketId}`);
+    process.exit(0);
+  }
+
+  // Handle field=value updates
+  const updates: Record<string, any> = {};
+  const appliedPairs: string[] = [];
+
+  for (let i = 1; i < args.length; i++) {
+    const parsed = parseFieldValue(args[i]);
+    if (!parsed) {
+      console.error(
+        `Error: Invalid format '${args[i]}'. Expected field=value`
+      );
+      process.exit(1);
+    }
+
+    if (!ALLOWED_FIELDS.has(parsed.field)) {
+      console.error(
+        `Error: Invalid field name '${parsed.field}'. Allowed: ${[...ALLOWED_FIELDS].join(" ")}`
+      );
+      process.exit(2);
+    }
+
+    updates[parsed.field] = parsed.value;
+    appliedPairs.push(args[i]);
+  }
+
+  const updated = applyUpdates(registry, updates);
+
+  try {
+    writeJsonAtomic(registryPath, updated);
+  } catch {
+    console.error("Error: Failed to apply updates");
+    process.exit(3);
+  }
+
+  console.log(`Updated ${ticketId}: ${appliedPairs.join(" ")}`);
+}
+
+// Only run CLI when executed directly (not imported)
+if (import.meta.main) {
+  main();
+}

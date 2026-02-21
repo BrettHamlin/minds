@@ -84,7 +84,7 @@ FIRST_PHASE=$(jq -r '.phases[0].id' .collab/config/pipeline.json)
 ### 1. Validate (deterministic)
 
 ```bash
-SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/signal-validate.sh "$INPUT"
+SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/signal-validate.ts "$INPUT"
 ```
 Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-zero -> log, **END RESPONSE.**
 
@@ -110,7 +110,7 @@ The signal `detail` field contains the question and all options encoded with `§
    tmux send-keys -t {agent_pane_id} Down   # repeat N times for chosen position
    tmux send-keys -t {agent_pane_id} Enter  # confirm selection
    ```
-5. `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=answered`
+5. `.collab/scripts/orchestrator/registry-update.ts {ticket_id} status=answered`
 6. `.collab/scripts/orchestrator/status-table.sh`. Output: "Answered for {ticket_id}: {choice}." **END RESPONSE.**
 
 #### `_COMPLETE` -- Step finished
@@ -118,7 +118,7 @@ The signal `detail` field contains the question and all options encoded with `§
 ##### a. Append phase history (deterministic)
 
 ```bash
-SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/registry-update.sh {ticket_id} \
+SCRIPTS=.collab/scripts/orchestrator && $SCRIPTS/registry-update.ts {ticket_id} \
   --append-phase-history "{\"phase\":\"{current_step}\",\"signal\":\"{signal_type}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 ```
 
@@ -132,7 +132,7 @@ Read `phases[current_step].orchestrator_context` from `.collab/config/pipeline.j
 ##### c. Resolve transition (deterministic)
 
 ```bash
-TRANSITION=$(.collab/scripts/orchestrator/transition-resolve.sh {current_step} {signal_type})
+TRANSITION=$(.collab/scripts/orchestrator/transition-resolve.ts {current_step} {signal_type})
 ```
 
 Parse `to` and `gate` from output. Exit 2 means no match: log "No transition found for {current_step} → {signal_type}", **END RESPONSE.**
@@ -163,7 +163,7 @@ If `to != null`: skip to step **e. Goal Gate Check**.
 Only runs before terminal. If `NEXT` is not the terminal phase, script returns PASS immediately.
 
 ```bash
-GOAL=$(.collab/scripts/orchestrator/goal-gate-check.sh {ticket_id} {NEXT})
+GOAL=$(.collab/scripts/orchestrator/goal-gate-check.ts {ticket_id} {NEXT})
 ```
 
 If output starts with `REDIRECT:`: extract phase id, dispatch it, status table, output "Goal gate check: redirecting to '{phase}' before terminal." **END RESPONSE.**
@@ -181,9 +181,9 @@ If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
 Update registry and dispatch next phase:
 ```bash
 SCRIPTS=.collab/scripts/orchestrator
-$SCRIPTS/registry-update.sh {ticket_id} current_step={NEXT} status=running
+$SCRIPTS/registry-update.ts {ticket_id} current_step={NEXT} status=running
 $SCRIPTS/phase-dispatch.sh {ticket_id} {NEXT}
-$SCRIPTS/held-release-scan.sh {ticket_id}
+$SCRIPTS/held-release-scan.ts {ticket_id}
 ```
 
 `.collab/scripts/orchestrator/status-table.sh`. Output: "'{current_step}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
@@ -191,7 +191,7 @@ $SCRIPTS/held-release-scan.sh {ticket_id}
 
 #### `_ERROR` or `_FAILED` -- Error
 
-1. Capture screen (`-s 200`). `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=error`
+1. Capture screen (`-s 200`). `.collab/scripts/orchestrator/registry-update.ts {ticket_id} status=error`
 2. Re-dispatch current phase:
    ```bash
    .collab/scripts/orchestrator/phase-dispatch.sh {ticket_id} {current_step}
@@ -254,12 +254,12 @@ Delete registries where `orchestrator_pane_id == $TMUX_PANE`. Agent panes surviv
 2. **Ignore non-signal, non-command input.**
 3. **All agent commands via programmatic tmux send.** "Already appeared" does NOT count.
 4. **Never skip gate evaluation.** Gates in the `transitions` array are mandatory AI evaluation steps.
-5. **Nonce validation handled by signal-validate.sh.** Trust its output.
+5. **Nonce validation handled by signal-validate.ts.** Trust its output.
 6. **Process only most recent signal** if multiples arrive.
 7. **Atomic writes handled by scripts.** Manual writes use tmp + mv.
 8. **Track state in memory**: ticket_id, pane_id, current_step, status, detail.
 9. **All routing comes from pipeline.json.** Zero hardcoded phase logic in this file.
-10. **Coordination hold/release is automatic.** phase-dispatch.sh handles holds; held-release-scan.sh releases after every advance.
+10. **Coordination hold/release is automatic.** phase-dispatch.sh handles holds; held-release-scan.ts releases after every advance.
 11. **orchestrator_context scopes judgment.** When loaded, every evaluation runs through it. Deactivate explicitly on transition.
 12. **Colors 1-5**, reusable on remove.
 13. **NO EXCUSES POLICY**: When a gate or orchestrator_context instructs skepticism, apply it fully. Challenge claims, demand evidence, reject insufficient proof.
