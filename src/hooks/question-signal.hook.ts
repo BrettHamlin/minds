@@ -18,7 +18,7 @@
 
 import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
-import { execSync } from "child_process";
+import { $ } from "bun";
 
 const TMUX_PANE = process.env.TMUX_PANE;
 
@@ -30,34 +30,42 @@ if (!TMUX_PANE) process.exit(0);
 // import.meta.dir resolves symlinks, so this always points to the real .collab/
 const REGISTRY_DIR = join(import.meta.dir, "..", "state", "pipeline-registry");
 
-try {
-  const files = readdirSync(REGISTRY_DIR).filter(
-    (f) => f.endsWith(".json") && !f.endsWith(".tmp")
-  );
+async function main() {
+  try {
+    const files = readdirSync(REGISTRY_DIR).filter(
+      (f) => f.endsWith(".json") && !f.endsWith(".tmp")
+    );
 
-  for (const file of files) {
-    try {
-      const entry = JSON.parse(
-        readFileSync(join(REGISTRY_DIR, file), "utf-8")
-      );
+    for (const file of files) {
+      try {
+        const entry = JSON.parse(
+          readFileSync(join(REGISTRY_DIR, file), "utf-8")
+        );
 
-      if (entry.agent_pane_id !== TMUX_PANE) continue;
+        if (entry.agent_pane_id !== TMUX_PANE) continue;
 
-      const { ticket_id, nonce, orchestrator_pane_id, current_step } = entry;
-      if (!ticket_id || !nonce || !orchestrator_pane_id || !current_step) break;
+        const { ticket_id, nonce, orchestrator_pane_id, current_step } = entry;
+        if (!ticket_id || !nonce || !orchestrator_pane_id || !current_step) break;
 
-      const signalType = `${current_step.toUpperCase()}_QUESTION`;
-      const signal = `[SIGNAL:${ticket_id}:${nonce}] ${signalType} | agent awaiting input`;
+        const signalType = `${current_step.toUpperCase()}_QUESTION`;
+        const signal = `[SIGNAL:${ticket_id}:${nonce}] ${signalType} | agent awaiting input`;
 
-      execSync(`tmux send-keys -t ${orchestrator_pane_id} ${JSON.stringify(signal)} Enter`);
-      break;
-    } catch {
-      // Skip malformed registry files
-      continue;
+        // Two separate calls required — Claude Code ignores \n (Enter) but responds to \r (C-m).
+        // Must wait 1s between text arrival and C-m so the target app processes the text first.
+        await $`tmux send-keys -t ${orchestrator_pane_id} ${signal}`.quiet();
+        await Bun.sleep(1000);
+        await $`tmux send-keys -t ${orchestrator_pane_id} C-m`.quiet();
+        break;
+      } catch {
+        // Skip malformed registry files
+        continue;
+      }
     }
+  } catch {
+    // No registry dir or not in collab context — silent no-op
   }
-} catch {
-  // No registry dir or not in collab context — silent no-op
+
+  process.exit(0);
 }
 
-process.exit(0);
+main();
