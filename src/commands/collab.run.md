@@ -98,12 +98,16 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
 *AI LOGIC: Requires judgment to answer domain questions.*
 
-1. Capture screen: `bun .collab/scripts/orchestrator/Tmux.ts capture -w {agent_pane_id} -s 200`
-2. Read the AskUserQuestion prompt with options.
-3. Determine best answer using: Linear ticket details, feature spec, project context, domain best practices.
-4. Navigate using `tmux send-keys` (NOT `Tmux.ts send` — that is text-only and has no key flag):
+The signal `detail` field contains the question and all options encoded with `§` separator:
+`"Question text§Option A (Recommended)§Option B§Option C"`
+
+1. Split `detail` on `§`: index 0 = question, index 1..N = option labels.
+2. Determine best answer using: Linear ticket details, feature spec, project context, domain best practices. Default to the `(Recommended)` option (index 1, position 0) unless ticket context clearly warrants a different choice.
+3. Count `Down` presses needed: chosen option's index minus 1 (position 0 = 0 presses, position 1 = 1 press, etc.).
+4. Wait 2 seconds for AskUserQuestion UI to render, then navigate:
    ```bash
-   tmux send-keys -t {agent_pane_id} Down   # repeat for each step down
+   sleep 2
+   tmux send-keys -t {agent_pane_id} Down   # repeat N times for chosen position
    tmux send-keys -t {agent_pane_id} Enter  # confirm selection
    ```
 5. `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=answered`

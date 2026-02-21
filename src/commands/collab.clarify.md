@@ -65,10 +65,15 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
    Run this Bash command BEFORE calling AskUserQuestion:
    ```bash
-   bun .collab/handlers/emit-question-signal.ts question "<question text>"
+   bun .collab/handlers/emit-question-signal.ts question "<question text>§<label1> (Recommended)§<label2>§<label3>"
    ```
 
-   This is MANDATORY in orchestrated mode. The orchestrator must receive the signal so it knows to capture the screen and navigate the UI. Without this signal, the orchestrator waits indefinitely.
+   Encode the question text and all option labels separated by `§`. Always put the recommended option first (matching the AskUserQuestion order). Labels only — no descriptions. Example:
+   ```bash
+   bun .collab/handlers/emit-question-signal.ts question "What step size?§2px§4px§Custom"
+   ```
+
+   This is MANDATORY in orchestrated mode. The orchestrator reads the question and options directly from the signal detail — no screen capture needed. Without this signal, the orchestrator waits indefinitely.
 
    b) **THEN: Call AskUserQuestion tool**
    ```
@@ -130,10 +135,10 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
 ## Signal Flow
 
-1. Agent emits `CLARIFY_QUESTION` via `bun .collab/handlers/emit-question-signal.ts question "..."`
-2. Orchestrator receives signal → captures agent screen, reads options
+1. Agent emits `CLARIFY_QUESTION` via `bun .collab/handlers/emit-question-signal.ts question "question§option1§option2§..."`
+2. Orchestrator receives signal → reads question + options directly from signal `detail` field (no screen capture)
 3. Agent calls AskUserQuestion
-4. Orchestrator navigates tmux to select answer (based on "Recommended" option)
+4. Orchestrator reasons with ticket context, navigates tmux to select best option
 5. Agent receives answer, integrates into spec
 6. Repeat for remaining questions
 7. After all questions: Agent explicitly calls `emit-question-signal.ts complete` to emit `CLARIFY_COMPLETE`
