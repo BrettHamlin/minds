@@ -146,7 +146,7 @@ If `to != null`: skip to step **e. Goal Gate Check**.
 
 1. Load `gates[gate_name]` from pipeline.json.
 2. Read the gate prompt file at `gates[gate_name].prompt`. Resolve `{{TOKEN}}` expressions for context variables in the prompt's YAML front matter.
-3. Evaluate using: Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, etc.).
+3. Evaluate using: Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, analysis.md if present, etc.).
 4. Your response must contain exactly one keyword from `gates[gate_name].responses`. Match it.
 5. Look up the matched response: `jq -r --arg gate "{gate_name}" --arg resp "{keyword}" '.gates[$gate].responses[$resp]' .collab/config/pipeline.json`
 6. **Feedback**: If matched response has `"feedback": true`, relay your full evaluation to the agent before routing.

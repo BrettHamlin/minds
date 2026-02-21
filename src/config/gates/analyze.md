@@ -2,10 +2,14 @@
 context:
   SPEC_MD: "specs/{{TICKET_ID}}/spec.md"
   TASKS_MD: "specs/{{TICKET_ID}}/tasks.md"
+  ANALYSIS_MD: "specs/{{TICKET_ID}}/analysis.md"
 ---
 # Analyze Review Gate — {{PHASE}}
 
 You are reviewing the analysis findings for this feature.
+
+## Analysis Report
+{{ANALYSIS_MD}}
 
 ## Tasks
 {{TASKS_MD}}

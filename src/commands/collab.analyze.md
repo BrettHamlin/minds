@@ -138,7 +138,7 @@ Use this heuristic to prioritize findings:
 
 ### 6. Produce Compact Analysis Report
 
-Output a Markdown report (no file writes) with the following structure:
+Generate the report below and **write it to `$FEATURE_DIR/analysis.md`** (overwrite if exists). Also output it to the console for visibility. The file must be written before the signal is emitted in step 8 so the orchestrator can read it immediately.
 
 ## Specification Analysis Report
 
