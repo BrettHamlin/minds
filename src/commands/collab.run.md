@@ -101,7 +101,11 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 1. Capture screen: `bun .collab/scripts/orchestrator/Tmux.ts capture -w {agent_pane_id} -s 200`
 2. Read the AskUserQuestion prompt with options.
 3. Determine best answer using: Linear ticket details, feature spec, project context, domain best practices.
-4. Navigate with tmux keys: `Down`/`Up` to select, `Enter` to confirm.
+4. Navigate using `tmux send-keys` (NOT `Tmux.ts send` — that is text-only and has no key flag):
+   ```bash
+   tmux send-keys -t {agent_pane_id} Down   # repeat for each step down
+   tmux send-keys -t {agent_pane_id} Enter  # confirm selection
+   ```
 5. `.collab/scripts/orchestrator/registry-update.sh {ticket_id} status=answered`
 6. `.collab/scripts/orchestrator/status-table.sh`. Output: "Answered for {ticket_id}: {choice}." **END RESPONSE.**
 
@@ -152,8 +156,10 @@ If `to != null`: skip to step **e. Goal Gate Check**.
 
 ##### e. Goal gate check (deterministic)
 
+Only runs before terminal. If `NEXT` is not the terminal phase, script returns PASS immediately.
+
 ```bash
-GOAL=$(.collab/scripts/orchestrator/goal-gate-check.sh {ticket_id})
+GOAL=$(.collab/scripts/orchestrator/goal-gate-check.sh {ticket_id} {NEXT})
 ```
 
 If output starts with `REDIRECT:`: extract phase id, dispatch it, status table, output "Goal gate check: redirecting to '{phase}' before terminal." **END RESPONSE.**

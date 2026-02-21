@@ -16,10 +16,13 @@
 #   Adding, removing, or changing goal gates requires NO changes to this script.
 #
 # Usage:
-#   goal-gate-check.sh <TICKET_ID>
+#   goal-gate-check.sh <TICKET_ID> <NEXT_PHASE>
+#
+#   NEXT_PHASE is required. Goal gates only apply before the terminal phase.
+#   If NEXT_PHASE is not terminal, this script returns PASS immediately.
 #
 # Output (stdout):
-#   "PASS" — all goal gates satisfied, advance to terminal
+#   "PASS" — all goal gates satisfied (or NEXT is not terminal)
 #   "REDIRECT:<phase_id>" — first failing phase that must complete first
 #
 # Exit codes:
@@ -36,12 +39,28 @@ REGISTRY_DIR="$REPO_ROOT/.collab/state/pipeline-registry"
 CONFIG_FILE="$REPO_ROOT/.collab/config/pipeline.json"
 
 # --- Validate arguments ---
-if [ $# -lt 1 ]; then
-  echo "Usage: goal-gate-check.sh <TICKET_ID>" >&2
+if [ $# -lt 2 ]; then
+  echo "Usage: goal-gate-check.sh <TICKET_ID> <NEXT_PHASE>" >&2
   exit 1
 fi
 
 TICKET_ID="$1"
+NEXT_PHASE="$2"
+
+# --- Guard: only check goal gates when advancing to a terminal phase ---
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "Error: pipeline.json not found: $CONFIG_FILE" >&2
+  exit 3
+fi
+
+IS_TERMINAL=$(jq -r --arg id "$NEXT_PHASE" \
+  '.phases[] | select(.id == $id) | .terminal // false' \
+  "$CONFIG_FILE" 2>/dev/null || echo "false")
+
+if [ "$IS_TERMINAL" != "true" ]; then
+  echo "PASS"
+  exit 0
+fi
 
 # --- Validate files ---
 if [ ! -f "$CONFIG_FILE" ]; then
