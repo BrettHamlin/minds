@@ -75,6 +75,20 @@ echo "  → Collab scripts..."
 find "$TEMP_DIR/src/scripts" -maxdepth 1 -name "*.sh" -exec cp {} "$REPO_ROOT/.collab/scripts/" \;
 find "$REPO_ROOT/.collab/scripts" -maxdepth 1 -name "*.sh" -exec chmod +x {} \;
 
+# Copy collab hooks (e.g. question-signal.hook.ts)
+echo "  → Collab hooks..."
+mkdir -p "$REPO_ROOT/.collab/hooks"
+find "$TEMP_DIR/src/hooks" -name "*.hook.ts" -exec cp {} "$REPO_ROOT/.collab/hooks/" \;
+find "$REPO_ROOT/.collab/hooks" -name "*.hook.ts" -exec chmod +x {} \;
+
+# Install .claude/settings.json (create only if not present — user may have customized)
+if [ ! -f "$REPO_ROOT/.claude/settings.json" ]; then
+  echo "  → Claude settings (initializing)..."
+  cp "$TEMP_DIR/src/claude-settings.json" "$REPO_ROOT/.claude/settings.json"
+else
+  echo "  → Claude settings (already exists, skipping)"
+fi
+
 # Copy workflow scripts
 echo "  → Workflow scripts..."
 cp -r "$TEMP_DIR/.specify/scripts"/* "$REPO_ROOT/.specify/scripts/"
