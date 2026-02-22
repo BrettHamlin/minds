@@ -52,9 +52,69 @@ bun .collab/handlers/emit-blindqa-signal.ts start "Starting blind verification (
 
 This is MANDATORY before invoking BlindQA skill. The signal must be sent before verification begins so orchestrator can track progress.
 
-### 5. Invoke BlindQA Skill
+### 5. Web Feature Detection — Start Dev Server
 
-Use the Skill tool to invoke BlindQA:
+Before invoking BlindQA, detect if this is a web/frontend feature and start the appropriate dev server:
+
+```bash
+# Check for Hugo static site
+if [ -f "hugo.toml" ] || [ -f "config.toml" ] || [ -f "config/_default/hugo.toml" ]; then
+  echo "[BlindQA] Hugo site detected — starting dev server on port 1314"
+  hugo server --port 1314 --bind 0.0.0.0 --baseURL http://localhost:1314 --buildDrafts --navigateToChanged=false &
+  HUGO_PID=$!
+  sleep 3
+  echo "[BlindQA] Dev server ready at http://localhost:1314 (PID: $HUGO_PID)"
+  WEB_BASE_URL="http://localhost:1314"
+  IS_WEB_FEATURE=true
+
+# Check for Node.js/Bun dev server (package.json with dev script)
+elif [ -f "package.json" ] && grep -q '"dev"' package.json; then
+  echo "[BlindQA] Node/Bun site detected — starting dev server"
+  bun run dev &
+  DEV_PID=$!
+  sleep 5
+  WEB_BASE_URL="http://localhost:3000"
+  IS_WEB_FEATURE=true
+else
+  IS_WEB_FEATURE=false
+fi
+```
+
+### 5a. Playwright Browser Verification (Web Features Only)
+
+If `IS_WEB_FEATURE=true`, use the Playwright skill to verify UI acceptance criteria from the ticket BEFORE BlindQA adversarial testing:
+
+**Read the ticket's acceptance criteria** from the feature spec (`specs/*/spec.md`) or from memory (provided when invoking collab.blindqa). Then invoke:
+
+```
+Skill: playwright-skill
+Args: Test the following acceptance criteria at ${WEB_BASE_URL}:
+
+[List each acceptance criterion from the ticket as a specific test instruction]
+
+For BRE-233 (font size stepper), test:
+1. Navigate to an article page (any /briefing/* or /u/* URL)
+2. Verify a font size stepper (− and + buttons) appears to the right of Sans/Serif selector
+3. Click + and verify .post-content font-size increases
+4. Click − and verify .post-content font-size decreases
+5. Verify + is disabled when step count is +5 (click 5 times from 0)
+6. Verify − is disabled when step count is −5 (click 5 times from 0)
+7. Verify font size is saved to localStorage key 'paperclips-font-size' after clicking
+8. Reload the page and verify the saved font size is restored (no flash)
+9. Verify article title/header/nav are NOT scaled by the stepper
+10. Verify Sans/Serif toggle still works independently of the stepper
+
+Provide screenshots as evidence. Report PASS or FAIL for each criterion.
+```
+
+**Collect Playwright results.** If Playwright reports failures, attempt to diagnose whether:
+- The implementation is missing entirely (issue for agent to fix before blindqa)
+- The test script had an error (retry the test)
+- The criterion is genuinely failing (legitimate FAIL)
+
+### 5b. Invoke BlindQA Skill
+
+After Playwright verification (or if not a web feature), use the Skill tool to invoke BlindQA:
 
 ```
 Skill: BlindQA
@@ -78,12 +138,22 @@ This will invoke the BlindVerify workflow in interactive mode which will:
 4. Continue until all issues resolved or user stops early
 ```
 
+### 5c. Cleanup Dev Server
+
+After all verification is complete (pass or fail), stop the dev server if started:
+
+```bash
+if [ -n "${HUGO_PID:-}" ]; then kill $HUGO_PID 2>/dev/null || true; fi
+if [ -n "${DEV_PID:-}" ]; then kill $DEV_PID 2>/dev/null || true; fi
+```
+
 ### 6. Evaluate Result
 
-Parse BlindQA output for verdict:
+Combine evidence from **both** Playwright (step 5a) and BlindQA (step 5b):
 
 **Case A: PASS**
-- All checks passed with evidence
+- All checks passed with evidence from Playwright AND BlindQA
+- Both must agree: Playwright shows each AC green, BlindQA reports no issues
 - Emit success signal:
   ```bash
   bun .collab/handlers/emit-blindqa-signal.ts pass "All ${check_count} checks passed with evidence"
@@ -91,7 +161,7 @@ Parse BlindQA output for verdict:
 - Exit successfully (pipeline advances to done/next phase)
 
 **Case B: FAIL**
-- One or more checks failed
+- One or more checks failed (from either Playwright or BlindQA)
 - If `attempt < max_attempts`:
   - Increment `attempt`
   - Present failure summary to user (or use interactive mode fixes)
