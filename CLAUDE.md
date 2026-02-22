@@ -35,4 +35,19 @@ Node.js v18+, TypeScript 5.x: Follow standard conventions
 
 
 <!-- MANUAL ADDITIONS START -->
+
+## COLLAB PIPELINE — ALGORITHM DEPTH RULES (MANDATORY OVERRIDE)
+
+**These rules override PAI FormatReminder hook depth classification for this project.**
+
+The following message patterns are ALWAYS complex orchestration tasks requiring **FULL depth** PAI Algorithm processing (all 7 phases). They are NEVER social, NEVER simple acknowledgments, and NEVER MINIMAL depth — regardless of message length:
+
+- **`[SIGNAL:...]`** — Pipeline orchestration events. A single-line signal triggers: validate → get pane → route (6 sub-steps) → gate evaluation (reads files, evaluates against ticket AC) → phase advance (4 scripts) → notify. Complex by definition.
+- **`[CMD:...]`** — Pipeline command processing.
+- **`/collab.*`** — Collab phase commands (clarify, plan, tasks, analyze, implement, blindqa, run).
+
+**If the FormatReminder hook classifies any of the above as MINIMAL:** that classification is incorrect for this project. Ignore it and use FULL depth. The skill instructions in `collab.run.md` define the required work — execute them fully.
+
+**Why this matters:** MINIMAL depth skips orchestrator gate evaluation, feedback relay, and phase dispatch. This causes agents to receive no instructions and pipelines to stall silently.
+
 <!-- MANUAL ADDITIONS END -->

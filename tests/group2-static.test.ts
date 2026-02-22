@@ -1,0 +1,216 @@
+/**
+ * group2-static.test.ts - Static analysis checks on command and config files
+ *
+ * Verifies that command files, gate definitions, handler scripts, and
+ * pipeline.json contain the correct instructions, tokens, and structure.
+ *
+ * These are pure file-content checks with no subprocess execution.
+ */
+
+import { describe, test, expect } from "bun:test";
+import * as fs from "fs";
+import * as path from "path";
+import { execSync } from "child_process";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const REPO_ROOT = execSync("git rev-parse --show-toplevel", {
+  encoding: "utf-8",
+  cwd: import.meta.dir,
+}).trim();
+
+function readSourceFile(relativePath: string): string {
+  const fullPath = path.join(REPO_ROOT, relativePath);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`File not found: ${fullPath}`);
+  }
+  return fs.readFileSync(fullPath, "utf-8");
+}
+
+// ===========================================================================
+// Section delimiter tests (3 tests)
+// ===========================================================================
+
+describe("section delimiter in signal pipeline", () => {
+  test("1. collab.clarify.md emits section delimiter in signal", () => {
+    const content = readSourceFile("src/commands/collab.clarify.md");
+
+    // The file must contain the section delimiter character in the context
+    // of the emit-question-signal.ts command usage
+    expect(content).toContain("\u00A7");
+    expect(content).toContain("emit-question-signal.ts");
+  });
+
+  test("2. collab.run.md has section delimiter parsing instruction", () => {
+    const content = readSourceFile("src/commands/collab.run.md");
+
+    // The orchestrator must know to split on section delimiter
+    expect(content).toContain("Split");
+    expect(content).toContain("\u00A7");
+  });
+
+  test("3. pipeline-signal.ts truncateDetail only uses substring (no character filtering)", () => {
+    const content = readSourceFile("src/handlers/pipeline-signal.ts");
+
+    // Find the truncateDetail function body
+    const funcStart = content.indexOf("function truncateDetail");
+    expect(funcStart).toBeGreaterThan(-1);
+
+    // Extract function body (from the opening { to the next function or end)
+    const funcBody = content.substring(funcStart);
+
+    // Verify it uses .substring and .length for truncation
+    expect(funcBody).toContain(".substring");
+    expect(funcBody).toContain(".length");
+
+    // Verify it does NOT use replace or filter (which would strip characters)
+    // Only check within the truncateDetail function, not the whole file
+    const funcEnd = funcBody.indexOf("\n}");
+    const truncateBody = funcBody.substring(0, funcEnd > 0 ? funcEnd : funcBody.length);
+    expect(truncateBody).not.toContain(".replace");
+    expect(truncateBody).not.toContain(".filter");
+  });
+});
+
+// ===========================================================================
+// analysis.md write tests (2 tests)
+// ===========================================================================
+
+describe("collab.analyze.md file write instructions", () => {
+  test("4. collab.analyze.md instructs writing to analysis.md", () => {
+    const content = readSourceFile("src/commands/collab.analyze.md");
+
+    // Must instruct the agent to write the report to analysis.md
+    expect(content).toContain("write it to");
+    expect(content).toContain("analysis.md");
+  });
+
+  test("5. collab.analyze.md instructs file write BEFORE signal emission", () => {
+    const content = readSourceFile("src/commands/collab.analyze.md");
+
+    // The step 6 write instruction must appear before the step 8 signal emission.
+    // We use the step 8 heading as the signal position marker (not the first
+    // mention of verify-and-complete.sh, which appears in the preamble).
+    const writePos = content.indexOf("write it to");
+    const signalStepPos = content.indexOf("### 8. Verify Completion and Emit Signal");
+
+    expect(writePos).toBeGreaterThan(-1);
+    expect(signalStepPos).toBeGreaterThan(-1);
+    expect(writePos).toBeLessThan(signalStepPos);
+  });
+});
+
+// ===========================================================================
+// analyze gate rule tests (4 tests)
+// ===========================================================================
+
+describe("analyze gate (src/config/gates/analyze.md)", () => {
+  test("6. analyze gate has ANALYSIS_MD context token", () => {
+    const content = readSourceFile("src/config/gates/analyze.md");
+
+    // The gate must reference ANALYSIS_MD in its frontmatter context section
+    expect(content).toContain("ANALYSIS_MD");
+  });
+
+  test("7. analyze gate has REMEDIATION_COMPLETE response", () => {
+    const content = readSourceFile("src/config/gates/analyze.md");
+
+    expect(content).toContain("REMEDIATION_COMPLETE");
+  });
+
+  test("8. analyze gate has ESCALATION response", () => {
+    const content = readSourceFile("src/config/gates/analyze.md");
+
+    expect(content).toContain("ESCALATION");
+  });
+
+  test("9. analyze gate prohibits independent artifact review", () => {
+    const content = readSourceFile("src/config/gates/analyze.md");
+
+    // The gate must contain the instruction preventing the orchestrator
+    // from substituting its own review for the analyze agent's report
+    expect(content).toContain("Do NOT substitute");
+  });
+});
+
+// ===========================================================================
+// CLAUDE.md depth override tests (3 tests)
+// ===========================================================================
+
+describe("CLAUDE.md PAI depth override for pipeline messages", () => {
+  test("14. CLAUDE.md overrides depth for [SIGNAL:] messages", () => {
+    const content = readSourceFile("CLAUDE.md");
+
+    // CLAUDE.md must contain the depth override instruction for SIGNAL messages
+    expect(content).toContain("[SIGNAL:");
+    expect(content).toContain("FULL depth");
+  });
+
+  test("15. CLAUDE.md overrides depth for [CMD:] messages", () => {
+    const content = readSourceFile("CLAUDE.md");
+
+    expect(content).toContain("[CMD:");
+  });
+
+  test("16. CLAUDE.md states MINIMAL classification is incorrect for pipeline messages", () => {
+    const content = readSourceFile("CLAUDE.md");
+
+    // Must explicitly tell the orchestrator to ignore MINIMAL classification
+    // when it receives pipeline signals/commands
+    expect(content).toContain("MINIMAL");
+    expect(content).toContain("Ignore it");
+  });
+});
+
+// ===========================================================================
+// pipeline.json structure tests (4 tests)
+// ===========================================================================
+
+describe("pipeline.json structure", () => {
+  let pipeline: any;
+
+  const pipelinePath = path.join(REPO_ROOT, ".collab/config/pipeline.json");
+
+  test("10. pipeline.json has correct version", () => {
+    pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
+    expect(pipeline.version).toBe("3.0");
+  });
+
+  test("11. pipeline.json has all 7 phases", () => {
+    pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
+    const phaseIds = pipeline.phases.map((p: any) => p.id);
+
+    expect(phaseIds).toContain("clarify");
+    expect(phaseIds).toContain("plan");
+    expect(phaseIds).toContain("tasks");
+    expect(phaseIds).toContain("analyze");
+    expect(phaseIds).toContain("implement");
+    expect(phaseIds).toContain("blindqa");
+    expect(phaseIds).toContain("done");
+    expect(phaseIds.length).toBe(7);
+  });
+
+  test("12. blindqa phase has goal_gate always", () => {
+    pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
+    const blindqa = pipeline.phases.find((p: any) => p.id === "blindqa");
+
+    expect(blindqa).toBeDefined();
+    expect(blindqa.goal_gate).toBe("always");
+  });
+
+  test("13. analyze_review gate has ESCALATION without to field (retry loop)", () => {
+    pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
+    const analyzeGate = pipeline.gates?.analyze_review;
+
+    expect(analyzeGate).toBeDefined();
+    expect(analyzeGate.responses).toBeDefined();
+    expect(analyzeGate.responses.ESCALATION).toBeDefined();
+
+    // ESCALATION should have feedback:true and NO "to" field (meaning retry)
+    const escalation = analyzeGate.responses.ESCALATION;
+    expect(escalation.feedback).toBe(true);
+    expect(escalation.to).toBeUndefined();
+  });
+});

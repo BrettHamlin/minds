@@ -139,7 +139,7 @@ function main(): void {
         `Warning: ${heldTicket} is held but has no coordination.json -- releasing`
       );
       execSync(
-        `"${scriptDir}/registry-update.sh" "${heldTicket}" status=running held_at= waiting_for=`,
+        `bun "${scriptDir}/registry-update.ts" "${heldTicket}" status=running`,
         { stdio: "inherit" }
       );
       releasedCount++;
@@ -153,7 +153,7 @@ function main(): void {
         `Warning: ${heldTicket} is held but wait_for is empty -- releasing`
       );
       execSync(
-        `"${scriptDir}/registry-update.sh" "${heldTicket}" status=running held_at= waiting_for=`,
+        `bun "${scriptDir}/registry-update.ts" "${heldTicket}" status=running`,
         { stdio: "inherit" }
       );
       releasedCount++;
@@ -164,7 +164,7 @@ function main(): void {
 
     if (result.satisfied) {
       execSync(
-        `"${scriptDir}/registry-update.sh" "${heldTicket}" status=running held_at= waiting_for=`,
+        `bun "${scriptDir}/registry-update.ts" "${heldTicket}" status=running`,
         { stdio: "inherit" }
       );
       console.log(`Released ${heldTicket} (was held at ${heldAt})`);
