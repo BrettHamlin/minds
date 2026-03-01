@@ -34,7 +34,13 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 echo "Validating pipeline.json against v3 schema..." >&2
-VALIDATION_OUTPUT=$(bunx ajv-cli validate \
+AJV_BIN="$REPO_ROOT/node_modules/.bin/ajv"
+if [ ! -f "$AJV_BIN" ]; then
+  echo "Error: ajv CLI not found at $AJV_BIN" >&2
+  echo "Run 'bun install' in the collab repo root ($REPO_ROOT) to install it." >&2
+  exit 3
+fi
+VALIDATION_OUTPUT=$("$AJV_BIN" validate \
   --spec=draft2020 \
   --strict=false \
   -s "$SCHEMA_FILE" \
@@ -42,7 +48,7 @@ VALIDATION_OUTPUT=$(bunx ajv-cli validate \
   --errors=json \
   --all-errors 2>&1 || true)
 
-if ! bunx ajv-cli validate --spec=draft2020 --strict=false -s "$SCHEMA_FILE" -d "$CONFIG_FILE" --errors=json --all-errors > /dev/null 2>&1; then
+if ! "$AJV_BIN" validate --spec=draft2020 --strict=false -s "$SCHEMA_FILE" -d "$CONFIG_FILE" --errors=json --all-errors > /dev/null 2>&1; then
   echo "Error: pipeline.json failed schema validation:" >&2
   echo "$VALIDATION_OUTPUT" >&2
   echo "Fix the errors above before running the pipeline." >&2

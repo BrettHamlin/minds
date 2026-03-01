@@ -210,6 +210,9 @@ else
     HAS_GIT=false
 fi
 
+# Capture the calling (orchestrator) repo root before any --source-repo override
+CALLING_REPO_ROOT="$REPO_ROOT"
+
 # Override REPO_ROOT with --source-repo if provided (used when ticket belongs to a different repo)
 if [ -n "$SOURCE_REPO" ]; then
     REPO_ROOT="$SOURCE_REPO"
@@ -371,6 +374,15 @@ if [ -n "$WORKTREE_DIR" ]; then
 }
 EOF
     >&2 echo "[specify] Created metadata.json in $MAIN_REPO_SPEC_DIR"
+
+    # If --source-repo was used, also write to the calling (orchestrator) repo's specs/
+    # so orchestrator-init.sh can find it — it always scans the collab repo's specs/
+    if [ -n "$SOURCE_REPO" ] && [ "$CALLING_REPO_ROOT" != "$REPO_ROOT" ]; then
+        CALLING_SPEC_DIR="$CALLING_REPO_ROOT/specs/$BRANCH_NAME"
+        mkdir -p "$CALLING_SPEC_DIR"
+        cp "$MAIN_REPO_SPEC_DIR/metadata.json" "$CALLING_SPEC_DIR/metadata.json"
+        >&2 echo "[specify] Also wrote metadata.json to orchestrator repo at $CALLING_SPEC_DIR"
+    fi
 fi
 
 TEMPLATE="$REPO_ROOT/.specify/templates/spec-template.md"

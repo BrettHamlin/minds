@@ -130,7 +130,19 @@ fi
 # --- Dispatch: command shorthand ---
 if [ -n "$HAS_COMMAND" ]; then
   CMD="$HAS_COMMAND"
+  PANE_BEFORE=$(bun "$SCRIPT_DIR/Tmux.ts" capture -w "$AGENT_PANE" 2>/dev/null | cksum)
   bun "$SCRIPT_DIR/Tmux.ts" send -w "$AGENT_PANE" -t "$CMD" -d 5
+  # Poll for up to 15s (exits early the moment pane changes — typically ~3s in normal operation)
+  RECEIVED=false
+  for _check in 1 2 3 4 5; do
+    sleep 3
+    PANE_CHECK=$(bun "$SCRIPT_DIR/Tmux.ts" capture -w "$AGENT_PANE" 2>/dev/null | cksum)
+    if [ "$PANE_BEFORE" != "$PANE_CHECK" ]; then RECEIVED=true; break; fi
+  done
+  if ! $RECEIVED; then
+    echo "Warning: agent pane unchanged 15s after dispatch; resending C-m" >&2
+    tmux send-keys -t "$AGENT_PANE" C-m
+  fi
   echo "Dispatched $PHASE_ID to $AGENT_PANE: $CMD"
   exit 0
 fi
@@ -139,6 +151,8 @@ fi
 # For each action, dispatch in order
 # display: print to stdout (orchestrator output, not to agent)
 # prompt / command: send to agent pane
+HAS_CMD_ACTION=false
+PANE_BEFORE_ACTIONS=$(bun "$SCRIPT_DIR/Tmux.ts" capture -w "$AGENT_PANE" 2>/dev/null | cksum)
 ACTION_COUNT=$(jq -r --arg id "$PHASE_ID" \
   '.phases[] | select(.id == $id) | .actions | length' \
   "$CONFIG_FILE" 2>/dev/null || echo "0")
@@ -160,11 +174,26 @@ for i in $(seq 0 $((ACTION_COUNT - 1))); do
     prompt|command)
       bun "$SCRIPT_DIR/Tmux.ts" send -w "$AGENT_PANE" -t "$ACTION_VALUE" -d 1
       echo "Dispatched $PHASE_ID action '$ACTION_TYPE' to $AGENT_PANE: $ACTION_VALUE"
+      HAS_CMD_ACTION=true
       ;;
     *)
       echo "Warning: Unknown action type '$ACTION_TYPE' in phase '$PHASE_ID'" >&2
       ;;
   esac
 done
+
+# Verify the last command action was received (polls up to 15s, exits early on pane change)
+if $HAS_CMD_ACTION; then
+  RECEIVED=false
+  for _check in 1 2 3 4 5; do
+    sleep 3
+    PANE_CHECK=$(bun "$SCRIPT_DIR/Tmux.ts" capture -w "$AGENT_PANE" 2>/dev/null | cksum)
+    if [ "$PANE_BEFORE_ACTIONS" != "$PANE_CHECK" ]; then RECEIVED=true; break; fi
+  done
+  if ! $RECEIVED; then
+    echo "Warning: agent pane unchanged 15s after actions dispatch; resending C-m" >&2
+    tmux send-keys -t "$AGENT_PANE" C-m
+  fi
+fi
 
 exit 0

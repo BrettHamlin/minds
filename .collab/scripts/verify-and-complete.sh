@@ -31,8 +31,21 @@ echo "[VerifyComplete] Checking completion conditions..."
 # Phase-specific verification
 case "$PHASE" in
   implement)
-    # tasks.md lives at specs/{feature-name}/tasks.md — search there first, fall back to root
-    TASKS_FILE=$(find "$REPO_ROOT/specs" -name "tasks.md" -maxdepth 2 2>/dev/null | head -1)
+    # Resolve active feature's tasks.md via check-prerequisites first (avoids picking the
+    # wrong file when multiple features have a specs/*/tasks.md in the same repo).
+    TASKS_FILE=""
+    PREREQ_SCRIPT="$REPO_ROOT/.specify/scripts/bash/check-prerequisites.sh"
+    if [ -x "$PREREQ_SCRIPT" ]; then
+      FEATURE_DIR=$(cd "$REPO_ROOT" && "$PREREQ_SCRIPT" --json 2>/dev/null \
+        | grep -o '"FEATURE_DIR":"[^"]*"' | cut -d'"' -f4 || true)
+      if [ -n "$FEATURE_DIR" ] && [ -f "$FEATURE_DIR/tasks.md" ]; then
+        TASKS_FILE="$FEATURE_DIR/tasks.md"
+      fi
+    fi
+    # Fall back: sorted glob across specs/, then repo root
+    if [ -z "$TASKS_FILE" ]; then
+      TASKS_FILE=$(find "$REPO_ROOT/specs" -name "tasks.md" -maxdepth 2 2>/dev/null | sort | head -1)
+    fi
     if [ -z "$TASKS_FILE" ]; then
       TASKS_FILE="$REPO_ROOT/tasks.md"
     fi

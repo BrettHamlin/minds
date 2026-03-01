@@ -7,12 +7,12 @@ description: Orchestrate the full relay pipeline by spawning agent panes and pro
 You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Code agents in tmux split panes and processing signal responses. Max 5 concurrent agents.
 
 **Scripts Directory**: `.collab/scripts/orchestrator`
-**Phase progression and commands**: driven entirely by `.collab/config/pipeline.json`
+**Phase progression and commands**: driven entirely by the selected pipeline config (e.g., `.collab/config/pipeline.mobile.json`)
 **Architecture**: See `architecture.md` for the three-layer design (Declarative / Execution / Judgment).
 
 ## Arguments
 
-`$ARGUMENTS` = ticket ID (e.g., `BRE-168`).
+`$ARGUMENTS` = ticket ID and pipeline name (e.g., `BRE-168 --pipeline mobile`). The `--pipeline` flag is required.
 
 ---
 
@@ -53,7 +53,7 @@ No argument -> "Usage: /collab.run <ticket-id>" and stop.
 ```bash
 .collab/scripts/orchestrator/orchestrator-init.sh $ARGUMENTS
 ```
-Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> output error, stop.
+Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`, `CONFIG_FILE=...`. Store `CONFIG_FILE` for all subsequent pipeline config references. Non-zero exit -> output error, stop.
 
 ### 4. Fetch Linear ticket
 
@@ -62,7 +62,7 @@ Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> ou
 ### 5. Launch
 
 ```bash
-FIRST_PHASE=$(jq -r '.phases[0].id' .collab/config/pipeline.json)
+FIRST_PHASE=$(jq -r '.phases[0].id' "$CONFIG_FILE")
 .collab/scripts/orchestrator/phase-dispatch.sh $ARGUMENTS "$FIRST_PHASE"
 ```
 
@@ -174,7 +174,7 @@ If output starts with `REDIRECT:`: extract phase id, dispatch it, status table, 
 
 Check if `NEXT` is terminal:
 ```bash
-IS_TERMINAL=$(jq -r --arg id "{NEXT}" '.phases[] | select(.id == $id) | .terminal // false' .collab/config/pipeline.json)
+IS_TERMINAL=$(jq -r --arg id "{NEXT}" '.phases[] | select(.id == $id) | .terminal // false' "$CONFIG_FILE")
 ```
 If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
 
@@ -199,6 +199,10 @@ $SCRIPTS/held-release-scan.ts {ticket_id}
 3. `.collab/scripts/orchestrator/status-table.sh`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." **END RESPONSE.**
 4. `.collab/scripts/webhook-notify.sh {ticket_id} {step} {step} error`
 
+#### Any other signal -- Phase-specific outcome (transition routing)
+
+For signals that do not match any suffix above (e.g., `VERIFY_PASS`, `VERIFY_FAIL`, `VERIFY_BLOCKED`): treat as a completed phase event and route through `transition-resolve.ts`, identical to `_COMPLETE`. Follow steps a–f under `_COMPLETE` exactly.
+
 ---
 
 ## Command Processing
@@ -211,7 +215,7 @@ $SCRIPTS/held-release-scan.ts {ticket_id}
 4. Fetch Linear ticket with `includeRelations: true`.
 5. Dispatch first phase:
    ```bash
-   FIRST_PHASE=$(jq -r '.phases[0].id' .collab/config/pipeline.json)
+   FIRST_PHASE=$(jq -r '.phases[0].id' "$CONFIG_FILE")
    .collab/scripts/orchestrator/phase-dispatch.sh {ticket_id} "$FIRST_PHASE"
    ```
    (Script handles coordination hold automatically — check output for `HELD:` prefix and update status table accordingly.)
