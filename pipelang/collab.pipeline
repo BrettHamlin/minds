@@ -7,6 +7,7 @@
 // ── Phases ────────────────────────────────────────────────────────────────────
 
 phase(clarify)
+    .model(opus)
     .command("/collab.clarify")
     .signals(CLARIFY_COMPLETE, CLARIFY_QUESTION, CLARIFY_ERROR)
     .on(CLARIFY_COMPLETE, to: plan)
