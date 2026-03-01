@@ -30,7 +30,7 @@ const REPO_ROOT = execSync("git rev-parse --show-toplevel", {
 }).trim();
 
 const VERIFY_SCRIPT = path.join(REPO_ROOT, "src/scripts/verify-and-complete.sh");
-const PHASE_DISPATCH = path.join(REPO_ROOT, "src/scripts/orchestrator/phase-dispatch.sh");
+const PHASE_DISPATCH = path.join(REPO_ROOT, "src/scripts/orchestrator/commands/phase-dispatch.ts");
 
 /** Run a shell script with arguments, returning { exitCode, stdout, stderr } */
 function runScript(
@@ -39,6 +39,24 @@ function runScript(
   cwd?: string
 ): { exitCode: number; stdout: string; stderr: string } {
   const result = spawnSync("bash", [scriptPath, ...args], {
+    encoding: "utf-8",
+    cwd: cwd || REPO_ROOT,
+    env: { ...process.env, TMUX_PANE: "%test-orch", TMUX: "test" },
+  });
+  return {
+    exitCode: result.status ?? 1,
+    stdout: result.stdout || "",
+    stderr: result.stderr || "",
+  };
+}
+
+/** Run a TypeScript script with bun, returning { exitCode, stdout, stderr } */
+function runBunScript(
+  scriptPath: string,
+  args: string[],
+  cwd?: string
+): { exitCode: number; stdout: string; stderr: string } {
+  const result = spawnSync("bun", [scriptPath, ...args], {
     encoding: "utf-8",
     cwd: cwd || REPO_ROOT,
     env: { ...process.env, TMUX_PANE: "%test-orch", TMUX: "test" },
@@ -240,7 +258,7 @@ describe("verify-and-complete.sh: generic phases", () => {
 // phase-dispatch.sh: pipeline.json integration (3 tests)
 // ===========================================================================
 
-describe("phase-dispatch.sh: pipeline.json resolution", () => {
+describe("phase-dispatch.ts: pipeline.json resolution", () => {
   test("9. exits 2 for unknown phase", () => {
     // Create a minimal registry so the script can read the agent pane
     const tmpDir = createTempRepo({});
@@ -282,7 +300,7 @@ describe("phase-dispatch.sh: pipeline.json resolution", () => {
       })
     );
 
-    const result = runScript(PHASE_DISPATCH, ["TEST-999", "nonexistent-phase"], tmpDir);
+    const result = runBunScript(PHASE_DISPATCH, ["TEST-999", "nonexistent-phase"], tmpDir);
 
     cleanupTempDir(tmpDir);
 
@@ -303,7 +321,7 @@ describe("phase-dispatch.sh: pipeline.json resolution", () => {
       path.join(tmpDir, ".collab/config/pipeline.json")
     );
 
-    const result = runScript(PHASE_DISPATCH, ["NOTICKET-000", "clarify"], tmpDir);
+    const result = runBunScript(PHASE_DISPATCH, ["NOTICKET-000", "clarify"], tmpDir);
 
     cleanupTempDir(tmpDir);
 
@@ -335,7 +353,7 @@ describe("phase-dispatch.sh: pipeline.json resolution", () => {
       })
     );
 
-    const result = runScript(PHASE_DISPATCH, ["TEST-001", "done"], tmpDir);
+    const result = runBunScript(PHASE_DISPATCH, ["TEST-001", "done"], tmpDir);
 
     cleanupTempDir(tmpDir);
 
@@ -353,7 +371,7 @@ describe("pipeline.json: phase command resolution via jq", () => {
     const pipelinePath = path.join(REPO_ROOT, ".collab/config/pipeline.json");
     const result = spawnSync(
       "jq",
-      ["-r", '.phases[] | select(.id == "clarify") | .command // "MISSING"', pipelinePath],
+      ["-r", '.phases.clarify.command // "MISSING"', pipelinePath],
       { encoding: "utf-8" }
     );
 
@@ -365,10 +383,12 @@ describe("pipeline.json: phase command resolution via jq", () => {
     const pipelinePath = path.join(REPO_ROOT, ".collab/config/pipeline.json");
     const pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
 
-    const nonTerminal = pipeline.phases.filter((p: any) => !p.terminal);
-    for (const phase of nonTerminal) {
+    const nonTerminal = Object.entries(pipeline.phases).filter(
+      ([, p]: [string, any]) => !p.terminal
+    );
+    for (const [id, phase] of nonTerminal as [string, any][]) {
       const hasCommand = !!(phase.command || phase.actions);
-      expect(hasCommand, `Phase '${phase.id}' missing command or actions`).toBe(true);
+      expect(hasCommand, `Phase '${id}' missing command or actions`).toBe(true);
     }
   });
 });

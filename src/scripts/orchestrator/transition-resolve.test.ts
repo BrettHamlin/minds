@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveTransition, type TransitionResult } from "./transition-resolve";
+import { resolveTransition, resolveGateResponse, type TransitionResult } from "./transition-resolve";
 
 // ============================================================================
 // Test pipeline fixture
@@ -111,6 +111,10 @@ describe("resolveTransition", () => {
     ).toBeNull();
   });
 
+  test("returns null for pipeline without gates object", () => {
+    expect(resolveTransition("clarify", "CLARIFY_COMPLETE", { version: "3.0" })).toBeNull();
+  });
+
   test("error-to-self transition works", () => {
     const result = resolveTransition("plan", "PLAN_ERROR", PIPELINE);
     expect(result).toEqual({
@@ -133,5 +137,52 @@ describe("resolveTransition", () => {
       if: null,
       conditional: false,
     });
+  });
+});
+
+// ============================================================================
+// resolveGateResponse
+// ============================================================================
+
+const PIPELINE_WITH_GATES = {
+  ...PIPELINE,
+  gates: {
+    plan_review: {
+      prompt: ".collab/config/gates/plan.md",
+      on: {
+        APPROVED: { to: "tasks" },
+        REVISION_NEEDED: { to: "plan", feedback: "enrich" },
+      },
+    },
+  },
+};
+
+describe("resolveGateResponse", () => {
+  test("returns gate response for known keyword", () => {
+    const result = resolveGateResponse(PIPELINE_WITH_GATES, "plan_review", "APPROVED");
+    expect(result).toEqual({ to: "tasks" });
+  });
+
+  test("returns response with feedback for retry keyword", () => {
+    const result = resolveGateResponse(PIPELINE_WITH_GATES, "plan_review", "REVISION_NEEDED");
+    expect(result).not.toBeNull();
+    expect((result as any).feedback).toBe("enrich");
+    expect((result as any).to).toBe("plan");
+  });
+
+  test("returns null for unknown gate", () => {
+    expect(resolveGateResponse(PIPELINE_WITH_GATES, "nonexistent_gate", "APPROVED")).toBeNull();
+  });
+
+  test("returns null for unknown keyword within known gate", () => {
+    expect(resolveGateResponse(PIPELINE_WITH_GATES, "plan_review", "UNKNOWN_KEYWORD")).toBeNull();
+  });
+
+  test("returns null for null pipeline", () => {
+    expect(resolveGateResponse(null, "plan_review", "APPROVED")).toBeNull();
+  });
+
+  test("returns null for pipeline without gates field", () => {
+    expect(resolveGateResponse(PIPELINE, "plan_review", "APPROVED")).toBeNull();
   });
 });

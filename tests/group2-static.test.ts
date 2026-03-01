@@ -175,12 +175,12 @@ describe("pipeline.json structure", () => {
 
   test("10. pipeline.json has correct version", () => {
     pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
-    expect(pipeline.version).toBe("3.0");
+    expect(pipeline.version).toBe("3.1");
   });
 
   test("11. pipeline.json has all 7 phases", () => {
     pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
-    const phaseIds = pipeline.phases.map((p: any) => p.id);
+    const phaseIds = Object.keys(pipeline.phases);
 
     expect(phaseIds).toContain("clarify");
     expect(phaseIds).toContain("plan");
@@ -194,7 +194,7 @@ describe("pipeline.json structure", () => {
 
   test("12. blindqa phase has goal_gate always", () => {
     pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
-    const blindqa = pipeline.phases.find((p: any) => p.id === "blindqa");
+    const blindqa = pipeline.phases["blindqa"];
 
     expect(blindqa).toBeDefined();
     expect(blindqa.goal_gate).toBe("always");
@@ -205,12 +205,12 @@ describe("pipeline.json structure", () => {
     const analyzeGate = pipeline.gates?.analyze_review;
 
     expect(analyzeGate).toBeDefined();
-    expect(analyzeGate.responses).toBeDefined();
-    expect(analyzeGate.responses.ESCALATION).toBeDefined();
+    expect(analyzeGate.on).toBeDefined();
+    expect(analyzeGate.on.ESCALATION).toBeDefined();
 
-    // ESCALATION should have feedback:true and NO "to" field (meaning retry)
-    const escalation = analyzeGate.responses.ESCALATION;
-    expect(escalation.feedback).toBe(true);
+    // ESCALATION should have feedback:"raw" and NO "to" field (meaning retry)
+    const escalation = analyzeGate.on.ESCALATION;
+    expect(escalation.feedback).toBe("raw");
     expect(escalation.to).toBeUndefined();
   });
 });

@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pipeline.v3.schema.json",
+  "title": "Pipeline v3 Config",
+  "type": "object",
+  "required": ["version", "phases", "transitions"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "3.0",
+      "description": "Schema version discriminator"
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/phase"
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/gate"
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/transition"
+      }
+    }
+  },
+  "$defs": {
+    "phase": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique phase identifier"
+        },
+        "command": {
+          "type": "string",
+          "description": "Shorthand: single command sent to agent. Mutually exclusive with actions."
+        },
+        "actions": {
+          "type": "array",
+          "description": "Explicit action sequence. Mutually exclusive with command.",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Valid signal types this phase can emit"
+        },
+        "goal_gate": {
+          "type": "string",
+          "enum": ["always", "if_triggered"],
+          "description": "Goal gate enforcement mode"
+        },
+        "orchestrator_context": {
+          "type": "string",
+          "description": "File path or inline text scoping orchestrator judgment for this phase"
+        },
+        "terminal": {
+          "type": "boolean",
+          "description": "If true, pipeline ends when this phase is reached"
+        }
+      },
+      "not": {
+        "required": ["command", "actions"],
+        "description": "command and actions are mutually exclusive"
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "actions": {
+                "type": "array"
+              }
+            },
+            "required": ["actions"]
+          },
+          "then": {
+            "properties": {
+              "actions": {
+                "type": "array",
+                "description": "At most one command action per phase",
+                "not": {
+                  "contains": {
+                    "properties": {
+                      "command": { "type": "string" }
+                    },
+                    "required": ["command"]
+                  },
+                  "minContains": 2,
+                  "maxContains": 100
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["display"],
+          "additionalProperties": false,
+          "properties": {
+            "display": {
+              "type": "string",
+              "description": "Text shown in orchestrator window only; never sent to agent"
+            }
+          }
+        },
+        {
+          "required": ["prompt"],
+          "additionalProperties": false,
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "Text sent to agent immediately; no signal wait"
+            }
+          }
+        },
+        {
+          "required": ["command"],
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "Text sent to agent; orchestrator waits for signal"
+            }
+          }
+        }
+      ]
+    },
+    "gate": {
+      "type": "object",
+      "required": ["prompt", "responses"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "Path to gate prompt file"
+        },
+        "responses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/gateResponse"
+          },
+          "description": "Keyword-to-routing map"
+        },
+        "on_exhaust": {
+          "type": "string",
+          "enum": ["skip", "abort"],
+          "description": "Behavior when retry_count >= max_retries"
+        }
+      }
+    },
+    "gateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "to": {
+          "type": "string",
+          "description": "Target phase ID. Omit to retry current phase."
+        },
+        "feedback": {
+          "type": "boolean",
+          "description": "Whether to relay gate analysis back to agent"
+        },
+        "max_retries": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Max retries before on_exhaust fires"
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": ["from", "signal"],
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["to"] },
+        { "required": ["gate"] }
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Phase ID this transition applies to"
+        },
+        "signal": {
+          "type": "string",
+          "description": "Signal type that triggers this transition"
+        },
+        "to": {
+          "type": "string",
+          "description": "Target phase ID for direct transition"
+        },
+        "gate": {
+          "type": "string",
+          "description": "Gate name for AI-evaluated transition"
+        },
+        "if": {
+          "type": "string",
+          "description": "Optional condition expression; row is conditional if present"
+        }
+      }
+    }
+  }
+}

@@ -176,12 +176,15 @@ describe("transition-resolve.ts", () => {
     expect(json.gate).toBe("analyze_review");
   });
 
-  test("11. implement IMPLEMENT_COMPLETE resolves to blindqa", () => {
+  test("11. implement IMPLEMENT_COMPLETE resolves conditionally (hasGroup → tasks, otherwise → blindqa)", () => {
     const result = runScript("transition-resolve.ts", ["implement", "IMPLEMENT_COMPLETE"]);
 
     expect(result.exitCode).toBe(0);
     const json = parseJson(result.stdout);
-    expect(json.to).toBe("blindqa");
+    // Returns first conditional row; AI evaluates the 'if' condition at runtime
+    expect(json.conditional).toBe(true);
+    expect(json.if).toBe("hasGroup");
+    expect(json.to).toBe("tasks");
   });
 
   test("12. blindqa BLINDQA_COMPLETE resolves to done", () => {

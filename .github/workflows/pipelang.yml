@@ -1,0 +1,39 @@
+name: Pipelang CI
+
+on:
+  push:
+    paths:
+      - "pipelang/**"
+  pull_request:
+    paths:
+      - "pipelang/**"
+
+jobs:
+  test:
+    name: Pipelang tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: pipelang
+        run: bun install --frozen-lockfile 2>/dev/null || true
+
+      - name: Run tests
+        working-directory: pipelang
+        run: bun test
+
+      - name: Compile check (type-check all sources)
+        working-directory: pipelang
+        run: bun run --bun tsc --noEmit 2>/dev/null || bun x tsc --noEmit -p tsconfig.json
+
+      - name: Validate example pipeline
+        working-directory: pipelang
+        run: bun cli.ts compile collab.pipeline --validate

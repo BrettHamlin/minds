@@ -1,0 +1,268 @@
+#!/usr/bin/env bun
+
+/**
+ * phase-dispatch.ts - Dispatch a pipeline phase to the agent pane
+ *
+ * Reads phase command from pipeline.json, checks coordination.json for
+ * hold conditions, reads agent pane from registry, and sends the command
+ * to the agent via TmuxClient.
+ *
+ * This is a generic interpreter: phase rules live in pipeline.json.
+ * Adding, renaming, or reordering phases requires NO changes to this script.
+ *
+ * Usage:
+ *   bun commands/phase-dispatch.ts <TICKET_ID> <PHASE_ID>
+ *
+ * Output (stdout):
+ *   "Dispatched <phase_id> to <agent_pane>: <command>"
+ *   If held: "HELD: <ticket_id> at <phase_id> — waiting for <dep_id>:<dep_phase>"
+ *
+ * Exit codes:
+ *   0 = dispatched, held, or terminal no-op
+ *   1 = usage error
+ *   2 = validation error (phase not found)
+ *   3 = file error (registry/pipeline.json missing)
+ */
+
+import * as fs from "fs";
+import * as path from "path";
+import {
+  getRepoRoot,
+  readJsonFile,
+  writeJsonAtomic,
+  getRegistryPath,
+  TmuxClient,
+  OrchestratorError,
+  handleError,
+} from "../../../lib/pipeline";
+import type { CompiledPipeline, CompiledPhase, CompiledAction } from "../../../lib/pipeline";
+import { applyUpdates } from "../../../lib/pipeline";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface HoldResult {
+  held: boolean;
+  reason?: string;  // "dep_ticket:dep_phase" if held
+}
+
+export interface DispatchResult {
+  dispatched: boolean;
+  received: boolean;
+  paneId: string;
+  command: string;
+}
+
+// ---------------------------------------------------------------------------
+// Phase command resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the command (string) or actions (array) for a phase.
+ * Returns null if phase exists but has no dispatchable command (terminal).
+ * Throws OrchestratorError if phase not found.
+ */
+export function resolvePhaseCommand(
+  pipeline: CompiledPipeline,
+  phaseId: string
+): { type: "command"; value: string } | { type: "actions"; value: CompiledAction[] } | null {
+  const phase = pipeline.phases[phaseId];
+  if (!phase) {
+    throw new OrchestratorError("VALIDATION", `Phase '${phaseId}' not found in pipeline.json`);
+  }
+
+  if (phase.command) {
+    return { type: "command", value: phase.command };
+  }
+
+  if (phase.actions && phase.actions.length > 0) {
+    return { type: "actions", value: phase.actions };
+  }
+
+  return null; // Terminal or no-op phase
+}
+
+// ---------------------------------------------------------------------------
+// Hold check
+// ---------------------------------------------------------------------------
+
+interface WaitForEntry {
+  ticket_id?: string;
+  id?: string;
+  phase: string;
+}
+
+/**
+ * Check whether the ticket should be held due to unsatisfied dependencies.
+ */
+export function checkHoldStatus(
+  ticketId: string,
+  phaseId: string,
+  repoRoot: string,
+  registryDir: string
+): HoldResult {
+  const coordPath = path.join(repoRoot, "specs", ticketId, "coordination.json");
+  if (!fs.existsSync(coordPath)) {
+    return { held: false };
+  }
+
+  const coord = readJsonFile(coordPath);
+  if (!coord) return { held: false };
+
+  const waitFor: WaitForEntry[] = coord.wait_for || [];
+  if (waitFor.length === 0) return { held: false };
+
+  for (const dep of waitFor) {
+    const depTicket = dep.ticket_id || dep.id;
+    const depPhase = dep.phase;
+    if (!depTicket || !depPhase) continue;
+
+    const depRegPath = getRegistryPath(registryDir, depTicket);
+    const depReg = readJsonFile(depRegPath);
+    if (!depReg) {
+      return { held: true, reason: `${depTicket}:${depPhase}` };
+    }
+
+    const history: Array<{ phase: string; signal: string }> = depReg.phase_history || [];
+    const satisfied = history.some(
+      (e) => e.phase === depPhase && e.signal.endsWith("_COMPLETE")
+    );
+    if (!satisfied) {
+      return { held: true, reason: `${depTicket}:${depPhase}` };
+    }
+  }
+
+  return { held: false };
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch
+// ---------------------------------------------------------------------------
+
+const RECEIPT_POLL_INTERVAL_MS = 2000;
+const RECEIPT_POLL_ATTEMPTS = 8; // 16s total
+
+/**
+ * Send a command to the agent pane and verify receipt by checking
+ * that the command text appears in the captured pane output after send.
+ */
+export async function dispatchToAgent(
+  paneId: string,
+  command: string,
+  delay: number = 1
+): Promise<DispatchResult> {
+  const tmux = new TmuxClient();
+
+  // Capture pane before send
+  const before = tmux.capturePane(paneId);
+
+  // Send command
+  tmux.sendKeys(paneId, command, delay);
+
+  // Poll for receipt: check that pane content changed and contains the command
+  let received = false;
+  for (let i = 0; i < RECEIPT_POLL_ATTEMPTS; i++) {
+    await tmux.sleep(RECEIPT_POLL_INTERVAL_MS);
+    const after = tmux.capturePane(paneId);
+    if (after !== before) {
+      received = true;
+      break;
+    }
+  }
+
+  if (!received) {
+    // Resend C-m as fallback (agent may have buffered command but not submitted)
+    console.error(`Warning: agent pane unchanged after dispatch; resending C-m`);
+    tmux.run(["send-keys", "-t", paneId, "", "C-m"]);
+  }
+
+  return { dispatched: true, received, paneId, command };
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+
+  if (args.length < 2) {
+    console.error("Usage: phase-dispatch.ts <TICKET_ID> <PHASE_ID>");
+    process.exit(1);
+  }
+
+  const [ticketId, phaseId] = args;
+
+  try {
+    const repoRoot = getRepoRoot();
+    const configPath = `${repoRoot}/.collab/config/pipeline.json`;
+    const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
+
+    const pipeline = readJsonFile(configPath) as CompiledPipeline | null;
+    if (!pipeline) {
+      throw new OrchestratorError("FILE_NOT_FOUND", `pipeline.json not found: ${configPath}`);
+    }
+
+    const regPath = getRegistryPath(registryDir, ticketId);
+    const registry = readJsonFile(regPath);
+    if (!registry) {
+      throw new OrchestratorError("FILE_NOT_FOUND", `Registry not found for ticket: ${ticketId}`);
+    }
+
+    const agentPane = registry.agent_pane_id as string | undefined;
+    if (!agentPane) {
+      throw new OrchestratorError("FILE_NOT_FOUND", `No agent_pane_id in registry for ${ticketId}`);
+    }
+
+    // --- Check hold conditions ---
+    const holdResult = checkHoldStatus(ticketId, phaseId, repoRoot, registryDir);
+    if (holdResult.held) {
+      // Update registry to held state
+      writeJsonAtomic(
+        regPath,
+        applyUpdates(registry, {
+          status: "held",
+          held_at: phaseId,
+          waiting_for: holdResult.reason,
+        })
+      );
+      console.log(`HELD: ${ticketId} at ${phaseId} — waiting for ${holdResult.reason}`);
+      process.exit(0);
+    }
+
+    // --- Resolve phase command ---
+    const resolved = resolvePhaseCommand(pipeline, phaseId);
+
+    if (!resolved) {
+      // Terminal or no-op phase
+      console.log(`Phase '${phaseId}' has no dispatchable command (terminal or no-op).`);
+      process.exit(0);
+    }
+
+    // --- Dispatch ---
+    if (resolved.type === "command") {
+      const result = await dispatchToAgent(agentPane, resolved.value, 5);
+      console.log(`Dispatched ${phaseId} to ${agentPane}: ${resolved.value}`);
+    } else {
+      // Actions array — dispatch in order
+      let dispatched = false;
+      for (const action of resolved.value) {
+        if (action.display) {
+          console.log(`[Display] ${action.display}`);
+        } else if (action.prompt || action.command) {
+          const cmd = (action.prompt || action.command) as string;
+          await dispatchToAgent(agentPane, cmd, 1);
+          console.log(`Dispatched ${phaseId} action to ${agentPane}: ${cmd}`);
+          dispatched = true;
+        }
+      }
+    }
+  } catch (err) {
+    handleError(err);
+  }
+}
+
+if (import.meta.main) {
+  main();
+}

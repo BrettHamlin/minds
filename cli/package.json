@@ -1,39 +1,27 @@
 {
-  "name": "@collab/specfactory-cli",
+  "name": "collab-workflow",
   "version": "0.1.0",
-  "description": "CLI plugin for SpecFactory - test workflows without Slack",
+  "description": "CLI to scaffold the Collab AI-assisted development pipeline into any git repo",
   "type": "module",
-  "main": "dist/index.js",
   "bin": {
-    "specfactory": "dist/index.js"
+    "collab": "./dist/cli.js"
   },
-  "scripts": {
-    "start": "node dist/index.js",
-    "build": "tsc",
-    "dev": "bun run src/index.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:contract": "vitest run tests/contract/",
-    "test:integration": "vitest run tests/integration/",
-    "test:unit": "vitest run tests/unit/",
-    "lint": "eslint src/**/*.ts"
-  },
-  "keywords": [
-    "specfactory",
-    "cli",
-    "collab"
+  "files": [
+    "dist/",
+    "src/templates/"
   ],
-  "author": "Brett Hamlin",
-  "license": "MIT",
+  "scripts": {
+    "build": "bun build ./bin/cli.ts --outdir dist --target node --format esm",
+    "prepublishOnly": "bun run build",
+    "test": "bun test",
+    "bundle-templates": "bun run scripts/bundle-templates.ts"
+  },
   "dependencies": {
-    "@clack/prompts": "^0.8.2",
-    "commander": "^12.1.0",
-    "node-fetch": "^3.3.2"
+    "commander": "^13.0.0",
+    "chalk": "^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.5",
-    "typescript": "^5.3.3",
-    "vitest": "^1.2.1"
+    "@types/bun": "latest"
   },
   "engines": {
     "node": ">=18.0.0"

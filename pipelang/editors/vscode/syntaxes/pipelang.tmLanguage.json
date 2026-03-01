@@ -1,0 +1,213 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Pipelang",
+  "scopeName": "source.pipelang",
+  "fileTypes": ["pipeline"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#directive" },
+    { "include": "#phase-decl" },
+    { "include": "#gate-decl" },
+    { "include": "#actions-block" },
+    { "include": "#method-chain" },
+    { "include": "#when-otherwise" },
+    { "include": "#signal-name" },
+    { "include": "#dot-enum" },
+    { "include": "#string" },
+    { "include": "#keyword-arg" },
+    { "include": "#number" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.pipelang",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.line.hash.pipelang",
+          "match": "#.*$"
+        }
+      ]
+    },
+
+    "directive": {
+      "comment": "@version(...) and @defaultModel(...) at the top of a file",
+      "patterns": [
+        {
+          "name": "meta.directive.pipelang",
+          "match": "(@(?:version|defaultModel))\\s*(\\()([^)]*)(\\))",
+          "captures": {
+            "1": { "name": "keyword.control.directive.pipelang" },
+            "2": { "name": "punctuation.definition.arguments.begin.pipelang" },
+            "3": { "name": "string.unquoted.directive-value.pipelang" },
+            "4": { "name": "punctuation.definition.arguments.end.pipelang" }
+          }
+        }
+      ]
+    },
+
+    "phase-decl": {
+      "comment": "phase(name) declaration",
+      "match": "^(phase)\\s*(\\()\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*(\\))",
+      "captures": {
+        "1": { "name": "keyword.control.phase.pipelang" },
+        "2": { "name": "punctuation.definition.arguments.begin.pipelang" },
+        "3": { "name": "entity.name.function.phase.pipelang" },
+        "4": { "name": "punctuation.definition.arguments.end.pipelang" }
+      }
+    },
+
+    "gate-decl": {
+      "comment": "gate(name) declaration",
+      "match": "^(gate)\\s*(\\()\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*(\\))",
+      "captures": {
+        "1": { "name": "keyword.control.gate.pipelang" },
+        "2": { "name": "punctuation.definition.arguments.begin.pipelang" },
+        "3": { "name": "entity.name.function.gate.pipelang" },
+        "4": { "name": "punctuation.definition.arguments.end.pipelang" }
+      }
+    },
+
+    "actions-block": {
+      "comment": ".actions { ... } block",
+      "name": "meta.actions-block.pipelang",
+      "begin": "\\.actions\\s*\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "0": { "name": "keyword.control.actions.pipelang" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.block.end.pipelang" }
+      },
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#action-call" },
+        { "include": "#string" }
+      ]
+    },
+
+    "action-call": {
+      "comment": "display(), command(), prompt() inside .actions {}",
+      "patterns": [
+        {
+          "comment": "ai() call — amber/warning color to signal AI-evaluated expression",
+          "name": "meta.ai-call.pipelang",
+          "match": "(ai)\\s*(\\()([^)]*)(\\))",
+          "captures": {
+            "1": { "name": "support.function.ai.pipelang" },
+            "2": { "name": "punctuation.definition.arguments.begin.pipelang" },
+            "3": { "name": "string.unquoted.ai-expression.pipelang" },
+            "4": { "name": "punctuation.definition.arguments.end.pipelang" }
+          }
+        },
+        {
+          "name": "meta.action.pipelang",
+          "match": "(display|command|prompt)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.builtin.pipelang" }
+          }
+        }
+      ]
+    },
+
+    "method-chain": {
+      "comment": ".modifier(...) calls on phase/gate",
+      "patterns": [
+        {
+          "comment": ".terminal() — special terminal modifier",
+          "name": "keyword.control.terminal.pipelang",
+          "match": "\\.terminal\\s*\\(\\s*\\)"
+        },
+        {
+          "comment": ".on(...) transition — the primary routing construct",
+          "name": "meta.method.on.pipelang",
+          "match": "\\.(on)\\s*(\\()",
+          "captures": {
+            "1": { "name": "support.function.modifier.on.pipelang" },
+            "2": { "name": "punctuation.definition.arguments.begin.pipelang" }
+          }
+        },
+        {
+          "comment": "Named modifiers",
+          "match": "\\.(command|signals|model|goalGate|orchestratorContext|skipTo|prompt|actions)\\s*(?=\\(|\\{)",
+          "captures": {
+            "1": { "name": "support.function.modifier.pipelang" }
+          }
+        },
+        {
+          "comment": ".file(...) and .inline(...) inside prompt/orchestratorContext",
+          "match": "\\.(file|inline)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.source.pipelang" }
+          }
+        }
+      ]
+    },
+
+    "when-otherwise": {
+      "comment": "when(condition) { ... } and otherwise { ... } in conditional blocks",
+      "patterns": [
+        {
+          "name": "keyword.control.when.pipelang",
+          "match": "\\b(when|otherwise)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.pipelang",
+          "match": "\\b(and|or|not)\\b"
+        }
+      ]
+    },
+
+    "signal-name": {
+      "comment": "UPPER_CASE identifiers are signal names",
+      "name": "entity.name.tag.signal.pipelang",
+      "match": "\\b[A-Z][A-Z0-9_]{2,}\\b"
+    },
+
+    "dot-enum": {
+      "comment": ".always .ifTriggered .enrich .raw .skip .escalate .abort",
+      "name": "constant.language.enum.pipelang",
+      "match": "\\.(?:always|ifTriggered|enrich|raw|skip|escalate|abort)\\b"
+    },
+
+    "string": {
+      "comment": "Double-quoted strings with ${TOKEN} interpolation",
+      "name": "string.quoted.double.pipelang",
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.pipelang" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.pipelang" }
+      },
+      "patterns": [
+        {
+          "name": "variable.other.token.pipelang",
+          "match": "\\$\\{[A-Z_][A-Z0-9_]*\\}"
+        },
+        {
+          "comment": "ai() inside strings",
+          "name": "support.function.ai.pipelang",
+          "match": "ai\\([^)]*\\)"
+        },
+        {
+          "name": "constant.character.escape.pipelang",
+          "match": "\\\\."
+        }
+      ]
+    },
+
+    "keyword-arg": {
+      "comment": "Named arguments: to: gate: feedback: maxRetries: onExhaust:",
+      "name": "variable.parameter.keyword.pipelang",
+      "match": "\\b(to|gate|feedback|maxRetries|onExhaust)\\s*:"
+    },
+
+    "number": {
+      "name": "constant.numeric.pipelang",
+      "match": "\\b[0-9]+\\b"
+    }
+  }
+}

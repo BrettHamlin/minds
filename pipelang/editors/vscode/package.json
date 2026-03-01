@@ -1,0 +1,63 @@
+{
+  "name": "pipelang",
+  "displayName": "Pipelang",
+  "description": "Language support for .pipeline files (Collab DSL)",
+  "version": "0.1.0",
+  "publisher": "collab",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "pipelang",
+        "aliases": ["Pipelang", "pipeline"],
+        "extensions": [".pipeline"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/pipeline-light.png",
+          "dark": "./icons/pipeline-dark.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "pipelang",
+        "scopeName": "source.pipelang",
+        "path": "./syntaxes/pipelang.tmLanguage.json"
+      }
+    ],
+    "jsonValidation": [],
+    "configuration": {
+      "type": "object",
+      "title": "Pipelang",
+      "properties": {
+        "pipelang.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the pipelang LSP server (leave blank to use bundled server)"
+        },
+        "pipelang.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Traces communication between VS Code and the Pipelang language server"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.extension.json && bun build ../../src/lsp/server.ts --outfile out/server.js --target node",
+    "package": "npm run build && vsce package",
+    "vscode:prepublish": "npm run build"
+  }
+}

@@ -1,0 +1,83 @@
+name: CLI CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "cli/**"
+  pull_request:
+    paths:
+      - "cli/**"
+
+jobs:
+  test:
+    name: CLI tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: cli
+        run: bun install --frozen-lockfile 2>/dev/null || true
+
+      - name: Run tests
+        working-directory: cli
+        run: bun test
+
+      - name: Build
+        working-directory: cli
+        run: bun run build
+
+      - name: Verify built CLI works with Node.js
+        working-directory: cli
+        run: node dist/cli.js --help
+
+      - name: Smoke test — init into a fresh git repo
+        run: |
+          mkdir /tmp/test-repo
+          cd /tmp/test-repo
+          git init
+          git config user.email "ci@example.com"
+          git config user.name "CI"
+          node $GITHUB_WORKSPACE/cli/dist/cli.js init
+          test -f .collab/version.json
+          test -f .claude/commands/collab.run.md
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[publish cli]')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        working-directory: cli
+        run: bun install --frozen-lockfile 2>/dev/null || true
+
+      - name: Publish
+        working-directory: cli
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
