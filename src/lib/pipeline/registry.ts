@@ -24,6 +24,9 @@ export const ALLOWED_FIELDS = new Set([
   "retry_count",
   "held_at",
   "waiting_for",
+  "implement_phase_plan",
+  "repo_id",
+  "repo_path",
 ]);
 
 // ============================================================================
@@ -36,6 +39,13 @@ export interface PhaseHistoryEntry {
   ts: string;
 }
 
+export interface ImplementPhasePlan {
+  total_phases: number;
+  current_impl_phase: number;
+  phase_names: string[];
+  completed_impl_phases: number[];
+}
+
 export interface Registry {
   ticket_id: string;
   nonce: string;
@@ -45,6 +55,9 @@ export interface Registry {
   orchestrator_pane_id?: string;
   worktree_path?: string;
   phase_history?: PhaseHistoryEntry[];
+  implement_phase_plan?: ImplementPhasePlan;
+  repo_id?: string;
+  repo_path?: string;
   [key: string]: any;
 }
 
