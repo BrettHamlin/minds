@@ -72,6 +72,30 @@
         "terminal": {
           "type": "boolean",
           "description": "If true, pipeline ends when this phase is reached"
+        },
+        "before": {
+          "type": "array",
+          "description": "Hook phases to dispatch before this phase is dispatched",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string", "description": "Phase ID to run as a before hook" }
+            }
+          }
+        },
+        "after": {
+          "type": "array",
+          "description": "Hook phases to dispatch after this phase completes",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string", "description": "Phase ID to run as an after hook" }
+            }
+          }
         }
       },
       "not": {

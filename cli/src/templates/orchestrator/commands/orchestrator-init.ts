@@ -165,6 +165,8 @@ export interface PathResolution {
   repoRoot: string;
   worktreePath: string | null;
   spawnCmd: string;
+  repoId?: string;
+  repoPath?: string;
 }
 
 export function resolvePaths(ctx: InitContext): PathResolution {
@@ -182,6 +184,7 @@ export function resolvePaths(ctx: InitContext): PathResolution {
 
   // Scan for metadata.json matching ticket ID
   let worktreePath: string | null = null;
+  let metadataRepoId: string | undefined;
   const specsGlob = path.join(repoRoot, "specs");
 
   if (fs.existsSync(specsGlob)) {
@@ -193,30 +196,59 @@ export function resolvePaths(ctx: InitContext): PathResolution {
       if (!metadata || metadata.ticket_id !== ctx.ticketId) continue;
 
       const wt = metadata.worktree_path as string | undefined;
-      if (!wt) continue;
-
-      if (!fs.existsSync(wt)) {
-        throw new OrchestratorError(
-          "FILE_NOT_FOUND",
-          `Worktree path does not exist: ${wt}`
-        );
+      if (wt) {
+        if (!fs.existsSync(wt)) {
+          throw new OrchestratorError(
+            "FILE_NOT_FOUND",
+            `Worktree path does not exist: ${wt}`
+          );
+        }
+        worktreePath = wt;
+        console.error(`Using worktree: ${worktreePath}`);
       }
 
-      worktreePath = wt;
-      console.error(`Using worktree: ${worktreePath}`);
+      metadataRepoId = metadata.repo_id as string | undefined;
       break;
     }
   }
 
-  const spawnCmd = worktreePath
-    ? `cd '${worktreePath}' && claude --dangerously-skip-permissions`
-    : "claude --dangerously-skip-permissions";
+  // Multi-repo: check for .collab/config/multi-repo.json + metadata repo_id
+  let repoId: string | undefined;
+  let repoPath: string | undefined;
+  const multiRepoConfigPath = path.join(repoRoot, ".collab", "config", "multi-repo.json");
 
-  if (!worktreePath) {
-    console.error("No worktree metadata found, using current directory");
+  if (metadataRepoId && fs.existsSync(multiRepoConfigPath)) {
+    const multiRepoConfig = readJsonFile(multiRepoConfigPath);
+    const repos = multiRepoConfig?.repos as Record<string, { path: string }> | undefined;
+    if (repos && repos[metadataRepoId]) {
+      repoPath = repos[metadataRepoId].path;
+      if (!fs.existsSync(repoPath)) {
+        throw new OrchestratorError(
+          "FILE_NOT_FOUND",
+          `Multi-repo path for '${metadataRepoId}' does not exist: ${repoPath}`
+        );
+      }
+      repoId = metadataRepoId;
+      console.error(`Multi-repo: using repo '${repoId}' at ${repoPath}`);
+    } else if (repos) {
+      throw new OrchestratorError(
+        "VALIDATION",
+        `repo_id '${metadataRepoId}' not found in multi-repo.json. Available: ${Object.keys(repos).join(", ")}`
+      );
+    }
   }
 
-  return { repoRoot, worktreePath, spawnCmd };
+  // Build spawn command: multi-repo path takes precedence over worktree
+  const spawnTarget = repoPath ?? worktreePath;
+  const spawnCmd = spawnTarget
+    ? `cd '${spawnTarget}' && claude --dangerously-skip-permissions`
+    : "claude --dangerously-skip-permissions";
+
+  if (!spawnTarget) {
+    console.error("No worktree or multi-repo path found, using current directory");
+  }
+
+  return { repoRoot, worktreePath, spawnCmd, repoId, repoPath };
 }
 
 // ---------------------------------------------------------------------------
@@ -286,7 +318,9 @@ export function spawnAgentPane(
 export function createRegistry(
   ctx: InitContext,
   agentPane: string,
-  rb: RollbackState
+  rb: RollbackState,
+  repoId?: string,
+  repoPath?: string
 ): { nonce: string; registryPath: string } {
   const nonce = crypto.randomBytes(4).toString("hex").substring(0, 8);
 
@@ -295,7 +329,7 @@ export function createRegistry(
   const firstPhase = pipeline?.phases ? Object.keys(pipeline.phases)[0] : "clarify";
 
   const registryPath = getRegistryPath(ctx.registryDir, ctx.ticketId);
-  const registry = {
+  const registry: Record<string, unknown> = {
     orchestrator_pane_id: ctx.orchestratorPane,
     agent_pane_id: agentPane,
     ticket_id: ctx.ticketId,
@@ -305,6 +339,9 @@ export function createRegistry(
     phase_history: [],
     started_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
   };
+
+  if (repoId) registry.repo_id = repoId;
+  if (repoPath) registry.repo_path = repoPath;
 
   writeJsonAtomic(registryPath, registry);
   rb.registryCreated = registryPath;
@@ -364,7 +401,7 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     runCoordinationCheck(ctx);
 
     // Step 3: Resolve paths
-    const { repoRoot, worktreePath, spawnCmd } = resolvePaths(ctx);
+    const { repoRoot, worktreePath, spawnCmd, repoId, repoPath } = resolvePaths(ctx);
 
     // Step 4: Symlinks
     setupSymlinks(worktreePath, repoRoot, rb);
@@ -373,7 +410,7 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     const agentPane = spawnAgentPane(ctx.orchestratorPane, spawnCmd, ctx.ticketId, rb);
 
     // Step 6: Create registry
-    const { nonce, registryPath } = createRegistry(ctx, agentPane, rb);
+    const { nonce, registryPath } = createRegistry(ctx, agentPane, rb, repoId, repoPath);
 
     return { agentPane, nonce, registryPath };
   } catch (err) {

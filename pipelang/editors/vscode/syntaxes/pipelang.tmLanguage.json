@@ -130,7 +130,7 @@
         },
         {
           "comment": "Named modifiers",
-          "match": "\\.(command|signals|model|goalGate|orchestratorContext|skipTo|prompt|actions)\\s*(?=\\(|\\{)",
+          "match": "\\.(command|signals|model|goalGate|orchestratorContext|skipTo|prompt|actions|before|after)\\s*(?=\\(|\\{)",
           "captures": {
             "1": { "name": "support.function.modifier.pipelang" }
           }

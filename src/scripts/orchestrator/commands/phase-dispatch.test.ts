@@ -3,6 +3,7 @@ import {
   resolvePhaseCommand,
   checkHoldStatus,
   buildDispatchCommand,
+  getDispatchableCommand,
   resolvePhaseHooks,
   waitForPhaseCompletion,
 } from "./phase-dispatch";
@@ -42,6 +43,40 @@ const PIPELINE: CompiledPipeline = {
 // ============================================================================
 // buildDispatchCommand — --args passthrough
 // ============================================================================
+
+describe("phase-dispatch: getDispatchableCommand()", () => {
+  test("null input returns null", () => {
+    expect(getDispatchableCommand(null)).toBeNull();
+  });
+
+  test("command type returns the command string", () => {
+    expect(getDispatchableCommand({ type: "command", value: "/collab.clarify" })).toBe("/collab.clarify");
+  });
+
+  test("actions type returns first command action", () => {
+    const result = getDispatchableCommand({
+      type: "actions",
+      value: [{ display: "header" }, { command: "/collab.tasks" }] as any,
+    });
+    expect(result).toBe("/collab.tasks");
+  });
+
+  test("actions type returns first prompt action when no command", () => {
+    const result = getDispatchableCommand({
+      type: "actions",
+      value: [{ display: "header" }, { prompt: "/collab.run" }] as any,
+    });
+    expect(result).toBe("/collab.run");
+  });
+
+  test("actions type with only display returns null", () => {
+    const result = getDispatchableCommand({
+      type: "actions",
+      value: [{ display: "info" }] as any,
+    });
+    expect(result).toBeNull();
+  });
+});
 
 describe("phase-dispatch: buildDispatchCommand()", () => {
   test("8. no extraArgs returns base command unchanged", () => {

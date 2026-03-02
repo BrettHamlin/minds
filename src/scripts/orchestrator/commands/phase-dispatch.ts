@@ -193,6 +193,24 @@ export function buildDispatchCommand(baseCmd: string, extraArgs: string | null):
 }
 
 /**
+ * Extract the first dispatchable command string from a resolvePhaseCommand() result.
+ * - command phases: returns the command string directly.
+ * - actions phases: returns the first command or prompt action's string.
+ * - null (terminal/no-op): returns null.
+ */
+export function getDispatchableCommand(
+  resolved: ReturnType<typeof resolvePhaseCommand>
+): string | null {
+  if (!resolved) return null;
+  if (resolved.type === "command") return resolved.value;
+  for (const action of resolved.value) {
+    if ("command" in action && action.command) return action.command;
+    if ("prompt" in action) return action.prompt as string;
+  }
+  return null;
+}
+
+/**
  * Return the before and after hook phase IDs declared on a compiled phase.
  * Returns empty arrays when the phase has no hooks or doesn't exist.
  */
@@ -246,18 +264,7 @@ export async function executeBeforeHooks(
   registryPath: string
 ): Promise<void> {
   for (const hookPhaseId of beforeHooks) {
-    const hookResolved = resolvePhaseCommand(pipeline, hookPhaseId);
-    if (!hookResolved) {
-      console.error(`Before-hook '${hookPhaseId}' has no command — skipping`);
-      continue;
-    }
-
-    const hookCmd =
-      hookResolved.type === "command"
-        ? hookResolved.value
-        : ((hookResolved.value.find((a) => "command" in a || "prompt" in a) as any)?.command ??
-          (hookResolved.value.find((a) => "command" in a || "prompt" in a) as any)?.prompt ?? "");
-
+    const hookCmd = getDispatchableCommand(resolvePhaseCommand(pipeline, hookPhaseId));
     if (!hookCmd) {
       console.error(`Before-hook '${hookPhaseId}' has no dispatchable command — skipping`);
       continue;
@@ -347,7 +354,7 @@ async function main(): Promise<void> {
 
     // --- Dispatch (append --args if provided) ---
     if (resolved.type === "command") {
-      const fullCmd = buildDispatchCommand(resolved.value, extraArgs);
+      const fullCmd = buildDispatchCommand(getDispatchableCommand(resolved)!, extraArgs);
       const result = await dispatchToAgent(agentPane, fullCmd, 5);
       console.log(`Dispatched ${phaseId} to ${agentPane}: ${fullCmd}`);
     } else {

@@ -40,6 +40,8 @@ export interface CompiledPhase {
   model?: string;
   inputs?: string[];
   outputs?: string[];
+  before?: Array<{ phase: string }>;
+  after?: Array<{ phase: string }>;
 }
 
 export interface CompiledGateResponse {

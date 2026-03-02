@@ -35,6 +35,13 @@ You do not need to wait for step 10. Any time your response represents "this pha
 
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
+1b. **Parse Phase Scope** (if `$ARGUMENTS` contains `phase:N` or `phase:N-M`):
+   - `phase:3` → execute only Phase 3 from tasks.md
+   - `phase:1-4` → execute Phases 1 through 4 from tasks.md
+   - No phase argument → execute ALL phases (default, backwards compatible)
+   - Phase numbers correspond to the `## Phase N:` headers in tasks.md
+   - Store the phase scope; it constrains steps 5, 6, and 10
+
 2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
    - Scan all checklist files in the checklists/ directory
    - For each checklist, count:
@@ -123,6 +130,7 @@ You do not need to wait for step 10. Any time your response represents "this pha
    - **Task dependencies**: Sequential vs parallel execution rules
    - **Task details**: ID, description, file paths, parallel markers [P]
    - **Execution flow**: Order and dependency requirements
+   - **If phase scope is active**: Filter the task list to include ONLY tasks from the specified phase(s). Skip all other phases entirely.
 
 6. Execute implementation following the task plan:
    - **Phase-by-phase execution**: Complete each phase before moving to the next
@@ -154,17 +162,24 @@ You do not need to wait for step 10. Any time your response represents "this pha
    - Report final status with summary of completed work
 
 10. **Verify Completion and Emit Signal**
-    
-    Run the verification script to confirm all tasks are complete and automatically emit the completion signal:
-    
+
+    Run the verification script to confirm tasks are complete and automatically emit the completion signal:
+
     ```bash
+    # If phase scope is active (e.g., phase:2):
+    .collab/scripts/verify-and-complete.sh implement "Phase 2 implementation complete" 2
+
+    # If phase scope is a range (e.g., phase:1-4):
+    .collab/scripts/verify-and-complete.sh implement "Phases 1-4 implementation complete" 1-4
+
+    # If no phase scope (all phases):
     .collab/scripts/verify-and-complete.sh implement "Implementation phase finished"
     ```
-    
+
     This script will:
-    - Verify all tasks in tasks.md are marked complete [X]
+    - Verify tasks in the specified phase(s) are marked complete [X] (or all tasks if no scope)
     - Automatically emit the IMPLEMENT_COMPLETE signal to the orchestrator
-    - Exit with error if any tasks remain incomplete
+    - Exit with error if any scoped tasks remain incomplete
     
     **CRITICAL**: This step is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 
