@@ -114,9 +114,7 @@ phase(done).terminal()
 phase(a)
     .command("/x")
     .signals(SIG)
-    .on(SIG) {
-        when(hasGroup) { to = done }
-    }
+    .on(SIG, when: hasGroup, to: done)
 phase(done).terminal()
     `.trim();
     const diags = getDiagnostics(src);
@@ -141,10 +139,8 @@ phase(done).terminal()
 phase(a)
     .command("/x")
     .signals(SIG)
-    .on(SIG) {
-        when(myCustomCondition) { to = done }
-        otherwise { to = done }
-    }
+    .on(SIG, when: myCustomCondition, to: done)
+    .on(SIG, otherwise, to: done)
 phase(done).terminal()
     `.trim();
     const diags = getDiagnostics(src);
@@ -419,5 +415,27 @@ describe("getCompletions", () => {
     const labels = items.map((i) => i.label);
     expect(labels).toContain("CLARIFY_COMPLETE");
     expect(labels).toContain("PLAN_COMPLETE");
+  });
+
+  test("after '.on(SIGNAL, ' suggests when, otherwise, to, gate", () => {
+    const items = getCompletions("phase(a)\n    .on(IMPL_COMPLETE, ", {
+      line: 1,
+      character: 24,
+    });
+    const labels = items.map((i) => i.label);
+    expect(labels).toContain("when");
+    expect(labels).toContain("otherwise");
+    expect(labels).toContain("to");
+    expect(labels).toContain("gate");
+  });
+
+  test("after 'when: ' suggests known conditions", () => {
+    const items = getCompletions("phase(a)\n    .on(IMPL_COMPLETE, when: ", {
+      line: 1,
+      character: 32,
+    });
+    const labels = items.map((i) => i.label);
+    expect(labels).toContain("hasGroup");
+    expect(labels).toContain("isBackend");
   });
 });

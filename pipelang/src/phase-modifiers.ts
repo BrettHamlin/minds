@@ -10,8 +10,6 @@ import type {
   SignalsModifier,
   OnModifier,
   OnTarget,
-  ConditionalOnModifier,
-  ConditionalBranch,
   GoalGateModifier,
   OrchestratorContextModifier,
   ContextSource,
@@ -21,10 +19,12 @@ import type {
   ToTarget,
   GateTarget,
   ModelModifier,
+  BeforeModifier,
+  AfterModifier,
+  CodeReviewModifier,
   SourceLocation,
 } from "./types";
-
-const VALID_MODEL_NAMES = new Set(["haiku", "sonnet", "opus"]);
+import { VALID_MODEL_NAMES } from "./types";
 
 // ── Display value parser ─────────────────────────────────────────────────────
 
@@ -80,115 +80,33 @@ function parseDisplayValue(ctx: ParserContext): DisplayValue | null {
   return null;
 }
 
-// ── Branch body parser (for conditional routing) ──────────────────────────
+// ── On-target parser (shared by when:/otherwise/simple .on() forms) ──────────
 
-/** Parses: to = phase_name  or  to = gate(name) */
-function parseBranchBody(ctx: ParserContext): OnTarget | null {
-  const toTok = ctx.peek();
-  if (toTok.kind !== "IDENT" || toTok.value !== "to") {
+function parseOnTarget(ctx: ParserContext): OnTarget | null {
+  const paramTok = ctx.peek();
+  if (paramTok.kind !== "IDENT" || (paramTok.value !== "to" && paramTok.value !== "gate")) {
     ctx.addError(
-      `Expected 'to = ...' in branch body but found '${toTok.value || toTok.kind}'`,
-      { line: toTok.line, col: toTok.col }
+      `Expected 'to:' or 'gate:' but found '${paramTok.value || paramTok.kind}'`,
+      { line: paramTok.line, col: paramTok.col }
     );
     return null;
   }
-  ctx.advance(); // consume "to"
-
-  if (!ctx.expect("EQ")) return null;
-
-  const nextTok = ctx.peek();
-  if (nextTok.kind === "IDENT" && nextTok.value === "gate") {
-    ctx.advance(); // consume "gate"
-    if (!ctx.expect("LPAREN")) return null;
-    const gateTok = ctx.peek();
-    if (gateTok.kind !== "IDENT") {
-      ctx.addError(
-        `Expected gate name after 'gate(' but found '${gateTok.value || gateTok.kind}'`,
-        { line: gateTok.line, col: gateTok.col }
-      );
-      return null;
-    }
-    ctx.advance(); // consume gate name
-    if (!ctx.expect("RPAREN")) return null;
-    return { kind: "gate", gate: gateTok.value, gateLoc: { line: gateTok.line, col: gateTok.col } } satisfies GateTarget;
-  } else if (nextTok.kind === "IDENT") {
-    ctx.advance(); // consume phase name
-    return { kind: "to", phase: nextTok.value, phaseLoc: { line: nextTok.line, col: nextTok.col } } satisfies ToTarget;
-  } else {
+  const paramKind = paramTok.value as "to" | "gate";
+  ctx.advance(); // consume "to" or "gate"
+  if (!ctx.expect("COLON")) return null;
+  const targetTok = ctx.peek();
+  if (targetTok.kind !== "IDENT") {
     ctx.addError(
-      `Expected phase name or 'gate(name)' after 'to =' but found '${nextTok.value || nextTok.kind}'`,
-      { line: nextTok.line, col: nextTok.col }
+      `Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`,
+      { line: targetTok.line, col: targetTok.col }
     );
     return null;
   }
-}
-
-/**
- * Parses the block body of a conditional .on():
- *   { when(cond) { to = target } ... otherwise { to = target } }
- * The opening LBRACE has already been consumed.
- */
-function parseConditionalBranches(ctx: ParserContext): ConditionalBranch[] {
-  const branches: ConditionalBranch[] = [];
-
-  while (!ctx.check("RBRACE") && !ctx.check("EOF")) {
-    const tok = ctx.peek();
-
-    if (tok.kind !== "IDENT" || (tok.value !== "when" && tok.value !== "otherwise")) {
-      ctx.addError(
-        `Expected 'when(...)' or 'otherwise' in conditional block but found '${tok.value || tok.kind}'`,
-        { line: tok.line, col: tok.col }
-      );
-      ctx.advance(); // skip for recovery
-      continue;
-    }
-
-    const branchLoc = { line: tok.line, col: tok.col };
-    ctx.advance(); // consume "when" or "otherwise"
-
-    if (tok.value === "when") {
-      if (!ctx.expect("LPAREN")) break;
-
-      // Parse condition expression: sequence of IDENT tokens (and/or are also IDENTs)
-      const condParts: string[] = [];
-      while (!ctx.check("RPAREN") && !ctx.check("EOF")) {
-        const t = ctx.peek();
-        if (t.kind !== "IDENT") {
-          ctx.addError(
-            `Expected identifier in condition expression but found '${t.value || t.kind}'`,
-            { line: t.line, col: t.col }
-          );
-          break;
-        }
-        condParts.push(t.value);
-        ctx.advance();
-      }
-      if (!ctx.expect("RPAREN")) break;
-
-      if (condParts.length === 0) {
-        ctx.addError(`'when()' requires a condition expression`, branchLoc);
-      }
-
-      if (!ctx.expect("LBRACE")) break;
-      const target = parseBranchBody(ctx);
-      if (!ctx.expect("RBRACE")) break;
-
-      if (target) {
-        branches.push({ condition: condParts.join(" "), target, loc: branchLoc });
-      }
-    } else {
-      // otherwise — no condition expression
-      if (!ctx.expect("LBRACE")) break;
-      const target = parseBranchBody(ctx);
-      if (!ctx.expect("RBRACE")) break;
-
-      if (target) {
-        branches.push({ condition: undefined, target, loc: branchLoc });
-      }
-    }
-  }
-
-  return branches;
+  ctx.advance();
+  if (!ctx.expect("RPAREN")) return null;
+  return paramKind === "to"
+    ? { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } satisfies ToTarget
+    : { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } } satisfies GateTarget;
 }
 
 // ── Modifier parser ───────────────────────────────────────────────────────
@@ -320,16 +238,30 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
       ctx.advance(); // consume signal name
       const signalLoc = { line: sigTok.line, col: sigTok.col };
 
-      // Block form: .on(SIGNAL) { when/otherwise ... }
+      // Detect old block form: .on(SIGNAL) { when/otherwise } — not supported
       if (ctx.check("RPAREN")) {
         ctx.advance(); // consume ')'
-        if (!ctx.expect("LBRACE")) return null;
-        const branches = parseConditionalBranches(ctx);
-        if (!ctx.expect("RBRACE")) return null;
-        return { kind: "conditionalOn", signal: sigTok.value, signalLoc, branches, loc } satisfies ConditionalOnModifier;
+        if (ctx.check("LBRACE")) {
+          ctx.addError(
+            `Block-form .on(${sigTok.value}) { when/otherwise } is not supported. ` +
+            `Use .on(${sigTok.value}, when: cond, to: target) or .on(${sigTok.value}, otherwise, to: target)`,
+            loc
+          );
+          // Skip block body for error recovery
+          let depth = 1;
+          ctx.advance(); // consume '{'
+          while (!ctx.check("EOF") && depth > 0) {
+            if (ctx.check("LBRACE")) depth++;
+            else if (ctx.check("RBRACE")) depth--;
+            ctx.advance();
+          }
+          return null;
+        }
+        const t = ctx.peek();
+        ctx.addError(`Expected ',' after signal name in .on()`, { line: t.line, col: t.col });
+        return null;
       }
 
-      // Simple / gate form: .on(SIGNAL, to: phase) or .on(SIGNAL, gate: name)
       if (!ctx.check("COMMA")) {
         const t = ctx.peek();
         ctx.addError(`Expected ',' after signal name in .on()`, { line: t.line, col: t.col });
@@ -337,37 +269,56 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
       }
       ctx.advance(); // consume comma
 
-      const paramTok = ctx.peek();
-      if (paramTok.kind !== "IDENT" || (paramTok.value !== "to" && paramTok.value !== "gate")) {
+      const firstParam = ctx.peek();
+
+      // when: condition, to: target  or  when: condition, gate: target
+      if (firstParam.kind === "IDENT" && firstParam.value === "when") {
+        ctx.advance(); // consume "when"
+        if (!ctx.expect("COLON")) return null;
+
+        // Parse condition — IDENTs until COMMA
+        const condParts: string[] = [];
+        while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF")) {
+          const t = ctx.peek();
+          if (t.kind !== "IDENT") {
+            ctx.addError(
+              `Expected identifier in condition expression but found '${t.value || t.kind}'`,
+              { line: t.line, col: t.col }
+            );
+            break;
+          }
+          condParts.push(t.value);
+          ctx.advance();
+        }
+        if (condParts.length === 0) {
+          ctx.addError(`'when:' requires a condition expression`, loc);
+        }
+        if (!ctx.expect("COMMA")) return null;
+
+        const target = parseOnTarget(ctx);
+        if (!target) return null;
+        return { kind: "on", signal: sigTok.value, signalLoc, target, condition: condParts.join(" "), loc } satisfies OnModifier;
+      }
+
+      // otherwise, to: target  or  otherwise, gate: target
+      if (firstParam.kind === "IDENT" && firstParam.value === "otherwise") {
+        ctx.advance(); // consume "otherwise"
+        if (!ctx.expect("COMMA")) return null;
+        const target = parseOnTarget(ctx);
+        if (!target) return null;
+        return { kind: "on", signal: sigTok.value, signalLoc, target, isOtherwise: true, loc } satisfies OnModifier;
+      }
+
+      // Simple to: or gate: form
+      if (firstParam.kind !== "IDENT" || (firstParam.value !== "to" && firstParam.value !== "gate")) {
         ctx.addError(
-          `Expected 'to:' or 'gate:' named parameter in .on() but found '${paramTok.value}'`,
-          { line: paramTok.line, col: paramTok.col }
+          `Expected 'to:', 'gate:', 'when: cond, to:', or 'otherwise, to:' in .on() but found '${firstParam.value}'`,
+          { line: firstParam.line, col: firstParam.col }
         );
         return null;
       }
-      const paramKind = paramTok.value as "to" | "gate";
-      ctx.advance(); // consume "to" or "gate"
-
-      if (!ctx.expect("COLON")) return null;
-
-      const targetTok = ctx.peek();
-      if (targetTok.kind !== "IDENT") {
-        ctx.addError(
-          `Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`,
-          { line: targetTok.line, col: targetTok.col }
-        );
-        return null;
-      }
-      ctx.advance(); // consume target name
-
-      if (!ctx.expect("RPAREN")) return null;
-
-      let target: OnTarget;
-      if (paramKind === "to") {
-        target = { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } satisfies ToTarget;
-      } else {
-        target = { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } } satisfies GateTarget;
-      }
+      const target = parseOnTarget(ctx);
+      if (!target) return null;
       return { kind: "on", signal: sigTok.value, signalLoc, target, loc } satisfies OnModifier;
     }
 
@@ -458,6 +409,45 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
           : { kind: "inline", text: strTok.value };
 
       return { kind: "orchestratorContext", source, loc } satisfies OrchestratorContextModifier;
+    }
+
+    case "before":
+    case "after": {
+      const phaseTok = ctx.peek();
+      if (phaseTok.kind !== "IDENT") {
+        ctx.addError(
+          `'.${nameTok.value}()' requires a phase name argument`,
+          { line: phaseTok.line, col: phaseTok.col }
+        );
+        while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+        ctx.advance();
+        return null;
+      }
+      ctx.advance(); // consume phase name
+      const phaseLoc = { line: phaseTok.line, col: phaseTok.col };
+      if (!ctx.expect("RPAREN")) return null;
+      return {
+        kind: nameTok.value as "before" | "after",
+        phase: phaseTok.value,
+        phaseLoc,
+        loc,
+      } satisfies BeforeModifier | AfterModifier;
+    }
+
+    case "codeReview": {
+      const t = ctx.peek();
+      if (t.kind !== "IDENT" || t.value !== "off") {
+        ctx.addError(
+          `.codeReview() only supports .codeReview(off) from a phase. Use @codeReview() directive for full configuration.`,
+          { line: t.line, col: t.col }
+        );
+        while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+        if (ctx.check("RPAREN")) ctx.advance();
+        return null;
+      }
+      ctx.advance(); // consume "off"
+      if (!ctx.expect("RPAREN")) return null;
+      return { kind: "codeReview", enabled: false, loc } satisfies CodeReviewModifier;
     }
 
     default:

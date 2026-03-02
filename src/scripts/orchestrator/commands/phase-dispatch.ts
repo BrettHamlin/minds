@@ -11,7 +11,7 @@
  * Adding, renaming, or reordering phases requires NO changes to this script.
  *
  * Usage:
- *   bun commands/phase-dispatch.ts <TICKET_ID> <PHASE_ID>
+ *   bun commands/phase-dispatch.ts <TICKET_ID> <PHASE_ID> [--args "extra args"]
  *
  * Output (stdout):
  *   "Dispatched <phase_id> to <agent_pane>: <command>"
@@ -181,6 +181,110 @@ export async function dispatchToAgent(
 }
 
 // ---------------------------------------------------------------------------
+// Command building
+// ---------------------------------------------------------------------------
+
+/**
+ * Append extra args to a base command string.
+ * Returns baseCmd unchanged when extraArgs is null or empty.
+ */
+export function buildDispatchCommand(baseCmd: string, extraArgs: string | null): string {
+  return extraArgs ? `${baseCmd} ${extraArgs}` : baseCmd;
+}
+
+/**
+ * Extract the first dispatchable command string from a resolvePhaseCommand() result.
+ * - command phases: returns the command string directly.
+ * - actions phases: returns the first command or prompt action's string.
+ * - null (terminal/no-op): returns null.
+ */
+export function getDispatchableCommand(
+  resolved: ReturnType<typeof resolvePhaseCommand>
+): string | null {
+  if (!resolved) return null;
+  if (resolved.type === "command") return resolved.value;
+  for (const action of resolved.value) {
+    if ("command" in action && action.command) return action.command;
+    if ("prompt" in action) return action.prompt as string;
+  }
+  return null;
+}
+
+/**
+ * Return the before and after hook phase IDs declared on a compiled phase.
+ * Returns empty arrays when the phase has no hooks or doesn't exist.
+ */
+export function resolvePhaseHooks(
+  pipeline: CompiledPipeline,
+  phaseId: string
+): { before: string[]; after: string[] } {
+  const phase = pipeline.phases[phaseId];
+  if (!phase) return { before: [], after: [] };
+  return {
+    before: (phase.before ?? []).map((h) => h.phase),
+    after: (phase.after ?? []).map((h) => h.phase),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Before-hook execution
+// ---------------------------------------------------------------------------
+
+export const HOOK_POLL_INTERVAL_MS = 2000;
+export const HOOK_POLL_ATTEMPTS = 150; // 5 minutes total
+
+/**
+ * Poll the registry's phase_history until phaseId appears with a _COMPLETE signal.
+ * Returns true when found, false on timeout.
+ */
+export async function waitForPhaseCompletion(
+  registryPath: string,
+  phaseId: string,
+  pollAttempts: number = HOOK_POLL_ATTEMPTS
+): Promise<boolean> {
+  for (let i = 0; i < pollAttempts; i++) {
+    const reg = readJsonFile(registryPath);
+    const history: Array<{ phase: string; signal: string }> = (reg?.phase_history ?? []) as Array<{ phase: string; signal: string }>;
+    if (history.some((e) => e.phase === phaseId && e.signal.endsWith("_COMPLETE"))) {
+      return true;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, HOOK_POLL_INTERVAL_MS));
+  }
+  return false;
+}
+
+/**
+ * Dispatch each before-hook phase to the agent pane and wait for completion.
+ * Hook phases are dispatched sequentially; each must complete before the next starts.
+ */
+export async function executeBeforeHooks(
+  agentPane: string,
+  beforeHooks: string[],
+  pipeline: CompiledPipeline,
+  registryPath: string
+): Promise<void> {
+  for (const hookPhaseId of beforeHooks) {
+    const hookCmd = getDispatchableCommand(resolvePhaseCommand(pipeline, hookPhaseId));
+    if (!hookCmd) {
+      console.error(`Before-hook '${hookPhaseId}' has no dispatchable command — skipping`);
+      continue;
+    }
+
+    console.log(`Dispatching before-hook '${hookPhaseId}'`);
+    await dispatchToAgent(agentPane, hookCmd, 1);
+
+    const completed = await waitForPhaseCompletion(registryPath, hookPhaseId);
+    if (!completed) {
+      throw new OrchestratorError(
+        "TIMEOUT",
+        `Before-hook '${hookPhaseId}' did not complete within timeout`
+      );
+    }
+    console.log(`Before-hook '${hookPhaseId}' completed`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -193,6 +297,8 @@ async function main(): Promise<void> {
   }
 
   const [ticketId, phaseId] = args;
+  const argsIdx = args.indexOf("--args");
+  const extraArgs = argsIdx !== -1 && args[argsIdx + 1] ? args[argsIdx + 1] : null;
 
   try {
     const repoRoot = getRepoRoot();
@@ -231,6 +337,12 @@ async function main(): Promise<void> {
       process.exit(0);
     }
 
+    // --- Execute before hooks ---
+    const hooks = resolvePhaseHooks(pipeline, phaseId);
+    if (hooks.before.length > 0) {
+      await executeBeforeHooks(agentPane, hooks.before, pipeline, regPath);
+    }
+
     // --- Resolve phase command ---
     const resolved = resolvePhaseCommand(pipeline, phaseId);
 
@@ -240,20 +352,22 @@ async function main(): Promise<void> {
       process.exit(0);
     }
 
-    // --- Dispatch ---
+    // --- Dispatch (append --args if provided) ---
     if (resolved.type === "command") {
-      const result = await dispatchToAgent(agentPane, resolved.value, 5);
-      console.log(`Dispatched ${phaseId} to ${agentPane}: ${resolved.value}`);
+      const fullCmd = buildDispatchCommand(getDispatchableCommand(resolved)!, extraArgs);
+      const result = await dispatchToAgent(agentPane, fullCmd, 5);
+      console.log(`Dispatched ${phaseId} to ${agentPane}: ${fullCmd}`);
     } else {
-      // Actions array — dispatch in order
+      // Actions array — dispatch in order, append args to command/prompt actions
       let dispatched = false;
       for (const action of resolved.value) {
         if (action.display) {
           console.log(`[Display] ${action.display}`);
         } else if (action.prompt || action.command) {
-          const cmd = (action.prompt || action.command) as string;
-          await dispatchToAgent(agentPane, cmd, 1);
-          console.log(`Dispatched ${phaseId} action to ${agentPane}: ${cmd}`);
+          const baseCmd = (action.prompt || action.command) as string;
+          const fullCmd = buildDispatchCommand(baseCmd, extraArgs);
+          await dispatchToAgent(agentPane, fullCmd, 1);
+          console.log(`Dispatched ${phaseId} action to ${agentPane}: ${fullCmd}`);
           dispatched = true;
         }
       }

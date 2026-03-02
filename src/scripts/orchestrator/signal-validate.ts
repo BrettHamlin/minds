@@ -139,7 +139,6 @@ function main(): void {
 
   const repoRoot = getRepoRoot();
   const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-  const configPath = `${repoRoot}/.collab/config/pipeline.json`;
 
   // Read registry
   const registryPath = getRegistryPath(registryDir, parsed.ticketId);
@@ -154,6 +153,13 @@ function main(): void {
     );
     process.exit(3);
   }
+
+  // Resolve pipeline.json: use repo_path from registry if present (multi-repo),
+  // fall back to current repo
+  const repoPath = registry.repo_path as string | undefined;
+  const configPath = repoPath
+    ? `${repoPath}/.collab/config/pipeline.json`
+    : `${repoRoot}/.collab/config/pipeline.json`;
 
   // Read pipeline config
   const pipeline = readJsonFile(configPath);

@@ -13,9 +13,9 @@ import type {
   PhaseDecl,
   Modifier,
   ParseError,
+  CodeReviewDirective,
 } from "./types";
-
-const VALID_MODEL_NAMES = new Set(["haiku", "sonnet", "opus"]);
+import { VALID_MODEL_NAMES } from "./types";
 
 export function parse(source: string): ParseResult {
   const { tokens, errors: lexErrors } = tokenize(source);
@@ -61,37 +61,143 @@ export function parse(source: string): ParseResult {
   const phases: PhaseDecl[] = [];
   const gates: import("./types").GateDecl[] = [];
   let defaultModel: string | undefined;
+  let codeReview: CodeReviewDirective | undefined;
 
   while (!ctx.check("EOF")) {
     const tok = ctx.peek();
 
-    // @defaultModel(name) — file-level directive
+    // File-level directives: @defaultModel, @codeReview
     if (tok.kind === "AT") {
       ctx.advance(); // consume '@'
       const dirTok = ctx.peek();
-      if (dirTok.kind !== "IDENT" || dirTok.value !== "defaultModel") {
+      if (dirTok.kind !== "IDENT") {
         ctx.addError(
-          `Expected 'defaultModel' after '@' but found '${dirTok.value || dirTok.kind}'`,
+          `Expected directive name after '@' but found '${dirTok.value || dirTok.kind}'`,
           { line: dirTok.line, col: dirTok.col }
         );
         while (!ctx.check("EOF") && ctx.peek().kind !== "IDENT") ctx.advance();
         continue;
       }
-      ctx.advance(); // consume 'defaultModel'
-      if (!ctx.expect("LPAREN")) continue;
-      const modelTok = ctx.peek();
-      if (modelTok.kind !== "IDENT" || !VALID_MODEL_NAMES.has(modelTok.value)) {
-        ctx.addError(
-          `'@defaultModel()' requires a valid model name: haiku, sonnet, or opus`,
-          { line: modelTok.line, col: modelTok.col }
-        );
-        while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
-        if (ctx.check("RPAREN")) ctx.advance();
+
+      if (dirTok.value === "defaultModel") {
+        ctx.advance(); // consume 'defaultModel'
+        if (!ctx.expect("LPAREN")) continue;
+        const modelTok = ctx.peek();
+        if (modelTok.kind !== "IDENT" || !VALID_MODEL_NAMES.has(modelTok.value)) {
+          ctx.addError(
+            `'@defaultModel()' requires a valid model name: haiku, sonnet, or opus`,
+            { line: modelTok.line, col: modelTok.col }
+          );
+          while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+          if (ctx.check("RPAREN")) ctx.advance();
+          continue;
+        }
+        ctx.advance(); // consume model name
+        if (!ctx.expect("RPAREN")) continue;
+        defaultModel = modelTok.value;
         continue;
       }
-      ctx.advance(); // consume model name
-      if (!ctx.expect("RPAREN")) continue;
-      defaultModel = modelTok.value;
+
+      if (dirTok.value === "codeReview") {
+        ctx.advance(); // consume 'codeReview'
+        if (!ctx.expect("LPAREN")) continue;
+
+        let enabled = true;
+        let crModel: string | undefined;
+        let crFile: string | undefined;
+        let crMaxAttempts: number | undefined;
+
+        if (ctx.check("RPAREN")) {
+          // @codeReview() — all defaults
+          ctx.advance();
+        } else {
+          const firstTok = ctx.peek();
+          if (firstTok.kind === "IDENT" && firstTok.value === "off") {
+            // @codeReview(off)
+            ctx.advance();
+            if (!ctx.expect("RPAREN")) continue;
+            enabled = false;
+          } else {
+            // Comma-separated keyword params: model:, .file(), maxAttempts:
+            let first = true;
+            while (!ctx.check("RPAREN") && !ctx.check("EOF")) {
+              if (!first) {
+                if (!ctx.check("COMMA")) {
+                  ctx.addError(`Expected ',' or ')' in @codeReview()`, { line: ctx.peek().line, col: ctx.peek().col });
+                  break;
+                }
+                ctx.advance(); // consume ','
+                if (ctx.check("RPAREN")) break; // trailing comma
+              }
+              first = false;
+
+              const pt = ctx.peek();
+              if (pt.kind === "DOT") {
+                // .file("path")
+                ctx.advance(); // consume '.'
+                const ftok = ctx.peek();
+                if (ftok.kind !== "IDENT" || ftok.value !== "file") {
+                  ctx.addError(`Expected '.file("path")' in @codeReview() but found '.${ftok.value || ftok.kind}'`, { line: ftok.line, col: ftok.col });
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+                  break;
+                }
+                ctx.advance(); // consume "file"
+                if (!ctx.expect("LPAREN")) { while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance(); break; }
+                const strTok = ctx.peek();
+                if (strTok.kind !== "STRING") {
+                  ctx.addError(`'.file()' requires a string path in @codeReview()`, { line: strTok.line, col: strTok.col });
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+                  break;
+                }
+                crFile = strTok.value;
+                ctx.advance();
+                if (!ctx.expect("RPAREN")) { while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance(); break; } // inner ) of .file()
+              } else if (pt.kind === "IDENT" && pt.value === "model") {
+                ctx.advance(); // consume "model"
+                if (!ctx.expect("COLON")) { while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance(); continue; }
+                const modelTok = ctx.peek();
+                if (modelTok.kind !== "IDENT" || !VALID_MODEL_NAMES.has(modelTok.value)) {
+                  ctx.addError(`'model:' in @codeReview() requires a valid model name: haiku, sonnet, or opus`, { line: modelTok.line, col: modelTok.col });
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+                } else {
+                  crModel = modelTok.value;
+                  ctx.advance();
+                }
+              } else if (pt.kind === "IDENT" && pt.value === "maxAttempts") {
+                ctx.advance(); // consume "maxAttempts"
+                if (!ctx.expect("COLON")) { while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance(); continue; }
+                const numTok = ctx.peek();
+                if (numTok.kind !== "NUMBER") {
+                  ctx.addError(`'maxAttempts:' in @codeReview() requires a positive integer`, { line: numTok.line, col: numTok.col });
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+                } else {
+                  crMaxAttempts = parseInt(numTok.value, 10);
+                  ctx.advance();
+                }
+              } else {
+                ctx.addError(`Unknown parameter '${pt.value || pt.kind}' in @codeReview(). Valid: off, model:, .file(), maxAttempts:`, { line: pt.line, col: pt.col });
+                while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+              }
+            }
+            if (!ctx.expect("RPAREN")) continue;
+          }
+        }
+
+        codeReview = {
+          enabled,
+          ...(crModel !== undefined ? { model: crModel } : {}),
+          ...(crFile !== undefined ? { file: crFile } : {}),
+          ...(crMaxAttempts !== undefined ? { maxAttempts: crMaxAttempts } : {}),
+        };
+        continue;
+      }
+
+      // Unknown directive
+      ctx.addError(
+        `Unknown directive '@${dirTok.value}'. Valid directives: @defaultModel, @codeReview`,
+        { line: dirTok.line, col: dirTok.col }
+      );
+      while (!ctx.check("EOF") && ctx.peek().kind !== "IDENT") ctx.advance();
       continue;
     }
 
@@ -115,7 +221,12 @@ export function parse(source: string): ParseResult {
   }
 
   return {
-    ast: { phases, gates, ...(defaultModel !== undefined ? { defaultModel } : {}) },
+    ast: {
+      phases,
+      gates,
+      ...(defaultModel !== undefined ? { defaultModel } : {}),
+      ...(codeReview !== undefined ? { codeReview } : {}),
+    },
     errors: [],
   };
 }

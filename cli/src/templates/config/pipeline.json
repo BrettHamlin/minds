@@ -11,11 +11,15 @@
       "transitions": {
         "CLARIFY_COMPLETE": {
           "to": "plan"
+        },
+        "CLARIFY_ERROR": {
+          "to": "clarify"
         }
       },
-      "model": "claude-sonnet-4-6",
+      "model": "claude-opus-4-6",
       "inputs": [
-        "ticket_spec"
+        "ticket_spec",
+        "clarify_output"
       ],
       "outputs": [
         "clarify_output"
@@ -205,5 +209,10 @@
         }
       }
     }
+  },
+  "codeReview": {
+    "enabled": true,
+    "model": "claude-opus-4-6",
+    "maxAttempts": 3
   }
 }

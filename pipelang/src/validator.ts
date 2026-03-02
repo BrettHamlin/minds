@@ -4,7 +4,7 @@
 // Pass 2: Validate all cross-references (to: targets, signal declarations)
 
 import type { PipelineAST, CompileError, DisplayValue } from "./types";
-import { BUILTIN_TOKENS, KNOWN_CONDITIONS } from "./types";
+import { BUILTIN_TOKENS, KNOWN_CONDITIONS, VALID_MODEL_NAMES } from "./types";
 
 const TOKEN_RE = /\$\{([A-Z][A-Z0-9_]*)\}/g;
 
@@ -130,6 +130,24 @@ function detectCycles(
 export function validate(ast: PipelineAST): CompileError[] {
   const errors: CompileError[] = [];
 
+  // Pass 0: validate @codeReview directive
+  if (ast.codeReview) {
+    const cr = ast.codeReview;
+    const directiveLoc = { line: 1, col: 1 }; // directive has no stored loc
+    if (cr.model !== undefined && !VALID_MODEL_NAMES.has(cr.model)) {
+      errors.push({
+        message: `Invalid model '${cr.model}' in @codeReview(). Valid models: haiku, sonnet, opus`,
+        loc: directiveLoc,
+      });
+    }
+    if (cr.maxAttempts !== undefined && (cr.maxAttempts <= 0 || !Number.isInteger(cr.maxAttempts))) {
+      errors.push({
+        message: `'maxAttempts' in @codeReview() must be a positive integer (got ${cr.maxAttempts})`,
+        loc: directiveLoc,
+      });
+    }
+  }
+
   // Pass 1: collect all declared phase and gate names (with duplicate detection)
   const phaseNames = new Set<string>();
   for (const phase of ast.phases) {
@@ -197,6 +215,19 @@ export function validate(ast: PipelineAST): CompileError[] {
           message: `Gate '${gate.name}' response for '${mod.signal}' has no 'to:' target and no 'onExhaust:' — this creates a dead-end at runtime`,
           loc: mod.loc,
         });
+      }
+    }
+  }
+
+  // Pass 1c: build set of phases that have a dispatchable command (for hook validation)
+  const phasesWithCommand = new Set<string>();
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "command") {
+        phasesWithCommand.add(phase.name);
+      }
+      if (mod.kind === "actions" && mod.actions.some((a) => a.kind === "command")) {
+        phasesWithCommand.add(phase.name);
       }
     }
   }
@@ -278,79 +309,81 @@ export function validate(ast: PipelineAST): CompileError[] {
           });
         }
       }
+
+      // Warn on unknown condition identifiers in when: form
+      if (mod.condition !== undefined) {
+        const condIds = mod.condition.split(/\s+/).filter((t) => t !== "and" && t !== "or" && t !== "not" && t !== "");
+        for (const condId of condIds) {
+          if (!KNOWN_CONDITIONS.has(condId)) {
+            errors.push({
+              message: `Unknown condition '${condId}' — will be AI-evaluated at runtime`,
+              loc: mod.loc,
+              severity: "warning",
+            });
+          }
+        }
+      }
     }
 
-    // Validate conditionalOn modifiers
+    // Conditional .on() mods: each signal with a when: branch requires an otherwise branch
+    const conditionalSignals = new Map<string, { hasOtherwise: boolean; firstLoc: { line: number; col: number } }>();
     for (const mod of phase.modifiers) {
-      if (mod.kind !== "conditionalOn") continue;
-
-      // Terminal phases cannot have outbound transitions
-      if (isTerminal) {
+      if (mod.kind !== "on") continue;
+      if (mod.condition !== undefined || mod.isOtherwise) {
+        if (!conditionalSignals.has(mod.signal)) {
+          conditionalSignals.set(mod.signal, { hasOtherwise: false, firstLoc: mod.loc });
+        }
+        if (mod.isOtherwise) {
+          conditionalSignals.get(mod.signal)!.hasOtherwise = true;
+        }
+      }
+    }
+    for (const [, entry] of conditionalSignals) {
+      if (!entry.hasOtherwise) {
         errors.push({
-          message: `Terminal phases cannot have outbound transitions`,
+          message: `Conditional transition requires an 'otherwise' branch`,
+          loc: entry.firstLoc,
+        });
+      }
+    }
+  }
+
+  // Pass 2b: validate .codeReview(off) modifier placement
+  for (const phase of ast.phases) {
+    const isTerminal = phase.modifiers.some((m) => m.kind === "terminal");
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "codeReview" && isTerminal) {
+        errors.push({
+          message: `Terminal phases cannot have a .codeReview() modifier`,
           loc: mod.loc,
+        });
+      }
+    }
+  }
+
+  // Pass 2c: validate before/after hook modifiers
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind !== "before" && mod.kind !== "after") continue;
+
+      // Referenced phase must exist
+      if (!phaseNames.has(mod.phase)) {
+        const suggestion = didYouMean(mod.phase, phaseNames);
+        errors.push({
+          message:
+            `Phase '${mod.phase}' not declared (in .${mod.kind}())` +
+            (suggestion ? `. Did you mean '${suggestion}'?` : ""),
+          loc: mod.phaseLoc,
         });
         continue;
       }
 
-      // Signal must be declared in .signals()
-      if (!declaredSignals.has(mod.signal)) {
-        const suggestion = didYouMean(mod.signal, declaredSignals);
+      // Referenced phase must be dispatchable (have a command or actions with command)
+      if (!phasesWithCommand.has(mod.phase)) {
         errors.push({
-          message:
-            `Signal '${mod.signal}' not declared for phase '${phase.name}'` +
-            (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-          loc: mod.signalLoc,
+          message: `Phase '${mod.phase}' has no .command() or .actions{} block — hook phases must be dispatchable`,
+          loc: mod.phaseLoc,
         });
-      }
-
-      // Conditional block must contain an otherwise branch
-      const hasOtherwise = mod.branches.some((b) => b.condition === undefined);
-      if (!hasOtherwise) {
-        errors.push({
-          message: `Conditional transition requires an 'otherwise' branch`,
-          loc: mod.loc,
-        });
-      }
-
-      // Validate each branch
-      for (const branch of mod.branches) {
-        // Warn on unknown condition identifiers
-        if (branch.condition !== undefined) {
-          const condIds = branch.condition.split(/\s+/).filter((t) => t !== "and" && t !== "or" && t !== "");
-          for (const condId of condIds) {
-            if (!KNOWN_CONDITIONS.has(condId)) {
-              errors.push({
-                message: `Unknown condition '${condId}' — will be AI-evaluated at runtime`,
-                loc: branch.loc,
-                severity: "warning",
-              });
-            }
-          }
-        }
-
-        // Validate targets
-        if (branch.target.kind === "to") {
-          if (!phaseNames.has(branch.target.phase)) {
-            const suggestion = didYouMean(branch.target.phase, phaseNames);
-            errors.push({
-              message:
-                `Phase '${branch.target.phase}' not declared` +
-                (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-              loc: branch.target.phaseLoc,
-            });
-          }
-        } else if (branch.target.kind === "gate") {
-          if (!gateNames.has(branch.target.gate)) {
-            const suggestion = didYouMean(branch.target.gate, gateNames);
-            errors.push({
-              message:
-                `Gate '${branch.target.gate}' not declared` +
-                (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-              loc: branch.target.gateLoc,
-            });
-          }
-        }
       }
     }
   }
@@ -365,17 +398,31 @@ export function validate(ast: PipelineAST): CompileError[] {
       if (mod.kind === "on" && mod.target.kind === "to") {
         cycleEdges.get(phase.name)!.push(mod.target.phase);
       }
-      if (mod.kind === "conditionalOn") {
-        for (const branch of mod.branches) {
-          if (branch.target.kind === "to") {
-            cycleEdges.get(phase.name)!.push(branch.target.phase);
-          }
-        }
-      }
     }
   }
 
   detectCycles(ast.phases, cycleEdges, errors);
+
+  // Pass 4: cycle detection over before/after hook dependency edges
+  // A.before(B) means B must complete before A → edge A→B in dependency graph
+  // A.after(B) means A must complete before B → edge B→A in dependency graph
+  const hookEdges = new Map<string, string[]>();
+  for (const p of ast.phases) hookEdges.set(p.name, []);
+
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "before" && phaseNames.has(mod.phase)) {
+        hookEdges.get(phase.name)!.push(mod.phase);
+      }
+      if (mod.kind === "after" && phaseNames.has(mod.phase)) {
+        // A.after(B): A must run before B, so B depends on A → edge B→A
+        const existing = hookEdges.get(mod.phase);
+        if (existing) existing.push(phase.name);
+      }
+    }
+  }
+
+  detectCycles(ast.phases, hookEdges, errors);
 
   return errors;
 }

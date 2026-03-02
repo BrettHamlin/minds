@@ -135,10 +135,8 @@ describe("resolveGateResponse: unknown signal", () => {
 
 describe("resolveConditionalTransition: otherwise branch (to:)", () => {
   // Matches the implement phase in collab.pipeline:
-  //   .on(IMPLEMENT_COMPLETE) {
-  //       when(hasGroup) { to = tasks }
-  //       otherwise      { to = blindqa }
-  //   }
+  //   .on(IMPLEMENT_COMPLETE, when: hasGroup, to: tasks)
+  //   .on(IMPLEMENT_COMPLETE, otherwise, to: blindqa)
   const rows: ConditionalTransitionRow[] = [
     { signal: "IMPLEMENT_COMPLETE", if: "hasGroup", to: "tasks" },
     { signal: "IMPLEMENT_COMPLETE", to: "blindqa" },

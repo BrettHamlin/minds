@@ -14,31 +14,37 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 `$ARGUMENTS` = ticket ID and pipeline name (e.g., `BRE-168 --pipeline mobile`). The `--pipeline` flag is required.
 
+### Parse Arguments
+
+Extract from `$ARGUMENTS`:
+- **TICKET_ID**: first positional argument (e.g., `BRE-339`)
+- **PIPELINE_NAME**: value after `--pipeline` flag (e.g., `default`), defaults to `"default"` if omitted
+
+Use `TICKET_ID` (not raw `$ARGUMENTS`) in all bun script calls throughout this document.
+
 ---
 
-## Specify Phase (Pre-Orchestration)
+## Pipeline Initialization (Steps 0–5)
+
+**ALL SIX STEPS MUST EXECUTE IN YOUR FIRST RESPONSE. Your response is not complete until step 5 outputs "Pipeline started."**
 
 ### 0. Execute Specification
 
 Before spawning the orchestrator, run specify to create the specification:
 
 ```
-/collab.specify $ARGUMENTS
+Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `$ARGUMENTS` as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
 ```
 
-This executes the specify workflow inline with the ticket ID, creating the initial feature specification. Once specify completes, proceed to orchestrator setup.
+This reads the specify instructions and executes them inline — do NOT use the Skill tool.
 
-**⚠️ CRITICAL: DO NOT STOP AFTER STEP 0**
+### 0.5 Continuation checkpoint
 
-Once `/collab.specify` completes, you MUST continue immediately to steps 1-5 in the SAME response. The specify skill returning is NOT the end of the task. The only END RESPONSE marker in the entire workflow is at step 5.
+```bash
+echo "SPECIFY_COMPLETE — continuing initialization"
+```
 
-**Execution flow:** Step 0 (specify) → Steps 1-5 (setup) → END RESPONSE (step 5 only)
-
----
-
-## Setup Phase
-
-**NOTE:** You are continuing from step 0 above. Do not stop until step 5 completes.
+You MUST run this command after specify completes. DO NOT output any text to the user until step 5.
 
 ### 1. Crash Recovery
 
@@ -55,6 +61,8 @@ bun .collab/scripts/orchestrator/commands/orchestrator-init.ts $ARGUMENTS
 ```
 Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> output error, stop.
 
+**Multi-repo detection (AI, after init):** If `.collab/config/multi-repo.json` exists, log "Multi-repo mode active." The registry will contain `repo_id` and `repo_path` fields for this ticket. Signal validation and phase dispatch will automatically route to the per-repo pipeline.json.
+
 ### 4. Fetch Linear ticket
 
 `get_issue` MCP with `includeRelations: true`. Store for later use (ticket title, acceptance criteria, description needed for gate evaluation).
@@ -63,11 +71,11 @@ Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> ou
 
 ```bash
 FIRST_PHASE=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts --first)
-bun .collab/scripts/orchestrator/commands/phase-dispatch.ts $ARGUMENTS "$FIRST_PHASE"
+bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {TICKET_ID} "$FIRST_PHASE"
 ```
 
-`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
-`.collab/scripts/webhook-notify.sh $ARGUMENTS none clarify started`
+`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for {TICKET_ID}. Waiting for signal..."** **END RESPONSE.**
+`.collab/scripts/webhook-notify.sh {TICKET_ID} none clarify started`
 
 ---
 
@@ -115,12 +123,136 @@ The signal `detail` field contains the question and all options encoded with `§
 
 #### `_COMPLETE` -- Step finished
 
+##### a.0 Multi-repo dependency check (AI, analyze phase only)
+
+*AI LOGIC: After all tracked tickets complete their `analyze` phase in multi-repo mode.*
+
+Only runs when **all** of the following are true:
+1. `.collab/config/multi-repo.json` exists (multi-repo mode active)
+2. `current_step == analyze`
+3. Every ticket in `.collab/state/pipeline-registry/*.json` has `analyze` in its `phase_history` with a `_COMPLETE` signal
+
+If all conditions met: dispatch the dependency analyzer before any ticket advances to `implement`:
+
+Read the file `.claude/commands/collab.dependencies.md` and execute all its instructions inline with `{ticket_id_1} {ticket_id_2} ...` as input. Do NOT invoke it as a `/collab.dependencies` skill — read the file contents and execute the instructions within this response.
+
+Where the ticket IDs are all currently tracked tickets. Wait for `DEPENDENCY_COMPLETE` signal, then proceed normally with transition resolution for the triggering ticket.
+
 ##### a. Append phase history (deterministic)
 
 ```bash
 SCRIPTS=.collab/scripts/orchestrator && bun $SCRIPTS/registry-update.ts {ticket_id} \
   --append-phase-history "{\"phase\":\"{current_step}\",\"signal\":\"{signal_type}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 ```
+
+##### a.1 Phased implement continuation (AI, IMPLEMENT_COMPLETE only)
+
+*AI LOGIC: Intercept IMPLEMENT_COMPLETE before normal routing when a phase plan is active.*
+
+If `current_step == implement`:
+
+1. Read registry: `bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id}`
+2. Parse `implement_phase_plan` from output.
+
+**If `implement_phase_plan` exists AND `current_impl_phase < total_phases`** (more phases remain):
+- Compute `next_phase = current_impl_phase + 1`
+- Update registry to advance the plan:
+  ```bash
+  REGFILE=".collab/state/pipeline-registry/{ticket_id}.json"
+  jq '.implement_phase_plan.completed_impl_phases += [.implement_phase_plan.current_impl_phase] | .implement_phase_plan.current_impl_phase += 1' \
+    "$REGFILE" > /tmp/_impl_upd.json && mv /tmp/_impl_upd.json "$REGFILE"
+  ```
+- Re-dispatch implement for the next phase:
+  ```bash
+  bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} implement --args "phase:{next_phase}"
+  ```
+- `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Phase {current_impl_phase} of {total_phases} complete for {ticket_id}. Dispatching phase {next_phase}." **END RESPONSE.**
+
+**If `implement_phase_plan` exists AND `current_impl_phase == total_phases`** (all phases done):
+- Remove the plan from registry:
+  ```bash
+  REGFILE=".collab/state/pipeline-registry/{ticket_id}.json"
+  jq 'del(.implement_phase_plan)' "$REGFILE" > /tmp/_impl_done.json && mv /tmp/_impl_done.json "$REGFILE"
+  ```
+- Proceed to step b (normal `_COMPLETE` flow).
+
+**If no `implement_phase_plan`**: proceed to step b normally.
+
+##### a.2 Code review intercept (AI, IMPLEMENT_COMPLETE only)
+
+*AI LOGIC: When codeReview is enabled, evaluate code quality before advancing.*
+
+Only runs when **all** of the following are true:
+1. `current_step` contains `implement` (implement phase name)
+2. The signal type ends in `_COMPLETE`
+3. `phases[current_step].codeReview.enabled` is not `false` in pipeline.json (per-phase override)
+4. Top-level `codeReview.enabled` is not explicitly `false` in pipeline.json (absent = enabled with defaults)
+
+**If global `codeReview` is absent from pipeline.json, treat as enabled with defaults (model: claude-opus-4-6, maxAttempts: 3). Only skip if `codeReview.enabled` is explicitly `false`.**
+
+Procedure:
+
+1. Read global `codeReview` from `.collab/config/pipeline.json`:
+   ```bash
+   PIPELINE=$(cat .collab/config/pipeline.json)
+   CR_ENABLED=$(echo "$PIPELINE" | jq -r '.codeReview.enabled // true')
+   ```
+   If `CR_ENABLED == "false"`: skip to step b.
+
+2. Check per-phase override:
+   ```bash
+   PHASE_CR=$(echo "$PIPELINE" | jq -r --arg p "{current_step}" '.phases[$p].codeReview.enabled // "inherit"')
+   ```
+   If `PHASE_CR == "false"`: skip to step b.
+
+3. Read review config with defaults:
+   ```bash
+   CR_MODEL=$(echo "$PIPELINE" | jq -r '.codeReview.model // "claude-opus-4-6"')
+   CR_MAX=$(echo "$PIPELINE" | jq -r '.codeReview.maxAttempts // 3')
+   CR_FILE=$(echo "$PIPELINE" | jq -r '.codeReview.file // empty')
+   ```
+
+4. Read current attempt count from registry:
+   ```bash
+   CR_ATTEMPTS=$(bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id} | jq -r '.code_review_attempts // 0')
+   ```
+
+5. Check exhaustion:
+   If `CR_ATTEMPTS >= CR_MAX`:
+   ```
+   "Code review for {ticket_id} exhausted {CR_MAX} attempt(s). Manual review required before advancing."
+   ```
+   Update registry: `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=blocked`
+   `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+
+6. Increment attempt count:
+   ```bash
+   NEW_ATTEMPTS=$((CR_ATTEMPTS + 1))
+   bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=$NEW_ATTEMPTS
+   ```
+
+7. Run code review inline (do NOT use the Skill tool):
+   Read the file `.claude/commands/collab.codeReview.md` and execute all its instructions inline with `{ticket_id}$([ -n "$CR_FILE" ] && echo " --arch $CR_FILE" || echo "")` as the arguments.
+   Do NOT invoke it as `/collab.codeReview` — read the file contents and execute the instructions within this response.
+   Parse the output for `REVIEW: PASS` or `REVIEW: FAIL`.
+
+8. Handle verdict:
+   - **PASS**: Reset attempt count:
+     ```bash
+     bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=0
+     ```
+     Log: "Code review passed for {ticket_id} (attempt {NEW_ATTEMPTS}/{CR_MAX}). Advancing." Proceed to step b.
+   - **FAIL**: Extract findings (everything after `REVIEW: FAIL` line). Relay to implementing agent:
+     ```bash
+     bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "⛔ CODE REVIEW FAILED (attempt {NEW_ATTEMPTS}/{CR_MAX})
+
+{findings}
+
+Fix all blocking findings above and re-run the verification script to re-emit IMPLEMENT_COMPLETE." -d 1
+     sleep 1
+     tmux send-keys -t {agent_pane_id} C-m
+     ```
+     `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Code review failed for {ticket_id} (attempt {NEW_ATTEMPTS}/{CR_MAX}). Findings sent to agent." **END RESPONSE.**
 
 ##### b. Load orchestrator context (AI)
 
@@ -182,11 +314,75 @@ Update registry and dispatch next phase:
 ```bash
 SCRIPTS=.collab/scripts/orchestrator
 bun $SCRIPTS/registry-update.ts {ticket_id} current_step={NEXT} status=running
+```
+
+**If `NEXT == implement`** — Phased Implementation Check (AI):
+
+*AI LOGIC: Count phases and build a phase plan for large task sets.*
+
+1. Locate tasks.md in the worktree: check `{worktree_path}/specs/*/tasks.md`, then `{worktree_path}/tasks.md`.
+2. Count phase headers: `grep -c '^## Phase [0-9]' /path/to/tasks.md` (treat as 0 if file not found).
+3. **If phase count >= 3**:
+   - Extract phase names: `grep '^## Phase ' /path/to/tasks.md`
+   - Build `implement_phase_plan`:
+     ```json
+     {
+       "total_phases": N,
+       "current_impl_phase": 1,
+       "phase_names": ["Phase 1: ...", "Phase 2: ...", ...],
+       "completed_impl_phases": []
+     }
+     ```
+   - Write to registry using jq (jq is a required dependency):
+     ```bash
+     REGFILE=".collab/state/pipeline-registry/{ticket_id}.json"
+     PLAN_JSON='{"total_phases":N,"current_impl_phase":1,"phase_names":[...],"completed_impl_phases":[]}'
+     jq --argjson p "$PLAN_JSON" '. + {implement_phase_plan: $p}' "$REGFILE" \
+       > /tmp/_impl_plan.json && mv /tmp/_impl_plan.json "$REGFILE"
+     ```
+   - Dispatch with phase arg and run held-release scan:
+     ```bash
+     bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} implement --args "phase:1"
+     bun $SCRIPTS/held-release-scan.ts {ticket_id}
+     ```
+   - Status table. Output: "Phased implementation started for {ticket_id}: dispatching phase 1 of {N}." **END RESPONSE.**
+4. **If phase count < 3** (or tasks.md not found): dispatch normally (no phase plan):
+   ```bash
+   bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {NEXT}
+   bun $SCRIPTS/held-release-scan.ts {ticket_id}
+   ```
+
+**If `NEXT != implement`**: dispatch normally:
+```bash
 bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {NEXT}
 bun $SCRIPTS/held-release-scan.ts {ticket_id}
 ```
 
 `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "'{current_step}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
+
+##### f.1 Before hooks (AI)
+
+*AI LOGIC: Check for before hooks on the next phase before dispatching it.*
+
+Read `phases[NEXT].before` from `.collab/config/pipeline.json`:
+- If `before` array is non-empty: for each `{phase}` entry, dispatch it as a hook phase first:
+  ```bash
+  bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {hook_phase}
+  ```
+  Wait for the hook phase's `_COMPLETE` signal before dispatching `NEXT`. Log: "Before-hook '{hook_phase}' dispatched for {ticket_id} before '{NEXT}'." **END RESPONSE** and wait for signal.
+- If `before` is absent or empty: dispatch `NEXT` directly (normal flow above).
+
+##### f.2 After hooks (AI)
+
+*AI LOGIC: When a `_COMPLETE` signal arrives and the completed phase has after hooks, run them before advancing.*
+
+In step **a** (_COMPLETE handler), after appending phase history, read `phases[current_step].after` from `.collab/config/pipeline.json`:
+- If `after` array is non-empty: for each `{phase}` entry, dispatch it as a hook before routing to the next phase:
+  ```bash
+  bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {hook_phase}
+  ```
+  Wait for hook `_COMPLETE`, then proceed to step b. Log: "After-hook '{hook_phase}' dispatched for {ticket_id} after '{current_step}'."
+- If `after` is absent or empty: proceed normally.
 `.collab/scripts/webhook-notify.sh {ticket_id} {current_step} {NEXT} running`
 
 #### `_ERROR` or `_FAILED` -- Error
@@ -207,10 +403,11 @@ For signals that do not match any suffix above (e.g., `VERIFY_PASS`, `VERIFY_FAI
 
 ## Command Processing
 
-### [CMD:add {ticket_id}]
+### [CMD:add {ticket_id} [--repo {repo_id}]]
 
 1. Validate: missing -> usage. Already tracked -> error. Count >= 5 -> error. **END RESPONSE** on any.
-2. Resolve worktree (same logic as `commands/orchestrator-init.ts`). Split vertically off last agent pane: `bun .collab/scripts/orchestrator/Tmux.ts split -w {last_agent_pane} -c "{spawn_cmd}"`. Generate nonce, create registry atomically, assign next color (1-5), label pane.
+2. If `--repo {repo_id}` is provided: look up `repos[repo_id].path` from `.collab/config/multi-repo.json`. Use that path as the spawn target instead of the worktree. Store `repo_id` and `repo_path` in the new registry entry.
+3. Resolve worktree (same logic as `commands/orchestrator-init.ts`). Split vertically off last agent pane: `bun .collab/scripts/orchestrator/Tmux.ts split -w {last_agent_pane} -c "{spawn_cmd}"`. Generate nonce, create registry atomically, assign next color (1-5), label pane.
 3. Rebalance: `tmux set-window-option main-pane-width {30%}; tmux select-layout main-vertical`
 4. Fetch Linear ticket with `includeRelations: true`.
 5. Dispatch first phase:

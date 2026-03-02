@@ -28,6 +28,13 @@ export interface ConditionalTransitionRow {
   gate?: string;
 }
 
+export interface CompiledCodeReview {
+  enabled: boolean;
+  model?: string;
+  file?: string;
+  maxAttempts?: number;
+}
+
 export interface CompiledPhase {
   command?: string;
   signals?: string[];
@@ -40,6 +47,10 @@ export interface CompiledPhase {
   model?: string;
   inputs?: string[];
   outputs?: string[];
+  before?: Array<{ phase: string }>;
+  after?: Array<{ phase: string }>;
+  /** Per-phase codeReview override (only enabled:false is supported from .codeReview(off)) */
+  codeReview?: Pick<CompiledCodeReview, "enabled">;
 }
 
 export interface CompiledGateResponse {
@@ -58,6 +69,7 @@ export interface CompiledGate {
 export interface CompiledPipeline {
   version: string;
   defaultModel?: string;
+  codeReview?: CompiledCodeReview;
   phases: Record<string, CompiledPhase>;
   gates?: Record<string, CompiledGate>;
 }

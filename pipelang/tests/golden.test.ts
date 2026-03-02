@@ -215,8 +215,8 @@ describe("golden: model selection and I/O derivation (AC4)", () => {
     expect(compiled!.defaultModel).toBe("claude-sonnet-4-6");
   });
 
-  test("clarify has model: claude-sonnet-4-6", () => {
-    expect(compiled!.phases["clarify"].model).toBe("claude-sonnet-4-6");
+  test("clarify has model: claude-opus-4-6", () => {
+    expect(compiled!.phases["clarify"].model).toBe("claude-opus-4-6");
   });
 
   test("clarify has inputs: [ticket_spec, clarify_output] (self-error-loop predecessor)", () => {

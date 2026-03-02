@@ -69,17 +69,6 @@ export function buildSymbolTable(ast: PipelineAST): SymbolTable {
         } else {
           references.push({ name: mod.target.gate, kind: "gate", loc: mod.target.gateLoc });
         }
-      } else if (mod.kind === "conditionalOn") {
-        // Signal reference
-        references.push({ name: mod.signal, kind: "signal", loc: mod.signalLoc });
-        // Branch targets
-        for (const branch of mod.branches) {
-          if (branch.target.kind === "to") {
-            references.push({ name: branch.target.phase, kind: "phase", loc: branch.target.phaseLoc });
-          } else {
-            references.push({ name: branch.target.gate, kind: "gate", loc: branch.target.gateLoc });
-          }
-        }
       }
     }
   }

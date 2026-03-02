@@ -12,6 +12,10 @@
       "const": "3.1",
       "description": "Schema version discriminator"
     },
+    "codeReview": {
+      "$ref": "#/$defs/codeReview",
+      "description": "Global @codeReview directive configuration"
+    },
     "phases": {
       "type": "array",
       "minItems": 1,
@@ -72,6 +76,34 @@
         "terminal": {
           "type": "boolean",
           "description": "If true, pipeline ends when this phase is reached"
+        },
+        "before": {
+          "type": "array",
+          "description": "Hook phases to dispatch before this phase is dispatched",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string", "description": "Phase ID to run as a before hook" }
+            }
+          }
+        },
+        "after": {
+          "type": "array",
+          "description": "Hook phases to dispatch after this phase completes",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string", "description": "Phase ID to run as an after hook" }
+            }
+          }
+        },
+        "codeReview": {
+          "$ref": "#/$defs/phaseCodeReview",
+          "description": "Per-phase codeReview override (only enabled:false supported from .codeReview(off))"
         }
       },
       "not": {
@@ -250,6 +282,27 @@
           "enum": ["skip", "abort", "escalate"],
           "description": "Gap 7 (BREAKING — moved from gate level) + Gap 2 (escalate added): Behavior when retry_count >= max_retries. 'skip' routes to gate.skip_to; 'abort' halts pipeline; 'escalate' halts and notifies user for manual resume."
         }
+      }
+    },
+    "codeReview": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "description": "Global code review configuration from @codeReview() directive",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Whether code review is active" },
+        "model": { "type": "string", "description": "Claude model ID for the review subagent" },
+        "file": { "type": "string", "description": "Architecture document path for the reviewer" },
+        "maxAttempts": { "type": "number", "minimum": 1, "description": "Max review cycles before escalation" }
+      }
+    },
+    "phaseCodeReview": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "description": "Per-phase codeReview override from .codeReview(off)",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Whether code review is active for this phase" }
       }
     },
     "transition": {

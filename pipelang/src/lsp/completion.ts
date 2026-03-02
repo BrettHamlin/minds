@@ -3,18 +3,19 @@
 
 import type { Position, CompletionItem } from "./protocol";
 import { CompletionItemKind } from "./protocol";
+import { KNOWN_CONDITIONS, VALID_MODEL_NAMES } from "../types";
 
 // Fixed keyword completions
 const PHASE_MODIFIERS: CompletionItem[] = [
   "command", "signals", "on", "terminal", "model",
-  "goalGate", "orchestratorContext", "actions",
+  "goalGate", "orchestratorContext", "actions", "before", "after", "codeReview",
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Phase modifier" }));
 
 const GATE_MODIFIERS: CompletionItem[] = [
   "prompt", "skipTo", "on",
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Gate modifier" }));
 
-const MODEL_VALUES: CompletionItem[] = ["haiku", "sonnet", "opus"].map((label) => ({
+const MODEL_VALUES: CompletionItem[] = [...VALID_MODEL_NAMES].map((label) => ({
   label,
   kind: CompletionItemKind.EnumMember,
   detail: "Model name",
@@ -25,6 +26,13 @@ const GOAL_GATE_VALUES: CompletionItem[] = ["always", "ifTriggered"].map((label)
   kind: CompletionItemKind.EnumMember,
   detail: "GoalGate value",
 }));
+
+const ON_NAMED_ARGS: CompletionItem[] = [
+  { label: "when", kind: CompletionItemKind.Keyword, detail: "Conditional branch (when: cond, to: target)" },
+  { label: "otherwise", kind: CompletionItemKind.Keyword, detail: "Otherwise branch (otherwise, to: target)" },
+  { label: "to", kind: CompletionItemKind.Keyword, detail: "Phase target" },
+  { label: "gate", kind: CompletionItemKind.Keyword, detail: "Gate target" },
+];
 
 const FEEDBACK_VALUES: CompletionItem[] = ["enrich", "raw"].map((label) => ({
   label,
@@ -41,10 +49,18 @@ const CONTEXT_SOURCE_VALUES: CompletionItem[] = ["file", "inline"].map((label) =
   kind: CompletionItemKind.EnumMember,
 }));
 
+const CODE_REVIEW_PARAMS: CompletionItem[] = [
+  { label: "off", kind: CompletionItemKind.Keyword, detail: "Disable codeReview globally" },
+  { label: "model", kind: CompletionItemKind.Keyword, detail: "Review agent model (model: opus)" },
+  { label: "maxAttempts", kind: CompletionItemKind.Keyword, detail: "Max review cycles before escalation" },
+  { label: ".file", kind: CompletionItemKind.Keyword, detail: "Architecture doc for the reviewer" },
+];
+
 const TOP_LEVEL_KEYWORDS: CompletionItem[] = [
   { label: "phase", kind: CompletionItemKind.Keyword, insertText: "phase(${1:name})\n    " },
   { label: "gate", kind: CompletionItemKind.Keyword, insertText: "gate(${1:name})\n    " },
   { label: "@defaultModel", kind: CompletionItemKind.Keyword, insertText: "@defaultModel(${1:sonnet})" },
+  { label: "@codeReview", kind: CompletionItemKind.Keyword, insertText: "@codeReview()" },
 ];
 
 /** Get the text of the line up to the cursor */
@@ -126,8 +142,22 @@ export function getCompletions(text: string, pos: Position): CompletionItem[] {
     return inGate ? GATE_MODIFIERS : PHASE_MODIFIERS;
   }
 
-  // After `to:` or `to =` — phase names
-  if (/\bto\s*:\s*\w*$/.test(prefix) || /\bto\s*=\s*\w*$/.test(prefix)) {
+  // After `@codeReview(` — directive params
+  if (/@codeReview\s*\([^)]*$/.test(prefix)) {
+    // After `model:` inside @codeReview( — model names
+    if (/\bmodel\s*:\s*\w*$/.test(prefix)) {
+      return MODEL_VALUES;
+    }
+    return CODE_REVIEW_PARAMS;
+  }
+
+  // After `.codeReview(` — only 'off' is valid from phase syntax
+  if (/\.codeReview\s*\(\s*\w*$/.test(prefix)) {
+    return [{ label: "off", kind: CompletionItemKind.Keyword, detail: "Disable codeReview for this phase" }];
+  }
+
+  // After `to:` — phase names
+  if (/\bto\s*:\s*\w*$/.test(prefix)) {
     return phaseNames(text);
   }
 
@@ -139,6 +169,25 @@ export function getCompletions(text: string, pos: Position): CompletionItem[] {
   // Inside `.model(` or `@defaultModel(` — model names
   if (/\.(model|defaultModel)\s*\(\s*\w*$/.test(prefix) || /@defaultModel\s*\(\s*\w*$/.test(prefix)) {
     return MODEL_VALUES;
+  }
+
+  // Inside `.before(` or `.after(` — phase names
+  if (/\.(before|after)\s*\(\s*\w*$/.test(prefix)) {
+    return phaseNames(text);
+  }
+
+  // After `when: ` — known condition names
+  if (/\bwhen\s*:\s*\w*$/.test(prefix)) {
+    return [...KNOWN_CONDITIONS].map((c) => ({
+      label: c,
+      kind: CompletionItemKind.EnumMember,
+      detail: "Known condition",
+    }));
+  }
+
+  // After `.on(SIGNAL, ` — suggest when, otherwise, to, gate
+  if (/\.on\s*\([A-Z_][A-Z0-9_]*\s*,\s*\w*$/.test(prefix)) {
+    return ON_NAMED_ARGS;
   }
 
   // Inside `.on(` — signal names

@@ -287,86 +287,25 @@ function parseDisplayValue(ctx) {
   ctx.addError(`Expected string, ai("..."), or .file("...") but found '${t.value || t.kind}'`, { line: t.line, col: t.col });
   return null;
 }
-function parseBranchBody(ctx) {
-  const toTok = ctx.peek();
-  if (toTok.kind !== "IDENT" || toTok.value !== "to") {
-    ctx.addError(`Expected 'to = ...' in branch body but found '${toTok.value || toTok.kind}'`, { line: toTok.line, col: toTok.col });
+function parseOnTarget(ctx) {
+  const paramTok = ctx.peek();
+  if (paramTok.kind !== "IDENT" || paramTok.value !== "to" && paramTok.value !== "gate") {
+    ctx.addError(`Expected 'to:' or 'gate:' but found '${paramTok.value || paramTok.kind}'`, { line: paramTok.line, col: paramTok.col });
+    return null;
+  }
+  const paramKind = paramTok.value;
+  ctx.advance();
+  if (!ctx.expect("COLON"))
+    return null;
+  const targetTok = ctx.peek();
+  if (targetTok.kind !== "IDENT") {
+    ctx.addError(`Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`, { line: targetTok.line, col: targetTok.col });
     return null;
   }
   ctx.advance();
-  if (!ctx.expect("EQ"))
+  if (!ctx.expect("RPAREN"))
     return null;
-  const nextTok = ctx.peek();
-  if (nextTok.kind === "IDENT" && nextTok.value === "gate") {
-    ctx.advance();
-    if (!ctx.expect("LPAREN"))
-      return null;
-    const gateTok = ctx.peek();
-    if (gateTok.kind !== "IDENT") {
-      ctx.addError(`Expected gate name after 'gate(' but found '${gateTok.value || gateTok.kind}'`, { line: gateTok.line, col: gateTok.col });
-      return null;
-    }
-    ctx.advance();
-    if (!ctx.expect("RPAREN"))
-      return null;
-    return { kind: "gate", gate: gateTok.value, gateLoc: { line: gateTok.line, col: gateTok.col } };
-  } else if (nextTok.kind === "IDENT") {
-    ctx.advance();
-    return { kind: "to", phase: nextTok.value, phaseLoc: { line: nextTok.line, col: nextTok.col } };
-  } else {
-    ctx.addError(`Expected phase name or 'gate(name)' after 'to =' but found '${nextTok.value || nextTok.kind}'`, { line: nextTok.line, col: nextTok.col });
-    return null;
-  }
-}
-function parseConditionalBranches(ctx) {
-  const branches = [];
-  while (!ctx.check("RBRACE") && !ctx.check("EOF")) {
-    const tok = ctx.peek();
-    if (tok.kind !== "IDENT" || tok.value !== "when" && tok.value !== "otherwise") {
-      ctx.addError(`Expected 'when(...)' or 'otherwise' in conditional block but found '${tok.value || tok.kind}'`, { line: tok.line, col: tok.col });
-      ctx.advance();
-      continue;
-    }
-    const branchLoc = { line: tok.line, col: tok.col };
-    ctx.advance();
-    if (tok.value === "when") {
-      if (!ctx.expect("LPAREN"))
-        break;
-      const condParts = [];
-      while (!ctx.check("RPAREN") && !ctx.check("EOF")) {
-        const t = ctx.peek();
-        if (t.kind !== "IDENT") {
-          ctx.addError(`Expected identifier in condition expression but found '${t.value || t.kind}'`, { line: t.line, col: t.col });
-          break;
-        }
-        condParts.push(t.value);
-        ctx.advance();
-      }
-      if (!ctx.expect("RPAREN"))
-        break;
-      if (condParts.length === 0) {
-        ctx.addError(`'when()' requires a condition expression`, branchLoc);
-      }
-      if (!ctx.expect("LBRACE"))
-        break;
-      const target = parseBranchBody(ctx);
-      if (!ctx.expect("RBRACE"))
-        break;
-      if (target) {
-        branches.push({ condition: condParts.join(" "), target, loc: branchLoc });
-      }
-    } else {
-      if (!ctx.expect("LBRACE"))
-        break;
-      const target = parseBranchBody(ctx);
-      if (!ctx.expect("RBRACE"))
-        break;
-      if (target) {
-        branches.push({ condition: undefined, target, loc: branchLoc });
-      }
-    }
-  }
-  return branches;
+  return paramKind === "to" ? { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } : { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } };
 }
 function parsePhaseModifier(ctx) {
   ctx.advance();
@@ -476,12 +415,22 @@ function parsePhaseModifier(ctx) {
       const signalLoc = { line: sigTok.line, col: sigTok.col };
       if (ctx.check("RPAREN")) {
         ctx.advance();
-        if (!ctx.expect("LBRACE"))
+        if (ctx.check("LBRACE")) {
+          ctx.addError(`Block-form .on(${sigTok.value}) { when/otherwise } is not supported. ` + `Use .on(${sigTok.value}, when: cond, to: target) or .on(${sigTok.value}, otherwise, to: target)`, loc);
+          let depth = 1;
+          ctx.advance();
+          while (!ctx.check("EOF") && depth > 0) {
+            if (ctx.check("LBRACE"))
+              depth++;
+            else if (ctx.check("RBRACE"))
+              depth--;
+            ctx.advance();
+          }
           return null;
-        const branches = parseConditionalBranches(ctx);
-        if (!ctx.expect("RBRACE"))
-          return null;
-        return { kind: "conditionalOn", signal: sigTok.value, signalLoc, branches, loc };
+        }
+        const t = ctx.peek();
+        ctx.addError(`Expected ',' after signal name in .on()`, { line: t.line, col: t.col });
+        return null;
       }
       if (!ctx.check("COMMA")) {
         const t = ctx.peek();
@@ -489,29 +438,47 @@ function parsePhaseModifier(ctx) {
         return null;
       }
       ctx.advance();
-      const paramTok = ctx.peek();
-      if (paramTok.kind !== "IDENT" || paramTok.value !== "to" && paramTok.value !== "gate") {
-        ctx.addError(`Expected 'to:' or 'gate:' named parameter in .on() but found '${paramTok.value}'`, { line: paramTok.line, col: paramTok.col });
+      const firstParam = ctx.peek();
+      if (firstParam.kind === "IDENT" && firstParam.value === "when") {
+        ctx.advance();
+        if (!ctx.expect("COLON"))
+          return null;
+        const condParts = [];
+        while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF")) {
+          const t = ctx.peek();
+          if (t.kind !== "IDENT") {
+            ctx.addError(`Expected identifier in condition expression but found '${t.value || t.kind}'`, { line: t.line, col: t.col });
+            break;
+          }
+          condParts.push(t.value);
+          ctx.advance();
+        }
+        if (condParts.length === 0) {
+          ctx.addError(`'when:' requires a condition expression`, loc);
+        }
+        if (!ctx.expect("COMMA"))
+          return null;
+        const target2 = parseOnTarget(ctx);
+        if (!target2)
+          return null;
+        return { kind: "on", signal: sigTok.value, signalLoc, target: target2, condition: condParts.join(" "), loc };
+      }
+      if (firstParam.kind === "IDENT" && firstParam.value === "otherwise") {
+        ctx.advance();
+        if (!ctx.expect("COMMA"))
+          return null;
+        const target2 = parseOnTarget(ctx);
+        if (!target2)
+          return null;
+        return { kind: "on", signal: sigTok.value, signalLoc, target: target2, isOtherwise: true, loc };
+      }
+      if (firstParam.kind !== "IDENT" || firstParam.value !== "to" && firstParam.value !== "gate") {
+        ctx.addError(`Expected 'to:', 'gate:', 'when: cond, to:', or 'otherwise, to:' in .on() but found '${firstParam.value}'`, { line: firstParam.line, col: firstParam.col });
         return null;
       }
-      const paramKind = paramTok.value;
-      ctx.advance();
-      if (!ctx.expect("COLON"))
+      const target = parseOnTarget(ctx);
+      if (!target)
         return null;
-      const targetTok = ctx.peek();
-      if (targetTok.kind !== "IDENT") {
-        ctx.addError(`Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`, { line: targetTok.line, col: targetTok.col });
-        return null;
-      }
-      ctx.advance();
-      if (!ctx.expect("RPAREN"))
-        return null;
-      let target;
-      if (paramKind === "to") {
-        target = { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } };
-      } else {
-        target = { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } };
-      }
       return { kind: "on", signal: sigTok.value, signalLoc, target, loc };
     }
     case "goalGate": {
@@ -584,6 +551,42 @@ function parsePhaseModifier(ctx) {
         return null;
       const source = typeTok.value === "file" ? { kind: "file", path: strTok.value } : { kind: "inline", text: strTok.value };
       return { kind: "orchestratorContext", source, loc };
+    }
+    case "before":
+    case "after": {
+      const phaseTok = ctx.peek();
+      if (phaseTok.kind !== "IDENT") {
+        ctx.addError(`'.${nameTok.value}()' requires a phase name argument`, { line: phaseTok.line, col: phaseTok.col });
+        while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+          ctx.advance();
+        ctx.advance();
+        return null;
+      }
+      ctx.advance();
+      const phaseLoc = { line: phaseTok.line, col: phaseTok.col };
+      if (!ctx.expect("RPAREN"))
+        return null;
+      return {
+        kind: nameTok.value,
+        phase: phaseTok.value,
+        phaseLoc,
+        loc
+      };
+    }
+    case "codeReview": {
+      const t = ctx.peek();
+      if (t.kind !== "IDENT" || t.value !== "off") {
+        ctx.addError(`.codeReview() only supports .codeReview(off) from a phase. Use @codeReview() directive for full configuration.`, { line: t.line, col: t.col });
+        while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+          ctx.advance();
+        if (ctx.check("RPAREN"))
+          ctx.advance();
+        return null;
+      }
+      ctx.advance();
+      if (!ctx.expect("RPAREN"))
+        return null;
+      return { kind: "codeReview", enabled: false, loc };
     }
     default:
       while (!ctx.check("RPAREN") && !ctx.check("EOF"))
@@ -835,33 +838,150 @@ function parse(source) {
   const phases = [];
   const gates = [];
   let defaultModel;
+  let codeReview;
   while (!ctx.check("EOF")) {
     const tok = ctx.peek();
     if (tok.kind === "AT") {
       ctx.advance();
       const dirTok = ctx.peek();
-      if (dirTok.kind !== "IDENT" || dirTok.value !== "defaultModel") {
-        ctx.addError(`Expected 'defaultModel' after '@' but found '${dirTok.value || dirTok.kind}'`, { line: dirTok.line, col: dirTok.col });
+      if (dirTok.kind !== "IDENT") {
+        ctx.addError(`Expected directive name after '@' but found '${dirTok.value || dirTok.kind}'`, { line: dirTok.line, col: dirTok.col });
         while (!ctx.check("EOF") && ctx.peek().kind !== "IDENT")
           ctx.advance();
         continue;
       }
-      ctx.advance();
-      if (!ctx.expect("LPAREN"))
-        continue;
-      const modelTok = ctx.peek();
-      if (modelTok.kind !== "IDENT" || !VALID_MODEL_NAMES2.has(modelTok.value)) {
-        ctx.addError(`'@defaultModel()' requires a valid model name: haiku, sonnet, or opus`, { line: modelTok.line, col: modelTok.col });
-        while (!ctx.check("RPAREN") && !ctx.check("EOF"))
-          ctx.advance();
-        if (ctx.check("RPAREN"))
-          ctx.advance();
+      if (dirTok.value === "defaultModel") {
+        ctx.advance();
+        if (!ctx.expect("LPAREN"))
+          continue;
+        const modelTok = ctx.peek();
+        if (modelTok.kind !== "IDENT" || !VALID_MODEL_NAMES2.has(modelTok.value)) {
+          ctx.addError(`'@defaultModel()' requires a valid model name: haiku, sonnet, or opus`, { line: modelTok.line, col: modelTok.col });
+          while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+            ctx.advance();
+          if (ctx.check("RPAREN"))
+            ctx.advance();
+          continue;
+        }
+        ctx.advance();
+        if (!ctx.expect("RPAREN"))
+          continue;
+        defaultModel = modelTok.value;
         continue;
       }
-      ctx.advance();
-      if (!ctx.expect("RPAREN"))
+      if (dirTok.value === "codeReview") {
+        ctx.advance();
+        if (!ctx.expect("LPAREN"))
+          continue;
+        let enabled = true;
+        let crModel;
+        let crFile;
+        let crMaxAttempts;
+        if (ctx.check("RPAREN")) {
+          ctx.advance();
+        } else {
+          const firstTok = ctx.peek();
+          if (firstTok.kind === "IDENT" && firstTok.value === "off") {
+            ctx.advance();
+            if (!ctx.expect("RPAREN"))
+              continue;
+            enabled = false;
+          } else {
+            let first = true;
+            while (!ctx.check("RPAREN") && !ctx.check("EOF")) {
+              if (!first) {
+                if (!ctx.check("COMMA")) {
+                  ctx.addError(`Expected ',' or ')' in @codeReview()`, { line: ctx.peek().line, col: ctx.peek().col });
+                  break;
+                }
+                ctx.advance();
+                if (ctx.check("RPAREN"))
+                  break;
+              }
+              first = false;
+              const pt = ctx.peek();
+              if (pt.kind === "DOT") {
+                ctx.advance();
+                const ftok = ctx.peek();
+                if (ftok.kind !== "IDENT" || ftok.value !== "file") {
+                  ctx.addError(`Expected '.file("path")' in @codeReview() but found '.${ftok.value || ftok.kind}'`, { line: ftok.line, col: ftok.col });
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  break;
+                }
+                ctx.advance();
+                if (!ctx.expect("LPAREN")) {
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  break;
+                }
+                const strTok = ctx.peek();
+                if (strTok.kind !== "STRING") {
+                  ctx.addError(`'.file()' requires a string path in @codeReview()`, { line: strTok.line, col: strTok.col });
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  break;
+                }
+                crFile = strTok.value;
+                ctx.advance();
+                if (!ctx.expect("RPAREN")) {
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  break;
+                }
+              } else if (pt.kind === "IDENT" && pt.value === "model") {
+                ctx.advance();
+                if (!ctx.expect("COLON")) {
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  continue;
+                }
+                const modelTok = ctx.peek();
+                if (modelTok.kind !== "IDENT" || !VALID_MODEL_NAMES2.has(modelTok.value)) {
+                  ctx.addError(`'model:' in @codeReview() requires a valid model name: haiku, sonnet, or opus`, { line: modelTok.line, col: modelTok.col });
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                } else {
+                  crModel = modelTok.value;
+                  ctx.advance();
+                }
+              } else if (pt.kind === "IDENT" && pt.value === "maxAttempts") {
+                ctx.advance();
+                if (!ctx.expect("COLON")) {
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  continue;
+                }
+                const numTok = ctx.peek();
+                if (numTok.kind !== "NUMBER") {
+                  ctx.addError(`'maxAttempts:' in @codeReview() requires a positive integer`, { line: numTok.line, col: numTok.col });
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                } else {
+                  crMaxAttempts = parseInt(numTok.value, 10);
+                  ctx.advance();
+                }
+              } else {
+                ctx.addError(`Unknown parameter '${pt.value || pt.kind}' in @codeReview(). Valid: off, model:, .file(), maxAttempts:`, { line: pt.line, col: pt.col });
+                while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                  ctx.advance();
+              }
+            }
+            if (!ctx.expect("RPAREN"))
+              continue;
+          }
+        }
+        codeReview = {
+          enabled,
+          ...crModel !== undefined ? { model: crModel } : {},
+          ...crFile !== undefined ? { file: crFile } : {},
+          ...crMaxAttempts !== undefined ? { maxAttempts: crMaxAttempts } : {}
+        };
         continue;
-      defaultModel = modelTok.value;
+      }
+      ctx.addError(`Unknown directive '@${dirTok.value}'. Valid directives: @defaultModel, @codeReview`, { line: dirTok.line, col: dirTok.col });
+      while (!ctx.check("EOF") && ctx.peek().kind !== "IDENT")
+        ctx.advance();
       continue;
     }
     if (tok.kind === "IDENT" && tok.value === "phase") {
@@ -881,7 +1001,12 @@ function parse(source) {
     return { errors: parseErrors };
   }
   return {
-    ast: { phases, gates, ...defaultModel !== undefined ? { defaultModel } : {} },
+    ast: {
+      phases,
+      gates,
+      ...defaultModel !== undefined ? { defaultModel } : {},
+      ...codeReview !== undefined ? { codeReview } : {}
+    },
     errors: []
   };
 }
@@ -903,6 +1028,7 @@ var KNOWN_CONDITIONS = new Set([
 ]);
 
 // ../../src/validator.ts
+var VALID_MODEL_NAMES3 = new Set(["haiku", "sonnet", "opus"]);
 var TOKEN_RE = /\$\{([A-Z][A-Z0-9_]*)\}/g;
 function validateTokensInString(text, loc, errors) {
   let m;
@@ -984,6 +1110,22 @@ function detectCycles(phases, edges, errors) {
 }
 function validate(ast) {
   const errors = [];
+  if (ast.codeReview) {
+    const cr = ast.codeReview;
+    const directiveLoc = { line: 1, col: 1 };
+    if (cr.model !== undefined && !VALID_MODEL_NAMES3.has(cr.model)) {
+      errors.push({
+        message: `Invalid model '${cr.model}' in @codeReview(). Valid models: haiku, sonnet, opus`,
+        loc: directiveLoc
+      });
+    }
+    if (cr.maxAttempts !== undefined && (cr.maxAttempts <= 0 || !Number.isInteger(cr.maxAttempts))) {
+      errors.push({
+        message: `'maxAttempts' in @codeReview() must be a positive integer (got ${cr.maxAttempts})`,
+        loc: directiveLoc
+      });
+    }
+  }
   const phaseNames = new Set;
   for (const phase of ast.phases) {
     if (phaseNames.has(phase.name)) {
@@ -1039,6 +1181,17 @@ function validate(ast) {
           message: `Gate '${gate.name}' response for '${mod.signal}' has no 'to:' target and no 'onExhaust:' — this creates a dead-end at runtime`,
           loc: mod.loc
         });
+      }
+    }
+  }
+  const phasesWithCommand = new Set;
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "command") {
+        phasesWithCommand.add(phase.name);
+      }
+      if (mod.kind === "actions" && mod.actions.some((a) => a.kind === "command")) {
+        phasesWithCommand.add(phase.name);
       }
     }
   }
@@ -1103,61 +1256,69 @@ function validate(ast) {
           });
         }
       }
+      if (mod.condition !== undefined) {
+        const condIds = mod.condition.split(/\s+/).filter((t) => t !== "and" && t !== "or" && t !== "not" && t !== "");
+        for (const condId of condIds) {
+          if (!KNOWN_CONDITIONS.has(condId)) {
+            errors.push({
+              message: `Unknown condition '${condId}' — will be AI-evaluated at runtime`,
+              loc: mod.loc,
+              severity: "warning"
+            });
+          }
+        }
+      }
     }
+    const conditionalSignals = new Map;
     for (const mod of phase.modifiers) {
-      if (mod.kind !== "conditionalOn")
+      if (mod.kind !== "on")
         continue;
-      if (isTerminal) {
-        errors.push({
-          message: `Terminal phases cannot have outbound transitions`,
-          loc: mod.loc
-        });
-        continue;
+      if (mod.condition !== undefined || mod.isOtherwise) {
+        if (!conditionalSignals.has(mod.signal)) {
+          conditionalSignals.set(mod.signal, { hasOtherwise: false, firstLoc: mod.loc });
+        }
+        if (mod.isOtherwise) {
+          conditionalSignals.get(mod.signal).hasOtherwise = true;
+        }
       }
-      if (!declaredSignals.has(mod.signal)) {
-        const suggestion = didYouMean(mod.signal, declaredSignals);
-        errors.push({
-          message: `Signal '${mod.signal}' not declared for phase '${phase.name}'` + (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-          loc: mod.signalLoc
-        });
-      }
-      const hasOtherwise = mod.branches.some((b) => b.condition === undefined);
-      if (!hasOtherwise) {
+    }
+    for (const [, entry] of conditionalSignals) {
+      if (!entry.hasOtherwise) {
         errors.push({
           message: `Conditional transition requires an 'otherwise' branch`,
+          loc: entry.firstLoc
+        });
+      }
+    }
+  }
+  for (const phase of ast.phases) {
+    const isTerminal = phase.modifiers.some((m) => m.kind === "terminal");
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "codeReview" && isTerminal) {
+        errors.push({
+          message: `Terminal phases cannot have a .codeReview() modifier`,
           loc: mod.loc
         });
       }
-      for (const branch of mod.branches) {
-        if (branch.condition !== undefined) {
-          const condIds = branch.condition.split(/\s+/).filter((t) => t !== "and" && t !== "or" && t !== "");
-          for (const condId of condIds) {
-            if (!KNOWN_CONDITIONS.has(condId)) {
-              errors.push({
-                message: `Unknown condition '${condId}' — will be AI-evaluated at runtime`,
-                loc: branch.loc,
-                severity: "warning"
-              });
-            }
-          }
-        }
-        if (branch.target.kind === "to") {
-          if (!phaseNames.has(branch.target.phase)) {
-            const suggestion = didYouMean(branch.target.phase, phaseNames);
-            errors.push({
-              message: `Phase '${branch.target.phase}' not declared` + (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-              loc: branch.target.phaseLoc
-            });
-          }
-        } else if (branch.target.kind === "gate") {
-          if (!gateNames.has(branch.target.gate)) {
-            const suggestion = didYouMean(branch.target.gate, gateNames);
-            errors.push({
-              message: `Gate '${branch.target.gate}' not declared` + (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-              loc: branch.target.gateLoc
-            });
-          }
-        }
+    }
+  }
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind !== "before" && mod.kind !== "after")
+        continue;
+      if (!phaseNames.has(mod.phase)) {
+        const suggestion = didYouMean(mod.phase, phaseNames);
+        errors.push({
+          message: `Phase '${mod.phase}' not declared (in .${mod.kind}())` + (suggestion ? `. Did you mean '${suggestion}'?` : ""),
+          loc: mod.phaseLoc
+        });
+        continue;
+      }
+      if (!phasesWithCommand.has(mod.phase)) {
+        errors.push({
+          message: `Phase '${mod.phase}' has no .command() or .actions{} block — hook phases must be dispatchable`,
+          loc: mod.phaseLoc
+        });
       }
     }
   }
@@ -1169,16 +1330,25 @@ function validate(ast) {
       if (mod.kind === "on" && mod.target.kind === "to") {
         cycleEdges.get(phase.name).push(mod.target.phase);
       }
-      if (mod.kind === "conditionalOn") {
-        for (const branch of mod.branches) {
-          if (branch.target.kind === "to") {
-            cycleEdges.get(phase.name).push(branch.target.phase);
-          }
-        }
-      }
     }
   }
   detectCycles(ast.phases, cycleEdges, errors);
+  const hookEdges = new Map;
+  for (const p of ast.phases)
+    hookEdges.set(p.name, []);
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "before" && phaseNames.has(mod.phase)) {
+        hookEdges.get(phase.name).push(mod.phase);
+      }
+      if (mod.kind === "after" && phaseNames.has(mod.phase)) {
+        const existing = hookEdges.get(mod.phase);
+        if (existing)
+          existing.push(phase.name);
+      }
+    }
+  }
+  detectCycles(ast.phases, hookEdges, errors);
   return errors;
 }
 
@@ -1290,15 +1460,6 @@ function buildSymbolTable(ast) {
           references.push({ name: mod.target.phase, kind: "phase", loc: mod.target.phaseLoc });
         } else {
           references.push({ name: mod.target.gate, kind: "gate", loc: mod.target.gateLoc });
-        }
-      } else if (mod.kind === "conditionalOn") {
-        references.push({ name: mod.signal, kind: "signal", loc: mod.signalLoc });
-        for (const branch of mod.branches) {
-          if (branch.target.kind === "to") {
-            references.push({ name: branch.target.phase, kind: "phase", loc: branch.target.phaseLoc });
-          } else {
-            references.push({ name: branch.target.gate, kind: "gate", loc: branch.target.gateLoc });
-          }
         }
       }
     }
@@ -1436,7 +1597,10 @@ var PHASE_MODIFIERS = [
   "model",
   "goalGate",
   "orchestratorContext",
-  "actions"
+  "actions",
+  "before",
+  "after",
+  "codeReview"
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Phase modifier" }));
 var GATE_MODIFIERS = [
   "prompt",
@@ -1453,6 +1617,12 @@ var GOAL_GATE_VALUES = ["always", "ifTriggered"].map((label) => ({
   kind: CompletionItemKind.EnumMember,
   detail: "GoalGate value"
 }));
+var ON_NAMED_ARGS = [
+  { label: "when", kind: CompletionItemKind.Keyword, detail: "Conditional branch (when: cond, to: target)" },
+  { label: "otherwise", kind: CompletionItemKind.Keyword, detail: "Otherwise branch (otherwise, to: target)" },
+  { label: "to", kind: CompletionItemKind.Keyword, detail: "Phase target" },
+  { label: "gate", kind: CompletionItemKind.Keyword, detail: "Gate target" }
+];
 var FEEDBACK_VALUES = ["enrich", "raw"].map((label) => ({
   label,
   kind: CompletionItemKind.EnumMember
@@ -1465,10 +1635,17 @@ var CONTEXT_SOURCE_VALUES = ["file", "inline"].map((label) => ({
   label,
   kind: CompletionItemKind.EnumMember
 }));
+var CODE_REVIEW_PARAMS = [
+  { label: "off", kind: CompletionItemKind.Keyword, detail: "Disable codeReview globally" },
+  { label: "model", kind: CompletionItemKind.Keyword, detail: "Review agent model (model: opus)" },
+  { label: "maxAttempts", kind: CompletionItemKind.Keyword, detail: "Max review cycles before escalation" },
+  { label: ".file", kind: CompletionItemKind.Keyword, detail: "Architecture doc for the reviewer" }
+];
 var TOP_LEVEL_KEYWORDS = [
   { label: "phase", kind: CompletionItemKind.Keyword, insertText: "phase(${1:name})\n    " },
   { label: "gate", kind: CompletionItemKind.Keyword, insertText: "gate(${1:name})\n    " },
-  { label: "@defaultModel", kind: CompletionItemKind.Keyword, insertText: "@defaultModel(${1:sonnet})" }
+  { label: "@defaultModel", kind: CompletionItemKind.Keyword, insertText: "@defaultModel(${1:sonnet})" },
+  { label: "@codeReview", kind: CompletionItemKind.Keyword, insertText: "@codeReview()" }
 ];
 function prefixAt(text, pos) {
   const lines = text.split(`
@@ -1525,7 +1702,16 @@ function getCompletions(text, pos) {
     const inGate = /\bgate\s*\([^)]+\)[^{]*$/.test(allLines.replace(/\/\/[^\n]*/g, "").replace(/#[^\n]*/g, ""));
     return inGate ? GATE_MODIFIERS : PHASE_MODIFIERS;
   }
-  if (/\bto\s*:\s*\w*$/.test(prefix) || /\bto\s*=\s*\w*$/.test(prefix)) {
+  if (/@codeReview\s*\([^)]*$/.test(prefix)) {
+    if (/\bmodel\s*:\s*\w*$/.test(prefix)) {
+      return MODEL_VALUES;
+    }
+    return CODE_REVIEW_PARAMS;
+  }
+  if (/\.codeReview\s*\(\s*\w*$/.test(prefix)) {
+    return [{ label: "off", kind: CompletionItemKind.Keyword, detail: "Disable codeReview for this phase" }];
+  }
+  if (/\bto\s*:\s*\w*$/.test(prefix)) {
     return phaseNames(text);
   }
   if (/\bgate\s*:\s*\w*$/.test(prefix) || /to\s*=\s*gate\s*\(\s*\w*$/.test(prefix)) {
@@ -1533,6 +1719,19 @@ function getCompletions(text, pos) {
   }
   if (/\.(model|defaultModel)\s*\(\s*\w*$/.test(prefix) || /@defaultModel\s*\(\s*\w*$/.test(prefix)) {
     return MODEL_VALUES;
+  }
+  if (/\.(before|after)\s*\(\s*\w*$/.test(prefix)) {
+    return phaseNames(text);
+  }
+  if (/\bwhen\s*:\s*\w*$/.test(prefix)) {
+    return [...KNOWN_CONDITIONS].map((c) => ({
+      label: c,
+      kind: CompletionItemKind.EnumMember,
+      detail: "Known condition"
+    }));
+  }
+  if (/\.on\s*\([A-Z_][A-Z0-9_]*\s*,\s*\w*$/.test(prefix)) {
+    return ON_NAMED_ARGS;
   }
   if (/\.on\s*\(\s*\w*$/.test(prefix)) {
     return signalNames(text);

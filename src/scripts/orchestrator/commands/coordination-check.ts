@@ -44,11 +44,16 @@ export interface Cycle {
 /**
  * Build adjacency map from coordination.json files.
  * Returns { adjacency, errors } where errors are validation failures.
+ *
+ * @param specsDir - Single directory or array of directories to search for
+ *   specs/{ticketId}/coordination.json. In multi-repo setups, pass one entry
+ *   per repo's specs/ directory.
  */
 export function buildAdjacency(
   ticketIds: string[],
-  specsDir: string
+  specsDir: string | string[]
 ): { adjacency: Map<string, string[]>; errors: string[] } {
+  const specsDirs = Array.isArray(specsDir) ? specsDir : [specsDir];
   const validSet = new Set(ticketIds);
   const adjacency = new Map<string, string[]>();
   const errors: string[] = [];
@@ -56,8 +61,16 @@ export function buildAdjacency(
   for (const ticketId of ticketIds) {
     adjacency.set(ticketId, []);
 
-    const coordPath = path.join(specsDir, ticketId, "coordination.json");
-    if (!fs.existsSync(coordPath)) continue;
+    // Find coordination.json in any of the specsDirs
+    let coordPath: string | null = null;
+    for (const dir of specsDirs) {
+      const candidate = path.join(dir, ticketId, "coordination.json");
+      if (fs.existsSync(candidate)) {
+        coordPath = candidate;
+        break;
+      }
+    }
+    if (!coordPath) continue;
 
     const coord = readJsonFile(coordPath);
     if (!coord) {

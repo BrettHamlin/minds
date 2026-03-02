@@ -206,4 +206,33 @@ describe("validateSignal", () => {
 
     expect(result.valid).toBe(true);
   });
+
+  test("multi-repo: pipeline from different repo is used when registry has repo_path", () => {
+    // A registry entry with repo_path pointing to a repo with a different pipeline
+    // validateSignal itself is pure — the CLI uses repo_path to resolve configPath.
+    // This test verifies that validateSignal accepts a pipeline from a different repo.
+    const altPipeline = {
+      version: "3.0",
+      phases: [{ id: "build", signals: ["BUILD_COMPLETE", "BUILD_ERROR"] }],
+      transitions: [],
+    };
+    const altRegistry = {
+      ticket_id: "BRE-999",
+      nonce: "xyz99",
+      current_step: "build",
+      status: "running",
+      repo_path: "/repos/backend",
+    };
+    const parsed: ParsedSignal = {
+      ticketId: "BRE-999",
+      nonce: "xyz99",
+      signalType: "BUILD_COMPLETE",
+      detail: "Build finished",
+    };
+    const result = validateSignal(parsed, altRegistry, altPipeline);
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      expect(result.current_step).toBe("build");
+    }
+  });
 });

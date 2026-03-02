@@ -15,10 +15,21 @@ export interface ParseResult {
   errors: ParseError[];
 }
 
+export interface CodeReviewDirective {
+  enabled: boolean;
+  /** Model name (e.g. "opus") — resolved to model ID at compile time */
+  model?: string;
+  /** Architecture file path for the review subagent */
+  file?: string;
+  /** Max review cycles before escalation (default 3) */
+  maxAttempts?: number;
+}
+
 export interface PipelineAST {
   phases: PhaseDecl[];
   gates: GateDecl[];
   defaultModel?: string; // "haiku" | "sonnet" | "opus"
+  codeReview?: CodeReviewDirective;
 }
 
 export interface PhaseDecl {
@@ -29,20 +40,43 @@ export interface PhaseDecl {
   modifiers: Modifier[];
 }
 
+export interface CodeReviewModifier {
+  kind: "codeReview";
+  /** Only off is supported from phase-level syntax */
+  enabled: false;
+  loc: SourceLocation;
+}
+
 export type Modifier =
   | TerminalModifier
   | CommandModifier
   | SignalsModifier
   | OnModifier
-  | ConditionalOnModifier
   | GoalGateModifier
   | OrchestratorContextModifier
   | ActionsModifier
-  | ModelModifier;
+  | ModelModifier
+  | BeforeModifier
+  | AfterModifier
+  | CodeReviewModifier;
 
 export interface ModelModifier {
   kind: "model";
   name: "haiku" | "sonnet" | "opus";
+  loc: SourceLocation;
+}
+
+export interface BeforeModifier {
+  kind: "before";
+  phase: string;
+  phaseLoc: SourceLocation;
+  loc: SourceLocation;
+}
+
+export interface AfterModifier {
+  kind: "after";
+  phase: string;
+  phaseLoc: SourceLocation;
   loc: SourceLocation;
 }
 
@@ -68,6 +102,10 @@ export interface OnModifier {
   signal: string;
   signalLoc: SourceLocation;
   target: OnTarget;
+  /** Condition expression for when: form (e.g. "hasGroup and isBackend") */
+  condition?: string;
+  /** True for the otherwise branch */
+  isOtherwise?: boolean;
   loc: SourceLocation;
 }
 
@@ -84,24 +122,6 @@ export interface GateTarget {
   kind: "gate";
   gate: string;
   gateLoc: SourceLocation;
-}
-
-// ── Conditional routing ───────────────────────────────────────────────────────
-
-/** One branch inside a block-form .on() — either when(cond) or otherwise */
-export interface ConditionalBranch {
-  /** condition expression (e.g. "hasGroup and isBackend"); undefined = otherwise */
-  condition?: string;
-  target: OnTarget;
-  loc: SourceLocation;
-}
-
-export interface ConditionalOnModifier {
-  kind: "conditionalOn";
-  signal: string;
-  signalLoc: SourceLocation;
-  branches: ConditionalBranch[];
-  loc: SourceLocation;
 }
 
 export interface GoalGateModifier {
@@ -200,6 +220,9 @@ export const BUILTIN_TOKENS = new Set([
   "INCOMING_SIGNAL",
   "INCOMING_DETAIL",
 ]);
+
+/** Valid model names accepted by .model(), @defaultModel(), and @codeReview(model:) */
+export const VALID_MODEL_NAMES = new Set(["haiku", "sonnet", "opus"]);
 
 /** Formally-known condition identifiers — unknown conditions produce a warning */
 export const KNOWN_CONDITIONS = new Set([
