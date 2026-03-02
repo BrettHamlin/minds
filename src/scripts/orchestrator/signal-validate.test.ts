@@ -1,4 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, afterEach } from "bun:test";
+import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import { openMetricsDb } from "../../lib/pipeline/metrics";
 import {
   parseSignal,
   validateSignal,
@@ -234,5 +238,149 @@ describe("validateSignal", () => {
     if (result.valid) {
       expect(result.current_step).toBe("build");
     }
+  });
+});
+
+// ============================================================================
+// Integration: signal logging written to SQLite signals table
+// ============================================================================
+
+describe("signal-validate integration (SQLite signal logging)", () => {
+  let tmpDir: string;
+
+  const PIPELINE_JSON = {
+    version: "3.0",
+    phases: [
+      { id: "clarify", signals: ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"] },
+      { id: "plan", signals: ["PLAN_COMPLETE", "PLAN_ERROR"] },
+    ],
+    transitions: [],
+  };
+
+  function setupTmpRepo(ticketId: string, nonce: string, currentStep: string): { metricsPath: string } {
+    tmpDir = join(tmpdir(), `sig-val-int-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
+    const configDir = join(tmpDir, ".collab", "config");
+    mkdirSync(registryDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+
+    writeFileSync(
+      join(registryDir, `${ticketId}.json`),
+      JSON.stringify({ ticket_id: ticketId, nonce, current_step: currentStep, status: "running" }, null, 2) + "\n"
+    );
+    writeFileSync(join(configDir, "pipeline.json"), JSON.stringify(PIPELINE_JSON, null, 2) + "\n");
+
+    return { metricsPath: join(tmpDir, ".collab", "state", "metrics.db") };
+  }
+
+  afterEach(() => {
+    if (tmpDir && existsSync(tmpDir)) rmSync(tmpDir, { recursive: true });
+  });
+
+  test("valid signal: signals table row with parsed_ok=1, no error", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-101", "abc123", "clarify");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"),
+        "[SIGNAL:BRE-101:abc123] CLARIFY_COMPLETE | All questions answered"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    expect(result.exitCode).toBe(0);
+
+    const db = openMetricsDb(metricsPath);
+    const row = db.query("SELECT * FROM signals LIMIT 1").get() as any;
+    db.close();
+
+    expect(row).not.toBeNull();
+    expect(row.parsed_ok).toBe(1);
+    expect(row.error).toBeNull();
+    expect(row.signal_type).toBe("CLARIFY_COMPLETE");
+    expect(row.phase).toBe("clarify");
+    expect(row.run_id).toBe("BRE-101");
+  });
+
+  test("invalid format: signals table row with parsed_ok=0, error present", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-102", "abc123", "clarify");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"), "not a valid signal"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    expect(result.exitCode).toBe(2);
+
+    const db = openMetricsDb(metricsPath);
+    const row = db.query("SELECT * FROM signals LIMIT 1").get() as any;
+    db.close();
+
+    expect(row).not.toBeNull();
+    expect(row.parsed_ok).toBe(0);
+    expect(row.error).toBe("Signal format invalid");
+    expect(row.run_id).toBe("unknown");
+  });
+
+  test("validation failure (wrong nonce): signals table row with parsed_ok=1, error present", async () => {
+    // Registry has nonce abc123; signal uses def456 — both valid hex, but mismatch
+    const { metricsPath } = setupTmpRepo("BRE-103", "abc123", "clarify");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"),
+        "[SIGNAL:BRE-103:def456] CLARIFY_COMPLETE | done"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    expect(result.exitCode).toBe(2);
+
+    const db = openMetricsDb(metricsPath);
+    const row = db.query("SELECT * FROM signals LIMIT 1").get() as any;
+    db.close();
+
+    expect(row).not.toBeNull();
+    expect(row.parsed_ok).toBe(1);
+    expect(row.error).toBe("Nonce mismatch");
+    expect(row.run_id).toBe("BRE-103");
+  });
+
+  test("emitted_at and processed_at are set on every row", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-104", "abc123", "clarify");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"),
+        "[SIGNAL:BRE-104:abc123] CLARIFY_COMPLETE | done"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    const db = openMetricsDb(metricsPath);
+    const row = db.query("SELECT * FROM signals LIMIT 1").get() as any;
+    db.close();
+
+    expect(row.emitted_at).toBeDefined();
+    expect(row.processed_at).toBeDefined();
+    // Both should be ISO 8601 timestamps
+    expect(new Date(row.emitted_at).getTime()).not.toBeNaN();
+    expect(new Date(row.processed_at).getTime()).not.toBeNaN();
+  });
+
+  test("latency_ms is >= 0", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-105", "abc123", "clarify");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"),
+        "[SIGNAL:BRE-105:abc123] CLARIFY_COMPLETE | done"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    const db = openMetricsDb(metricsPath);
+    const row = db.query("SELECT * FROM signals LIMIT 1").get() as any;
+    db.close();
+
+    expect(typeof row.latency_ms).toBe("number");
+    expect(row.latency_ms).toBeGreaterThanOrEqual(0);
   });
 });

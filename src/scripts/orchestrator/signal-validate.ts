@@ -21,6 +21,7 @@
 
 import { getRepoRoot, readJsonFile, getRegistryPath } from "./orchestrator-utils";
 import { parseSignal, getAllowedSignals, type ParsedSignal } from "../../lib/pipeline/signal";
+import { openMetricsDb, ensureRun, insertSignal } from "../../lib/pipeline/metrics";
 
 // Re-export for test backward compatibility
 export { parseSignal } from "../../lib/pipeline/signal";
@@ -110,10 +111,33 @@ export function validateSignal(
 }
 
 // ============================================================================
+// Metrics Helper
+// ============================================================================
+
+function logSignalAttempt(
+  repoRoot: string,
+  receivedAt: string,
+  runId: string,
+  raw: string,
+  parsedOk: boolean,
+  fields?: Parameters<typeof insertSignal>[4]
+): void {
+  try {
+    const processedAt = new Date().toISOString();
+    const latencyMs = new Date(processedAt).getTime() - new Date(receivedAt).getTime();
+    const db = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
+    ensureRun(db, runId);
+    insertSignal(db, runId, raw, parsedOk, { ...fields, processedAt, latencyMs });
+    db.close();
+  } catch { /* non-fatal */ }
+}
+
+// ============================================================================
 // CLI Entry Point
 // ============================================================================
 
 function main(): void {
+  const receivedAt = new Date().toISOString();
   const args = process.argv.slice(2);
   const signal = args.join(" ");
 
@@ -123,6 +147,8 @@ function main(): void {
     );
     process.exit(1);
   }
+
+  const repoRoot = getRepoRoot();
 
   // Parse signal format
   const parsed = parseSignal(signal);
@@ -134,10 +160,13 @@ function main(): void {
         raw: signal,
       })
     );
+    logSignalAttempt(repoRoot, receivedAt, "unknown", signal, false, {
+      error: "Signal format invalid",
+      emittedAt: receivedAt,
+    });
     process.exit(2);
   }
 
-  const repoRoot = getRepoRoot();
   const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
 
   // Read registry
@@ -178,9 +207,20 @@ function main(): void {
 
   if (result.valid) {
     console.log(JSON.stringify(result));
+    logSignalAttempt(repoRoot, receivedAt, parsed.ticketId, signal, true, {
+      signalType: parsed.signalType,
+      phase: result.current_step,
+      emittedAt: receivedAt,
+    });
     process.exit(0);
   } else {
     console.error(JSON.stringify(result));
+    logSignalAttempt(repoRoot, receivedAt, parsed.ticketId, signal, true, {
+      error: result.error,
+      signalType: parsed.signalType,
+      phase: registry.current_step,
+      emittedAt: receivedAt,
+    });
     process.exit(2);
   }
 }
