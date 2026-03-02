@@ -182,18 +182,18 @@ Only runs when **all** of the following are true:
 1. `current_step` contains `implement` (implement phase name)
 2. The signal type ends in `_COMPLETE`
 3. `phases[current_step].codeReview.enabled` is not `false` in pipeline.json (per-phase override)
-4. Top-level `codeReview.enabled` is not `false` in pipeline.json (global directive), or `codeReview` is absent (feature not configured — skip this step)
+4. Top-level `codeReview.enabled` is not explicitly `false` in pipeline.json (absent = enabled with defaults)
 
-**If global `codeReview` is absent from pipeline.json, skip this step entirely.**
+**If global `codeReview` is absent from pipeline.json, treat as enabled with defaults (model: claude-opus-4-6, maxAttempts: 3). Only skip if `codeReview.enabled` is explicitly `false`.**
 
 Procedure:
 
 1. Read global `codeReview` from `.collab/config/pipeline.json`:
    ```bash
    PIPELINE=$(cat .collab/config/pipeline.json)
-   CR_ENABLED=$(echo "$PIPELINE" | jq -r '.codeReview.enabled // "absent"')
+   CR_ENABLED=$(echo "$PIPELINE" | jq -r '.codeReview.enabled // true')
    ```
-   If `CR_ENABLED == "absent"` or `CR_ENABLED == "false"`: skip to step b.
+   If `CR_ENABLED == "false"`: skip to step b.
 
 2. Check per-phase override:
    ```bash

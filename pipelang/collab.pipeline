@@ -3,6 +3,7 @@
 // Replaces .collab/config/pipeline.json as the authoritative definition
 
 @defaultModel(sonnet)
+@codeReview()
 
 // ── Phases ────────────────────────────────────────────────────────────────────
 
