@@ -5,9 +5,8 @@
  * status-table rendering, and phase dispatch command building across
  * the full lifecycle of a phased implementation.
  *
- * Also includes E2E tests for the awk phase-scoping logic used in
- * verify-and-complete.sh (tested directly to avoid the bun signal
- * emission at the end of that script).
+ * Also includes E2E tests for verify-and-complete.sh phase-scoping that
+ * invoke the real script with CHECK_ONLY=1 to skip signal emission.
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
@@ -20,62 +19,41 @@ import { buildDispatchCommand } from "./commands/phase-dispatch";
 import type { ImplementPhasePlan } from "../../lib/pipeline/registry";
 
 // ---------------------------------------------------------------------------
-// Helper: run the same awk + grep logic that verify-and-complete.sh uses
-// to count incomplete tasks in a phase-scoped section of tasks.md.
+// Helper: invoke the real verify-and-complete.sh with CHECK_ONLY=1 to count
+// incomplete tasks without emitting a signal.
 // ---------------------------------------------------------------------------
 
+const SCRIPT_PATH = path.resolve(import.meta.dir, "../verify-and-complete.sh");
+
 /**
- * Count '- [ ]' lines in tasks.md, optionally restricted to specific phases.
+ * Run verify-and-complete.sh implement <scope> with CHECK_ONLY=1, using
+ * tasksPath's directory as REPO_ROOT (git not required — script falls back
+ * to pwd when outside a git repo).
  *
- * scope == null   → count across entire file (no phase filter)
- * scope == "2"    → count only within ## Phase 2: ... section
- * scope == "1-4"  → count only within ## Phase 1: through ## Phase 4: sections
+ * Returns the number of incomplete '- [ ]' tasks in the scoped section:
+ *   scope == null   → all phases counted
+ *   scope == "2"    → only ## Phase 2: section
+ *   scope == "1-4"  → ## Phase 1: through ## Phase 4: sections
  *
- * Mirrors the exact awk invocations in src/scripts/verify-and-complete.sh.
+ * The script already prints "[VerifyComplete] ❌ N incomplete tasks remaining"
+ * when N > 0 and exits 1, so we parse that line. When all tasks are complete
+ * the script exits 0 with CHECK_ONLY, meaning count == 0.
  */
 function countIncomplete(tasksPath: string, scope: string | null): number {
-  if (scope === null) {
-    // Unscoped: grep -c across whole file
-    const result = Bun.spawnSync(["grep", "-c", "^- \\[ \\]", tasksPath]);
-    return parseInt(result.stdout.toString().trim(), 10) || 0;
-  }
+  const args = ["bash", SCRIPT_PATH, "implement", "check-only-test-message"];
+  if (scope !== null) args.push(scope);
 
-  // Build awk program — identical to the script's inline awk
-  const isRange = scope.includes("-");
-  let awkProg: string;
-  let awkArgs: string[];
+  const result = Bun.spawnSync(args, {
+    cwd: path.dirname(tasksPath),
+    env: { ...process.env, CHECK_ONLY: "1" },
+  });
 
-  if (isRange) {
-    const [s, e] = scope.split("-");
-    awkProg = `
-      /^## Phase [0-9]+:/ {
-        match($0, /[0-9]+/)
-        n = substr($0, RSTART, RLENGTH) + 0
-        in_scope = (n >= s+0 && n <= e+0)
-        next
-      }
-      /^## / { in_scope = 0 }
-      in_scope
-    `;
-    awkArgs = ["awk", "-v", `s=${s}`, "-v", `e=${e}`, awkProg, tasksPath];
-  } else {
-    awkProg = `
-      /^## Phase [0-9]+:/ {
-        match($0, /[0-9]+/)
-        n = substr($0, RSTART, RLENGTH) + 0
-        in_scope = (n == p+0)
-        next
-      }
-      /^## / { in_scope = 0 }
-      in_scope
-    `;
-    awkArgs = ["awk", "-v", `p=${scope}`, awkProg, tasksPath];
-  }
+  if (result.exitCode === 0) return 0;
 
-  const awkResult = Bun.spawnSync(awkArgs);
-  const lines = awkResult.stdout.toString();
-  // Count '- [ ]' occurrences in the extracted lines
-  return (lines.match(/^- \[ \]/gm) ?? []).length;
+  // Exit 1: parse N from "[VerifyComplete] ❌ N incomplete tasks remaining"
+  const output = result.stdout.toString();
+  const match = output.match(/❌ (\d+) incomplete/);
+  return match ? parseInt(match[1], 10) : -1;
 }
 
 // ---------------------------------------------------------------------------

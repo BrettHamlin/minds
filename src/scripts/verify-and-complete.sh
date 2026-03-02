@@ -52,7 +52,7 @@ case "$PHASE" in
     fi
     # Fall back: sorted glob across specs/, then repo root
     if [ -z "$TASKS_FILE" ]; then
-      TASKS_FILE=$(find "$REPO_ROOT/specs" -name "tasks.md" -maxdepth 2 2>/dev/null | sort | head -1)
+      TASKS_FILE=$(find "$REPO_ROOT/specs" -name "tasks.md" -maxdepth 2 2>/dev/null | sort | head -1 || true)
     fi
     if [ -z "$TASKS_FILE" ]; then
       TASKS_FILE="$REPO_ROOT/tasks.md"
@@ -119,6 +119,12 @@ case "$PHASE" in
     echo "[VerifyComplete] ✓ Phase $PHASE complete (no specific checks)"
     ;;
 esac
+
+# CHECK_ONLY mode: skip signal emission (used by automated tests)
+if [ "${CHECK_ONLY:-}" = "1" ]; then
+  echo "[VerifyComplete] CHECK_ONLY: verification complete, skipping signal emission"
+  exit 0
+fi
 
 # Emit the completion signal
 echo "[VerifyComplete] Emitting completion signal..."
