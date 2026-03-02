@@ -1,5 +1,8 @@
-import { describe, test, expect } from "bun:test";
-import { deriveStatus, deriveDetail } from "./status-table";
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import { deriveStatus, deriveDetail, renderTable } from "./status-table";
 
 describe("status-table: deriveStatus()", () => {
   test("1. explicit status field wins", () => {
@@ -83,5 +86,80 @@ describe("status-table: deriveDetail()", () => {
     });
     expect(detail).toContain("held");
     expect(detail).not.toContain("impl");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderTable multi-repo tests
+// ---------------------------------------------------------------------------
+
+let tmpDir: string;
+
+beforeAll(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-status-"));
+  fs.mkdirSync(path.join(tmpDir, "registry"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, "groups"), { recursive: true });
+});
+
+afterAll(() => {
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+describe("status-table: renderTable() multi-repo", () => {
+  test("14. without multi-repo config → no Repo column in header", () => {
+    const table = renderTable(
+      path.join(tmpDir, "registry"),
+      path.join(tmpDir, "groups")
+    );
+    expect(table).not.toContain("Repo");
+  });
+
+  test("15. with multi-repo config present → Repo column in header", () => {
+    const multiRepoPath = path.join(tmpDir, "multi-repo.json");
+    fs.writeFileSync(multiRepoPath, JSON.stringify({ repos: { backend: { path: "/some/path" } } }));
+
+    const table = renderTable(
+      path.join(tmpDir, "registry"),
+      path.join(tmpDir, "groups"),
+      { multiRepoConfigPath: multiRepoPath }
+    );
+    expect(table).toContain("Repo");
+
+    fs.unlinkSync(multiRepoPath);
+  });
+
+  test("16. multi-repo table shows repo_id from registry", () => {
+    const multiRepoPath = path.join(tmpDir, "multi-repo.json");
+    fs.writeFileSync(multiRepoPath, JSON.stringify({ repos: { frontend: { path: "/some/path" } } }));
+
+    const regFile = path.join(tmpDir, "registry", "BRE-500.json");
+    fs.writeFileSync(
+      regFile,
+      JSON.stringify({
+        ticket_id: "BRE-500",
+        current_step: "clarify",
+        repo_id: "frontend",
+        nonce: "aa00",
+      })
+    );
+
+    const table = renderTable(
+      path.join(tmpDir, "registry"),
+      path.join(tmpDir, "groups"),
+      { multiRepoConfigPath: multiRepoPath }
+    );
+    expect(table).toContain("frontend");
+
+    fs.unlinkSync(multiRepoPath);
+    fs.unlinkSync(regFile);
+  });
+
+  test("17. multi-repo config path that does not exist → no Repo column", () => {
+    const table = renderTable(
+      path.join(tmpDir, "registry"),
+      path.join(tmpDir, "groups"),
+      { multiRepoConfigPath: "/nonexistent/multi-repo.json" }
+    );
+    expect(table).not.toContain("Repo");
   });
 });

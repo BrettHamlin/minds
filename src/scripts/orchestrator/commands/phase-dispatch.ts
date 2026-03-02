@@ -209,6 +209,75 @@ export function resolvePhaseHooks(
 }
 
 // ---------------------------------------------------------------------------
+// Before-hook execution
+// ---------------------------------------------------------------------------
+
+export const HOOK_POLL_INTERVAL_MS = 2000;
+export const HOOK_POLL_ATTEMPTS = 150; // 5 minutes total
+
+/**
+ * Poll the registry's phase_history until phaseId appears with a _COMPLETE signal.
+ * Returns true when found, false on timeout.
+ */
+export async function waitForPhaseCompletion(
+  registryPath: string,
+  phaseId: string,
+  pollAttempts: number = HOOK_POLL_ATTEMPTS
+): Promise<boolean> {
+  for (let i = 0; i < pollAttempts; i++) {
+    const reg = readJsonFile(registryPath);
+    const history: Array<{ phase: string; signal: string }> = (reg?.phase_history ?? []) as Array<{ phase: string; signal: string }>;
+    if (history.some((e) => e.phase === phaseId && e.signal.endsWith("_COMPLETE"))) {
+      return true;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, HOOK_POLL_INTERVAL_MS));
+  }
+  return false;
+}
+
+/**
+ * Dispatch each before-hook phase to the agent pane and wait for completion.
+ * Hook phases are dispatched sequentially; each must complete before the next starts.
+ */
+export async function executeBeforeHooks(
+  agentPane: string,
+  beforeHooks: string[],
+  pipeline: CompiledPipeline,
+  registryPath: string
+): Promise<void> {
+  for (const hookPhaseId of beforeHooks) {
+    const hookResolved = resolvePhaseCommand(pipeline, hookPhaseId);
+    if (!hookResolved) {
+      console.error(`Before-hook '${hookPhaseId}' has no command — skipping`);
+      continue;
+    }
+
+    const hookCmd =
+      hookResolved.type === "command"
+        ? hookResolved.value
+        : ((hookResolved.value.find((a) => "command" in a || "prompt" in a) as any)?.command ??
+          (hookResolved.value.find((a) => "command" in a || "prompt" in a) as any)?.prompt ?? "");
+
+    if (!hookCmd) {
+      console.error(`Before-hook '${hookPhaseId}' has no dispatchable command — skipping`);
+      continue;
+    }
+
+    console.log(`Dispatching before-hook '${hookPhaseId}'`);
+    await dispatchToAgent(agentPane, hookCmd, 1);
+
+    const completed = await waitForPhaseCompletion(registryPath, hookPhaseId);
+    if (!completed) {
+      throw new OrchestratorError(
+        "TIMEOUT",
+        `Before-hook '${hookPhaseId}' did not complete within timeout`
+      );
+    }
+    console.log(`Before-hook '${hookPhaseId}' completed`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -259,6 +328,12 @@ async function main(): Promise<void> {
       );
       console.log(`HELD: ${ticketId} at ${phaseId} — waiting for ${holdResult.reason}`);
       process.exit(0);
+    }
+
+    // --- Execute before hooks ---
+    const hooks = resolvePhaseHooks(pipeline, phaseId);
+    if (hooks.before.length > 0) {
+      await executeBeforeHooks(agentPane, hooks.before, pipeline, regPath);
     }
 
     // --- Resolve phase command ---

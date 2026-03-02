@@ -100,6 +100,87 @@ describe("orchestrator-init: resolvePaths()", () => {
   });
 });
 
+describe("orchestrator-init: resolvePaths() multi-repo", () => {
+  test("8. multi-repo.json + metadata repo_id → spawnCmd uses repo path", () => {
+    const ctx = makeCtx("TEST-INIT-MR-001");
+    const targetRepo = path.join(tmpDir, "repos", "backend");
+    fs.mkdirSync(targetRepo, { recursive: true });
+
+    // Write multi-repo.json
+    const multiRepoPath = path.join(tmpDir, ".collab", "config", "multi-repo.json");
+    fs.writeFileSync(multiRepoPath, JSON.stringify({ repos: { backend: { path: targetRepo } } }));
+
+    // Write metadata.json with repo_id
+    const specDir = path.join(tmpDir, "specs", "test-init-mr-001");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-INIT-MR-001", repo_id: "backend" })
+    );
+
+    const result = resolvePaths(ctx);
+    expect(result.repoId).toBe("backend");
+    expect(result.repoPath).toBe(targetRepo);
+    expect(result.spawnCmd).toContain(targetRepo);
+
+    fs.unlinkSync(multiRepoPath);
+    fs.rmSync(specDir, { recursive: true });
+    fs.rmSync(targetRepo, { recursive: true });
+  });
+
+  test("9. repo_id not in multi-repo.json → throws VALIDATION error", () => {
+    const ctx = makeCtx("TEST-INIT-MR-002");
+
+    const multiRepoPath = path.join(tmpDir, ".collab", "config", "multi-repo.json");
+    fs.writeFileSync(multiRepoPath, JSON.stringify({ repos: { frontend: { path: "/some/path" } } }));
+
+    const specDir = path.join(tmpDir, "specs", "test-init-mr-002");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-INIT-MR-002", repo_id: "backend" })
+    );
+
+    expect(() => resolvePaths(ctx)).toThrow("not found in multi-repo.json");
+
+    fs.unlinkSync(multiRepoPath);
+    fs.rmSync(specDir, { recursive: true });
+  });
+
+  test("10. multi-repo path does not exist → throws FILE_NOT_FOUND", () => {
+    const ctx = makeCtx("TEST-INIT-MR-003");
+
+    const multiRepoPath = path.join(tmpDir, ".collab", "config", "multi-repo.json");
+    fs.writeFileSync(
+      multiRepoPath,
+      JSON.stringify({ repos: { backend: { path: "/nonexistent/repo/xyz" } } })
+    );
+
+    const specDir = path.join(tmpDir, "specs", "test-init-mr-003");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-INIT-MR-003", repo_id: "backend" })
+    );
+
+    expect(() => resolvePaths(ctx)).toThrow("does not exist");
+
+    fs.unlinkSync(multiRepoPath);
+    fs.rmSync(specDir, { recursive: true });
+  });
+
+  test("11. no multi-repo.json → repoId and repoPath are undefined", () => {
+    const ctx = makeCtx("TEST-INIT-MR-004");
+    // Ensure multi-repo.json doesn't exist
+    const multiRepoPath = path.join(tmpDir, ".collab", "config", "multi-repo.json");
+    if (fs.existsSync(multiRepoPath)) fs.unlinkSync(multiRepoPath);
+
+    const result = resolvePaths(ctx);
+    expect(result.repoId).toBeUndefined();
+    expect(result.repoPath).toBeUndefined();
+  });
+});
+
 describe("orchestrator-init: setupSymlinks()", () => {
   test("6. creates .claude and .collab symlinks in worktree", () => {
     const worktreePath = path.join(tmpDir, "worktrees", "symlink-test");

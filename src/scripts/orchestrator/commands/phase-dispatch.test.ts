@@ -1,5 +1,11 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { resolvePhaseCommand, checkHoldStatus, buildDispatchCommand } from "./phase-dispatch";
+import {
+  resolvePhaseCommand,
+  checkHoldStatus,
+  buildDispatchCommand,
+  resolvePhaseHooks,
+  waitForPhaseCompletion,
+} from "./phase-dispatch";
 import type { CompiledPipeline } from "../../../lib/pipeline";
 import * as fs from "fs";
 import * as path from "path";
@@ -146,5 +152,85 @@ describe("phase-dispatch: checkHoldStatus()", () => {
     const result = checkHoldStatus("BRE-101", "clarify", repoRoot, registryDir);
     expect(result.held).toBe(true);
     expect(result.reason).toBe("BRE-DEP2:plan");
+  });
+});
+
+// ============================================================================
+// resolvePhaseHooks — already partially tested in slice10.test.ts; extra cases
+// ============================================================================
+
+describe("phase-dispatch: resolvePhaseHooks()", () => {
+  const HOOKED_PIPELINE: CompiledPipeline = {
+    version: "3.1",
+    phases: {
+      setup: { command: "/setup", signals: [] } as any,
+      main: {
+        command: "/main",
+        signals: [],
+        before: [{ phase: "setup" }],
+        after: [{ phase: "cleanup" }],
+      } as any,
+      cleanup: { command: "/cleanup", signals: [] } as any,
+      done: { terminal: true } as any,
+    },
+  };
+
+  test("13. phase with before+after returns both arrays", () => {
+    const hooks = resolvePhaseHooks(HOOKED_PIPELINE, "main");
+    expect(hooks.before).toEqual(["setup"]);
+    expect(hooks.after).toEqual(["cleanup"]);
+  });
+
+  test("14. phase with no hooks returns empty arrays", () => {
+    const hooks = resolvePhaseHooks(HOOKED_PIPELINE, "setup");
+    expect(hooks.before).toEqual([]);
+    expect(hooks.after).toEqual([]);
+  });
+});
+
+// ============================================================================
+// waitForPhaseCompletion
+// ============================================================================
+
+describe("phase-dispatch: waitForPhaseCompletion()", () => {
+  let tmpDir: string;
+
+  beforeAll(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-hook-wait-"));
+  });
+
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("15. returns true immediately when phase_history already contains _COMPLETE", async () => {
+    const regPath = path.join(tmpDir, "hook-ready.json");
+    fs.writeFileSync(
+      regPath,
+      JSON.stringify({
+        phase_history: [{ phase: "setup", signal: "SETUP_COMPLETE", ts: "2026-01-01T00:00:00Z" }],
+      })
+    );
+
+    const result = await waitForPhaseCompletion(regPath, "setup", 1);
+    expect(result).toBe(true);
+  });
+
+  test("16. returns false when phase never completes within attempts", async () => {
+    const regPath = path.join(tmpDir, "hook-pending.json");
+    fs.writeFileSync(
+      regPath,
+      JSON.stringify({ phase_history: [] })
+    );
+
+    // Use 1 attempt with a tiny poll interval (override HOOK_POLL_INTERVAL_MS not practical here,
+    // but 1 attempt means it polls once and returns false)
+    const result = await waitForPhaseCompletion(regPath, "setup", 1);
+    expect(result).toBe(false);
+  });
+
+  test("17. returns false when registry file does not exist", async () => {
+    const result = await waitForPhaseCompletion(path.join(tmpDir, "nonexistent.json"), "setup", 1);
+    expect(result).toBe(false);
   });
 });

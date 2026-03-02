@@ -55,6 +55,8 @@ bun .collab/scripts/orchestrator/commands/orchestrator-init.ts $ARGUMENTS
 ```
 Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> output error, stop.
 
+**Multi-repo detection (AI, after init):** If `.collab/config/multi-repo.json` exists, log "Multi-repo mode active." The registry will contain `repo_id` and `repo_path` fields for this ticket. Signal validation and phase dispatch will automatically route to the per-repo pipeline.json.
+
 ### 4. Fetch Linear ticket
 
 `get_issue` MCP with `includeRelations: true`. Store for later use (ticket title, acceptance criteria, description needed for gate evaluation).
@@ -114,6 +116,23 @@ The signal `detail` field contains the question and all options encoded with `§
 6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Answered for {ticket_id}: {choice}." **END RESPONSE.**
 
 #### `_COMPLETE` -- Step finished
+
+##### a.0 Multi-repo dependency check (AI, analyze phase only)
+
+*AI LOGIC: After all tracked tickets complete their `analyze` phase in multi-repo mode.*
+
+Only runs when **all** of the following are true:
+1. `.collab/config/multi-repo.json` exists (multi-repo mode active)
+2. `current_step == analyze`
+3. Every ticket in `.collab/state/pipeline-registry/*.json` has `analyze` in its `phase_history` with a `_COMPLETE` signal
+
+If all conditions met: dispatch the dependency analyzer before any ticket advances to `implement`:
+
+```bash
+/collab.dependencies {ticket_id_1} {ticket_id_2} ...
+```
+
+Where the ticket IDs are all currently tracked tickets. Wait for `DEPENDENCY_COMPLETE` signal, then proceed normally with transition resolution for the triggering ticket.
 
 ##### a. Append phase history (deterministic)
 
@@ -304,10 +323,11 @@ For signals that do not match any suffix above (e.g., `VERIFY_PASS`, `VERIFY_FAI
 
 ## Command Processing
 
-### [CMD:add {ticket_id}]
+### [CMD:add {ticket_id} [--repo {repo_id}]]
 
 1. Validate: missing -> usage. Already tracked -> error. Count >= 5 -> error. **END RESPONSE** on any.
-2. Resolve worktree (same logic as `commands/orchestrator-init.ts`). Split vertically off last agent pane: `bun .collab/scripts/orchestrator/Tmux.ts split -w {last_agent_pane} -c "{spawn_cmd}"`. Generate nonce, create registry atomically, assign next color (1-5), label pane.
+2. If `--repo {repo_id}` is provided: look up `repos[repo_id].path` from `.collab/config/multi-repo.json`. Use that path as the spawn target instead of the worktree. Store `repo_id` and `repo_path` in the new registry entry.
+3. Resolve worktree (same logic as `commands/orchestrator-init.ts`). Split vertically off last agent pane: `bun .collab/scripts/orchestrator/Tmux.ts split -w {last_agent_pane} -c "{spawn_cmd}"`. Generate nonce, create registry atomically, assign next color (1-5), label pane.
 3. Rebalance: `tmux set-window-option main-pane-width {30%}; tmux select-layout main-vertical`
 4. Fetch Linear ticket with `includeRelations: true`.
 5. Dispatch first phase:
