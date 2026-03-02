@@ -26,6 +26,7 @@ const copies: Array<{ from: string; to: string; filter?: (name: string) => boole
   { from: "src/scripts/webhook-notify.sh", to: "scripts/webhook-notify.sh" },
   { from: "src/config", to: "config" },
   { from: "src/lib/pipeline", to: "lib-pipeline" },
+  { from: "src/hooks", to: "hooks" },
   { from: ".specify/scripts", to: "specify-scripts" },
   { from: ".specify/templates", to: "specify-templates" },
   { from: "src/claude-settings.json", to: "claude-settings.json" },

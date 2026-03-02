@@ -69,6 +69,7 @@ export function installTemplates(
     ".collab/config/displays",
     ".collab/config/gates",
     ".collab/lib/pipeline",
+    ".collab/hooks",
     ".specify/scripts/bash",
     ".specify/templates",
   ];
@@ -137,6 +138,9 @@ export function installTemplates(
 
   // Shared pipeline library (always overwrite — required by orchestrator scripts)
   copyTemplateDir("lib-pipeline", ".collab/lib/pipeline");
+
+  // Hooks (always overwrite — Claude Code settings.json references these)
+  copyTemplateDir("hooks", ".collab/hooks");
 
   // Top-level scripts
   const scriptsDir = join(templateDir, "scripts");
