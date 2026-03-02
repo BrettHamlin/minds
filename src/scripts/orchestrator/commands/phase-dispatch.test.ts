@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { resolvePhaseCommand, checkHoldStatus } from "./phase-dispatch";
+import { resolvePhaseCommand, checkHoldStatus, buildDispatchCommand } from "./phase-dispatch";
 import type { CompiledPipeline } from "../../../lib/pipeline";
 import * as fs from "fs";
 import * as path from "path";
@@ -32,6 +32,38 @@ const PIPELINE: CompiledPipeline = {
     } as any,
   },
 };
+
+// ============================================================================
+// buildDispatchCommand — --args passthrough
+// ============================================================================
+
+describe("phase-dispatch: buildDispatchCommand()", () => {
+  test("8. no extraArgs returns base command unchanged", () => {
+    expect(buildDispatchCommand("/collab.implement", null)).toBe("/collab.implement");
+  });
+
+  test("9. extraArgs appended with space", () => {
+    expect(buildDispatchCommand("/collab.implement", "phase:1")).toBe(
+      "/collab.implement phase:1"
+    );
+  });
+
+  test("10. phase range arg appended correctly", () => {
+    expect(buildDispatchCommand("/collab.implement", "phase:1-4")).toBe(
+      "/collab.implement phase:1-4"
+    );
+  });
+
+  test("11. empty string extraArgs treated as falsy — no append", () => {
+    expect(buildDispatchCommand("/collab.clarify", "")).toBe("/collab.clarify");
+  });
+
+  test("12. works with actions-style base command", () => {
+    expect(buildDispatchCommand("/collab.tasks", "phase:3")).toBe(
+      "/collab.tasks phase:3"
+    );
+  });
+});
 
 describe("phase-dispatch: resolvePhaseCommand()", () => {
   test("1. command phase returns {type:'command', value}", () => {

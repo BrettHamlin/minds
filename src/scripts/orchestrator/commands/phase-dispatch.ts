@@ -11,7 +11,7 @@
  * Adding, renaming, or reordering phases requires NO changes to this script.
  *
  * Usage:
- *   bun commands/phase-dispatch.ts <TICKET_ID> <PHASE_ID>
+ *   bun commands/phase-dispatch.ts <TICKET_ID> <PHASE_ID> [--args "extra args"]
  *
  * Output (stdout):
  *   "Dispatched <phase_id> to <agent_pane>: <command>"
@@ -181,6 +181,18 @@ export async function dispatchToAgent(
 }
 
 // ---------------------------------------------------------------------------
+// Command building
+// ---------------------------------------------------------------------------
+
+/**
+ * Append extra args to a base command string.
+ * Returns baseCmd unchanged when extraArgs is null or empty.
+ */
+export function buildDispatchCommand(baseCmd: string, extraArgs: string | null): string {
+  return extraArgs ? `${baseCmd} ${extraArgs}` : baseCmd;
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -193,6 +205,8 @@ async function main(): Promise<void> {
   }
 
   const [ticketId, phaseId] = args;
+  const argsIdx = args.indexOf("--args");
+  const extraArgs = argsIdx !== -1 && args[argsIdx + 1] ? args[argsIdx + 1] : null;
 
   try {
     const repoRoot = getRepoRoot();
@@ -240,20 +254,22 @@ async function main(): Promise<void> {
       process.exit(0);
     }
 
-    // --- Dispatch ---
+    // --- Dispatch (append --args if provided) ---
     if (resolved.type === "command") {
-      const result = await dispatchToAgent(agentPane, resolved.value, 5);
-      console.log(`Dispatched ${phaseId} to ${agentPane}: ${resolved.value}`);
+      const fullCmd = buildDispatchCommand(resolved.value, extraArgs);
+      const result = await dispatchToAgent(agentPane, fullCmd, 5);
+      console.log(`Dispatched ${phaseId} to ${agentPane}: ${fullCmd}`);
     } else {
-      // Actions array — dispatch in order
+      // Actions array — dispatch in order, append args to command/prompt actions
       let dispatched = false;
       for (const action of resolved.value) {
         if (action.display) {
           console.log(`[Display] ${action.display}`);
         } else if (action.prompt || action.command) {
-          const cmd = (action.prompt || action.command) as string;
-          await dispatchToAgent(agentPane, cmd, 1);
-          console.log(`Dispatched ${phaseId} action to ${agentPane}: ${cmd}`);
+          const baseCmd = (action.prompt || action.command) as string;
+          const fullCmd = buildDispatchCommand(baseCmd, extraArgs);
+          await dispatchToAgent(agentPane, fullCmd, 1);
+          console.log(`Dispatched ${phaseId} action to ${agentPane}: ${fullCmd}`);
           dispatched = true;
         }
       }

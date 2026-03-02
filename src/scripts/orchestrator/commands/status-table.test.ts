@@ -47,4 +47,41 @@ describe("status-table: deriveDetail()", () => {
     const detail = deriveDetail({ current_step: "implement" });
     expect(detail).toContain("implement");
   });
+
+  test("10. implement + implement_phase_plan shows 'impl N/M'", () => {
+    const detail = deriveDetail({
+      current_step: "implement",
+      implement_phase_plan: { total_phases: 5, current_impl_phase: 2, phase_names: [], completed_impl_phases: [1] },
+    });
+    expect(detail).toBe("impl 2/5");
+  });
+
+  test("11. implement phase plan on first phase shows 'impl 1/3'", () => {
+    const detail = deriveDetail({
+      current_step: "implement",
+      implement_phase_plan: { total_phases: 3, current_impl_phase: 1, phase_names: [], completed_impl_phases: [] },
+    });
+    expect(detail).toBe("impl 1/3");
+  });
+
+  test("12. implement_phase_plan without current_step==implement falls back to normal", () => {
+    const detail = deriveDetail({
+      current_step: "plan",
+      implement_phase_plan: { total_phases: 5, current_impl_phase: 2, phase_names: [], completed_impl_phases: [1] },
+    });
+    // Should not show impl progress since we're not in implement phase
+    expect(detail).not.toContain("impl");
+    expect(detail).toContain("plan");
+  });
+
+  test("13. held takes priority over implement_phase_plan", () => {
+    const detail = deriveDetail({
+      status: "held",
+      waiting_for: "BRE-300:plan",
+      current_step: "implement",
+      implement_phase_plan: { total_phases: 3, current_impl_phase: 1, phase_names: [], completed_impl_phases: [] },
+    });
+    expect(detail).toContain("held");
+    expect(detail).not.toContain("impl");
+  });
 });

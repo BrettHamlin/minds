@@ -191,6 +191,12 @@ describe("ALLOWED_FIELDS", () => {
     }
   });
 
+  test("contains new registry fields: implement_phase_plan, repo_id, repo_path", () => {
+    expect(ALLOWED_FIELDS.has("implement_phase_plan")).toBe(true);
+    expect(ALLOWED_FIELDS.has("repo_id")).toBe(true);
+    expect(ALLOWED_FIELDS.has("repo_path")).toBe(true);
+  });
+
   test("rejects unknown fields", () => {
     expect(ALLOWED_FIELDS.has("bogus_field")).toBe(false);
     expect(ALLOWED_FIELDS.has("ticket_id")).toBe(false);
