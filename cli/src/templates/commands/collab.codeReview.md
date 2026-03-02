@@ -34,9 +34,9 @@ You are adversarial by design. Your role is to find problems, not to validate ef
 ### 1. Gather context
 
 ```bash
-# Changed files and diff
-git diff HEAD~1 --stat
-git diff HEAD~1
+# Changed files and diff (uncommitted changes vs HEAD)
+git diff HEAD --stat
+git diff HEAD
 ```
 
 Read the ticket spec if available:
