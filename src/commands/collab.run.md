@@ -122,6 +122,39 @@ SCRIPTS=.collab/scripts/orchestrator && bun $SCRIPTS/registry-update.ts {ticket_
   --append-phase-history "{\"phase\":\"{current_step}\",\"signal\":\"{signal_type}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 ```
 
+##### a.1 Phased implement continuation (AI, IMPLEMENT_COMPLETE only)
+
+*AI LOGIC: Intercept IMPLEMENT_COMPLETE before normal routing when a phase plan is active.*
+
+If `current_step == implement`:
+
+1. Read registry: `bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id}`
+2. Parse `implement_phase_plan` from output.
+
+**If `implement_phase_plan` exists AND `current_impl_phase < total_phases`** (more phases remain):
+- Compute `next_phase = current_impl_phase + 1`
+- Update registry to advance the plan:
+  ```bash
+  REGFILE=".collab/state/pipeline-registry/{ticket_id}.json"
+  jq '.implement_phase_plan.completed_impl_phases += [.implement_phase_plan.current_impl_phase] | .implement_phase_plan.current_impl_phase += 1' \
+    "$REGFILE" > /tmp/_impl_upd.json && mv /tmp/_impl_upd.json "$REGFILE"
+  ```
+- Re-dispatch implement for the next phase:
+  ```bash
+  bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} implement --args "phase:{next_phase}"
+  ```
+- `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Phase {current_impl_phase} of {total_phases} complete for {ticket_id}. Dispatching phase {next_phase}." **END RESPONSE.**
+
+**If `implement_phase_plan` exists AND `current_impl_phase == total_phases`** (all phases done):
+- Remove the plan from registry:
+  ```bash
+  REGFILE=".collab/state/pipeline-registry/{ticket_id}.json"
+  jq 'del(.implement_phase_plan)' "$REGFILE" > /tmp/_impl_done.json && mv /tmp/_impl_done.json "$REGFILE"
+  ```
+- Proceed to step b (normal `_COMPLETE` flow).
+
+**If no `implement_phase_plan`**: proceed to step b normally.
+
 ##### b. Load orchestrator context (AI)
 
 Read `phases[current_step].orchestrator_context` from `.collab/config/pipeline.json`:
@@ -182,6 +215,46 @@ Update registry and dispatch next phase:
 ```bash
 SCRIPTS=.collab/scripts/orchestrator
 bun $SCRIPTS/registry-update.ts {ticket_id} current_step={NEXT} status=running
+```
+
+**If `NEXT == implement`** — Phased Implementation Check (AI):
+
+*AI LOGIC: Count phases and build a phase plan for large task sets.*
+
+1. Locate tasks.md in the worktree: check `{worktree_path}/specs/*/tasks.md`, then `{worktree_path}/tasks.md`.
+2. Count phase headers: `grep -c '^## Phase [0-9]' /path/to/tasks.md` (treat as 0 if file not found).
+3. **If phase count >= 3**:
+   - Extract phase names: `grep '^## Phase ' /path/to/tasks.md`
+   - Build `implement_phase_plan`:
+     ```json
+     {
+       "total_phases": N,
+       "current_impl_phase": 1,
+       "phase_names": ["Phase 1: ...", "Phase 2: ...", ...],
+       "completed_impl_phases": []
+     }
+     ```
+   - Write to registry using jq (jq is a required dependency):
+     ```bash
+     REGFILE=".collab/state/pipeline-registry/{ticket_id}.json"
+     PLAN_JSON='{"total_phases":N,"current_impl_phase":1,"phase_names":[...],"completed_impl_phases":[]}'
+     jq --argjson p "$PLAN_JSON" '. + {implement_phase_plan: $p}' "$REGFILE" \
+       > /tmp/_impl_plan.json && mv /tmp/_impl_plan.json "$REGFILE"
+     ```
+   - Dispatch with phase arg and run held-release scan:
+     ```bash
+     bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} implement --args "phase:1"
+     bun $SCRIPTS/held-release-scan.ts {ticket_id}
+     ```
+   - Status table. Output: "Phased implementation started for {ticket_id}: dispatching phase 1 of {N}." **END RESPONSE.**
+4. **If phase count < 3** (or tasks.md not found): dispatch normally (no phase plan):
+   ```bash
+   bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {NEXT}
+   bun $SCRIPTS/held-release-scan.ts {ticket_id}
+   ```
+
+**If `NEXT != implement`**: dispatch normally:
+```bash
 bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {NEXT}
 bun $SCRIPTS/held-release-scan.ts {ticket_id}
 ```
