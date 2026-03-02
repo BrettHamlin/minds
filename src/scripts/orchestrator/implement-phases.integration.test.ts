@@ -4,6 +4,10 @@
  * Tests the interaction between implement_phase_plan, registry state,
  * status-table rendering, and phase dispatch command building across
  * the full lifecycle of a phased implementation.
+ *
+ * Also includes E2E tests for the awk phase-scoping logic used in
+ * verify-and-complete.sh (tested directly to avoid the bun signal
+ * emission at the end of that script).
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
@@ -14,6 +18,65 @@ import { writeJsonAtomic, readJsonFile } from "../../lib/pipeline";
 import { deriveDetail } from "./commands/status-table";
 import { buildDispatchCommand } from "./commands/phase-dispatch";
 import type { ImplementPhasePlan } from "../../lib/pipeline/registry";
+
+// ---------------------------------------------------------------------------
+// Helper: run the same awk + grep logic that verify-and-complete.sh uses
+// to count incomplete tasks in a phase-scoped section of tasks.md.
+// ---------------------------------------------------------------------------
+
+/**
+ * Count '- [ ]' lines in tasks.md, optionally restricted to specific phases.
+ *
+ * scope == null   → count across entire file (no phase filter)
+ * scope == "2"    → count only within ## Phase 2: ... section
+ * scope == "1-4"  → count only within ## Phase 1: through ## Phase 4: sections
+ *
+ * Mirrors the exact awk invocations in src/scripts/verify-and-complete.sh.
+ */
+function countIncomplete(tasksPath: string, scope: string | null): number {
+  if (scope === null) {
+    // Unscoped: grep -c across whole file
+    const result = Bun.spawnSync(["grep", "-c", "^- \\[ \\]", tasksPath]);
+    return parseInt(result.stdout.toString().trim(), 10) || 0;
+  }
+
+  // Build awk program — identical to the script's inline awk
+  const isRange = scope.includes("-");
+  let awkProg: string;
+  let awkArgs: string[];
+
+  if (isRange) {
+    const [s, e] = scope.split("-");
+    awkProg = `
+      /^## Phase [0-9]+:/ {
+        match($0, /[0-9]+/)
+        n = substr($0, RSTART, RLENGTH) + 0
+        in_scope = (n >= s+0 && n <= e+0)
+        next
+      }
+      /^## / { in_scope = 0 }
+      in_scope
+    `;
+    awkArgs = ["awk", "-v", `s=${s}`, "-v", `e=${e}`, awkProg, tasksPath];
+  } else {
+    awkProg = `
+      /^## Phase [0-9]+:/ {
+        match($0, /[0-9]+/)
+        n = substr($0, RSTART, RLENGTH) + 0
+        in_scope = (n == p+0)
+        next
+      }
+      /^## / { in_scope = 0 }
+      in_scope
+    `;
+    awkArgs = ["awk", "-v", `p=${scope}`, awkProg, tasksPath];
+  }
+
+  const awkResult = Bun.spawnSync(awkArgs);
+  const lines = awkResult.stdout.toString();
+  // Count '- [ ]' occurrences in the extracted lines
+  return (lines.match(/^- \[ \]/gm) ?? []).length;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -183,5 +246,79 @@ describe("phased implement: full lifecycle via registry files", () => {
     const loaded = readJsonFile(regPath)! as Record<string, any>;
     expect(loaded.implement_phase_plan).toBeUndefined();
     expect(deriveDetail(loaded)).toContain("IMPLEMENT_COMPLETE");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E2E: verify-and-complete.sh awk phase-scope logic
+// ---------------------------------------------------------------------------
+
+// Sample tasks.md with 3 phases, mixed complete/incomplete tasks:
+//
+//   Phase 1: 2 complete, 1 incomplete
+//   Phase 2: 1 complete, 2 incomplete
+//   Phase 3: 2 complete, 0 incomplete
+//
+// Total incomplete across all phases: 3
+const TASKS_MD = `# Implementation Tasks
+
+## Phase 1: Setup
+- [X] Task 1.1 done
+- [X] Task 1.2 done
+- [ ] Task 1.3 pending
+
+## Phase 2: Core
+- [X] Task 2.1 done
+- [ ] Task 2.2 pending
+- [ ] Task 2.3 pending
+
+## Phase 3: Polish
+- [X] Task 3.1 done
+- [X] Task 3.2 done
+`;
+
+describe("verify-and-complete.sh: phase-scope awk logic (E2E)", () => {
+  let tasksFile: string;
+
+  beforeAll(() => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "collab-awk-"));
+    tasksFile = path.join(tmp, "tasks.md");
+    fs.writeFileSync(tasksFile, TASKS_MD);
+  });
+
+  afterAll(() => {
+    fs.rmSync(path.dirname(tasksFile), { recursive: true, force: true });
+  });
+
+  test("15. unscoped: counts all 3 incomplete tasks across all phases", () => {
+    expect(countIncomplete(tasksFile, null)).toBe(3);
+  });
+
+  test("16. single phase scope '1': counts 1 incomplete task in Phase 1", () => {
+    expect(countIncomplete(tasksFile, "1")).toBe(1);
+  });
+
+  test("17. single phase scope '2': counts 2 incomplete tasks in Phase 2", () => {
+    expect(countIncomplete(tasksFile, "2")).toBe(2);
+  });
+
+  test("18. single phase scope '3': counts 0 incomplete tasks in Phase 3", () => {
+    expect(countIncomplete(tasksFile, "3")).toBe(0);
+  });
+
+  test("19. range scope '1-2': counts 3 incomplete tasks across Phases 1 and 2", () => {
+    expect(countIncomplete(tasksFile, "1-2")).toBe(3);
+  });
+
+  test("20. range scope '2-3': counts 2 incomplete tasks across Phases 2 and 3", () => {
+    expect(countIncomplete(tasksFile, "2-3")).toBe(2);
+  });
+
+  test("21. range scope '1-3': counts all 3 incomplete tasks (full range)", () => {
+    expect(countIncomplete(tasksFile, "1-3")).toBe(3);
+  });
+
+  test("22. single phase scope '4' (non-existent): counts 0", () => {
+    expect(countIncomplete(tasksFile, "4")).toBe(0);
   });
 });
