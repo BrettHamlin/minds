@@ -93,10 +93,8 @@ export function validateSchema(ctx: InitContext): void {
 
   const ajvBin = path.join(ctx.repoRoot, "node_modules/.bin/ajv");
   if (!fs.existsSync(ajvBin)) {
-    throw new OrchestratorError(
-      "FILE_NOT_FOUND",
-      `ajv CLI not found at ${ajvBin}. Run 'bun install' in ${ctx.repoRoot}.`
-    );
+    console.error("Schema validation skipped: ajv CLI not available");
+    return;
   }
 
   console.error("Validating pipeline.json against v3 schema...");

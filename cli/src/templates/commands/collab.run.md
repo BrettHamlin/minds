@@ -16,7 +16,9 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 ---
 
-## Specify Phase (Pre-Orchestration)
+## Pipeline Initialization (Steps 0–5)
+
+**ALL SIX STEPS MUST EXECUTE IN YOUR FIRST RESPONSE. Your response is not complete until step 5 outputs "Pipeline started."**
 
 ### 0. Execute Specification
 
@@ -26,19 +28,15 @@ Before spawning the orchestrator, run specify to create the specification:
 /collab.specify $ARGUMENTS
 ```
 
-This executes the specify workflow inline with the ticket ID, creating the initial feature specification. Once specify completes, proceed to orchestrator setup.
+This executes the specify workflow inline with the ticket ID, creating the initial feature specification.
 
-**⚠️ CRITICAL: DO NOT STOP AFTER STEP 0**
+### 0.5 Continuation checkpoint
 
-Once `/collab.specify` completes, you MUST continue immediately to steps 1-5 in the SAME response. The specify skill returning is NOT the end of the task. The only END RESPONSE marker in the entire workflow is at step 5.
+```bash
+echo "SPECIFY_COMPLETE — continuing initialization"
+```
 
-**Execution flow:** Step 0 (specify) → Steps 1-5 (setup) → END RESPONSE (step 5 only)
-
----
-
-## Setup Phase
-
-**NOTE:** You are continuing from step 0 above. Do not stop until step 5 completes.
+You MUST run this command after specify completes. DO NOT output any text to the user until step 5.
 
 ### 1. Crash Recovery
 
