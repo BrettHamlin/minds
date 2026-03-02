@@ -260,6 +260,30 @@ bun $SCRIPTS/held-release-scan.ts {ticket_id}
 ```
 
 `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "'{current_step}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
+
+##### f.1 Before hooks (AI)
+
+*AI LOGIC: Check for before hooks on the next phase before dispatching it.*
+
+Read `phases[NEXT].before` from `.collab/config/pipeline.json`:
+- If `before` array is non-empty: for each `{phase}` entry, dispatch it as a hook phase first:
+  ```bash
+  bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {hook_phase}
+  ```
+  Wait for the hook phase's `_COMPLETE` signal before dispatching `NEXT`. Log: "Before-hook '{hook_phase}' dispatched for {ticket_id} before '{NEXT}'." **END RESPONSE** and wait for signal.
+- If `before` is absent or empty: dispatch `NEXT` directly (normal flow above).
+
+##### f.2 After hooks (AI)
+
+*AI LOGIC: When a `_COMPLETE` signal arrives and the completed phase has after hooks, run them before advancing.*
+
+In step **a** (_COMPLETE handler), after appending phase history, read `phases[current_step].after` from `.collab/config/pipeline.json`:
+- If `after` array is non-empty: for each `{phase}` entry, dispatch it as a hook before routing to the next phase:
+  ```bash
+  bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {hook_phase}
+  ```
+  Wait for hook `_COMPLETE`, then proceed to step b. Log: "After-hook '{hook_phase}' dispatched for {ticket_id} after '{current_step}'."
+- If `after` is absent or empty: proceed normally.
 `.collab/scripts/webhook-notify.sh {ticket_id} {current_step} {NEXT} running`
 
 #### `_ERROR` or `_FAILED` -- Error

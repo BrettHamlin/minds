@@ -38,11 +38,27 @@ export type Modifier =
   | GoalGateModifier
   | OrchestratorContextModifier
   | ActionsModifier
-  | ModelModifier;
+  | ModelModifier
+  | BeforeModifier
+  | AfterModifier;
 
 export interface ModelModifier {
   kind: "model";
   name: "haiku" | "sonnet" | "opus";
+  loc: SourceLocation;
+}
+
+export interface BeforeModifier {
+  kind: "before";
+  phase: string;
+  phaseLoc: SourceLocation;
+  loc: SourceLocation;
+}
+
+export interface AfterModifier {
+  kind: "after";
+  phase: string;
+  phaseLoc: SourceLocation;
   loc: SourceLocation;
 }
 

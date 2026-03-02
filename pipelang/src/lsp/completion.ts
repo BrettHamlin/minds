@@ -7,7 +7,7 @@ import { CompletionItemKind } from "./protocol";
 // Fixed keyword completions
 const PHASE_MODIFIERS: CompletionItem[] = [
   "command", "signals", "on", "terminal", "model",
-  "goalGate", "orchestratorContext", "actions",
+  "goalGate", "orchestratorContext", "actions", "before", "after",
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Phase modifier" }));
 
 const GATE_MODIFIERS: CompletionItem[] = [
@@ -139,6 +139,11 @@ export function getCompletions(text: string, pos: Position): CompletionItem[] {
   // Inside `.model(` or `@defaultModel(` — model names
   if (/\.(model|defaultModel)\s*\(\s*\w*$/.test(prefix) || /@defaultModel\s*\(\s*\w*$/.test(prefix)) {
     return MODEL_VALUES;
+  }
+
+  // Inside `.before(` or `.after(` — phase names
+  if (/\.(before|after)\s*\(\s*\w*$/.test(prefix)) {
+    return phaseNames(text);
   }
 
   // Inside `.on(` — signal names

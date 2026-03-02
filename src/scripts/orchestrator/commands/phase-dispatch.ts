@@ -192,6 +192,22 @@ export function buildDispatchCommand(baseCmd: string, extraArgs: string | null):
   return extraArgs ? `${baseCmd} ${extraArgs}` : baseCmd;
 }
 
+/**
+ * Return the before and after hook phase IDs declared on a compiled phase.
+ * Returns empty arrays when the phase has no hooks or doesn't exist.
+ */
+export function resolvePhaseHooks(
+  pipeline: CompiledPipeline,
+  phaseId: string
+): { before: string[]; after: string[] } {
+  const phase = pipeline.phases[phaseId];
+  if (!phase) return { before: [], after: [] };
+  return {
+    before: (phase.before ?? []).map((h) => h.phase),
+    after: (phase.after ?? []).map((h) => h.phase),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------

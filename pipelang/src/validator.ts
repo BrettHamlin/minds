@@ -201,6 +201,19 @@ export function validate(ast: PipelineAST): CompileError[] {
     }
   }
 
+  // Pass 1c: build set of phases that have a dispatchable command (for hook validation)
+  const phasesWithCommand = new Set<string>();
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "command") {
+        phasesWithCommand.add(phase.name);
+      }
+      if (mod.kind === "actions" && mod.actions.some((a) => a.kind === "command")) {
+        phasesWithCommand.add(phase.name);
+      }
+    }
+  }
+
   // Pass 2: validate each phase's modifiers
   for (const phase of ast.phases) {
     const isTerminal = phase.modifiers.some((m) => m.kind === "terminal");
@@ -355,6 +368,33 @@ export function validate(ast: PipelineAST): CompileError[] {
     }
   }
 
+  // Pass 2c: validate before/after hook modifiers
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind !== "before" && mod.kind !== "after") continue;
+
+      // Referenced phase must exist
+      if (!phaseNames.has(mod.phase)) {
+        const suggestion = didYouMean(mod.phase, phaseNames);
+        errors.push({
+          message:
+            `Phase '${mod.phase}' not declared (in .${mod.kind}())` +
+            (suggestion ? `. Did you mean '${suggestion}'?` : ""),
+          loc: mod.phaseLoc,
+        });
+        continue;
+      }
+
+      // Referenced phase must be dispatchable (have a command or actions with command)
+      if (!phasesWithCommand.has(mod.phase)) {
+        errors.push({
+          message: `Phase '${mod.phase}' has no .command() or .actions{} block — hook phases must be dispatchable`,
+          loc: mod.phaseLoc,
+        });
+      }
+    }
+  }
+
   // Pass 3: cycle detection over direct phase-to-phase to: edges
   // Build adjacency list (excluding gate hops — those are intentional retry patterns)
   const cycleEdges = new Map<string, string[]>();
@@ -376,6 +416,27 @@ export function validate(ast: PipelineAST): CompileError[] {
   }
 
   detectCycles(ast.phases, cycleEdges, errors);
+
+  // Pass 4: cycle detection over before/after hook dependency edges
+  // A.before(B) means B must complete before A → edge A→B in dependency graph
+  // A.after(B) means A must complete before B → edge B→A in dependency graph
+  const hookEdges = new Map<string, string[]>();
+  for (const p of ast.phases) hookEdges.set(p.name, []);
+
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "before" && phaseNames.has(mod.phase)) {
+        hookEdges.get(phase.name)!.push(mod.phase);
+      }
+      if (mod.kind === "after" && phaseNames.has(mod.phase)) {
+        // A.after(B): A must run before B, so B depends on A → edge B→A
+        const existing = hookEdges.get(mod.phase);
+        if (existing) existing.push(phase.name);
+      }
+    }
+  }
+
+  detectCycles(ast.phases, hookEdges, errors);
 
   return errors;
 }

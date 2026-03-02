@@ -186,6 +186,12 @@ export function compile(ast: PipelineAST): CompiledPipeline {
         });
       } else if (mod.kind === "model") {
         phaseModelName = mod.name;
+      } else if (mod.kind === "before") {
+        if (!compiled.before) compiled.before = [];
+        compiled.before.push({ phase: mod.phase });
+      } else if (mod.kind === "after") {
+        if (!compiled.after) compiled.after = [];
+        compiled.after.push({ phase: mod.phase });
       }
     }
 

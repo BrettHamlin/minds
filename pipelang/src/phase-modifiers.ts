@@ -21,6 +21,8 @@ import type {
   ToTarget,
   GateTarget,
   ModelModifier,
+  BeforeModifier,
+  AfterModifier,
   SourceLocation,
 } from "./types";
 
@@ -458,6 +460,29 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
           : { kind: "inline", text: strTok.value };
 
       return { kind: "orchestratorContext", source, loc } satisfies OrchestratorContextModifier;
+    }
+
+    case "before":
+    case "after": {
+      const phaseTok = ctx.peek();
+      if (phaseTok.kind !== "IDENT") {
+        ctx.addError(
+          `'.${nameTok.value}()' requires a phase name argument`,
+          { line: phaseTok.line, col: phaseTok.col }
+        );
+        while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+        ctx.advance();
+        return null;
+      }
+      ctx.advance(); // consume phase name
+      const phaseLoc = { line: phaseTok.line, col: phaseTok.col };
+      if (!ctx.expect("RPAREN")) return null;
+      return {
+        kind: nameTok.value as "before" | "after",
+        phase: phaseTok.value,
+        phaseLoc,
+        loc,
+      } satisfies BeforeModifier | AfterModifier;
     }
 
     default:
