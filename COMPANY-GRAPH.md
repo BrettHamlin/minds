@@ -350,57 +350,80 @@ Development → Testing → Validation → Issue Tracking → Architecture Decis
 
 Binary-testable. YES or NO in 2 seconds.
 
-#### Pipeline Quality
+#### Phase 1: Measurable Graph & Routing
+
+**Pipeline Quality**
 1. Pipeline completes end-to-end without human intervention for >70% of standard tickets
 2. End-to-end duration is under 60 minutes for standard tickets
 3. BlindQA catches all user-facing regressions (zero escapes to human review)
 4. Gate pass/fail decisions correlate >90% with actual implementation quality
 5. Generated code passes human code review >80% of the time
 
-#### Measurement
+**Measurement**
 6. Every pipeline phase has duration, success rate, and cost tracked
 7. Total cost per pipeline run is calculated and visible
 8. Gate accuracy (true positive / false positive) is measured
 9. Phase-over-phase quality trends are visible (is the pipeline getting better?)
 
-#### Reliability
+**Reliability**
 10. Signal protocol has zero parse failures
 11. Error recovery resolves >80% of failures without human intervention
 12. Zero orphaned agent panes after pipeline completion or abort
 13. Concurrent pipeline runs don't interfere with each other
 
-#### Extensibility
-14. Adding a new pipeline phase requires only pipeline.json + command file (zero script changes)
-15. Pipeline can be installed in any repo in under 2 minutes
-16. Custom pipeline configurations validated against schema before execution
+**External Routing**
+14. Pipeline can execute against external repos (not just collab) via --source-repo
+15. Pipelang DSL compiles to valid pipeline.json for any project type
+16. LSP provides real-time validation and autocompletion for .pipeline files
 
-#### Relay Platform
-17. PM can go from feature idea to structured spec in under 15 minutes
-18. Specs created through Relay reduce implementation rework by >50%
-19. Living spec system captures and incorporates gaps found during implementation
+#### Phase 2: Distribution & Spec Intake
+
+**Extensibility**
+17. Adding a new pipeline phase requires only pipeline.json + command file (zero script changes)
+18. Pipeline can be installed in any repo in under 2 minutes
+19. Custom pipeline configurations validated against schema before execution
+
+**Relay Platform**
+20. PM can go from feature idea to structured spec in under 15 minutes via Slack
+21. Specs created through Relay reduce implementation rework by >50%
+22. Living spec system captures and incorporates gaps found during implementation
+
+**Self-Improvement**
+23. Prompt versions tracked and correlated with pipeline outcomes
+24. Gate criteria auto-tuned from historical pass/fail data
+25. Command templates generated from successful run patterns
 
 ### Current State (Snapshot — Mar 2026)
 
-| Dimension | Current | Gap |
-|-----------|---------|-----|
-| Autonomy | Validated through implement; blindqa working with fix loops | Need >70% fully autonomous completion rate |
-| Duration | Unknown — no timing instrumentation | No measurement at all |
-| Cost | Unknown | No cost tracking |
-| Gate accuracy | Unknown | No correlation tracking |
-| Signal reliability | Improved (deterministic emission pattern) | Need zero parse failure verification |
-| Error recovery | Fix loops exist (3 retries) | Need measurement of retry success rate |
-| Metrics | None | Biggest gap — can't improve what you can't measure |
-| Relay Platform | Schema + scaffolding complete | Slack integration not fully wired |
-| Validation | Manual runs only | No automated validation suite |
+| Dimension | Current | Gap | Phase |
+|-----------|---------|-----|-------|
+| Autonomy | Validated through implement; blindqa working with fix loops | Need >70% fully autonomous completion rate | 1 |
+| Duration | Unknown — no timing instrumentation | No measurement at all | 1 |
+| Cost | Unknown | No cost tracking | 1 |
+| Gate accuracy | Unknown | No correlation tracking | 1 |
+| Signal reliability | Improved (deterministic emission pattern) | Need zero parse failure verification | 1 |
+| Error recovery | Fix loops exist (3 retries) | Need measurement of retry success rate | 1 |
+| Metrics | None | Biggest gap — can't improve what you can't measure | 1 |
+| External routing | Documented (`--source-repo` pattern in MEMORY.md) | Not implemented — pipeline only runs in collab repo | 1 |
+| Pipelang/LSP | Grammar + compiler slices defined (BRE-294–311) | Not yet compiled or integrated with orchestrator | 1 |
+| Relay Platform | Schema + scaffolding complete | Slack integration not fully wired | 2 |
+| Extensibility | pipeline.json is customizable | No template library, no no-code builder | 2 |
+| Self-Improvement | None | No prompt versioning, gate tuning, or template learning | 2 |
+| Validation | Manual runs only | No automated validation suite | 1 |
 
 ### The Migration
 
-Priority order for gap-closing:
+**Phase 1: Make the Graph Measurable & Routable** (current focus)
 1. **Phase instrumentation** (ISC #6-9) — can't improve without measurement
 2. **Pipeline reliability** (ISC #10-13) — must work before it can be measured
 3. **Autonomy rate** (ISC #1-5) — the core value proposition
-4. **Relay completion** (ISC #17-19) — the spec creation workflow
-5. **Extensibility** (ISC #14-16) — making it usable for others
+4. **External routing** (ISC #14) — pipeline runs against any repo, not just collab
+5. **Pipelang/LSP** (ISC #15-16) — the DSL and editor tooling for pipeline authoring
+
+**Phase 2: Distribution & Spec Intake** (deferred)
+6. **Extensibility** (ISC #17-19) — making it usable for others
+7. **Relay/Slack** (ISC #20-22) — spec creation from conversation
+8. **Self-improvement** (ISC #23-25) — feedback loops from outcomes
 
 ---
 
@@ -415,7 +438,7 @@ Collab's 3-layer architecture IS Miessler's pattern:
 
 This is already the separation he describes. The restructuring is about adding what's missing.
 
-### Structural Changes
+### Structural Changes — Phase 1
 
 #### 1. Pipeline Metrics System
 
@@ -431,8 +454,23 @@ This is already the separation he describes. The restructuring is about adding w
 - Store metrics in registry file (already JSON, just add fields)
 
 **Nodes affected:** All Layer 1 nodes, Node 2.3 (Registry)
+**Tickets:** BRE-278 (timing), BRE-279 (cost)
 
-#### 2. Gate Accuracy Tracking
+#### 2. Signal Reliability Metrics
+
+**What:** Track signal parse success/failure and latency.
+
+**Why:** ISC #10: "Signal protocol has zero parse failures." Signals are the nervous system — if they fail, everything fails.
+
+**How:**
+- Log every signal parse attempt (success/failure, raw signal, error reason)
+- Track signal latency (time from agent emit to orchestrator process)
+- Alert on parse failure patterns
+
+**Nodes affected:** Node 2.1 (Signal Protocol)
+**Tickets:** BRE-280
+
+#### 3. Gate Accuracy Tracking
 
 **What:** Measure whether gate decisions correlate with outcomes.
 
@@ -444,9 +482,24 @@ This is already the separation he describes. The restructuring is about adding w
 - Calculate: true positives (gate passed, outcome good), false positives (gate passed, outcome bad)
 - Surface gate accuracy over time
 
-**Nodes affected:** Node 1.4 (Plan Review Gate), Node 1.7 (Analyze Review Gate), Node 3.1 (Gate Evaluation)
+**Nodes affected:** Node 1.4, Node 1.7, Node 3.1
+**Tickets:** BRE-283
 
-#### 3. Pipeline Run Dashboard
+#### 4. Autonomy Rate Tracking
+
+**What:** The single most important metric — what % of tickets complete without human intervention?
+
+**Why:** ISC #1: "Pipeline completes end-to-end without human intervention for >70% of standard tickets."
+
+**How:**
+- Define "human intervention" events (orchestrator couldn't answer question, manual fix needed, pipeline aborted)
+- Track per run: autonomous (yes/no), intervention count, intervention type
+- Calculate rolling autonomy rate
+
+**Nodes affected:** All nodes — this is the top-level KPI
+**Tickets:** BRE-282
+
+#### 5. Pipeline Run Dashboard
 
 **What:** A view showing all pipeline runs with per-phase metrics.
 
@@ -459,69 +512,111 @@ This is already the separation he describes. The restructuring is about adding w
 - Status table script (`status-table.sh`) already exists — extend it
 
 **Nodes affected:** Node 2.3 (Registry), all Layer 1 nodes
+**Tickets:** BRE-281
 
-#### 4. Signal Reliability Metrics
+#### 6. Code Quality Outcomes
 
-**What:** Track signal parse success/failure and latency.
+**What:** Track what happens AFTER the pipeline completes — was the PR merged, changed, or rejected?
 
-**Why:** ISC #10: "Signal protocol has zero parse failures." Signals are the nervous system — if they fail, everything fails.
-
-**How:**
-- Log every signal parse attempt (success/failure, raw signal, error reason)
-- Track signal latency (time from agent emit to orchestrator process)
-- Alert on parse failure patterns
-
-**Nodes affected:** Node 2.1 (Signal Protocol)
-
-#### 5. Autonomy Rate Tracking
-
-**What:** The single most important metric — what % of tickets complete without human intervention?
-
-**Why:** ISC #1: "Pipeline completes end-to-end without human intervention for >70% of standard tickets."
+**Why:** ISC #5: "Generated code passes human code review >80% of the time."
 
 **How:**
-- Define "human intervention" events (orchestrator couldn't answer question, manual fix needed, pipeline aborted)
-- Track per run: autonomous (yes/no), intervention count, intervention type
-- Calculate rolling autonomy rate
+- Link pipeline run to PR outcome (via Linear ticket → branch → PR)
+- Track: merge rate, change-request rate, rejection rate
+- Feed back into gate accuracy calculations
 
-**Nodes affected:** All nodes — this is the top-level KPI
+**Nodes affected:** Node 1.8 (Implement), Node 1.10 (Completion)
+**Tickets:** BRE-284
 
-#### 6. Relay Platform Completion
+#### 7. External Ticket Routing
 
-**What:** Finish the Slack-first spec creation workflow.
+**What:** Pipeline runs against external repos, not just collab.
 
-**Why:** ISC #17-19. The spec quality directly affects pipeline success rate.
+**Why:** ISC #14: Collab is the control plane that runs graphs for OTHER projects. Currently locked to collab repo.
 
 **How:**
-- Complete Slack plugin wiring (commands, interactions, blocks)
-- Implement blind QA question flow
-- Implement living spec versioning
-- Connect to Linear for ticket creation from completed specs
+- `create-new-feature.sh --source-repo` overrides REPO_ROOT to target repo
+- Worktrees created from target repo, not collab
+- Orchestrator symlinks `.claude/` and `.collab/` back to collab (already works)
+- Pattern documented in MEMORY.md — needs implementation
 
-**Nodes affected:** Node 4.3 (Relay Platform)
+**Nodes affected:** Node 4.1 (Installation), Node 2.4 (Agent Lifecycle)
+**Tickets:** NEW — to be created
+
+#### 8. Pipelang DSL & LSP
+
+**What:** A fluent pipeline language that compiles to pipeline.json, with editor tooling.
+
+**Why:** ISC #15-16: Pipeline authoring should be human-readable with real-time validation, not raw JSON editing.
+
+**How:**
+- Tree-sitter grammar for `.pipeline` files
+- Two-pass compiler: declaration collection + JSON emission
+- LSP server for editor integration (autocomplete, validation, hover)
+- VS Code extension with syntax highlighting
+
+**Nodes affected:** Node 4.2 (Configuration)
+**Tickets:** BRE-231, BRE-294–311 (12 slices), BRE-313–315 (integration)
+
+### Structural Changes — Phase 2 (Deferred)
+
+#### 9. Relay Platform / Slack Integration
+
+**What:** Slack-first spec creation and pipeline notifications.
+
+**Why:** ISC #20-22. Deferred because Slack integration hasn't been developed yet and the pipeline needs to be measurable before adding distribution channels.
+
+**Tickets:** BRE-285 (intake), BRE-286 (API), BRE-287 (notifications)
+
+#### 10. Self-Improvement Feedback Loops
+
+**What:** Prompt versioning, gate auto-tuning, command template learning.
+
+**Why:** ISC #23-25. Requires historical data from Phase 1 instrumentation before it can function.
+
+**Tickets:** BRE-288 (prompt evolution), BRE-289 (gate tuning), BRE-290 (template learning)
+
+#### 11. Extensibility & Distribution
+
+**What:** Template library, no-code pipeline builder, one-command install improvements.
+
+**Why:** ISC #17-19. Making it usable for others — package for distribution after the core graph is proven.
+
+**Tickets:** BRE-316–325 (CLI distribution)
 
 ### Implementation Sequence
 
 ```
-Phase 1: Instrument     → Registry timestamps, token/cost tracking per phase
-Phase 2: Measure        → Pipeline run dashboard, signal metrics
-Phase 3: Track          → Gate accuracy, autonomy rate
-Phase 4: Relay          → Complete Slack spec creation workflow
-Phase 5: Self-Improve   → Feedback loops from outcomes back to commands/prompts
+Phase 1: Make the Graph Measurable & Routable
+├── 1a: Registry instrumentation (BRE-278, BRE-279)
+├── 1b: Signal reliability logging (BRE-280)
+├── 1c: Gate accuracy correlation (BRE-283)
+├── 1d: Autonomy rate — the top-level KPI (BRE-282)
+├── 1e: Pipeline dashboard (BRE-281)
+├── 1f: Code quality outcomes (BRE-284)
+├── 1g: External ticket routing (NEW)
+└── 1h: Pipelang DSL & LSP (BRE-231, BRE-294–315)
+
+Phase 2: Distribution & Spec Intake (deferred)
+├── 2a: Relay/Slack spec creation (BRE-285–287)
+├── 2b: Self-improvement loops (BRE-288–290)
+└── 2c: CLI distribution & extensibility (BRE-316–325)
 ```
 
 ---
 
 ## Part 4: The Miessler Alignment
 
-| # | Transition | Collab Alignment | Status |
-|---|-----------|-----------------|--------|
-| 1 | Knowledge: private → public | Pipeline commands ARE codified knowledge (how to plan, implement, review) | Implemented |
-| 2 | Products: standalone → API | Pipeline is invoked via CLI command — needs API/MCP exposure for external orchestration | Gap |
-| 3 | Interface: human → agent | Already agent-first — agents consume commands, not humans | Implemented |
-| 4 | Enterprise: humans → graph | pipeline.json IS the graph; 3-layer architecture separates config/execution/judgment | Implemented |
-| 5 | Software: standardized → custom | pipeline.json is customizable per project; but no template library yet | Partial |
-| 6 | Management: yolo → ideal state | This document defines ideal state; pipeline doesn't self-measure yet | In Progress |
+| # | Transition | Collab Alignment | Status | Phase |
+|---|-----------|-----------------|--------|-------|
+| 1 | Knowledge: private → public | Pipeline commands ARE codified knowledge (how to plan, implement, review) | Implemented | — |
+| 2 | Products: standalone → API | Pipeline invoked via CLI — needs API/MCP exposure for external orchestration | Gap | 2 |
+| 3 | Interface: human → agent | Already agent-first — agents consume commands, not humans | Implemented | — |
+| 4 | Enterprise: humans → graph | pipeline.json IS the graph; 3-layer architecture separates config/execution/judgment | Implemented | — |
+| 5 | Software: standardized → custom | Pipelang DSL enables custom pipeline definitions; LSP provides tooling | In Progress | 1 |
+| 6 | Management: yolo → ideal state | This document defines ideal state; instrumentation enables measurement | In Progress | 1 |
+| 7 | External routing | Control plane runs graphs for ANY repo, not just collab | Gap | 1 |
+| 8 | Verification → hill-climbing | ISC criteria = verification criteria; metrics enable hill-climbing (Karpathy) | In Progress | 1 |
 
 ### The Meta Insight
 
