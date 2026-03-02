@@ -21,7 +21,7 @@
 
 import { getRepoRoot, readJsonFile, getRegistryPath } from "./orchestrator-utils";
 import { parseSignal, getAllowedSignals, type ParsedSignal } from "../../lib/pipeline/signal";
-import { openMetricsDb, ensureRun, insertSignal } from "../../lib/pipeline/metrics";
+import { openMetricsDb, ensureRun, insertSignal, insertIntervention } from "../../lib/pipeline/metrics";
 
 // Re-export for test backward compatibility
 export { parseSignal } from "../../lib/pipeline/signal";
@@ -113,6 +113,21 @@ export function validateSignal(
 // ============================================================================
 // Metrics Helper
 // ============================================================================
+
+function logIntervention(
+  repoRoot: string,
+  runId: string,
+  phase: string | null,
+  type: string,
+  description?: string
+): void {
+  try {
+    const db = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
+    ensureRun(db, runId);
+    insertIntervention(db, runId, phase, type, description);
+    db.close();
+  } catch { /* non-fatal */ }
+}
 
 function logSignalAttempt(
   repoRoot: string,
@@ -221,6 +236,17 @@ function main(): void {
       phase: registry.current_step,
       emittedAt: receivedAt,
     });
+    // Nonce mismatch → a signal arrived that doesn't match the expected nonce,
+    // indicating a manual or stale signal was submitted outside normal pipeline flow
+    if (result.error === "Nonce mismatch") {
+      logIntervention(
+        repoRoot,
+        parsed.ticketId,
+        registry.current_step ?? null,
+        "manual_signal",
+        `Unexpected nonce '${parsed.nonce}' on signal ${parsed.signalType}`
+      );
+    }
     process.exit(2);
   }
 }

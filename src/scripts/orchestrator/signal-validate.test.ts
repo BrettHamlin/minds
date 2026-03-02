@@ -383,4 +383,49 @@ describe("signal-validate integration (SQLite signal logging)", () => {
     expect(typeof row.latency_ms).toBe("number");
     expect(row.latency_ms).toBeGreaterThanOrEqual(0);
   });
+
+  test("nonce mismatch: intervention logged to interventions table (type=manual_signal)", async () => {
+    // Registry has nonce abc123; signal uses deadc0 — valid hex but wrong nonce
+    const { metricsPath } = setupTmpRepo("BRE-106", "abc123", "clarify");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"),
+        "[SIGNAL:BRE-106:deadc0] CLARIFY_COMPLETE | Manual attempt"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    expect(result.exitCode).toBe(2);
+
+    const db = openMetricsDb(metricsPath);
+    const intervention = db
+      .query("SELECT type, phase FROM interventions WHERE run_id = 'BRE-106'")
+      .get() as any;
+    db.close();
+
+    expect(intervention).not.toBeNull();
+    expect(intervention.type).toBe("manual_signal");
+    expect(intervention.phase).toBe("clarify");
+  });
+
+  test("valid signal: no intervention logged", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-107", "abc123", "clarify");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"),
+        "[SIGNAL:BRE-107:abc123] CLARIFY_COMPLETE | All good"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    expect(result.exitCode).toBe(0);
+
+    const db = openMetricsDb(metricsPath);
+    const count = db
+      .query("SELECT COUNT(*) as c FROM interventions WHERE run_id = 'BRE-107'")
+      .get() as any;
+    db.close();
+
+    expect(count.c).toBe(0);
+  });
 });

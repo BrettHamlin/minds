@@ -344,4 +344,152 @@ describe("registry-update integration (SQLite + JSON)", () => {
     const after = JSON.parse(readFileSync(registryPath, "utf-8"));
     expect(after.phase_history).toHaveLength(1);
   });
+
+  test("status=done: manual_fix intervention logged to SQLite", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-INT-5");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "registry-update.ts"), "BRE-INT-5", "status=done"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+    expect(result.exitCode).toBe(0);
+
+    const db = openMetricsDb(metricsPath);
+    const intervention = db
+      .query("SELECT type, phase FROM interventions WHERE run_id = 'BRE-INT-5'")
+      .get() as any;
+    db.close();
+
+    expect(intervention).not.toBeNull();
+    expect(intervention.type).toBe("manual_fix");
+    expect(intervention.phase).toBe("clarify"); // current_step from registry
+  });
+
+  test("status=abandoned: manual_fix intervention logged", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-INT-6");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "registry-update.ts"), "BRE-INT-6", "status=abandoned"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+    expect(result.exitCode).toBe(0);
+
+    const db = openMetricsDb(metricsPath);
+    const count = db
+      .query("SELECT COUNT(*) as c FROM interventions WHERE run_id = 'BRE-INT-6'")
+      .get() as any;
+    db.close();
+
+    expect(count.c).toBe(1);
+  });
+
+  test("status=running: no intervention logged (non-terminal status)", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-INT-7");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "registry-update.ts"), "BRE-INT-7", "status=running"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+    expect(result.exitCode).toBe(0);
+
+    const db = openMetricsDb(metricsPath);
+    const count = db
+      .query("SELECT COUNT(*) as c FROM interventions WHERE run_id = 'BRE-INT-7'")
+      .get() as any;
+    db.close();
+
+    expect(count.c).toBe(0);
+  });
+
+  test("status=done when current_step is already terminal phase: no intervention (normal completion)", async () => {
+    // Simulate the orchestrator's normal completion path:
+    //   pipeline reached 'done' (terminal), now setting status=done for cleanup
+    tmpDir = join(tmpdir(), `reg-upd-int-terminal-${Date.now()}`);
+    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
+    const configDir   = join(tmpDir, ".collab", "config");
+    mkdirSync(registryDir, { recursive: true });
+    mkdirSync(configDir,   { recursive: true });
+
+    // Pipeline with 'done' as terminal phase
+    writeFileSync(
+      join(configDir, "pipeline.json"),
+      JSON.stringify({
+        version: "3.1",
+        phases: {
+          impl: { signals: ["IMPL_COMPLETE"] },
+          done: { terminal: true, signals: [] },
+        },
+      })
+    );
+    // Registry already at current_step=done (pipeline reached terminal normally)
+    writeFileSync(
+      join(registryDir, "BRE-INT-8.json"),
+      JSON.stringify({ ticket_id: "BRE-INT-8", nonce: "abc123", current_step: "done", status: "running" }, null, 2)
+    );
+
+    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "registry-update.ts"), "BRE-INT-8", "status=done"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+    expect(result.exitCode).toBe(0);
+
+    const db = openMetricsDb(metricsPath);
+    const count = db
+      .query("SELECT COUNT(*) as c FROM interventions WHERE run_id = 'BRE-INT-8'")
+      .get() as any;
+    db.close();
+
+    // Normal completion — no intervention should be logged
+    expect(count.c).toBe(0);
+  });
+
+  test("status=done when mid-pipeline with pipeline.json present: intervention logged", async () => {
+    // Force-setting status=done while still in impl phase → manual override
+    tmpDir = join(tmpdir(), `reg-upd-int-midpipe-${Date.now()}`);
+    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
+    const configDir   = join(tmpDir, ".collab", "config");
+    mkdirSync(registryDir, { recursive: true });
+    mkdirSync(configDir,   { recursive: true });
+
+    writeFileSync(
+      join(configDir, "pipeline.json"),
+      JSON.stringify({
+        version: "3.1",
+        phases: {
+          impl: { signals: ["IMPL_COMPLETE"] },
+          done: { terminal: true, signals: [] },
+        },
+      })
+    );
+    // Registry still in impl — NOT at terminal
+    writeFileSync(
+      join(registryDir, "BRE-INT-9.json"),
+      JSON.stringify({ ticket_id: "BRE-INT-9", nonce: "abc123", current_step: "impl", status: "running" }, null, 2)
+    );
+
+    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "registry-update.ts"), "BRE-INT-9", "status=done"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+    expect(result.exitCode).toBe(0);
+
+    const db = openMetricsDb(metricsPath);
+    const intervention = db
+      .query("SELECT type, phase FROM interventions WHERE run_id = 'BRE-INT-9'")
+      .get() as any;
+    db.close();
+
+    expect(intervention).not.toBeNull();
+    expect(intervention.type).toBe("manual_fix");
+    expect(intervention.phase).toBe("impl");
+  });
 });

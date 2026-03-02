@@ -26,10 +26,31 @@ import {
 } from "./orchestrator-utils";
 
 import { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory } from "../../lib/pipeline/registry";
-import { openMetricsDb, ensureRun, recordPhase } from "../../lib/pipeline/metrics";
+import { openMetricsDb, ensureRun, recordPhase, insertIntervention } from "../../lib/pipeline/metrics";
 
 // Re-export for test backward compatibility
 export { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory } from "../../lib/pipeline/registry";
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Find the terminal phase name from a compiled pipeline config.
+ * Supports both v3.1 object-keyed and legacy array formats.
+ * Returns null when pipeline is absent or no terminal phase is declared.
+ */
+function findTerminalPhase(pipeline: any): string | null {
+  if (!pipeline?.phases) return null;
+  if (Array.isArray(pipeline.phases)) {
+    const p = pipeline.phases.find((p: any) => p.terminal === true);
+    return p?.id ?? null;
+  }
+  for (const [id, phase] of Object.entries(pipeline.phases as Record<string, any>)) {
+    if ((phase as any)?.terminal === true) return id;
+  }
+  return null;
+}
 
 // ============================================================================
 // CLI Entry Point
@@ -137,10 +158,35 @@ function main(): void {
     process.exit(3);
   }
 
-  // Ensure run row exists in SQLite metrics store (best-effort, non-fatal)
+  // Ensure run row exists; detect manual terminal-status override (best-effort, non-fatal)
   try {
     const metricsDb = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
     ensureRun(metricsDb, ticketId, registry.repo_id ?? null);
+
+    // If status is being force-set to a terminal value outside normal phase flow,
+    // log it as a manual_fix intervention so autonomy rate reflects the override.
+    //
+    // Guard: skip if current_step is already the terminal phase — that means the
+    // pipeline completed normally and the orchestrator is just closing out the run.
+    // Only flag when current_step is mid-pipeline (e.g., still in impl) and someone
+    // force-sets status=done, which skips normal phase progression.
+    const MANUAL_TERMINAL_STATUSES = new Set(["done", "complete", "abandoned", "aborted"]);
+    if (updates.status !== undefined && MANUAL_TERMINAL_STATUSES.has(updates.status)) {
+      const pipeline = readJsonFile(`${repoRoot}/.collab/config/pipeline.json`);
+      const terminalPhase = findTerminalPhase(pipeline);
+      const currentStep = registry.current_step ?? null;
+      // Log intervention only when not already at the terminal phase
+      if (terminalPhase === null || currentStep !== terminalPhase) {
+        insertIntervention(
+          metricsDb,
+          ticketId,
+          currentStep,
+          "manual_fix",
+          `Status force-set to '${updates.status}' via registry-update`
+        );
+      }
+    }
+
     metricsDb.close();
   } catch {
     // Metrics write failure is non-fatal — JSON registry write succeeded
