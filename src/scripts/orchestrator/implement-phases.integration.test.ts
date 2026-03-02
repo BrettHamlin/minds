@@ -50,12 +50,12 @@ describe("phased implement: registry state → status-table rendering", () => {
   });
 
   test("2. phase 3 of 5: status-table shows 'impl 3/5'", () => {
-    const reg = makeRegistry({ implement_phase_plan: makePhase_plan(5, 3, [1, 2]) });
+    const reg = makeRegistry({ implement_phase_plan: makePhasePlan(5, 3, [1, 2]) });
     expect(deriveDetail(reg)).toBe("impl 3/5");
   });
 
   test("3. final phase 5 of 5: status-table shows 'impl 5/5'", () => {
-    const reg = makeRegistry({ implement_phase_plan: makePhase_plan(5, 5, [1, 2, 3, 4]) });
+    const reg = makeRegistry({ implement_phase_plan: makePhasePlan(5, 5, [1, 2, 3, 4]) });
     expect(deriveDetail(reg)).toBe("impl 5/5");
   });
 
@@ -73,21 +73,12 @@ describe("phased implement: registry state → status-table rendering", () => {
   test("5. not in implement phase: phase plan is ignored", () => {
     const reg = makeRegistry({
       current_step: "blindqa",
-      implement_phase_plan: makePhase_plan(3, 3, [1, 2]),
+      implement_phase_plan: makePhasePlan(3, 3, [1, 2]),
     });
     const detail = deriveDetail(reg);
     expect(detail).not.toContain("impl");
   });
 });
-
-// Fix typo helper to make tests above work
-function makePhase_plan(
-  total: number,
-  current: number,
-  completed: number[] = []
-): ImplementPhasePlan {
-  return makePhasePlan(total, current, completed);
-}
 
 // ---------------------------------------------------------------------------
 // Phase dispatch command building for phased implement
@@ -149,7 +140,7 @@ describe("phased implement: full lifecycle via registry files", () => {
 
   test("12. writing implement_phase_plan persists correctly", () => {
     const reg = readJsonFile(regPath)!;
-    const plan = makePhase_plan(4, 1);
+    const plan = makePhasePlan(4, 1);
     writeJsonAtomic(regPath, { ...reg, implement_phase_plan: plan });
 
     const loaded = readJsonFile(regPath)! as Record<string, any>;
