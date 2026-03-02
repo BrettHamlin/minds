@@ -26,6 +26,7 @@ import {
 } from "./orchestrator-utils";
 
 import { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory } from "../../lib/pipeline/registry";
+import { openMetricsDb, ensureRun, recordPhase } from "../../lib/pipeline/metrics";
 
 // Re-export for test backward compatibility
 export { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory } from "../../lib/pipeline/registry";
@@ -84,6 +85,21 @@ function main(): void {
       process.exit(3);
     }
 
+    // Write phase timing to SQLite metrics store (best-effort, non-fatal)
+    try {
+      const metricsDb = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
+      recordPhase(metricsDb, {
+        ticketId,
+        phase: entry.phase ?? "unknown",
+        startedAt: entry.ts ?? new Date().toISOString(),
+        completedAt: entry.ts ?? null,
+        outcome: entry.signal ?? null,
+      });
+      metricsDb.close();
+    } catch {
+      // Metrics write failure is non-fatal — JSON registry write succeeded
+    }
+
     console.log(`Appended phase_history entry for ${ticketId}`);
     process.exit(0);
   }
@@ -119,6 +135,15 @@ function main(): void {
   } catch {
     console.error("Error: Failed to apply updates");
     process.exit(3);
+  }
+
+  // Ensure run row exists in SQLite metrics store (best-effort, non-fatal)
+  try {
+    const metricsDb = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
+    ensureRun(metricsDb, ticketId, registry.repo_id ?? null);
+    metricsDb.close();
+  } catch {
+    // Metrics write failure is non-fatal — JSON registry write succeeded
   }
 
   console.log(`Updated ${ticketId}: ${appliedPairs.join(" ")}`);
