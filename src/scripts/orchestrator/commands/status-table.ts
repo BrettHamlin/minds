@@ -118,6 +118,15 @@ export function deriveDetail(reg: Record<string, unknown>): string {
     return `held | waiting for ${waitingFor}`.substring(0, COL_DETAIL);
   }
 
+  // Show phased implementation progress when a plan is active
+  const currentStep = reg.current_step as string | undefined;
+  const phasePlan = reg.implement_phase_plan as
+    | { total_phases: number; current_impl_phase: number }
+    | undefined;
+  if (currentStep === "implement" && phasePlan) {
+    return `impl ${phasePlan.current_impl_phase}/${phasePlan.total_phases}`.substring(0, COL_DETAIL);
+  }
+
   const lastSignal = reg.last_signal as string | undefined;
   const lastSignalAt = reg.last_signal_at as string | undefined;
   if (lastSignal && lastSignalAt) {
