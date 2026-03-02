@@ -1,12 +1,52 @@
 #!/usr/bin/env bun
-import { cpSync, mkdirSync, existsSync, rmSync, statSync } from "fs";
+import { cpSync, mkdirSync, existsSync, rmSync, statSync, readdirSync, readFileSync } from "fs";
 import { join, dirname, basename } from "path";
+
+// ---------------------------------------------------------------------------
+// Pre-bundle validation: no bare /collab.X skill invocations in command files
+// ---------------------------------------------------------------------------
+
+const ALLOWED_PATTERNS = ["Read the file", "Do NOT invoke", "execute inline", "lint:ok"];
+
+function findBareSkillInvocations(content: string, filePath: string): string[] {
+  const errors: string[] = [];
+  const lines = content.split("\n");
+  let inCodeBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const stripped = lines[i].trim();
+    if (stripped.startsWith("```")) { inCodeBlock = !inCodeBlock; continue; }
+    if (!inCodeBlock) continue;
+    if (!/^\/collab\.\w+/.test(stripped)) continue;
+
+    const context = lines.slice(Math.max(0, i - 8), i + 1).join("\n");
+    if (ALLOWED_PATTERNS.some((p) => context.includes(p))) continue;
+
+    errors.push(
+      `ERROR: ${filePath}:${i + 1}: "${stripped}" uses /collab.X as a Skill invocation.\n` +
+      `  Replace with inline execution to avoid Skill tool response boundary.`
+    );
+  }
+  return errors;
+}
 
 // Resolve collab root relative to this script
 const SCRIPT_DIR = dirname(Bun.main);
 const CLI_ROOT = join(SCRIPT_DIR, "..");
 const COLLAB_ROOT = join(CLI_ROOT, "..");
 const TEMPLATE_DIR = join(CLI_ROOT, "src", "templates");
+
+// Pre-bundle validation
+const commandsDir = join(COLLAB_ROOT, "src/commands");
+const allErrors: string[] = [];
+for (const file of readdirSync(commandsDir).filter((f) => f.endsWith(".md"))) {
+  const content = readFileSync(join(commandsDir, file), "utf-8");
+  allErrors.push(...findBareSkillInvocations(content, file));
+}
+if (allErrors.length > 0) {
+  console.error("\n" + allErrors.join("\n"));
+  process.exit(1);
+}
 
 // Clean existing templates
 if (existsSync(TEMPLATE_DIR)) {

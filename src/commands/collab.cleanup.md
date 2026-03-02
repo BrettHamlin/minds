@@ -230,6 +230,7 @@ echo ""
 
 ## Usage Examples
 
+<!-- lint:ok: user-facing examples showing what the human types, not AI skill invocations -->
 ```bash
 # Cleanup merged feature
 /collab.cleanup BRE-191

@@ -134,9 +134,7 @@ Only runs when **all** of the following are true:
 
 If all conditions met: dispatch the dependency analyzer before any ticket advances to `implement`:
 
-```bash
-/collab.dependencies {ticket_id_1} {ticket_id_2} ...
-```
+Read the file `.claude/commands/collab.dependencies.md` and execute all its instructions inline with `{ticket_id_1} {ticket_id_2} ...` as input. Do NOT invoke it as a `/collab.dependencies` skill — read the file contents and execute the instructions within this response.
 
 Where the ticket IDs are all currently tracked tickets. Wait for `DEPENDENCY_COMPLETE` signal, then proceed normally with transition resolution for the triggering ticket.
 
