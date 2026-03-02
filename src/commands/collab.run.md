@@ -25,10 +25,10 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 Before spawning the orchestrator, run specify to create the specification:
 
 ```
-/collab.specify $ARGUMENTS
+Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `$ARGUMENTS` as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
 ```
 
-This executes the specify workflow inline with the ticket ID, creating the initial feature specification.
+This reads the specify instructions and executes them inline — do NOT use the Skill tool.
 
 ### 0.5 Continuation checkpoint
 
