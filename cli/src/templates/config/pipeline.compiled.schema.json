@@ -28,6 +28,9 @@
       "additionalProperties": {
         "$ref": "#/$defs/compiledGate"
       }
+    },
+    "codeReview": {
+      "$ref": "#/$defs/codeReview"
     }
   },
   "$defs": {
@@ -91,6 +94,31 @@
         "outputs": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "codeReview": {
+          "$ref": "#/$defs/phaseCodeReview"
+        },
+        "before": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string" }
+            }
+          }
+        },
+        "after": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string" }
+            }
+          }
         }
       }
     },
@@ -229,6 +257,28 @@
           "type": "string",
           "enum": ["skip", "abort", "escalate"]
         }
+      }
+    },
+    "codeReview": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "model": { "type": "string" },
+        "file": { "type": "string" },
+        "maxAttempts": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    },
+    "phaseCodeReview": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" }
       }
     }
   }
