@@ -73,8 +73,8 @@ ORCHESTRATOR_SCRIPT_COUNT=$(find "$REPO_ROOT/.collab/scripts/orchestrator" \( -n
 
 # Copy non-orchestrator collab scripts (e.g. verify-and-complete.sh)
 echo "  → Collab scripts..."
-find "$TEMP_DIR/src/scripts" -maxdepth 1 -name "*.sh" -exec cp {} "$REPO_ROOT/.collab/scripts/" \;
-find "$REPO_ROOT/.collab/scripts" -maxdepth 1 -name "*.sh" -exec chmod +x {} \;
+find "$TEMP_DIR/src/scripts" -maxdepth 1 \( -name "*.sh" -o -name "*.ts" \) -exec cp {} "$REPO_ROOT/.collab/scripts/" \;
+find "$REPO_ROOT/.collab/scripts" -maxdepth 1 \( -name "*.sh" -o -name "*.ts" \) -exec chmod +x {} \;
 
 # Install .claude/settings.json (create only if not present — user may have customized)
 if [ ! -f "$REPO_ROOT/.claude/settings.json" ]; then

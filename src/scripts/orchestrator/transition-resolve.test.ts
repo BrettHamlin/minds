@@ -23,7 +23,7 @@ const PIPELINE = {
   ],
 };
 
-// Pipeline with conditional rows for priority testing
+// Pipeline with conditional rows for priority testing (legacy array format)
 const PIPELINE_WITH_CONDITIONALS = {
   ...PIPELINE,
   transitions: [
@@ -39,6 +39,37 @@ const PIPELINE_WITH_CONDITIONALS = {
     // Other transitions
     { from: "clarify", signal: "CLARIFY_COMPLETE", to: "plan" },
   ],
+};
+
+// v3.1 object-keyed pipeline with all alternatives in conditionalTransitions
+// (matches real-world scenario where blindqa is the plain fallback but lives
+//  in conditionalTransitions alongside the conditional group-loop row)
+const PIPELINE_V31_CONDITIONALS_ONLY = {
+  version: "3.1",
+  phases: {
+    implement: {
+      conditionalTransitions: [
+        // Conditional: loop back for next group if more phases remain
+        { signal: "IMPLEMENT_COMPLETE", to: "tasks", if: "hasGroup" },
+        // Otherwise: advance to blindqa (no 'if' field)
+        { signal: "IMPLEMENT_COMPLETE", to: "blindqa" },
+      ],
+      transitions: {},
+    },
+  },
+};
+
+// v3.1 pipeline where only a conditional row exists (no otherwise row)
+const PIPELINE_V31_NO_FALLBACK = {
+  version: "3.1",
+  phases: {
+    implement: {
+      conditionalTransitions: [
+        { signal: "IMPLEMENT_COMPLETE", to: "tasks", if: "hasGroup" },
+      ],
+      transitions: {},
+    },
+  },
 };
 
 // ============================================================================
@@ -99,6 +130,43 @@ describe("resolveTransition", () => {
     expect(result!.conditional).toBe(false);
     expect(result!.to).toBe("done");
     expect(result!.if).toBeNull();
+  });
+
+  // v3.1 object-keyed format: all transitions in conditionalTransitions
+
+  test("v3.1: conditional row returned when plainOnly is false", () => {
+    const result = resolveTransition(
+      "implement",
+      "IMPLEMENT_COMPLETE",
+      PIPELINE_V31_CONDITIONALS_ONLY
+    );
+    expect(result).not.toBeNull();
+    expect(result!.conditional).toBe(true);
+    expect(result!.to).toBe("tasks");
+    expect(result!.if).toBe("hasGroup");
+  });
+
+  test("v3.1 plainOnly: returns otherwise row (no 'if') when conditional fails", () => {
+    const result = resolveTransition(
+      "implement",
+      "IMPLEMENT_COMPLETE",
+      PIPELINE_V31_CONDITIONALS_ONLY,
+      true
+    );
+    expect(result).not.toBeNull();
+    expect(result!.conditional).toBe(false);
+    expect(result!.to).toBe("blindqa");
+    expect(result!.if).toBeNull();
+  });
+
+  test("v3.1 plainOnly: returns null when no otherwise row exists", () => {
+    const result = resolveTransition(
+      "implement",
+      "IMPLEMENT_COMPLETE",
+      PIPELINE_V31_NO_FALLBACK,
+      true
+    );
+    expect(result).toBeNull();
   });
 
   test("returns null for null pipeline", () => {

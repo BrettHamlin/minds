@@ -9,7 +9,10 @@
  * Usage:
  *   bun registry-update.ts BRE-158 current_step=plan
  *   bun registry-update.ts BRE-158 current_step=implement status=active
+ *   bun registry-update.ts BRE-158 implement_phase_plan='{"total_phases":3,...}'
  *   bun registry-update.ts BRE-158 --append-phase-history '{"phase":"plan","signal":"PLAN_COMPLETE","ts":"..."}'
+ *   bun registry-update.ts BRE-158 --advance-impl-phase
+ *   bun registry-update.ts BRE-158 --delete-field implement_phase_plan
  *
  * Exit codes:
  *   0 = success
@@ -25,10 +28,10 @@ import {
   getRegistryPath,
 } from "./orchestrator-utils";
 
-import { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory } from "../../lib/pipeline/registry";
+import { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory, advanceImplPhase, deleteField } from "../../lib/pipeline/registry";
 
 // Re-export for test backward compatibility
-export { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory } from "../../lib/pipeline/registry";
+export { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory, advanceImplPhase, deleteField } from "../../lib/pipeline/registry";
 
 // ============================================================================
 // CLI Entry Point
@@ -43,6 +46,12 @@ function main(): void {
     );
     console.error(
       "       registry-update.ts <TICKET_ID> --append-phase-history '<json-entry>'"
+    );
+    console.error(
+      "       registry-update.ts <TICKET_ID> --advance-impl-phase"
+    );
+    console.error(
+      "       registry-update.ts <TICKET_ID> --delete-field <field-name>"
     );
     process.exit(1);
   }
@@ -85,6 +94,44 @@ function main(): void {
     }
 
     console.log(`Appended phase_history entry for ${ticketId}`);
+    process.exit(0);
+  }
+
+  // Handle --advance-impl-phase mode
+  if (args[1] === "--advance-impl-phase") {
+    let updated: Record<string, any>;
+    try {
+      updated = advanceImplPhase(registry);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+    try {
+      writeJsonAtomic(registryPath, updated);
+    } catch {
+      console.error("Error: Failed to advance impl phase");
+      process.exit(3);
+    }
+    const plan = updated.implement_phase_plan;
+    console.log(`Advanced impl phase for ${ticketId}: now at phase ${plan.current_impl_phase} of ${plan.total_phases}`);
+    process.exit(0);
+  }
+
+  // Handle --delete-field mode
+  if (args[1] === "--delete-field") {
+    if (args.length < 3) {
+      console.error("Usage: registry-update.ts <TICKET_ID> --delete-field <field-name>");
+      process.exit(1);
+    }
+    const fieldToDelete = args[2];
+    const updated = deleteField(registry, fieldToDelete);
+    try {
+      writeJsonAtomic(registryPath, updated);
+    } catch {
+      console.error("Error: Failed to delete field");
+      process.exit(3);
+    }
+    console.log(`Deleted field '${fieldToDelete}' from ${ticketId}`);
     process.exit(0);
   }
 

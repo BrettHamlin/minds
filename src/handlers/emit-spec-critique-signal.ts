@@ -14,8 +14,8 @@
  *   bun emit-spec-critique-signal.ts fail "HIGH issues remain"
  */
 
-import { $ } from "bun";
 import { execSync } from "child_process";
+import * as fs from "fs";
 
 // Detect repo root and use local paths
 function getRepoRoot(): string {
@@ -73,6 +73,15 @@ if (!signal) {
 
 // Emit signal in orchestrator-compatible format
 const signalOutput = `[SIGNAL:${ticketId}:${Date.now()}] ${signal} | ${message}`;
+
+// Persist signal to queue before emitting (survives orchestrator context compaction)
+const queueDir = `${REPO_ROOT}/.collab/state/signal-queue`;
+fs.mkdirSync(queueDir, { recursive: true });
+const queueFile = `${queueDir}/${ticketId}.json`;
+const queueTmp = `${queueFile}.tmp`;
+fs.writeFileSync(queueTmp, JSON.stringify({ signal: signalOutput, emitted_at: new Date().toISOString() }, null, 2) + "\n");
+fs.renameSync(queueTmp, queueFile);
+
 console.log(signalOutput);
 
 // Also log to stderr for orchestrator capture

@@ -42,3 +42,32 @@ describe("registry-read: readRegistry()", () => {
     expect(() => readRegistry("UNKNOWN-999", REGISTRY_DIR)).toThrow("Registry not found");
   });
 });
+
+describe("registry-read: --field extraction (via execSync)", () => {
+  test("3. extracts known field value", () => {
+    const { execSync } = require("child_process");
+    const out = execSync(
+      `bun ${import.meta.dir}/registry-read.ts ${TICKET} --field current_step`,
+      { encoding: "utf-8", cwd: REPO_ROOT }
+    ).trim();
+    expect(out).toBe("clarify");
+  });
+
+  test("4. returns default when field is absent", () => {
+    const { execSync } = require("child_process");
+    const out = execSync(
+      `bun ${import.meta.dir}/registry-read.ts ${TICKET} --field code_review_attempts --default 0`,
+      { encoding: "utf-8", cwd: REPO_ROOT }
+    ).trim();
+    expect(out).toBe("0");
+  });
+
+  test("5. returns empty string when field absent and no default", () => {
+    const { execSync } = require("child_process");
+    const out = execSync(
+      `bun ${import.meta.dir}/registry-read.ts ${TICKET} --field nonexistent_field`,
+      { encoding: "utf-8", cwd: REPO_ROOT }
+    ).trim();
+    expect(out).toBe("");
+  });
+});

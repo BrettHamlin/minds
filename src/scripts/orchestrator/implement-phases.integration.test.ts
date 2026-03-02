@@ -23,7 +23,7 @@ import type { ImplementPhasePlan } from "../../lib/pipeline/registry";
 // incomplete tasks without emitting a signal.
 // ---------------------------------------------------------------------------
 
-const SCRIPT_PATH = path.resolve(import.meta.dir, "../verify-and-complete.sh");
+const SCRIPT_PATH = path.resolve(import.meta.dir, "../verify-and-complete.ts");
 
 /**
  * Run verify-and-complete.sh implement <scope> with CHECK_ONLY=1, using
@@ -40,7 +40,7 @@ const SCRIPT_PATH = path.resolve(import.meta.dir, "../verify-and-complete.sh");
  * the script exits 0 with CHECK_ONLY, meaning count == 0.
  */
 function countIncomplete(tasksPath: string, scope: string | null): number {
-  const args = ["bash", SCRIPT_PATH, "implement", "check-only-test-message"];
+  const args = ["bun", SCRIPT_PATH, "implement", "check-only-test-message"];
   if (scope !== null) args.push(scope);
 
   const result = Bun.spawnSync(args, {

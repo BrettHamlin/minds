@@ -62,7 +62,7 @@ const copies: Array<{ from: string; to: string; filter?: (name: string) => boole
     to: "orchestrator",
     filter: (name: string) => !name.endsWith(".test.ts")
   },
-  { from: "src/scripts/verify-and-complete.sh", to: "scripts/verify-and-complete.sh" },
+  { from: "src/scripts/verify-and-complete.ts", to: "scripts/verify-and-complete.ts" },
   { from: "src/scripts/webhook-notify.sh", to: "scripts/webhook-notify.sh" },
   { from: "src/config", to: "config" },
   { from: "src/lib/pipeline", to: "lib-pipeline" },

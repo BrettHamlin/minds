@@ -77,8 +77,21 @@ export function resolveTransition(
       };
     }
 
-    // No direct but had conditional rows — return first anyway (plain mode fallback)
+    // No direct but had conditional rows
     if (conditionalRows.length > 0) {
+      if (plainOnly) {
+        // plainOnly: find the "otherwise" row — the fallback with no 'if' field
+        const otherwise = conditionalRows.find((r) => r.if == null);
+        if (otherwise) {
+          return {
+            to: otherwise.to ?? null,
+            gate: otherwise.gate ?? null,
+            if: null,
+            conditional: false,
+          };
+        }
+        return null; // no unconditional fallback in conditionalTransitions
+      }
       const first = conditionalRows[0];
       return {
         to: first.to ?? null,

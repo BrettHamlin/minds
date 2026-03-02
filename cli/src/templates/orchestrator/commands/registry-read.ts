@@ -5,9 +5,10 @@
  *
  * Usage:
  *   bun commands/registry-read.ts <TICKET_ID>
+ *   bun commands/registry-read.ts <TICKET_ID> --field <field-name> [--default <value>]
  *
  * Output (stdout):
- *   Pretty-printed JSON contents of the registry file
+ *   Full JSON (default), or raw field value when --field is specified
  *
  * Exit codes:
  *   0 = success
@@ -35,16 +36,37 @@ export function readRegistry(ticketId: string, registryDir: string): Record<stri
 function main(): void {
   const args = process.argv.slice(2);
   if (args.length < 1) {
-    console.error("Usage: registry-read.ts <TICKET_ID>");
+    console.error("Usage: registry-read.ts <TICKET_ID> [--field <name>] [--default <value>]");
     process.exit(1);
   }
 
+  // Parse flags
+  const ticketId = args[0];
+  let fieldName: string | undefined;
+  let defaultValue: string | undefined;
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "--field" && args[i + 1]) {
+      fieldName = args[++i];
+    } else if (args[i] === "--default" && args[i + 1] !== undefined) {
+      defaultValue = args[++i];
+    }
+  }
+
   try {
-    const ticketId = args[0];
     const repoRoot = getRepoRoot();
     const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
     const data = readRegistry(ticketId, registryDir);
-    console.log(JSON.stringify(data, null, 2));
+
+    if (fieldName !== undefined) {
+      const val = data[fieldName];
+      if (val === undefined || val === null) {
+        console.log(defaultValue ?? "");
+      } else {
+        console.log(String(val));
+      }
+    } else {
+      console.log(JSON.stringify(data, null, 2));
+    }
   } catch (err) {
     handleError(err);
   }
