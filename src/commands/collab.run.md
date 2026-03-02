@@ -115,7 +115,7 @@ bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {TICKET_ID} "$FIRST_
 ```
 
 `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for {N} ticket(s): {TICKET_IDS joined by ', '}. Waiting for signals..."** **END RESPONSE.**
-For EACH ticket ID: `.collab/scripts/webhook-notify.sh {TICKET_ID} none clarify started`
+For EACH ticket ID: `.collab/scripts/webhook-notify.ts {TICKET_ID} none clarify started`
 
 ---
 
@@ -443,7 +443,7 @@ In step **a** (_COMPLETE handler), after appending phase history, read `phases[c
   ```
   Wait for hook `_COMPLETE`, then proceed to step b. Log: "After-hook '{hook_phase}' dispatched for {ticket_id} after '{current_step}'."
 - If `after` is absent or empty: proceed normally.
-`.collab/scripts/webhook-notify.sh {ticket_id} {current_step} {NEXT} running`
+`.collab/scripts/webhook-notify.ts {ticket_id} {current_step} {NEXT} running`
 
 #### `_ERROR` or `_FAILED` -- Error
 
@@ -453,7 +453,7 @@ In step **a** (_COMPLETE handler), after appending phase history, read `phases[c
    bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {current_step}
    ```
 3. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." **END RESPONSE.**
-4. `.collab/scripts/webhook-notify.sh {ticket_id} {step} {step} error`
+4. `.collab/scripts/webhook-notify.ts {ticket_id} {step} {step} error`
 
 #### Any other signal -- Phase-specific outcome (transition routing)
 
@@ -483,7 +483,7 @@ When `IS_TERMINAL == "true"` in the Advance step:
 
 1. `rm .collab/state/pipeline-registry/{ticket_id}.json`
 2. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
-3. `.collab/scripts/webhook-notify.sh {ticket_id} {current_step} done complete`
+3. `.collab/scripts/webhook-notify.ts {ticket_id} {current_step} done complete`
 4. Other agents running -> wait. None remain -> "All pipelines complete."
 
 ---

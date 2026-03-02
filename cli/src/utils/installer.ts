@@ -200,7 +200,7 @@ export function installTemplates(
 
   setExecRecursive(join(repoRoot, ".collab/scripts"), /\.(sh|ts)$/);
   setExecRecursive(join(repoRoot, ".collab/handlers"), /\.ts$/);
-  setExecRecursive(join(repoRoot, ".claude/commands"), /\.sh$/);
+  setExecRecursive(join(repoRoot, ".claude/commands"), /\.(sh|ts)$/);
 
   return result;
 }
