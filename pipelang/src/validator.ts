@@ -130,6 +130,9 @@ function detectCycles(
 export function validate(ast: PipelineAST): CompileError[] {
   const errors: CompileError[] = [];
 
+  // Pass 0: validate @metrics directive (enabled is the only field — no extra validation needed)
+  // Placeholder for future param additions; keeps the pattern consistent with @codeReview.
+
   // Pass 0: validate @codeReview directive
   if (ast.codeReview) {
     const cr = ast.codeReview;
@@ -348,13 +351,19 @@ export function validate(ast: PipelineAST): CompileError[] {
     }
   }
 
-  // Pass 2b: validate .codeReview(off) modifier placement
+  // Pass 2b: validate .codeReview(off) and .metrics(off) modifier placement
   for (const phase of ast.phases) {
     const isTerminal = phase.modifiers.some((m) => m.kind === "terminal");
     for (const mod of phase.modifiers) {
       if (mod.kind === "codeReview" && isTerminal) {
         errors.push({
           message: `Terminal phases cannot have a .codeReview() modifier`,
+          loc: mod.loc,
+        });
+      }
+      if (mod.kind === "metrics" && isTerminal) {
+        errors.push({
+          message: `Terminal phases cannot have a .metrics() modifier`,
           loc: mod.loc,
         });
       }

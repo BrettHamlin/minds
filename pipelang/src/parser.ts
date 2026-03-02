@@ -14,6 +14,7 @@ import type {
   Modifier,
   ParseError,
   CodeReviewDirective,
+  MetricsDirective,
 } from "./types";
 import { VALID_MODEL_NAMES } from "./types";
 
@@ -62,6 +63,7 @@ export function parse(source: string): ParseResult {
   const gates: import("./types").GateDecl[] = [];
   let defaultModel: string | undefined;
   let codeReview: CodeReviewDirective | undefined;
+  let metrics: MetricsDirective | undefined;
 
   while (!ctx.check("EOF")) {
     const tok = ctx.peek();
@@ -192,9 +194,39 @@ export function parse(source: string): ParseResult {
         continue;
       }
 
+      if (dirTok.value === "metrics") {
+        ctx.advance(); // consume 'metrics'
+        if (!ctx.expect("LPAREN")) continue;
+
+        let enabled = true;
+
+        if (ctx.check("RPAREN")) {
+          // @metrics() — enabled (default)
+          ctx.advance();
+        } else {
+          const firstTok = ctx.peek();
+          if (firstTok.kind === "IDENT" && (firstTok.value === "off" || firstTok.value === "false")) {
+            // @metrics(off) or @metrics(false)
+            ctx.advance();
+            if (!ctx.expect("RPAREN")) continue;
+            enabled = false;
+          } else {
+            ctx.addError(
+              `Unknown parameter '${firstTok.value || firstTok.kind}' in @metrics(). Valid: off, false`,
+              { line: firstTok.line, col: firstTok.col }
+            );
+            while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+            if (ctx.check("RPAREN")) ctx.advance();
+          }
+        }
+
+        metrics = { enabled };
+        continue;
+      }
+
       // Unknown directive
       ctx.addError(
-        `Unknown directive '@${dirTok.value}'. Valid directives: @defaultModel, @codeReview`,
+        `Unknown directive '@${dirTok.value}'. Valid directives: @defaultModel, @codeReview, @metrics`,
         { line: dirTok.line, col: dirTok.col }
       );
       while (!ctx.check("EOF") && ctx.peek().kind !== "IDENT") ctx.advance();
@@ -226,6 +258,7 @@ export function parse(source: string): ParseResult {
       gates,
       ...(defaultModel !== undefined ? { defaultModel } : {}),
       ...(codeReview !== undefined ? { codeReview } : {}),
+      ...(metrics !== undefined ? { metrics } : {}),
     },
     errors: [],
   };

@@ -8,7 +8,7 @@ import { KNOWN_CONDITIONS, VALID_MODEL_NAMES } from "../types";
 // Fixed keyword completions
 const PHASE_MODIFIERS: CompletionItem[] = [
   "command", "signals", "on", "terminal", "model",
-  "goalGate", "orchestratorContext", "actions", "before", "after", "codeReview",
+  "goalGate", "orchestratorContext", "actions", "before", "after", "codeReview", "metrics",
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Phase modifier" }));
 
 const GATE_MODIFIERS: CompletionItem[] = [
@@ -61,6 +61,7 @@ const TOP_LEVEL_KEYWORDS: CompletionItem[] = [
   { label: "gate", kind: CompletionItemKind.Keyword, insertText: "gate(${1:name})\n    " },
   { label: "@defaultModel", kind: CompletionItemKind.Keyword, insertText: "@defaultModel(${1:sonnet})" },
   { label: "@codeReview", kind: CompletionItemKind.Keyword, insertText: "@codeReview()" },
+  { label: "@metrics", kind: CompletionItemKind.Keyword, insertText: "@metrics()" },
 ];
 
 /** Get the text of the line up to the cursor */
@@ -154,6 +155,19 @@ export function getCompletions(text: string, pos: Position): CompletionItem[] {
   // After `.codeReview(` — only 'off' is valid from phase syntax
   if (/\.codeReview\s*\(\s*\w*$/.test(prefix)) {
     return [{ label: "off", kind: CompletionItemKind.Keyword, detail: "Disable codeReview for this phase" }];
+  }
+
+  // After `@metrics(` — directive params (off or false)
+  if (/@metrics\s*\([^)]*$/.test(prefix)) {
+    return [
+      { label: "off", kind: CompletionItemKind.Keyword, detail: "Disable metrics globally" },
+      { label: "false", kind: CompletionItemKind.Keyword, detail: "Disable metrics globally" },
+    ];
+  }
+
+  // After `.metrics(` — only 'off' is valid from phase syntax
+  if (/\.metrics\s*\(\s*\w*$/.test(prefix)) {
+    return [{ label: "off", kind: CompletionItemKind.Keyword, detail: "Disable metrics for this phase" }];
   }
 
   // After `to:` — phase names
