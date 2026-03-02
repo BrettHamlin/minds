@@ -233,11 +233,10 @@ Procedure:
    bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=$NEW_ATTEMPTS
    ```
 
-7. Spawn inline code review subagent:
-   ```
-   /collab.codeReview {ticket_id}$([ -n "$CR_FILE" ] && echo " --arch $CR_FILE" || echo "")
-   ```
-   Wait for the subagent to complete. Parse its output for `REVIEW: PASS` or `REVIEW: FAIL`.
+7. Run code review inline (do NOT use the Skill tool):
+   Read the file `.claude/commands/collab.codeReview.md` and execute all its instructions inline with `{ticket_id}$([ -n "$CR_FILE" ] && echo " --arch $CR_FILE" || echo "")` as the arguments.
+   Do NOT invoke it as `/collab.codeReview` — read the file contents and execute the instructions within this response.
+   Parse the output for `REVIEW: PASS` or `REVIEW: FAIL`.
 
 8. Handle verdict:
    - **PASS**: Reset attempt count:
