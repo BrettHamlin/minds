@@ -36,7 +36,7 @@
       "patterns": [
         {
           "name": "meta.directive.pipelang",
-          "match": "(@(?:version|defaultModel))\\s*(\\()([^)]*)(\\))",
+          "match": "(@(?:version|defaultModel|codeReview))\\s*(\\()([^)]*)(\\))",
           "captures": {
             "1": { "name": "keyword.control.directive.pipelang" },
             "2": { "name": "punctuation.definition.arguments.begin.pipelang" },
@@ -130,7 +130,7 @@
         },
         {
           "comment": "Named modifiers",
-          "match": "\\.(command|signals|model|goalGate|orchestratorContext|skipTo|prompt|actions|before|after)\\s*(?=\\(|\\{)",
+          "match": "\\.(command|signals|model|goalGate|orchestratorContext|skipTo|prompt|actions|before|after|codeReview)\\s*(?=\\(|\\{)",
           "captures": {
             "1": { "name": "support.function.modifier.pipelang" }
           }

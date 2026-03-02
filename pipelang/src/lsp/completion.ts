@@ -3,19 +3,19 @@
 
 import type { Position, CompletionItem } from "./protocol";
 import { CompletionItemKind } from "./protocol";
-import { KNOWN_CONDITIONS } from "../types";
+import { KNOWN_CONDITIONS, VALID_MODEL_NAMES } from "../types";
 
 // Fixed keyword completions
 const PHASE_MODIFIERS: CompletionItem[] = [
   "command", "signals", "on", "terminal", "model",
-  "goalGate", "orchestratorContext", "actions", "before", "after",
+  "goalGate", "orchestratorContext", "actions", "before", "after", "codeReview",
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Phase modifier" }));
 
 const GATE_MODIFIERS: CompletionItem[] = [
   "prompt", "skipTo", "on",
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Gate modifier" }));
 
-const MODEL_VALUES: CompletionItem[] = ["haiku", "sonnet", "opus"].map((label) => ({
+const MODEL_VALUES: CompletionItem[] = [...VALID_MODEL_NAMES].map((label) => ({
   label,
   kind: CompletionItemKind.EnumMember,
   detail: "Model name",
@@ -49,10 +49,18 @@ const CONTEXT_SOURCE_VALUES: CompletionItem[] = ["file", "inline"].map((label) =
   kind: CompletionItemKind.EnumMember,
 }));
 
+const CODE_REVIEW_PARAMS: CompletionItem[] = [
+  { label: "off", kind: CompletionItemKind.Keyword, detail: "Disable codeReview globally" },
+  { label: "model", kind: CompletionItemKind.Keyword, detail: "Review agent model (model: opus)" },
+  { label: "maxAttempts", kind: CompletionItemKind.Keyword, detail: "Max review cycles before escalation" },
+  { label: ".file", kind: CompletionItemKind.Keyword, detail: "Architecture doc for the reviewer" },
+];
+
 const TOP_LEVEL_KEYWORDS: CompletionItem[] = [
   { label: "phase", kind: CompletionItemKind.Keyword, insertText: "phase(${1:name})\n    " },
   { label: "gate", kind: CompletionItemKind.Keyword, insertText: "gate(${1:name})\n    " },
   { label: "@defaultModel", kind: CompletionItemKind.Keyword, insertText: "@defaultModel(${1:sonnet})" },
+  { label: "@codeReview", kind: CompletionItemKind.Keyword, insertText: "@codeReview()" },
 ];
 
 /** Get the text of the line up to the cursor */
@@ -132,6 +140,20 @@ export function getCompletions(text: string, pos: Position): CompletionItem[] {
     const allLines = text.split("\n").slice(0, pos.line + 1).join("\n");
     const inGate = /\bgate\s*\([^)]+\)[^{]*$/.test(allLines.replace(/\/\/[^\n]*/g, "").replace(/#[^\n]*/g, ""));
     return inGate ? GATE_MODIFIERS : PHASE_MODIFIERS;
+  }
+
+  // After `@codeReview(` — directive params
+  if (/@codeReview\s*\([^)]*$/.test(prefix)) {
+    // After `model:` inside @codeReview( — model names
+    if (/\bmodel\s*:\s*\w*$/.test(prefix)) {
+      return MODEL_VALUES;
+    }
+    return CODE_REVIEW_PARAMS;
+  }
+
+  // After `.codeReview(` — only 'off' is valid from phase syntax
+  if (/\.codeReview\s*\(\s*\w*$/.test(prefix)) {
+    return [{ label: "off", kind: CompletionItemKind.Keyword, detail: "Disable codeReview for this phase" }];
   }
 
   // After `to:` — phase names

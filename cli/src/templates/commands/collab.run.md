@@ -174,6 +174,83 @@ If `current_step == implement`:
 
 **If no `implement_phase_plan`**: proceed to step b normally.
 
+##### a.2 Code review intercept (AI, IMPLEMENT_COMPLETE only)
+
+*AI LOGIC: When codeReview is enabled, evaluate code quality before advancing.*
+
+Only runs when **all** of the following are true:
+1. `current_step` contains `implement` (implement phase name)
+2. The signal type ends in `_COMPLETE`
+3. `phases[current_step].codeReview.enabled` is not `false` in pipeline.json (per-phase override)
+4. Top-level `codeReview.enabled` is not `false` in pipeline.json (global directive), or `codeReview` is absent (feature not configured — skip this step)
+
+**If global `codeReview` is absent from pipeline.json, skip this step entirely.**
+
+Procedure:
+
+1. Read global `codeReview` from `.collab/config/pipeline.json`:
+   ```bash
+   PIPELINE=$(cat .collab/config/pipeline.json)
+   CR_ENABLED=$(echo "$PIPELINE" | jq -r '.codeReview.enabled // "absent"')
+   ```
+   If `CR_ENABLED == "absent"` or `CR_ENABLED == "false"`: skip to step b.
+
+2. Check per-phase override:
+   ```bash
+   PHASE_CR=$(echo "$PIPELINE" | jq -r --arg p "{current_step}" '.phases[$p].codeReview.enabled // "inherit"')
+   ```
+   If `PHASE_CR == "false"`: skip to step b.
+
+3. Read review config with defaults:
+   ```bash
+   CR_MODEL=$(echo "$PIPELINE" | jq -r '.codeReview.model // "claude-opus-4-6"')
+   CR_MAX=$(echo "$PIPELINE" | jq -r '.codeReview.maxAttempts // 3')
+   CR_FILE=$(echo "$PIPELINE" | jq -r '.codeReview.file // empty')
+   ```
+
+4. Read current attempt count from registry:
+   ```bash
+   CR_ATTEMPTS=$(bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id} | jq -r '.code_review_attempts // 0')
+   ```
+
+5. Check exhaustion:
+   If `CR_ATTEMPTS >= CR_MAX`:
+   ```
+   "Code review for {ticket_id} exhausted {CR_MAX} attempt(s). Manual review required before advancing."
+   ```
+   Update registry: `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=blocked`
+   `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+
+6. Increment attempt count:
+   ```bash
+   NEW_ATTEMPTS=$((CR_ATTEMPTS + 1))
+   bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=$NEW_ATTEMPTS
+   ```
+
+7. Spawn inline code review subagent:
+   ```
+   /collab.codeReview {ticket_id}$([ -n "$CR_FILE" ] && echo " --arch $CR_FILE" || echo "")
+   ```
+   Wait for the subagent to complete. Parse its output for `REVIEW: PASS` or `REVIEW: FAIL`.
+
+8. Handle verdict:
+   - **PASS**: Reset attempt count:
+     ```bash
+     bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=0
+     ```
+     Log: "Code review passed for {ticket_id} (attempt {NEW_ATTEMPTS}/{CR_MAX}). Advancing." Proceed to step b.
+   - **FAIL**: Extract findings (everything after `REVIEW: FAIL` line). Relay to implementing agent:
+     ```bash
+     bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "⛔ CODE REVIEW FAILED (attempt {NEW_ATTEMPTS}/{CR_MAX})
+
+{findings}
+
+Fix all blocking findings above and re-run the verification script to re-emit IMPLEMENT_COMPLETE." -d 1
+     sleep 1
+     tmux send-keys -t {agent_pane_id} C-m
+     ```
+     `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Code review failed for {ticket_id} (attempt {NEW_ATTEMPTS}/{CR_MAX}). Findings sent to agent." **END RESPONSE.**
+
 ##### b. Load orchestrator context (AI)
 
 Read `phases[current_step].orchestrator_context` from `.collab/config/pipeline.json`:

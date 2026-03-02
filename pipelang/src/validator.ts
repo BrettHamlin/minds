@@ -4,7 +4,7 @@
 // Pass 2: Validate all cross-references (to: targets, signal declarations)
 
 import type { PipelineAST, CompileError, DisplayValue } from "./types";
-import { BUILTIN_TOKENS, KNOWN_CONDITIONS } from "./types";
+import { BUILTIN_TOKENS, KNOWN_CONDITIONS, VALID_MODEL_NAMES } from "./types";
 
 const TOKEN_RE = /\$\{([A-Z][A-Z0-9_]*)\}/g;
 
@@ -129,6 +129,24 @@ function detectCycles(
 
 export function validate(ast: PipelineAST): CompileError[] {
   const errors: CompileError[] = [];
+
+  // Pass 0: validate @codeReview directive
+  if (ast.codeReview) {
+    const cr = ast.codeReview;
+    const directiveLoc = { line: 1, col: 1 }; // directive has no stored loc
+    if (cr.model !== undefined && !VALID_MODEL_NAMES.has(cr.model)) {
+      errors.push({
+        message: `Invalid model '${cr.model}' in @codeReview(). Valid models: haiku, sonnet, opus`,
+        loc: directiveLoc,
+      });
+    }
+    if (cr.maxAttempts !== undefined && (cr.maxAttempts <= 0 || !Number.isInteger(cr.maxAttempts))) {
+      errors.push({
+        message: `'maxAttempts' in @codeReview() must be a positive integer (got ${cr.maxAttempts})`,
+        loc: directiveLoc,
+      });
+    }
+  }
 
   // Pass 1: collect all declared phase and gate names (with duplicate detection)
   const phaseNames = new Set<string>();
@@ -325,6 +343,19 @@ export function validate(ast: PipelineAST): CompileError[] {
         errors.push({
           message: `Conditional transition requires an 'otherwise' branch`,
           loc: entry.firstLoc,
+        });
+      }
+    }
+  }
+
+  // Pass 2b: validate .codeReview(off) modifier placement
+  for (const phase of ast.phases) {
+    const isTerminal = phase.modifiers.some((m) => m.kind === "terminal");
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "codeReview" && isTerminal) {
+        errors.push({
+          message: `Terminal phases cannot have a .codeReview() modifier`,
+          loc: mod.loc,
         });
       }
     }

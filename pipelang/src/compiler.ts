@@ -12,6 +12,7 @@ import type {
   CompiledGateResponse,
   CompiledGate,
   CompiledPipeline,
+  CompiledCodeReview,
 } from "../../src/lib/pipeline/types";
 export type {
   CompiledTransition,
@@ -22,6 +23,7 @@ export type {
   CompiledGateResponse,
   CompiledGate,
   CompiledPipeline,
+  CompiledCodeReview,
 };
 
 // Model name → Claude model ID
@@ -185,6 +187,8 @@ export function compile(ast: PipelineAST): CompiledPipeline {
       } else if (mod.kind === "after") {
         if (!compiled.after) compiled.after = [];
         compiled.after.push({ phase: mod.phase });
+      } else if (mod.kind === "codeReview") {
+        compiled.codeReview = { enabled: false };
       }
     }
 
@@ -220,6 +224,22 @@ export function compile(ast: PipelineAST): CompiledPipeline {
   const result: CompiledPipeline = { version: "3.1", phases };
   if (defaultModelId) result.defaultModel = defaultModelId;
   if (Object.keys(gatesOut).length > 0) result.gates = gatesOut;
+
+  // Compile @codeReview directive — apply defaults for omitted fields
+  if (ast.codeReview !== undefined) {
+    const cr = ast.codeReview;
+    if (!cr.enabled) {
+      result.codeReview = { enabled: false };
+    } else {
+      const compiledCr: CompiledCodeReview = {
+        enabled: true,
+        model: MODEL_IDS[cr.model ?? "opus"],
+        maxAttempts: cr.maxAttempts ?? 3,
+      };
+      if (cr.file !== undefined) compiledCr.file = cr.file;
+      result.codeReview = compiledCr;
+    }
+  }
 
   return result;
 }

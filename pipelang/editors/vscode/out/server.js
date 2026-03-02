@@ -287,6 +287,26 @@ function parseDisplayValue(ctx) {
   ctx.addError(`Expected string, ai("..."), or .file("...") but found '${t.value || t.kind}'`, { line: t.line, col: t.col });
   return null;
 }
+function parseOnTarget(ctx) {
+  const paramTok = ctx.peek();
+  if (paramTok.kind !== "IDENT" || paramTok.value !== "to" && paramTok.value !== "gate") {
+    ctx.addError(`Expected 'to:' or 'gate:' but found '${paramTok.value || paramTok.kind}'`, { line: paramTok.line, col: paramTok.col });
+    return null;
+  }
+  const paramKind = paramTok.value;
+  ctx.advance();
+  if (!ctx.expect("COLON"))
+    return null;
+  const targetTok = ctx.peek();
+  if (targetTok.kind !== "IDENT") {
+    ctx.addError(`Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`, { line: targetTok.line, col: targetTok.col });
+    return null;
+  }
+  ctx.advance();
+  if (!ctx.expect("RPAREN"))
+    return null;
+  return paramKind === "to" ? { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } : { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } };
+}
 function parsePhaseModifier(ctx) {
   ctx.advance();
   const nameTok = ctx.peek();
@@ -438,67 +458,27 @@ function parsePhaseModifier(ctx) {
         }
         if (!ctx.expect("COMMA"))
           return null;
-        const p2 = ctx.peek();
-        if (p2.kind !== "IDENT" || p2.value !== "to" && p2.value !== "gate") {
-          ctx.addError(`Expected 'to:' or 'gate:' after condition in .on() but found '${p2.value}'`, { line: p2.line, col: p2.col });
+        const target2 = parseOnTarget(ctx);
+        if (!target2)
           return null;
-        }
-        const paramKind2 = p2.value;
-        ctx.advance();
-        if (!ctx.expect("COLON"))
-          return null;
-        const targetTok2 = ctx.peek();
-        if (targetTok2.kind !== "IDENT") {
-          ctx.addError(`Expected ${paramKind2 === "to" ? "phase" : "gate"} name after '${paramKind2}:' but found '${targetTok2.value || targetTok2.kind}'`, { line: targetTok2.line, col: targetTok2.col });
-          return null;
-        }
-        ctx.advance();
-        if (!ctx.expect("RPAREN"))
-          return null;
-        const target2 = paramKind2 === "to" ? { kind: "to", phase: targetTok2.value, phaseLoc: { line: targetTok2.line, col: targetTok2.col } } : { kind: "gate", gate: targetTok2.value, gateLoc: { line: targetTok2.line, col: targetTok2.col } };
         return { kind: "on", signal: sigTok.value, signalLoc, target: target2, condition: condParts.join(" "), loc };
       }
       if (firstParam.kind === "IDENT" && firstParam.value === "otherwise") {
         ctx.advance();
         if (!ctx.expect("COMMA"))
           return null;
-        const p2 = ctx.peek();
-        if (p2.kind !== "IDENT" || p2.value !== "to" && p2.value !== "gate") {
-          ctx.addError(`Expected 'to:' or 'gate:' after 'otherwise' in .on() but found '${p2.value}'`, { line: p2.line, col: p2.col });
+        const target2 = parseOnTarget(ctx);
+        if (!target2)
           return null;
-        }
-        const paramKind2 = p2.value;
-        ctx.advance();
-        if (!ctx.expect("COLON"))
-          return null;
-        const targetTok2 = ctx.peek();
-        if (targetTok2.kind !== "IDENT") {
-          ctx.addError(`Expected ${paramKind2 === "to" ? "phase" : "gate"} name after '${paramKind2}:' but found '${targetTok2.value || targetTok2.kind}'`, { line: targetTok2.line, col: targetTok2.col });
-          return null;
-        }
-        ctx.advance();
-        if (!ctx.expect("RPAREN"))
-          return null;
-        const target2 = paramKind2 === "to" ? { kind: "to", phase: targetTok2.value, phaseLoc: { line: targetTok2.line, col: targetTok2.col } } : { kind: "gate", gate: targetTok2.value, gateLoc: { line: targetTok2.line, col: targetTok2.col } };
         return { kind: "on", signal: sigTok.value, signalLoc, target: target2, isOtherwise: true, loc };
       }
       if (firstParam.kind !== "IDENT" || firstParam.value !== "to" && firstParam.value !== "gate") {
         ctx.addError(`Expected 'to:', 'gate:', 'when: cond, to:', or 'otherwise, to:' in .on() but found '${firstParam.value}'`, { line: firstParam.line, col: firstParam.col });
         return null;
       }
-      const paramKind = firstParam.value;
-      ctx.advance();
-      if (!ctx.expect("COLON"))
+      const target = parseOnTarget(ctx);
+      if (!target)
         return null;
-      const targetTok = ctx.peek();
-      if (targetTok.kind !== "IDENT") {
-        ctx.addError(`Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`, { line: targetTok.line, col: targetTok.col });
-        return null;
-      }
-      ctx.advance();
-      if (!ctx.expect("RPAREN"))
-        return null;
-      const target = paramKind === "to" ? { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } : { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } };
       return { kind: "on", signal: sigTok.value, signalLoc, target, loc };
     }
     case "goalGate": {
@@ -592,6 +572,21 @@ function parsePhaseModifier(ctx) {
         phaseLoc,
         loc
       };
+    }
+    case "codeReview": {
+      const t = ctx.peek();
+      if (t.kind !== "IDENT" || t.value !== "off") {
+        ctx.addError(`.codeReview() only supports .codeReview(off) from a phase. Use @codeReview() directive for full configuration.`, { line: t.line, col: t.col });
+        while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+          ctx.advance();
+        if (ctx.check("RPAREN"))
+          ctx.advance();
+        return null;
+      }
+      ctx.advance();
+      if (!ctx.expect("RPAREN"))
+        return null;
+      return { kind: "codeReview", enabled: false, loc };
     }
     default:
       while (!ctx.check("RPAREN") && !ctx.check("EOF"))
@@ -843,33 +838,150 @@ function parse(source) {
   const phases = [];
   const gates = [];
   let defaultModel;
+  let codeReview;
   while (!ctx.check("EOF")) {
     const tok = ctx.peek();
     if (tok.kind === "AT") {
       ctx.advance();
       const dirTok = ctx.peek();
-      if (dirTok.kind !== "IDENT" || dirTok.value !== "defaultModel") {
-        ctx.addError(`Expected 'defaultModel' after '@' but found '${dirTok.value || dirTok.kind}'`, { line: dirTok.line, col: dirTok.col });
+      if (dirTok.kind !== "IDENT") {
+        ctx.addError(`Expected directive name after '@' but found '${dirTok.value || dirTok.kind}'`, { line: dirTok.line, col: dirTok.col });
         while (!ctx.check("EOF") && ctx.peek().kind !== "IDENT")
           ctx.advance();
         continue;
       }
-      ctx.advance();
-      if (!ctx.expect("LPAREN"))
-        continue;
-      const modelTok = ctx.peek();
-      if (modelTok.kind !== "IDENT" || !VALID_MODEL_NAMES2.has(modelTok.value)) {
-        ctx.addError(`'@defaultModel()' requires a valid model name: haiku, sonnet, or opus`, { line: modelTok.line, col: modelTok.col });
-        while (!ctx.check("RPAREN") && !ctx.check("EOF"))
-          ctx.advance();
-        if (ctx.check("RPAREN"))
-          ctx.advance();
+      if (dirTok.value === "defaultModel") {
+        ctx.advance();
+        if (!ctx.expect("LPAREN"))
+          continue;
+        const modelTok = ctx.peek();
+        if (modelTok.kind !== "IDENT" || !VALID_MODEL_NAMES2.has(modelTok.value)) {
+          ctx.addError(`'@defaultModel()' requires a valid model name: haiku, sonnet, or opus`, { line: modelTok.line, col: modelTok.col });
+          while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+            ctx.advance();
+          if (ctx.check("RPAREN"))
+            ctx.advance();
+          continue;
+        }
+        ctx.advance();
+        if (!ctx.expect("RPAREN"))
+          continue;
+        defaultModel = modelTok.value;
         continue;
       }
-      ctx.advance();
-      if (!ctx.expect("RPAREN"))
+      if (dirTok.value === "codeReview") {
+        ctx.advance();
+        if (!ctx.expect("LPAREN"))
+          continue;
+        let enabled = true;
+        let crModel;
+        let crFile;
+        let crMaxAttempts;
+        if (ctx.check("RPAREN")) {
+          ctx.advance();
+        } else {
+          const firstTok = ctx.peek();
+          if (firstTok.kind === "IDENT" && firstTok.value === "off") {
+            ctx.advance();
+            if (!ctx.expect("RPAREN"))
+              continue;
+            enabled = false;
+          } else {
+            let first = true;
+            while (!ctx.check("RPAREN") && !ctx.check("EOF")) {
+              if (!first) {
+                if (!ctx.check("COMMA")) {
+                  ctx.addError(`Expected ',' or ')' in @codeReview()`, { line: ctx.peek().line, col: ctx.peek().col });
+                  break;
+                }
+                ctx.advance();
+                if (ctx.check("RPAREN"))
+                  break;
+              }
+              first = false;
+              const pt = ctx.peek();
+              if (pt.kind === "DOT") {
+                ctx.advance();
+                const ftok = ctx.peek();
+                if (ftok.kind !== "IDENT" || ftok.value !== "file") {
+                  ctx.addError(`Expected '.file("path")' in @codeReview() but found '.${ftok.value || ftok.kind}'`, { line: ftok.line, col: ftok.col });
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  break;
+                }
+                ctx.advance();
+                if (!ctx.expect("LPAREN")) {
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  break;
+                }
+                const strTok = ctx.peek();
+                if (strTok.kind !== "STRING") {
+                  ctx.addError(`'.file()' requires a string path in @codeReview()`, { line: strTok.line, col: strTok.col });
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  break;
+                }
+                crFile = strTok.value;
+                ctx.advance();
+                if (!ctx.expect("RPAREN")) {
+                  while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  break;
+                }
+              } else if (pt.kind === "IDENT" && pt.value === "model") {
+                ctx.advance();
+                if (!ctx.expect("COLON")) {
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  continue;
+                }
+                const modelTok = ctx.peek();
+                if (modelTok.kind !== "IDENT" || !VALID_MODEL_NAMES2.has(modelTok.value)) {
+                  ctx.addError(`'model:' in @codeReview() requires a valid model name: haiku, sonnet, or opus`, { line: modelTok.line, col: modelTok.col });
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                } else {
+                  crModel = modelTok.value;
+                  ctx.advance();
+                }
+              } else if (pt.kind === "IDENT" && pt.value === "maxAttempts") {
+                ctx.advance();
+                if (!ctx.expect("COLON")) {
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                  continue;
+                }
+                const numTok = ctx.peek();
+                if (numTok.kind !== "NUMBER") {
+                  ctx.addError(`'maxAttempts:' in @codeReview() requires a positive integer`, { line: numTok.line, col: numTok.col });
+                  while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                    ctx.advance();
+                } else {
+                  crMaxAttempts = parseInt(numTok.value, 10);
+                  ctx.advance();
+                }
+              } else {
+                ctx.addError(`Unknown parameter '${pt.value || pt.kind}' in @codeReview(). Valid: off, model:, .file(), maxAttempts:`, { line: pt.line, col: pt.col });
+                while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF"))
+                  ctx.advance();
+              }
+            }
+            if (!ctx.expect("RPAREN"))
+              continue;
+          }
+        }
+        codeReview = {
+          enabled,
+          ...crModel !== undefined ? { model: crModel } : {},
+          ...crFile !== undefined ? { file: crFile } : {},
+          ...crMaxAttempts !== undefined ? { maxAttempts: crMaxAttempts } : {}
+        };
         continue;
-      defaultModel = modelTok.value;
+      }
+      ctx.addError(`Unknown directive '@${dirTok.value}'. Valid directives: @defaultModel, @codeReview`, { line: dirTok.line, col: dirTok.col });
+      while (!ctx.check("EOF") && ctx.peek().kind !== "IDENT")
+        ctx.advance();
       continue;
     }
     if (tok.kind === "IDENT" && tok.value === "phase") {
@@ -889,7 +1001,12 @@ function parse(source) {
     return { errors: parseErrors };
   }
   return {
-    ast: { phases, gates, ...defaultModel !== undefined ? { defaultModel } : {} },
+    ast: {
+      phases,
+      gates,
+      ...defaultModel !== undefined ? { defaultModel } : {},
+      ...codeReview !== undefined ? { codeReview } : {}
+    },
     errors: []
   };
 }
@@ -911,6 +1028,7 @@ var KNOWN_CONDITIONS = new Set([
 ]);
 
 // ../../src/validator.ts
+var VALID_MODEL_NAMES3 = new Set(["haiku", "sonnet", "opus"]);
 var TOKEN_RE = /\$\{([A-Z][A-Z0-9_]*)\}/g;
 function validateTokensInString(text, loc, errors) {
   let m;
@@ -992,6 +1110,22 @@ function detectCycles(phases, edges, errors) {
 }
 function validate(ast) {
   const errors = [];
+  if (ast.codeReview) {
+    const cr = ast.codeReview;
+    const directiveLoc = { line: 1, col: 1 };
+    if (cr.model !== undefined && !VALID_MODEL_NAMES3.has(cr.model)) {
+      errors.push({
+        message: `Invalid model '${cr.model}' in @codeReview(). Valid models: haiku, sonnet, opus`,
+        loc: directiveLoc
+      });
+    }
+    if (cr.maxAttempts !== undefined && (cr.maxAttempts <= 0 || !Number.isInteger(cr.maxAttempts))) {
+      errors.push({
+        message: `'maxAttempts' in @codeReview() must be a positive integer (got ${cr.maxAttempts})`,
+        loc: directiveLoc
+      });
+    }
+  }
   const phaseNames = new Set;
   for (const phase of ast.phases) {
     if (phaseNames.has(phase.name)) {
@@ -1153,6 +1287,17 @@ function validate(ast) {
         errors.push({
           message: `Conditional transition requires an 'otherwise' branch`,
           loc: entry.firstLoc
+        });
+      }
+    }
+  }
+  for (const phase of ast.phases) {
+    const isTerminal = phase.modifiers.some((m) => m.kind === "terminal");
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "codeReview" && isTerminal) {
+        errors.push({
+          message: `Terminal phases cannot have a .codeReview() modifier`,
+          loc: mod.loc
         });
       }
     }
@@ -1454,7 +1599,8 @@ var PHASE_MODIFIERS = [
   "orchestratorContext",
   "actions",
   "before",
-  "after"
+  "after",
+  "codeReview"
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Phase modifier" }));
 var GATE_MODIFIERS = [
   "prompt",
@@ -1489,10 +1635,17 @@ var CONTEXT_SOURCE_VALUES = ["file", "inline"].map((label) => ({
   label,
   kind: CompletionItemKind.EnumMember
 }));
+var CODE_REVIEW_PARAMS = [
+  { label: "off", kind: CompletionItemKind.Keyword, detail: "Disable codeReview globally" },
+  { label: "model", kind: CompletionItemKind.Keyword, detail: "Review agent model (model: opus)" },
+  { label: "maxAttempts", kind: CompletionItemKind.Keyword, detail: "Max review cycles before escalation" },
+  { label: ".file", kind: CompletionItemKind.Keyword, detail: "Architecture doc for the reviewer" }
+];
 var TOP_LEVEL_KEYWORDS = [
   { label: "phase", kind: CompletionItemKind.Keyword, insertText: "phase(${1:name})\n    " },
   { label: "gate", kind: CompletionItemKind.Keyword, insertText: "gate(${1:name})\n    " },
-  { label: "@defaultModel", kind: CompletionItemKind.Keyword, insertText: "@defaultModel(${1:sonnet})" }
+  { label: "@defaultModel", kind: CompletionItemKind.Keyword, insertText: "@defaultModel(${1:sonnet})" },
+  { label: "@codeReview", kind: CompletionItemKind.Keyword, insertText: "@codeReview()" }
 ];
 function prefixAt(text, pos) {
   const lines = text.split(`
@@ -1548,6 +1701,15 @@ function getCompletions(text, pos) {
 `);
     const inGate = /\bgate\s*\([^)]+\)[^{]*$/.test(allLines.replace(/\/\/[^\n]*/g, "").replace(/#[^\n]*/g, ""));
     return inGate ? GATE_MODIFIERS : PHASE_MODIFIERS;
+  }
+  if (/@codeReview\s*\([^)]*$/.test(prefix)) {
+    if (/\bmodel\s*:\s*\w*$/.test(prefix)) {
+      return MODEL_VALUES;
+    }
+    return CODE_REVIEW_PARAMS;
+  }
+  if (/\.codeReview\s*\(\s*\w*$/.test(prefix)) {
+    return [{ label: "off", kind: CompletionItemKind.Keyword, detail: "Disable codeReview for this phase" }];
   }
   if (/\bto\s*:\s*\w*$/.test(prefix)) {
     return phaseNames(text);

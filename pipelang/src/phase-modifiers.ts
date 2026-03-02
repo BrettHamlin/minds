@@ -21,10 +21,10 @@ import type {
   ModelModifier,
   BeforeModifier,
   AfterModifier,
+  CodeReviewModifier,
   SourceLocation,
 } from "./types";
-
-const VALID_MODEL_NAMES = new Set(["haiku", "sonnet", "opus"]);
+import { VALID_MODEL_NAMES } from "./types";
 
 // ── Display value parser ─────────────────────────────────────────────────────
 
@@ -78,6 +78,35 @@ function parseDisplayValue(ctx: ParserContext): DisplayValue | null {
     { line: t.line, col: t.col }
   );
   return null;
+}
+
+// ── On-target parser (shared by when:/otherwise/simple .on() forms) ──────────
+
+function parseOnTarget(ctx: ParserContext): OnTarget | null {
+  const paramTok = ctx.peek();
+  if (paramTok.kind !== "IDENT" || (paramTok.value !== "to" && paramTok.value !== "gate")) {
+    ctx.addError(
+      `Expected 'to:' or 'gate:' but found '${paramTok.value || paramTok.kind}'`,
+      { line: paramTok.line, col: paramTok.col }
+    );
+    return null;
+  }
+  const paramKind = paramTok.value as "to" | "gate";
+  ctx.advance(); // consume "to" or "gate"
+  if (!ctx.expect("COLON")) return null;
+  const targetTok = ctx.peek();
+  if (targetTok.kind !== "IDENT") {
+    ctx.addError(
+      `Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`,
+      { line: targetTok.line, col: targetTok.col }
+    );
+    return null;
+  }
+  ctx.advance();
+  if (!ctx.expect("RPAREN")) return null;
+  return paramKind === "to"
+    ? { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } satisfies ToTarget
+    : { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } } satisfies GateTarget;
 }
 
 // ── Modifier parser ───────────────────────────────────────────────────────
@@ -266,30 +295,8 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
         }
         if (!ctx.expect("COMMA")) return null;
 
-        const p2 = ctx.peek();
-        if (p2.kind !== "IDENT" || (p2.value !== "to" && p2.value !== "gate")) {
-          ctx.addError(
-            `Expected 'to:' or 'gate:' after condition in .on() but found '${p2.value}'`,
-            { line: p2.line, col: p2.col }
-          );
-          return null;
-        }
-        const paramKind = p2.value as "to" | "gate";
-        ctx.advance();
-        if (!ctx.expect("COLON")) return null;
-        const targetTok = ctx.peek();
-        if (targetTok.kind !== "IDENT") {
-          ctx.addError(
-            `Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`,
-            { line: targetTok.line, col: targetTok.col }
-          );
-          return null;
-        }
-        ctx.advance();
-        if (!ctx.expect("RPAREN")) return null;
-        const target: OnTarget = paramKind === "to"
-          ? { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } satisfies ToTarget
-          : { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } } satisfies GateTarget;
+        const target = parseOnTarget(ctx);
+        if (!target) return null;
         return { kind: "on", signal: sigTok.value, signalLoc, target, condition: condParts.join(" "), loc } satisfies OnModifier;
       }
 
@@ -297,30 +304,8 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
       if (firstParam.kind === "IDENT" && firstParam.value === "otherwise") {
         ctx.advance(); // consume "otherwise"
         if (!ctx.expect("COMMA")) return null;
-        const p2 = ctx.peek();
-        if (p2.kind !== "IDENT" || (p2.value !== "to" && p2.value !== "gate")) {
-          ctx.addError(
-            `Expected 'to:' or 'gate:' after 'otherwise' in .on() but found '${p2.value}'`,
-            { line: p2.line, col: p2.col }
-          );
-          return null;
-        }
-        const paramKind = p2.value as "to" | "gate";
-        ctx.advance();
-        if (!ctx.expect("COLON")) return null;
-        const targetTok = ctx.peek();
-        if (targetTok.kind !== "IDENT") {
-          ctx.addError(
-            `Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`,
-            { line: targetTok.line, col: targetTok.col }
-          );
-          return null;
-        }
-        ctx.advance();
-        if (!ctx.expect("RPAREN")) return null;
-        const target: OnTarget = paramKind === "to"
-          ? { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } satisfies ToTarget
-          : { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } } satisfies GateTarget;
+        const target = parseOnTarget(ctx);
+        if (!target) return null;
         return { kind: "on", signal: sigTok.value, signalLoc, target, isOtherwise: true, loc } satisfies OnModifier;
       }
 
@@ -332,22 +317,8 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
         );
         return null;
       }
-      const paramKind = firstParam.value as "to" | "gate";
-      ctx.advance(); // consume "to" or "gate"
-      if (!ctx.expect("COLON")) return null;
-      const targetTok = ctx.peek();
-      if (targetTok.kind !== "IDENT") {
-        ctx.addError(
-          `Expected ${paramKind === "to" ? "phase" : "gate"} name after '${paramKind}:' but found '${targetTok.value || targetTok.kind}'`,
-          { line: targetTok.line, col: targetTok.col }
-        );
-        return null;
-      }
-      ctx.advance();
-      if (!ctx.expect("RPAREN")) return null;
-      const target: OnTarget = paramKind === "to"
-        ? { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } satisfies ToTarget
-        : { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } } satisfies GateTarget;
+      const target = parseOnTarget(ctx);
+      if (!target) return null;
       return { kind: "on", signal: sigTok.value, signalLoc, target, loc } satisfies OnModifier;
     }
 
@@ -461,6 +432,22 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
         phaseLoc,
         loc,
       } satisfies BeforeModifier | AfterModifier;
+    }
+
+    case "codeReview": {
+      const t = ctx.peek();
+      if (t.kind !== "IDENT" || t.value !== "off") {
+        ctx.addError(
+          `.codeReview() only supports .codeReview(off) from a phase. Use @codeReview() directive for full configuration.`,
+          { line: t.line, col: t.col }
+        );
+        while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+        if (ctx.check("RPAREN")) ctx.advance();
+        return null;
+      }
+      ctx.advance(); // consume "off"
+      if (!ctx.expect("RPAREN")) return null;
+      return { kind: "codeReview", enabled: false, loc } satisfies CodeReviewModifier;
     }
 
     default:

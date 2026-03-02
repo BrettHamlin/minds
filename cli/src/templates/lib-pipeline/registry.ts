@@ -27,6 +27,7 @@ export const ALLOWED_FIELDS = new Set([
   "implement_phase_plan",
   "repo_id",
   "repo_path",
+  "code_review_attempts",
 ]);
 
 // ============================================================================
