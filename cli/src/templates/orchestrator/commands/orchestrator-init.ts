@@ -69,6 +69,7 @@ interface RollbackState {
   agentPaneCreated?: string;
   claudeSymlinkCreated?: string;
   collabSymlinkCreated?: string;
+  specifySymlinkCreated?: string;
   registryCreated?: string;
 }
 
@@ -260,7 +261,7 @@ export function setupSymlinks(
 ): void {
   if (!worktreePath) return;
 
-  for (const dir of [".claude", ".collab"] as const) {
+  for (const dir of [".claude", ".collab", ".specify"] as const) {
     const src = path.join(repoRoot, dir);
     const dest = path.join(worktreePath, dir);
 
@@ -275,7 +276,8 @@ export function setupSymlinks(
     if (!fs.existsSync(dest)) {
       fs.symlinkSync(src, dest);
       if (dir === ".claude") rb.claudeSymlinkCreated = dest;
-      else rb.collabSymlinkCreated = dest;
+      else if (dir === ".collab") rb.collabSymlinkCreated = dest;
+      else rb.specifySymlinkCreated = dest;
       console.error(`Created ${dir}/ symlink in worktree`);
     }
   }
@@ -372,7 +374,7 @@ function rollback(rb: RollbackState): void {
     }
   }
 
-  for (const symlinkPath of [rb.claudeSymlinkCreated, rb.collabSymlinkCreated]) {
+  for (const symlinkPath of [rb.claudeSymlinkCreated, rb.collabSymlinkCreated, rb.specifySymlinkCreated]) {
     if (symlinkPath && fs.existsSync(symlinkPath)) {
       try {
         fs.unlinkSync(symlinkPath);

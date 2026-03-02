@@ -14,7 +14,13 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 `$ARGUMENTS` = ticket ID and pipeline name (e.g., `BRE-168 --pipeline mobile`). The `--pipeline` flag is required.
 
-Parse `$ARGUMENTS`: extract `TICKET_ID` (first word) and `PIPELINE_NAME` (value after `--pipeline`). Use `TICKET_ID` (not `$ARGUMENTS`) in all script calls below.
+### Parse Arguments
+
+Extract from `$ARGUMENTS`:
+- **TICKET_ID**: first positional argument (e.g., `BRE-339`)
+- **PIPELINE_NAME**: value after `--pipeline` flag (e.g., `default`), defaults to `"default"` if omitted
+
+Use `TICKET_ID` (not raw `$ARGUMENTS`) in all bun script calls throughout this document.
 
 ---
 
