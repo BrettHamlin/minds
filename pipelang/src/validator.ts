@@ -291,79 +291,41 @@ export function validate(ast: PipelineAST): CompileError[] {
           });
         }
       }
+
+      // Warn on unknown condition identifiers in when: form
+      if (mod.condition !== undefined) {
+        const condIds = mod.condition.split(/\s+/).filter((t) => t !== "and" && t !== "or" && t !== "not" && t !== "");
+        for (const condId of condIds) {
+          if (!KNOWN_CONDITIONS.has(condId)) {
+            errors.push({
+              message: `Unknown condition '${condId}' — will be AI-evaluated at runtime`,
+              loc: mod.loc,
+              severity: "warning",
+            });
+          }
+        }
+      }
     }
 
-    // Validate conditionalOn modifiers
+    // Conditional .on() mods: each signal with a when: branch requires an otherwise branch
+    const conditionalSignals = new Map<string, { hasOtherwise: boolean; firstLoc: { line: number; col: number } }>();
     for (const mod of phase.modifiers) {
-      if (mod.kind !== "conditionalOn") continue;
-
-      // Terminal phases cannot have outbound transitions
-      if (isTerminal) {
-        errors.push({
-          message: `Terminal phases cannot have outbound transitions`,
-          loc: mod.loc,
-        });
-        continue;
+      if (mod.kind !== "on") continue;
+      if (mod.condition !== undefined || mod.isOtherwise) {
+        if (!conditionalSignals.has(mod.signal)) {
+          conditionalSignals.set(mod.signal, { hasOtherwise: false, firstLoc: mod.loc });
+        }
+        if (mod.isOtherwise) {
+          conditionalSignals.get(mod.signal)!.hasOtherwise = true;
+        }
       }
-
-      // Signal must be declared in .signals()
-      if (!declaredSignals.has(mod.signal)) {
-        const suggestion = didYouMean(mod.signal, declaredSignals);
-        errors.push({
-          message:
-            `Signal '${mod.signal}' not declared for phase '${phase.name}'` +
-            (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-          loc: mod.signalLoc,
-        });
-      }
-
-      // Conditional block must contain an otherwise branch
-      const hasOtherwise = mod.branches.some((b) => b.condition === undefined);
-      if (!hasOtherwise) {
+    }
+    for (const [, entry] of conditionalSignals) {
+      if (!entry.hasOtherwise) {
         errors.push({
           message: `Conditional transition requires an 'otherwise' branch`,
-          loc: mod.loc,
+          loc: entry.firstLoc,
         });
-      }
-
-      // Validate each branch
-      for (const branch of mod.branches) {
-        // Warn on unknown condition identifiers
-        if (branch.condition !== undefined) {
-          const condIds = branch.condition.split(/\s+/).filter((t) => t !== "and" && t !== "or" && t !== "");
-          for (const condId of condIds) {
-            if (!KNOWN_CONDITIONS.has(condId)) {
-              errors.push({
-                message: `Unknown condition '${condId}' — will be AI-evaluated at runtime`,
-                loc: branch.loc,
-                severity: "warning",
-              });
-            }
-          }
-        }
-
-        // Validate targets
-        if (branch.target.kind === "to") {
-          if (!phaseNames.has(branch.target.phase)) {
-            const suggestion = didYouMean(branch.target.phase, phaseNames);
-            errors.push({
-              message:
-                `Phase '${branch.target.phase}' not declared` +
-                (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-              loc: branch.target.phaseLoc,
-            });
-          }
-        } else if (branch.target.kind === "gate") {
-          if (!gateNames.has(branch.target.gate)) {
-            const suggestion = didYouMean(branch.target.gate, gateNames);
-            errors.push({
-              message:
-                `Gate '${branch.target.gate}' not declared` +
-                (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-              loc: branch.target.gateLoc,
-            });
-          }
-        }
       }
     }
   }
@@ -404,13 +366,6 @@ export function validate(ast: PipelineAST): CompileError[] {
     for (const mod of phase.modifiers) {
       if (mod.kind === "on" && mod.target.kind === "to") {
         cycleEdges.get(phase.name)!.push(mod.target.phase);
-      }
-      if (mod.kind === "conditionalOn") {
-        for (const branch of mod.branches) {
-          if (branch.target.kind === "to") {
-            cycleEdges.get(phase.name)!.push(branch.target.phase);
-          }
-        }
       }
     }
   }

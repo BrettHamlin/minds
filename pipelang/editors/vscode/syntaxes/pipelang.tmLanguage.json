@@ -146,11 +146,11 @@
     },
 
     "when-otherwise": {
-      "comment": "when(condition) { ... } and otherwise { ... } in conditional blocks",
+      "comment": "otherwise keyword and logical operators in conditional .on() arguments",
       "patterns": [
         {
           "name": "keyword.control.when.pipelang",
-          "match": "\\b(when|otherwise)\\b"
+          "match": "\\b(otherwise)\\b"
         },
         {
           "name": "keyword.operator.logical.pipelang",
@@ -200,9 +200,9 @@
     },
 
     "keyword-arg": {
-      "comment": "Named arguments: to: gate: feedback: maxRetries: onExhaust:",
+      "comment": "Named arguments: to: gate: feedback: maxRetries: onExhaust: when:",
       "name": "variable.parameter.keyword.pipelang",
-      "match": "\\b(to|gate|feedback|maxRetries|onExhaust)\\s*:"
+      "match": "\\b(to|gate|feedback|maxRetries|onExhaust|when)\\s*:"
     },
 
     "number": {

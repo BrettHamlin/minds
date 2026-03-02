@@ -3,6 +3,7 @@
 
 import type { Position, CompletionItem } from "./protocol";
 import { CompletionItemKind } from "./protocol";
+import { KNOWN_CONDITIONS } from "../types";
 
 // Fixed keyword completions
 const PHASE_MODIFIERS: CompletionItem[] = [
@@ -25,6 +26,13 @@ const GOAL_GATE_VALUES: CompletionItem[] = ["always", "ifTriggered"].map((label)
   kind: CompletionItemKind.EnumMember,
   detail: "GoalGate value",
 }));
+
+const ON_NAMED_ARGS: CompletionItem[] = [
+  { label: "when", kind: CompletionItemKind.Keyword, detail: "Conditional branch (when: cond, to: target)" },
+  { label: "otherwise", kind: CompletionItemKind.Keyword, detail: "Otherwise branch (otherwise, to: target)" },
+  { label: "to", kind: CompletionItemKind.Keyword, detail: "Phase target" },
+  { label: "gate", kind: CompletionItemKind.Keyword, detail: "Gate target" },
+];
 
 const FEEDBACK_VALUES: CompletionItem[] = ["enrich", "raw"].map((label) => ({
   label,
@@ -126,8 +134,8 @@ export function getCompletions(text: string, pos: Position): CompletionItem[] {
     return inGate ? GATE_MODIFIERS : PHASE_MODIFIERS;
   }
 
-  // After `to:` or `to =` — phase names
-  if (/\bto\s*:\s*\w*$/.test(prefix) || /\bto\s*=\s*\w*$/.test(prefix)) {
+  // After `to:` — phase names
+  if (/\bto\s*:\s*\w*$/.test(prefix)) {
     return phaseNames(text);
   }
 
@@ -144,6 +152,20 @@ export function getCompletions(text: string, pos: Position): CompletionItem[] {
   // Inside `.before(` or `.after(` — phase names
   if (/\.(before|after)\s*\(\s*\w*$/.test(prefix)) {
     return phaseNames(text);
+  }
+
+  // After `when: ` — known condition names
+  if (/\bwhen\s*:\s*\w*$/.test(prefix)) {
+    return [...KNOWN_CONDITIONS].map((c) => ({
+      label: c,
+      kind: CompletionItemKind.EnumMember,
+      detail: "Known condition",
+    }));
+  }
+
+  // After `.on(SIGNAL, ` — suggest when, otherwise, to, gate
+  if (/\.on\s*\([A-Z_][A-Z0-9_]*\s*,\s*\w*$/.test(prefix)) {
+    return ON_NAMED_ARGS;
   }
 
   // Inside `.on(` — signal names

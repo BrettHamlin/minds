@@ -116,15 +116,6 @@ export function compile(ast: PipelineAST): CompiledPipeline {
         if (!predecessorMap.has(succ)) predecessorMap.set(succ, new Set());
         predecessorMap.get(succ)!.add(phaseDecl.name);
       }
-      if (mod.kind === "conditionalOn") {
-        for (const branch of mod.branches) {
-          if (branch.target.kind === "to") {
-            const succ = branch.target.phase;
-            if (!predecessorMap.has(succ)) predecessorMap.set(succ, new Set());
-            predecessorMap.get(succ)!.add(phaseDecl.name);
-          }
-        }
-      }
     }
   }
 
@@ -148,21 +139,23 @@ export function compile(ast: PipelineAST): CompiledPipeline {
       } else if (mod.kind === "signals") {
         compiled.signals = mod.signals;
       } else if (mod.kind === "on") {
-        if (mod.target.kind === "to") {
-          transitions[mod.signal] = { to: mod.target.phase };
-        } else {
-          transitions[mod.signal] = { gate: mod.target.gate };
-        }
-      } else if (mod.kind === "conditionalOn") {
-        for (const branch of mod.branches) {
+        if (mod.condition !== undefined || mod.isOtherwise) {
+          // Conditional branch → goes into conditionalTransitions
           const row: ConditionalTransitionRow = { signal: mod.signal };
-          if (branch.condition !== undefined) row.if = branch.condition;
-          if (branch.target.kind === "to") {
-            row.to = branch.target.phase;
+          if (mod.condition !== undefined) row.if = mod.condition;
+          if (mod.target.kind === "to") {
+            row.to = mod.target.phase;
           } else {
-            row.gate = branch.target.gate;
+            row.gate = mod.target.gate;
           }
           conditionalRows.push(row);
+        } else {
+          // Simple unconditional transition
+          if (mod.target.kind === "to") {
+            transitions[mod.signal] = { to: mod.target.phase };
+          } else {
+            transitions[mod.signal] = { gate: mod.target.gate };
+          }
         }
       } else if (mod.kind === "goalGate") {
         compiled.goal_gate = mod.value === "always" ? "always" : "if_triggered";

@@ -1,4 +1,4 @@
-// BRE-307: Slice 9 — Conditional routing (when/otherwise)
+// BRE-307 / BRE-335: Slice 9 — Conditional routing (inline when: / otherwise)
 import { describe, test, expect } from "bun:test";
 import { tokenize } from "../src/lexer";
 import { parse } from "../src/parser";
@@ -20,7 +20,7 @@ function runCLI(args: string[]): { stdout: string; stderr: string; exitCode: num
   };
 }
 
-// ── Lexer: EQ token ────────────────────────────────────────────────────────────
+// ── Lexer: EQ token still lexed (regression) ──────────────────────────────────
 
 describe("slice9: lexer — EQ token", () => {
   test("tokenizes '=' as EQ", () => {
@@ -34,16 +34,14 @@ describe("slice9: lexer — EQ token", () => {
   });
 });
 
-// ── Parser: block form .on() ───────────────────────────────────────────────────
+// ── Parser: inline form .on() ──────────────────────────────────────────────────
 
-describe("slice9: parser — conditional on block form", () => {
+describe("slice9: parser — inline conditional on", () => {
   const source = `
 phase(impl)
     .signals(IMPL_COMPLETE, IMPL_ERROR)
-    .on(IMPL_COMPLETE) {
-        when(hasGroup and isBackend) { to = gate(deploy) }
-        otherwise                    { to = blindqa }
-    }
+    .on(IMPL_COMPLETE, when: hasGroup and isBackend, gate: deploy)
+    .on(IMPL_COMPLETE, otherwise, to: blindqa)
     .on(IMPL_ERROR, to: impl)
 
 phase(deploy) .signals(DEPLOY_DONE) .on(DEPLOY_DONE, to: blindqa)
@@ -59,50 +57,60 @@ phase(done) .terminal()
     expect(ast).toBeDefined();
   });
 
-  test("impl has two modifiers: conditionalOn + on", () => {
+  test("impl has three on modifiers", () => {
     const impl = ast!.phases.find((p) => p.name === "impl")!;
-    const conds = impl.modifiers.filter((m) => m.kind === "conditionalOn");
     const ons = impl.modifiers.filter((m) => m.kind === "on");
-    expect(conds).toHaveLength(1);
-    expect(ons).toHaveLength(1);
+    expect(ons).toHaveLength(3);
   });
 
-  test("conditionalOn has signal IMPL_COMPLETE", () => {
+  test("no conditionalOn modifiers exist (removed in BRE-335)", () => {
     const impl = ast!.phases.find((p) => p.name === "impl")!;
-    const cond = impl.modifiers.find((m) => m.kind === "conditionalOn") as any;
-    expect(cond.signal).toBe("IMPL_COMPLETE");
+    const conds = impl.modifiers.filter((m) => (m as any).kind === "conditionalOn");
+    expect(conds).toHaveLength(0);
   });
 
-  test("conditionalOn has two branches", () => {
+  test("first IMPL_COMPLETE modifier has condition 'hasGroup and isBackend'", () => {
     const impl = ast!.phases.find((p) => p.name === "impl")!;
-    const cond = impl.modifiers.find((m) => m.kind === "conditionalOn") as any;
-    expect(cond.branches).toHaveLength(2);
+    const whenMod = impl.modifiers.find(
+      (m) => m.kind === "on" && (m as any).signal === "IMPL_COMPLETE" && (m as any).condition
+    ) as any;
+    expect(whenMod.condition).toBe("hasGroup and isBackend");
   });
 
-  test("first branch has condition 'hasGroup and isBackend'", () => {
+  test("first IMPL_COMPLETE modifier has gate: deploy target", () => {
     const impl = ast!.phases.find((p) => p.name === "impl")!;
-    const cond = impl.modifiers.find((m) => m.kind === "conditionalOn") as any;
-    expect(cond.branches[0].condition).toBe("hasGroup and isBackend");
+    const whenMod = impl.modifiers.find(
+      (m) => m.kind === "on" && (m as any).signal === "IMPL_COMPLETE" && (m as any).condition
+    ) as any;
+    expect(whenMod.target.kind).toBe("gate");
+    expect(whenMod.target.gate).toBe("deploy");
   });
 
-  test("first branch target is gate: deploy", () => {
+  test("second IMPL_COMPLETE modifier has isOtherwise: true", () => {
     const impl = ast!.phases.find((p) => p.name === "impl")!;
-    const cond = impl.modifiers.find((m) => m.kind === "conditionalOn") as any;
-    expect(cond.branches[0].target.kind).toBe("gate");
-    expect(cond.branches[0].target.gate).toBe("deploy");
+    const otherwiseMod = impl.modifiers.find(
+      (m) => m.kind === "on" && (m as any).signal === "IMPL_COMPLETE" && (m as any).isOtherwise
+    ) as any;
+    expect(otherwiseMod.isOtherwise).toBe(true);
   });
 
-  test("second branch is otherwise (undefined condition)", () => {
+  test("otherwise modifier target is to: blindqa", () => {
     const impl = ast!.phases.find((p) => p.name === "impl")!;
-    const cond = impl.modifiers.find((m) => m.kind === "conditionalOn") as any;
-    expect(cond.branches[1].condition).toBeUndefined();
+    const otherwiseMod = impl.modifiers.find(
+      (m) => m.kind === "on" && (m as any).signal === "IMPL_COMPLETE" && (m as any).isOtherwise
+    ) as any;
+    expect(otherwiseMod.target.kind).toBe("to");
+    expect(otherwiseMod.target.phase).toBe("blindqa");
   });
 
-  test("otherwise branch target is to: blindqa", () => {
+  test("IMPL_ERROR modifier is a simple on with no condition", () => {
     const impl = ast!.phases.find((p) => p.name === "impl")!;
-    const cond = impl.modifiers.find((m) => m.kind === "conditionalOn") as any;
-    expect(cond.branches[1].target.kind).toBe("to");
-    expect(cond.branches[1].target.phase).toBe("blindqa");
+    const errMod = impl.modifiers.find(
+      (m) => m.kind === "on" && (m as any).signal === "IMPL_ERROR"
+    ) as any;
+    expect(errMod.condition).toBeUndefined();
+    expect(errMod.isOtherwise).toBeUndefined();
+    expect(errMod.target.phase).toBe("impl");
   });
 });
 
@@ -112,10 +120,8 @@ describe("slice9: parser — 'or' operator in condition", () => {
   const source = `
 phase(impl)
     .signals(IMPL_COMPLETE)
-    .on(IMPL_COMPLETE) {
-        when(hasGroup or isFrontend) { to = qa }
-        otherwise                    { to = done }
-    }
+    .on(IMPL_COMPLETE, when: hasGroup or isFrontend, to: qa)
+    .on(IMPL_COMPLETE, otherwise, to: done)
 phase(qa)    .signals(QA_DONE)   .on(QA_DONE, to: done)
 phase(done)  .terminal()
 `;
@@ -128,8 +134,36 @@ phase(done)  .terminal()
 
   test("condition is 'hasGroup or isFrontend'", () => {
     const impl = ast!.phases.find((p) => p.name === "impl")!;
-    const cond = impl.modifiers.find((m) => m.kind === "conditionalOn") as any;
-    expect(cond.branches[0].condition).toBe("hasGroup or isFrontend");
+    const whenMod = impl.modifiers.find(
+      (m) => m.kind === "on" && (m as any).condition
+    ) as any;
+    expect(whenMod.condition).toBe("hasGroup or isFrontend");
+  });
+});
+
+// ── Parser: old block form is rejected ────────────────────────────────────────
+
+describe("slice9: parser — old block form is an error", () => {
+  const source = `
+phase(impl)
+    .signals(IMPL_COMPLETE)
+    .on(IMPL_COMPLETE) {
+        when(hasGroup) { to = done }
+        otherwise      { to = done }
+    }
+phase(done) .terminal()
+`;
+
+  const { errors } = parse(source);
+
+  test("old block form produces a parse error", () => {
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  test("error message mentions new syntax", () => {
+    const msg = errors[0].message;
+    expect(msg).toContain("when:");
+    expect(msg).toContain("otherwise");
   });
 });
 
@@ -139,10 +173,8 @@ describe("slice9: compiler — conditionalTransitions output", () => {
   const source = `
 phase(impl)
     .signals(IMPL_COMPLETE, IMPL_ERROR)
-    .on(IMPL_COMPLETE) {
-        when(hasGroup and isBackend) { to = gate(deploy) }
-        otherwise                    { to = blindqa }
-    }
+    .on(IMPL_COMPLETE, when: hasGroup and isBackend, gate: deploy)
+    .on(IMPL_COMPLETE, otherwise, to: blindqa)
     .on(IMPL_ERROR, to: impl)
 
 phase(blindqa) .signals(QA_DONE) .on(QA_DONE, to: done)
@@ -209,9 +241,7 @@ describe("slice9: validator — missing otherwise", () => {
   const source = `
 phase(impl)
     .signals(IMPL_COMPLETE)
-    .on(IMPL_COMPLETE) {
-        when(hasGroup) { to = qa }
-    }
+    .on(IMPL_COMPLETE, when: hasGroup, to: qa)
 phase(qa)   .signals(QA_DONE) .on(QA_DONE, to: done)
 phase(done) .terminal()
 `;
@@ -241,10 +271,8 @@ describe("slice9: validator — unknown condition warning", () => {
   const source = `
 phase(impl)
     .signals(IMPL_COMPLETE)
-    .on(IMPL_COMPLETE) {
-        when(customCondition) { to = qa }
-        otherwise             { to = done }
-    }
+    .on(IMPL_COMPLETE, when: customCondition, to: qa)
+    .on(IMPL_COMPLETE, otherwise, to: done)
 phase(qa)   .signals(QA_DONE) .on(QA_DONE, to: done)
 phase(done) .terminal()
 `;
@@ -289,10 +317,8 @@ describe("slice9: validator — known conditions produce no warnings", () => {
   const source = `
 phase(impl)
     .signals(IMPL_COMPLETE)
-    .on(IMPL_COMPLETE) {
-        when(${knownCond}) { to = qa }
-        otherwise          { to = done }
-    }
+    .on(IMPL_COMPLETE, when: ${knownCond}, to: qa)
+    .on(IMPL_COMPLETE, otherwise, to: done)
 phase(qa)   .signals(QA_DONE) .on(QA_DONE, to: done)
 phase(done) .terminal()
 `;
@@ -320,10 +346,8 @@ describe("slice9: validator — undeclared targets in branches", () => {
   const source = `
 phase(impl)
     .signals(IMPL_COMPLETE)
-    .on(IMPL_COMPLETE) {
-        when(hasGroup) { to = undeclaredPhase }
-        otherwise      { to = done }
-    }
+    .on(IMPL_COMPLETE, when: hasGroup, to: undeclaredPhase)
+    .on(IMPL_COMPLETE, otherwise, to: done)
 phase(done) .terminal()
 `;
 
@@ -348,10 +372,8 @@ describe("slice9: CLI — warnings exit 0, print to stderr", () => {
   const pipelineWithWarning = `
 phase(impl)
     .signals(IMPL_COMPLETE)
-    .on(IMPL_COMPLETE) {
-        when(unknownConditionXYZ) { to = done }
-        otherwise                 { to = done }
-    }
+    .on(IMPL_COMPLETE, when: unknownConditionXYZ, to: done)
+    .on(IMPL_COMPLETE, otherwise, to: done)
 phase(done) .terminal()
 `;
 

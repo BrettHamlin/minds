@@ -34,7 +34,6 @@ export type Modifier =
   | CommandModifier
   | SignalsModifier
   | OnModifier
-  | ConditionalOnModifier
   | GoalGateModifier
   | OrchestratorContextModifier
   | ActionsModifier
@@ -84,6 +83,10 @@ export interface OnModifier {
   signal: string;
   signalLoc: SourceLocation;
   target: OnTarget;
+  /** Condition expression for when: form (e.g. "hasGroup and isBackend") */
+  condition?: string;
+  /** True for the otherwise branch */
+  isOtherwise?: boolean;
   loc: SourceLocation;
 }
 
@@ -100,24 +103,6 @@ export interface GateTarget {
   kind: "gate";
   gate: string;
   gateLoc: SourceLocation;
-}
-
-// ── Conditional routing ───────────────────────────────────────────────────────
-
-/** One branch inside a block-form .on() — either when(cond) or otherwise */
-export interface ConditionalBranch {
-  /** condition expression (e.g. "hasGroup and isBackend"); undefined = otherwise */
-  condition?: string;
-  target: OnTarget;
-  loc: SourceLocation;
-}
-
-export interface ConditionalOnModifier {
-  kind: "conditionalOn";
-  signal: string;
-  signalLoc: SourceLocation;
-  branches: ConditionalBranch[];
-  loc: SourceLocation;
 }
 
 export interface GoalGateModifier {

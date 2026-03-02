@@ -114,9 +114,7 @@ phase(done).terminal()
 phase(a)
     .command("/x")
     .signals(SIG)
-    .on(SIG) {
-        when(hasGroup) { to = done }
-    }
+    .on(SIG, when: hasGroup, to: done)
 phase(done).terminal()
     `.trim();
     const diags = getDiagnostics(src);
@@ -141,10 +139,8 @@ phase(done).terminal()
 phase(a)
     .command("/x")
     .signals(SIG)
-    .on(SIG) {
-        when(myCustomCondition) { to = done }
-        otherwise { to = done }
-    }
+    .on(SIG, when: myCustomCondition, to: done)
+    .on(SIG, otherwise, to: done)
 phase(done).terminal()
     `.trim();
     const diags = getDiagnostics(src);

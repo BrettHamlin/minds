@@ -37,10 +37,8 @@ phase(implement)
         command("/collab.implement")
     }
     .signals(IMPLEMENT_COMPLETE, IMPLEMENT_WAITING, IMPLEMENT_ERROR)
-    .on(IMPLEMENT_COMPLETE) {
-        when(hasGroup) { to = tasks }
-        otherwise      { to = blindqa }
-    }
+    .on(IMPLEMENT_COMPLETE, when: hasGroup, to: tasks)
+    .on(IMPLEMENT_COMPLETE, otherwise, to: blindqa)
     .on(IMPLEMENT_ERROR, to: implement)
 
 phase(blindqa)

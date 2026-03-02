@@ -287,87 +287,6 @@ function parseDisplayValue(ctx) {
   ctx.addError(`Expected string, ai("..."), or .file("...") but found '${t.value || t.kind}'`, { line: t.line, col: t.col });
   return null;
 }
-function parseBranchBody(ctx) {
-  const toTok = ctx.peek();
-  if (toTok.kind !== "IDENT" || toTok.value !== "to") {
-    ctx.addError(`Expected 'to = ...' in branch body but found '${toTok.value || toTok.kind}'`, { line: toTok.line, col: toTok.col });
-    return null;
-  }
-  ctx.advance();
-  if (!ctx.expect("EQ"))
-    return null;
-  const nextTok = ctx.peek();
-  if (nextTok.kind === "IDENT" && nextTok.value === "gate") {
-    ctx.advance();
-    if (!ctx.expect("LPAREN"))
-      return null;
-    const gateTok = ctx.peek();
-    if (gateTok.kind !== "IDENT") {
-      ctx.addError(`Expected gate name after 'gate(' but found '${gateTok.value || gateTok.kind}'`, { line: gateTok.line, col: gateTok.col });
-      return null;
-    }
-    ctx.advance();
-    if (!ctx.expect("RPAREN"))
-      return null;
-    return { kind: "gate", gate: gateTok.value, gateLoc: { line: gateTok.line, col: gateTok.col } };
-  } else if (nextTok.kind === "IDENT") {
-    ctx.advance();
-    return { kind: "to", phase: nextTok.value, phaseLoc: { line: nextTok.line, col: nextTok.col } };
-  } else {
-    ctx.addError(`Expected phase name or 'gate(name)' after 'to =' but found '${nextTok.value || nextTok.kind}'`, { line: nextTok.line, col: nextTok.col });
-    return null;
-  }
-}
-function parseConditionalBranches(ctx) {
-  const branches = [];
-  while (!ctx.check("RBRACE") && !ctx.check("EOF")) {
-    const tok = ctx.peek();
-    if (tok.kind !== "IDENT" || tok.value !== "when" && tok.value !== "otherwise") {
-      ctx.addError(`Expected 'when(...)' or 'otherwise' in conditional block but found '${tok.value || tok.kind}'`, { line: tok.line, col: tok.col });
-      ctx.advance();
-      continue;
-    }
-    const branchLoc = { line: tok.line, col: tok.col };
-    ctx.advance();
-    if (tok.value === "when") {
-      if (!ctx.expect("LPAREN"))
-        break;
-      const condParts = [];
-      while (!ctx.check("RPAREN") && !ctx.check("EOF")) {
-        const t = ctx.peek();
-        if (t.kind !== "IDENT") {
-          ctx.addError(`Expected identifier in condition expression but found '${t.value || t.kind}'`, { line: t.line, col: t.col });
-          break;
-        }
-        condParts.push(t.value);
-        ctx.advance();
-      }
-      if (!ctx.expect("RPAREN"))
-        break;
-      if (condParts.length === 0) {
-        ctx.addError(`'when()' requires a condition expression`, branchLoc);
-      }
-      if (!ctx.expect("LBRACE"))
-        break;
-      const target = parseBranchBody(ctx);
-      if (!ctx.expect("RBRACE"))
-        break;
-      if (target) {
-        branches.push({ condition: condParts.join(" "), target, loc: branchLoc });
-      }
-    } else {
-      if (!ctx.expect("LBRACE"))
-        break;
-      const target = parseBranchBody(ctx);
-      if (!ctx.expect("RBRACE"))
-        break;
-      if (target) {
-        branches.push({ condition: undefined, target, loc: branchLoc });
-      }
-    }
-  }
-  return branches;
-}
 function parsePhaseModifier(ctx) {
   ctx.advance();
   const nameTok = ctx.peek();
@@ -476,12 +395,22 @@ function parsePhaseModifier(ctx) {
       const signalLoc = { line: sigTok.line, col: sigTok.col };
       if (ctx.check("RPAREN")) {
         ctx.advance();
-        if (!ctx.expect("LBRACE"))
+        if (ctx.check("LBRACE")) {
+          ctx.addError(`Block-form .on(${sigTok.value}) { when/otherwise } is not supported. ` + `Use .on(${sigTok.value}, when: cond, to: target) or .on(${sigTok.value}, otherwise, to: target)`, loc);
+          let depth = 1;
+          ctx.advance();
+          while (!ctx.check("EOF") && depth > 0) {
+            if (ctx.check("LBRACE"))
+              depth++;
+            else if (ctx.check("RBRACE"))
+              depth--;
+            ctx.advance();
+          }
           return null;
-        const branches = parseConditionalBranches(ctx);
-        if (!ctx.expect("RBRACE"))
-          return null;
-        return { kind: "conditionalOn", signal: sigTok.value, signalLoc, branches, loc };
+        }
+        const t = ctx.peek();
+        ctx.addError(`Expected ',' after signal name in .on()`, { line: t.line, col: t.col });
+        return null;
       }
       if (!ctx.check("COMMA")) {
         const t = ctx.peek();
@@ -489,12 +418,75 @@ function parsePhaseModifier(ctx) {
         return null;
       }
       ctx.advance();
-      const paramTok = ctx.peek();
-      if (paramTok.kind !== "IDENT" || paramTok.value !== "to" && paramTok.value !== "gate") {
-        ctx.addError(`Expected 'to:' or 'gate:' named parameter in .on() but found '${paramTok.value}'`, { line: paramTok.line, col: paramTok.col });
+      const firstParam = ctx.peek();
+      if (firstParam.kind === "IDENT" && firstParam.value === "when") {
+        ctx.advance();
+        if (!ctx.expect("COLON"))
+          return null;
+        const condParts = [];
+        while (!ctx.check("COMMA") && !ctx.check("RPAREN") && !ctx.check("EOF")) {
+          const t = ctx.peek();
+          if (t.kind !== "IDENT") {
+            ctx.addError(`Expected identifier in condition expression but found '${t.value || t.kind}'`, { line: t.line, col: t.col });
+            break;
+          }
+          condParts.push(t.value);
+          ctx.advance();
+        }
+        if (condParts.length === 0) {
+          ctx.addError(`'when:' requires a condition expression`, loc);
+        }
+        if (!ctx.expect("COMMA"))
+          return null;
+        const p2 = ctx.peek();
+        if (p2.kind !== "IDENT" || p2.value !== "to" && p2.value !== "gate") {
+          ctx.addError(`Expected 'to:' or 'gate:' after condition in .on() but found '${p2.value}'`, { line: p2.line, col: p2.col });
+          return null;
+        }
+        const paramKind2 = p2.value;
+        ctx.advance();
+        if (!ctx.expect("COLON"))
+          return null;
+        const targetTok2 = ctx.peek();
+        if (targetTok2.kind !== "IDENT") {
+          ctx.addError(`Expected ${paramKind2 === "to" ? "phase" : "gate"} name after '${paramKind2}:' but found '${targetTok2.value || targetTok2.kind}'`, { line: targetTok2.line, col: targetTok2.col });
+          return null;
+        }
+        ctx.advance();
+        if (!ctx.expect("RPAREN"))
+          return null;
+        const target2 = paramKind2 === "to" ? { kind: "to", phase: targetTok2.value, phaseLoc: { line: targetTok2.line, col: targetTok2.col } } : { kind: "gate", gate: targetTok2.value, gateLoc: { line: targetTok2.line, col: targetTok2.col } };
+        return { kind: "on", signal: sigTok.value, signalLoc, target: target2, condition: condParts.join(" "), loc };
+      }
+      if (firstParam.kind === "IDENT" && firstParam.value === "otherwise") {
+        ctx.advance();
+        if (!ctx.expect("COMMA"))
+          return null;
+        const p2 = ctx.peek();
+        if (p2.kind !== "IDENT" || p2.value !== "to" && p2.value !== "gate") {
+          ctx.addError(`Expected 'to:' or 'gate:' after 'otherwise' in .on() but found '${p2.value}'`, { line: p2.line, col: p2.col });
+          return null;
+        }
+        const paramKind2 = p2.value;
+        ctx.advance();
+        if (!ctx.expect("COLON"))
+          return null;
+        const targetTok2 = ctx.peek();
+        if (targetTok2.kind !== "IDENT") {
+          ctx.addError(`Expected ${paramKind2 === "to" ? "phase" : "gate"} name after '${paramKind2}:' but found '${targetTok2.value || targetTok2.kind}'`, { line: targetTok2.line, col: targetTok2.col });
+          return null;
+        }
+        ctx.advance();
+        if (!ctx.expect("RPAREN"))
+          return null;
+        const target2 = paramKind2 === "to" ? { kind: "to", phase: targetTok2.value, phaseLoc: { line: targetTok2.line, col: targetTok2.col } } : { kind: "gate", gate: targetTok2.value, gateLoc: { line: targetTok2.line, col: targetTok2.col } };
+        return { kind: "on", signal: sigTok.value, signalLoc, target: target2, isOtherwise: true, loc };
+      }
+      if (firstParam.kind !== "IDENT" || firstParam.value !== "to" && firstParam.value !== "gate") {
+        ctx.addError(`Expected 'to:', 'gate:', 'when: cond, to:', or 'otherwise, to:' in .on() but found '${firstParam.value}'`, { line: firstParam.line, col: firstParam.col });
         return null;
       }
-      const paramKind = paramTok.value;
+      const paramKind = firstParam.value;
       ctx.advance();
       if (!ctx.expect("COLON"))
         return null;
@@ -506,12 +498,7 @@ function parsePhaseModifier(ctx) {
       ctx.advance();
       if (!ctx.expect("RPAREN"))
         return null;
-      let target;
-      if (paramKind === "to") {
-        target = { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } };
-      } else {
-        target = { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } };
-      }
+      const target = paramKind === "to" ? { kind: "to", phase: targetTok.value, phaseLoc: { line: targetTok.line, col: targetTok.col } } : { kind: "gate", gate: targetTok.value, gateLoc: { line: targetTok.line, col: targetTok.col } };
       return { kind: "on", signal: sigTok.value, signalLoc, target, loc };
     }
     case "goalGate": {
@@ -584,6 +571,27 @@ function parsePhaseModifier(ctx) {
         return null;
       const source = typeTok.value === "file" ? { kind: "file", path: strTok.value } : { kind: "inline", text: strTok.value };
       return { kind: "orchestratorContext", source, loc };
+    }
+    case "before":
+    case "after": {
+      const phaseTok = ctx.peek();
+      if (phaseTok.kind !== "IDENT") {
+        ctx.addError(`'.${nameTok.value}()' requires a phase name argument`, { line: phaseTok.line, col: phaseTok.col });
+        while (!ctx.check("RPAREN") && !ctx.check("EOF"))
+          ctx.advance();
+        ctx.advance();
+        return null;
+      }
+      ctx.advance();
+      const phaseLoc = { line: phaseTok.line, col: phaseTok.col };
+      if (!ctx.expect("RPAREN"))
+        return null;
+      return {
+        kind: nameTok.value,
+        phase: phaseTok.value,
+        phaseLoc,
+        loc
+      };
     }
     default:
       while (!ctx.check("RPAREN") && !ctx.check("EOF"))
@@ -1042,6 +1050,17 @@ function validate(ast) {
       }
     }
   }
+  const phasesWithCommand = new Set;
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "command") {
+        phasesWithCommand.add(phase.name);
+      }
+      if (mod.kind === "actions" && mod.actions.some((a) => a.kind === "command")) {
+        phasesWithCommand.add(phase.name);
+      }
+    }
+  }
   for (const phase of ast.phases) {
     const isTerminal = phase.modifiers.some((m) => m.kind === "terminal");
     const declaredSignals = new Set;
@@ -1103,61 +1122,58 @@ function validate(ast) {
           });
         }
       }
+      if (mod.condition !== undefined) {
+        const condIds = mod.condition.split(/\s+/).filter((t) => t !== "and" && t !== "or" && t !== "not" && t !== "");
+        for (const condId of condIds) {
+          if (!KNOWN_CONDITIONS.has(condId)) {
+            errors.push({
+              message: `Unknown condition '${condId}' — will be AI-evaluated at runtime`,
+              loc: mod.loc,
+              severity: "warning"
+            });
+          }
+        }
+      }
     }
+    const conditionalSignals = new Map;
     for (const mod of phase.modifiers) {
-      if (mod.kind !== "conditionalOn")
+      if (mod.kind !== "on")
         continue;
-      if (isTerminal) {
-        errors.push({
-          message: `Terminal phases cannot have outbound transitions`,
-          loc: mod.loc
-        });
-        continue;
+      if (mod.condition !== undefined || mod.isOtherwise) {
+        if (!conditionalSignals.has(mod.signal)) {
+          conditionalSignals.set(mod.signal, { hasOtherwise: false, firstLoc: mod.loc });
+        }
+        if (mod.isOtherwise) {
+          conditionalSignals.get(mod.signal).hasOtherwise = true;
+        }
       }
-      if (!declaredSignals.has(mod.signal)) {
-        const suggestion = didYouMean(mod.signal, declaredSignals);
-        errors.push({
-          message: `Signal '${mod.signal}' not declared for phase '${phase.name}'` + (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-          loc: mod.signalLoc
-        });
-      }
-      const hasOtherwise = mod.branches.some((b) => b.condition === undefined);
-      if (!hasOtherwise) {
+    }
+    for (const [, entry] of conditionalSignals) {
+      if (!entry.hasOtherwise) {
         errors.push({
           message: `Conditional transition requires an 'otherwise' branch`,
-          loc: mod.loc
+          loc: entry.firstLoc
         });
       }
-      for (const branch of mod.branches) {
-        if (branch.condition !== undefined) {
-          const condIds = branch.condition.split(/\s+/).filter((t) => t !== "and" && t !== "or" && t !== "");
-          for (const condId of condIds) {
-            if (!KNOWN_CONDITIONS.has(condId)) {
-              errors.push({
-                message: `Unknown condition '${condId}' — will be AI-evaluated at runtime`,
-                loc: branch.loc,
-                severity: "warning"
-              });
-            }
-          }
-        }
-        if (branch.target.kind === "to") {
-          if (!phaseNames.has(branch.target.phase)) {
-            const suggestion = didYouMean(branch.target.phase, phaseNames);
-            errors.push({
-              message: `Phase '${branch.target.phase}' not declared` + (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-              loc: branch.target.phaseLoc
-            });
-          }
-        } else if (branch.target.kind === "gate") {
-          if (!gateNames.has(branch.target.gate)) {
-            const suggestion = didYouMean(branch.target.gate, gateNames);
-            errors.push({
-              message: `Gate '${branch.target.gate}' not declared` + (suggestion ? `. Did you mean '${suggestion}'?` : ""),
-              loc: branch.target.gateLoc
-            });
-          }
-        }
+    }
+  }
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind !== "before" && mod.kind !== "after")
+        continue;
+      if (!phaseNames.has(mod.phase)) {
+        const suggestion = didYouMean(mod.phase, phaseNames);
+        errors.push({
+          message: `Phase '${mod.phase}' not declared (in .${mod.kind}())` + (suggestion ? `. Did you mean '${suggestion}'?` : ""),
+          loc: mod.phaseLoc
+        });
+        continue;
+      }
+      if (!phasesWithCommand.has(mod.phase)) {
+        errors.push({
+          message: `Phase '${mod.phase}' has no .command() or .actions{} block — hook phases must be dispatchable`,
+          loc: mod.phaseLoc
+        });
       }
     }
   }
@@ -1169,16 +1185,25 @@ function validate(ast) {
       if (mod.kind === "on" && mod.target.kind === "to") {
         cycleEdges.get(phase.name).push(mod.target.phase);
       }
-      if (mod.kind === "conditionalOn") {
-        for (const branch of mod.branches) {
-          if (branch.target.kind === "to") {
-            cycleEdges.get(phase.name).push(branch.target.phase);
-          }
-        }
-      }
     }
   }
   detectCycles(ast.phases, cycleEdges, errors);
+  const hookEdges = new Map;
+  for (const p of ast.phases)
+    hookEdges.set(p.name, []);
+  for (const phase of ast.phases) {
+    for (const mod of phase.modifiers) {
+      if (mod.kind === "before" && phaseNames.has(mod.phase)) {
+        hookEdges.get(phase.name).push(mod.phase);
+      }
+      if (mod.kind === "after" && phaseNames.has(mod.phase)) {
+        const existing = hookEdges.get(mod.phase);
+        if (existing)
+          existing.push(phase.name);
+      }
+    }
+  }
+  detectCycles(ast.phases, hookEdges, errors);
   return errors;
 }
 
@@ -1290,15 +1315,6 @@ function buildSymbolTable(ast) {
           references.push({ name: mod.target.phase, kind: "phase", loc: mod.target.phaseLoc });
         } else {
           references.push({ name: mod.target.gate, kind: "gate", loc: mod.target.gateLoc });
-        }
-      } else if (mod.kind === "conditionalOn") {
-        references.push({ name: mod.signal, kind: "signal", loc: mod.signalLoc });
-        for (const branch of mod.branches) {
-          if (branch.target.kind === "to") {
-            references.push({ name: branch.target.phase, kind: "phase", loc: branch.target.phaseLoc });
-          } else {
-            references.push({ name: branch.target.gate, kind: "gate", loc: branch.target.gateLoc });
-          }
         }
       }
     }
@@ -1436,7 +1452,9 @@ var PHASE_MODIFIERS = [
   "model",
   "goalGate",
   "orchestratorContext",
-  "actions"
+  "actions",
+  "before",
+  "after"
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Phase modifier" }));
 var GATE_MODIFIERS = [
   "prompt",
@@ -1453,6 +1471,12 @@ var GOAL_GATE_VALUES = ["always", "ifTriggered"].map((label) => ({
   kind: CompletionItemKind.EnumMember,
   detail: "GoalGate value"
 }));
+var ON_NAMED_ARGS = [
+  { label: "when", kind: CompletionItemKind.Keyword, detail: "Conditional branch (when: cond, to: target)" },
+  { label: "otherwise", kind: CompletionItemKind.Keyword, detail: "Otherwise branch (otherwise, to: target)" },
+  { label: "to", kind: CompletionItemKind.Keyword, detail: "Phase target" },
+  { label: "gate", kind: CompletionItemKind.Keyword, detail: "Gate target" }
+];
 var FEEDBACK_VALUES = ["enrich", "raw"].map((label) => ({
   label,
   kind: CompletionItemKind.EnumMember
@@ -1525,7 +1549,7 @@ function getCompletions(text, pos) {
     const inGate = /\bgate\s*\([^)]+\)[^{]*$/.test(allLines.replace(/\/\/[^\n]*/g, "").replace(/#[^\n]*/g, ""));
     return inGate ? GATE_MODIFIERS : PHASE_MODIFIERS;
   }
-  if (/\bto\s*:\s*\w*$/.test(prefix) || /\bto\s*=\s*\w*$/.test(prefix)) {
+  if (/\bto\s*:\s*\w*$/.test(prefix)) {
     return phaseNames(text);
   }
   if (/\bgate\s*:\s*\w*$/.test(prefix) || /to\s*=\s*gate\s*\(\s*\w*$/.test(prefix)) {
@@ -1533,6 +1557,19 @@ function getCompletions(text, pos) {
   }
   if (/\.(model|defaultModel)\s*\(\s*\w*$/.test(prefix) || /@defaultModel\s*\(\s*\w*$/.test(prefix)) {
     return MODEL_VALUES;
+  }
+  if (/\.(before|after)\s*\(\s*\w*$/.test(prefix)) {
+    return phaseNames(text);
+  }
+  if (/\bwhen\s*:\s*\w*$/.test(prefix)) {
+    return [...KNOWN_CONDITIONS].map((c) => ({
+      label: c,
+      kind: CompletionItemKind.EnumMember,
+      detail: "Known condition"
+    }));
+  }
+  if (/\.on\s*\([A-Z_][A-Z0-9_]*\s*,\s*\w*$/.test(prefix)) {
+    return ON_NAMED_ARGS;
   }
   if (/\.on\s*\(\s*\w*$/.test(prefix)) {
     return signalNames(text);
