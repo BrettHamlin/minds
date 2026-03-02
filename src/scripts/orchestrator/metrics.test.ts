@@ -5,6 +5,9 @@ import {
   ensureRun,
   recordPhase,
   completeRun,
+  insertGate,
+  insertSignal,
+  insertIntervention,
 } from "../../lib/pipeline/metrics";
 
 // ============================================================================
@@ -307,5 +310,168 @@ describe("completeRun", () => {
     expect(() =>
       completeRun(db, "BRE-NONEXISTENT", "2026-01-01T00:00:00.000Z", "success")
     ).not.toThrow();
+  });
+});
+
+// ============================================================================
+// insertGate
+// ============================================================================
+
+describe("insertGate", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = openInMemoryMetricsDb();
+    ensureRun(db, "BRE-100");
+  });
+
+  test("inserts gate row and returns id", () => {
+    const id = insertGate(db, "BRE-100", "plan-review", "pass");
+    expect(typeof id).toBe("string");
+    expect(id.length).toBeGreaterThan(0);
+
+    const row = db.query("SELECT * FROM gates WHERE id = ?").get(id) as any;
+    expect(row).not.toBeNull();
+    expect(row.run_id).toBe("BRE-100");
+    expect(row.gate).toBe("plan-review");
+    expect(row.decision).toBe("pass");
+  });
+
+  test("stores reasoning when provided", () => {
+    const id = insertGate(db, "BRE-100", "plan-review", "fail", "AC3 not covered");
+    const row = db.query("SELECT reasoning FROM gates WHERE id = ?").get(id) as any;
+    expect(row.reasoning).toBe("AC3 not covered");
+  });
+
+  test("reasoning is null when not provided", () => {
+    const id = insertGate(db, "BRE-100", "plan-review", "pass");
+    const row = db.query("SELECT reasoning FROM gates WHERE id = ?").get(id) as any;
+    expect(row.reasoning).toBeNull();
+  });
+
+  test("each call generates a unique id", () => {
+    const id1 = insertGate(db, "BRE-100", "plan-review", "pass");
+    const id2 = insertGate(db, "BRE-100", "plan-review", "pass");
+    expect(id1).not.toBe(id2);
+  });
+});
+
+// ============================================================================
+// insertSignal
+// ============================================================================
+
+describe("insertSignal", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = openInMemoryMetricsDb();
+    ensureRun(db, "BRE-100");
+  });
+
+  test("inserts signal row and returns id", () => {
+    const id = insertSignal(db, "BRE-100", "[SIGNAL:PLAN_COMPLETE]", true);
+    expect(typeof id).toBe("string");
+
+    const row = db.query("SELECT * FROM signals WHERE id = ?").get(id) as any;
+    expect(row).not.toBeNull();
+    expect(row.run_id).toBe("BRE-100");
+    expect(row.raw).toBe("[SIGNAL:PLAN_COMPLETE]");
+    expect(row.parsed_ok).toBe(1);
+  });
+
+  test("stores parsedOk=false as 0", () => {
+    const id = insertSignal(db, "BRE-100", "garbage", false, { error: "parse error" });
+    const row = db.query("SELECT parsed_ok, error FROM signals WHERE id = ?").get(id) as any;
+    expect(row.parsed_ok).toBe(0);
+    expect(row.error).toBe("parse error");
+  });
+
+  test("stores optional fields when provided", () => {
+    const id = insertSignal(db, "BRE-100", "[SIGNAL:PLAN_COMPLETE]", true, {
+      signalType: "PLAN_COMPLETE",
+      phase: "plan",
+      emittedAt: "2026-01-01T00:00:00.000Z",
+      processedAt: "2026-01-01T00:00:01.000Z",
+      latencyMs: 1000,
+    });
+    const row = db.query("SELECT * FROM signals WHERE id = ?").get(id) as any;
+    expect(row.signal_type).toBe("PLAN_COMPLETE");
+    expect(row.phase).toBe("plan");
+    expect(row.emitted_at).toBe("2026-01-01T00:00:00.000Z");
+    expect(row.processed_at).toBe("2026-01-01T00:00:01.000Z");
+    expect(row.latency_ms).toBe(1000);
+  });
+
+  test("emitted_at defaults to now when not provided", () => {
+    const before = new Date().toISOString();
+    const id = insertSignal(db, "BRE-100", "[SIGNAL:PLAN_COMPLETE]", true);
+    const after = new Date().toISOString();
+    const row = db.query("SELECT emitted_at FROM signals WHERE id = ?").get(id) as any;
+    expect(row.emitted_at >= before).toBe(true);
+    expect(row.emitted_at <= after).toBe(true);
+  });
+
+  test("each call generates a unique id", () => {
+    const id1 = insertSignal(db, "BRE-100", "[SIGNAL:PLAN_COMPLETE]", true);
+    const id2 = insertSignal(db, "BRE-100", "[SIGNAL:PLAN_COMPLETE]", true);
+    expect(id1).not.toBe(id2);
+  });
+});
+
+// ============================================================================
+// insertIntervention
+// ============================================================================
+
+describe("insertIntervention", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = openInMemoryMetricsDb();
+    ensureRun(db, "BRE-100");
+  });
+
+  test("inserts intervention row and returns id", () => {
+    const id = insertIntervention(db, "BRE-100", "plan", "human-edit");
+    expect(typeof id).toBe("string");
+
+    const row = db.query("SELECT * FROM interventions WHERE id = ?").get(id) as any;
+    expect(row).not.toBeNull();
+    expect(row.run_id).toBe("BRE-100");
+    expect(row.phase).toBe("plan");
+    expect(row.type).toBe("human-edit");
+    expect(row.occurred_at).toBeDefined();
+  });
+
+  test("stores description when provided", () => {
+    const id = insertIntervention(db, "BRE-100", "implement", "correction", "Fixed wrong file path");
+    const row = db.query("SELECT description FROM interventions WHERE id = ?").get(id) as any;
+    expect(row.description).toBe("Fixed wrong file path");
+  });
+
+  test("description is null when not provided", () => {
+    const id = insertIntervention(db, "BRE-100", "plan", "human-edit");
+    const row = db.query("SELECT description FROM interventions WHERE id = ?").get(id) as any;
+    expect(row.description).toBeNull();
+  });
+
+  test("phase can be null", () => {
+    const id = insertIntervention(db, "BRE-100", null, "abort");
+    const row = db.query("SELECT phase FROM interventions WHERE id = ?").get(id) as any;
+    expect(row.phase).toBeNull();
+  });
+
+  test("occurred_at is set automatically", () => {
+    const before = new Date().toISOString();
+    const id = insertIntervention(db, "BRE-100", "plan", "human-edit");
+    const after = new Date().toISOString();
+    const row = db.query("SELECT occurred_at FROM interventions WHERE id = ?").get(id) as any;
+    expect(row.occurred_at >= before).toBe(true);
+    expect(row.occurred_at <= after).toBe(true);
+  });
+
+  test("each call generates a unique id", () => {
+    const id1 = insertIntervention(db, "BRE-100", "plan", "human-edit");
+    const id2 = insertIntervention(db, "BRE-100", "plan", "human-edit");
+    expect(id1).not.toBe(id2);
   });
 });

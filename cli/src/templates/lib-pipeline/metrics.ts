@@ -66,12 +66,12 @@ CREATE TABLE IF NOT EXISTS gates (
 CREATE TABLE IF NOT EXISTS signals (
   id           TEXT PRIMARY KEY,
   run_id       TEXT NOT NULL,
-  raw          TEXT,
-  parsed_ok    INTEGER,
+  raw          TEXT NOT NULL,
+  parsed_ok    INTEGER NOT NULL,
   error        TEXT,
   signal_type  TEXT,
   phase        TEXT,
-  emitted_at   TEXT,
+  emitted_at   TEXT NOT NULL,
   processed_at TEXT,
   latency_ms   INTEGER,
   FOREIGN KEY (run_id) REFERENCES runs(id)
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS interventions (
   id          TEXT PRIMARY KEY,
   run_id      TEXT NOT NULL,
   phase       TEXT,
-  type        TEXT,
+  type        TEXT NOT NULL,
   description TEXT,
   occurred_at TEXT NOT NULL,
   FOREIGN KEY (run_id) REFERENCES runs(id)
@@ -184,6 +184,88 @@ export function completeRun(
       `UPDATE runs SET completed_at = ?, duration_ms = ?, outcome = ? WHERE id = ?`
     )
     .run(completedAt, durationMs, outcome, runId);
+}
+
+// ============================================================================
+// Gate, Signal, Intervention Inserts
+// ============================================================================
+
+/**
+ * Insert a gate evaluation record. Returns the generated id.
+ */
+export function insertGate(
+  db: Database,
+  runId: string,
+  gate: string,
+  decision: string,
+  reasoning?: string | null
+): string {
+  const id = crypto.randomUUID();
+  db
+    .query(
+      `INSERT INTO gates (id, run_id, gate, decision, reasoning) VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(id, runId, gate, decision, reasoning ?? null);
+  return id;
+}
+
+/**
+ * Insert a signal record. Returns the generated id.
+ * emitted_at defaults to now if not provided (column is NOT NULL).
+ */
+export function insertSignal(
+  db: Database,
+  runId: string,
+  raw: string,
+  parsedOk: boolean,
+  fields?: {
+    error?: string;
+    signalType?: string;
+    phase?: string;
+    emittedAt?: string;
+    processedAt?: string;
+    latencyMs?: number;
+  }
+): string {
+  const id = crypto.randomUUID();
+  db
+    .query(
+      `INSERT INTO signals (id, run_id, raw, parsed_ok, error, signal_type, phase, emitted_at, processed_at, latency_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      id,
+      runId,
+      raw,
+      parsedOk ? 1 : 0,
+      fields?.error ?? null,
+      fields?.signalType ?? null,
+      fields?.phase ?? null,
+      fields?.emittedAt ?? new Date().toISOString(),
+      fields?.processedAt ?? null,
+      fields?.latencyMs ?? null
+    );
+  return id;
+}
+
+/**
+ * Insert an intervention record. Returns the generated id.
+ */
+export function insertIntervention(
+  db: Database,
+  runId: string,
+  phase: string | null,
+  type: string,
+  description?: string | null
+): string {
+  const id = crypto.randomUUID();
+  db
+    .query(
+      `INSERT INTO interventions (id, run_id, phase, type, description, occurred_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(id, runId, phase, type, description ?? null, new Date().toISOString());
+  return id;
 }
 
 // ============================================================================
