@@ -14,6 +14,8 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 `$ARGUMENTS` = ticket ID and pipeline name (e.g., `BRE-168 --pipeline mobile`). The `--pipeline` flag is required.
 
+Parse `$ARGUMENTS`: extract `TICKET_ID` (first word) and `PIPELINE_NAME` (value after `--pipeline`). Use `TICKET_ID` (not `$ARGUMENTS`) in all script calls below.
+
 ---
 
 ## Pipeline Initialization (Steps 0–5)
@@ -63,11 +65,11 @@ Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> ou
 
 ```bash
 FIRST_PHASE=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts --first)
-bun .collab/scripts/orchestrator/commands/phase-dispatch.ts $ARGUMENTS "$FIRST_PHASE"
+bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {TICKET_ID} "$FIRST_PHASE"
 ```
 
-`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for $ARGUMENTS. Waiting for signal..."** **END RESPONSE.**
-`.collab/scripts/webhook-notify.sh $ARGUMENTS none clarify started`
+`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for {TICKET_ID}. Waiting for signal..."** **END RESPONSE.**
+`.collab/scripts/webhook-notify.sh {TICKET_ID} none clarify started`
 
 ---
 
