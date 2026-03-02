@@ -16,7 +16,7 @@
  *   4. Always exit 0 — never block the UI
  */
 
-import { readdirSync, readFileSync } from "fs";
+import { readdirSync, readFileSync, mkdirSync, writeFileSync, renameSync } from "fs";
 import { join } from "path";
 import { $ } from "bun";
 
@@ -49,6 +49,14 @@ async function main() {
 
         const signalType = `${current_step.toUpperCase()}_QUESTION`;
         const signal = `[SIGNAL:${ticket_id}:${nonce}] ${signalType} | agent awaiting input`;
+
+        // Persist signal to queue before tmux send (survives orchestrator context compaction)
+        const queueDir = join(REGISTRY_DIR, "..", "signal-queue");
+        mkdirSync(queueDir, { recursive: true });
+        const queueFile = join(queueDir, `${ticket_id}.json`);
+        const queueTmp = `${queueFile}.tmp`;
+        writeFileSync(queueTmp, JSON.stringify({ signal, emitted_at: new Date().toISOString() }, null, 2) + "\n");
+        renameSync(queueTmp, queueFile);
 
         // Two separate calls required — Claude Code ignores \n (Enter) but responds to \r (C-m).
         // Must wait 1s between text arrival and C-m so the target app processes the text first.

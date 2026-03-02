@@ -17,7 +17,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 Whenever you have **finished all analysis work for this phase**, run:
 
 ```bash
-.collab/scripts/verify-and-complete.sh analyze "Analysis phase finished"
+bun .collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"
 ```
 
 This verification script will automatically emit the completion signal to the orchestrator.
@@ -179,7 +179,7 @@ At end of report, output a concise Next Actions block:
 Run the verification script to automatically emit the completion signal:
 
 ```bash
-.collab/scripts/verify-and-complete.sh analyze "Analysis phase finished"
+bun .collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"
 ```
 
 This script automatically emits the ANALYZE_COMPLETE signal to the orchestrator.
@@ -193,7 +193,7 @@ This script automatically emits the ANALYZE_COMPLETE signal to the orchestrator.
 When the orchestrator sends remediation instructions, apply all directed changes to the appropriate files (plan.md, tasks.md, spec.md, or other artifacts as specified). Do not ask for confirmation — the orchestrator's instructions are authoritative. Once all changes are applied, re-run the verification script:
 
 ```bash
-.collab/scripts/verify-and-complete.sh analyze "Analysis phase finished"
+bun .collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"
 ```
 
 ## Operating Principles

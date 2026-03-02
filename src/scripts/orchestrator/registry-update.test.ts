@@ -7,6 +7,8 @@ import {
   applyUpdates,
   appendPhaseHistory,
   parseFieldValue,
+  advanceImplPhase,
+  deleteField,
 } from "./registry-update";
 import { openMetricsDb } from "../../lib/pipeline/metrics";
 
@@ -491,5 +493,115 @@ describe("registry-update integration (SQLite + JSON)", () => {
     expect(intervention).not.toBeNull();
     expect(intervention.type).toBe("manual_fix");
     expect(intervention.phase).toBe("impl");
+  });
+});
+
+// ============================================================================
+// parseFieldValue — JSON value support
+// ============================================================================
+
+describe("parseFieldValue — JSON values", () => {
+  test("parses JSON object value", () => {
+    const result = parseFieldValue('implement_phase_plan={"total_phases":3,"current_impl_phase":1,"phase_names":[],"completed_impl_phases":[]}');
+    expect(result).not.toBeNull();
+    expect(result!.field).toBe("implement_phase_plan");
+    expect(typeof result!.value).toBe("object");
+    expect((result!.value as any).total_phases).toBe(3);
+  });
+
+  test("parses JSON array value", () => {
+    const result = parseFieldValue("waiting_for=[\"BRE-100\",\"BRE-101\"]");
+    expect(result).not.toBeNull();
+    expect(Array.isArray(result!.value)).toBe(true);
+  });
+
+  test("falls back to string for invalid JSON starting with {", () => {
+    const result = parseFieldValue("status={not-valid-json");
+    expect(result).not.toBeNull();
+    expect(typeof result!.value).toBe("string");
+    expect(result!.value).toBe("{not-valid-json");
+  });
+});
+
+// ============================================================================
+// advanceImplPhase
+// ============================================================================
+
+describe("advanceImplPhase", () => {
+  const basePlan = {
+    total_phases: 3,
+    current_impl_phase: 1,
+    phase_names: ["Phase 1", "Phase 2", "Phase 3"],
+    completed_impl_phases: [],
+  };
+
+  test("appends current phase to completed and increments current", () => {
+    const registry = { ticket_id: "BRE-100", implement_phase_plan: { ...basePlan } };
+    const result = advanceImplPhase(registry);
+    const plan = result.implement_phase_plan;
+    expect(plan.current_impl_phase).toBe(2);
+    expect(plan.completed_impl_phases).toEqual([1]);
+  });
+
+  test("advances from phase 2 to 3", () => {
+    const registry = {
+      ticket_id: "BRE-100",
+      implement_phase_plan: { ...basePlan, current_impl_phase: 2, completed_impl_phases: [1] },
+    };
+    const result = advanceImplPhase(registry);
+    expect(result.implement_phase_plan.current_impl_phase).toBe(3);
+    expect(result.implement_phase_plan.completed_impl_phases).toEqual([1, 2]);
+  });
+
+  test("throws when no implement_phase_plan", () => {
+    const registry = { ticket_id: "BRE-100" };
+    expect(() => advanceImplPhase(registry)).toThrow("No implement_phase_plan");
+  });
+
+  test("does not mutate original registry", () => {
+    const plan = { ...basePlan };
+    const registry = { ticket_id: "BRE-100", implement_phase_plan: plan };
+    advanceImplPhase(registry);
+    expect(registry.implement_phase_plan.current_impl_phase).toBe(1);
+    expect(registry.implement_phase_plan.completed_impl_phases).toEqual([]);
+  });
+
+  test("sets updated_at timestamp", () => {
+    const registry = { ticket_id: "BRE-100", implement_phase_plan: { ...basePlan } };
+    const result = advanceImplPhase(registry);
+    expect(result.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  });
+});
+
+// ============================================================================
+// deleteField
+// ============================================================================
+
+describe("deleteField", () => {
+  test("removes the specified field", () => {
+    const registry = { ticket_id: "BRE-100", implement_phase_plan: { total_phases: 3 }, status: "running" };
+    const result = deleteField(registry, "implement_phase_plan");
+    expect(result.implement_phase_plan).toBeUndefined();
+    expect(result.status).toBe("running");
+    expect(result.ticket_id).toBe("BRE-100");
+  });
+
+  test("no-ops when field does not exist", () => {
+    const registry = { ticket_id: "BRE-100", status: "running" };
+    const result = deleteField(registry, "implement_phase_plan");
+    expect(result.implement_phase_plan).toBeUndefined();
+    expect(result.status).toBe("running");
+  });
+
+  test("sets updated_at timestamp", () => {
+    const registry = { ticket_id: "BRE-100", foo: "bar" };
+    const result = deleteField(registry, "foo");
+    expect(result.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  });
+
+  test("does not mutate original registry", () => {
+    const registry = { ticket_id: "BRE-100", implement_phase_plan: { total_phases: 3 } };
+    deleteField(registry, "implement_phase_plan");
+    expect(registry.implement_phase_plan).toBeDefined();
   });
 });

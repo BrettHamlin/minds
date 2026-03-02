@@ -4,7 +4,7 @@ description: Orchestrate the full relay pipeline by spawning agent panes and pro
 
 # Split-Pane Pipeline Orchestrator
 
-You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Code agents in tmux split panes and processing signal responses. Max 5 concurrent agents.
+You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Code agents in tmux split panes and processing signal responses.
 
 **Scripts Directory**: `.collab/scripts/orchestrator`
 **Phase progression and commands**: driven entirely by the selected pipeline config (e.g., `.collab/config/pipeline.mobile.json`)
@@ -12,70 +12,127 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 ## Arguments
 
-`$ARGUMENTS` = ticket ID and pipeline name (e.g., `BRE-168 --pipeline mobile`). The `--pipeline` flag is required.
+`$ARGUMENTS` = one or more `ticket:pipeline` pairs (e.g., `BRE-342:default BRE-341:mobile`). The `:pipeline` suffix is optional and defaults to `"default"` when omitted.
 
 ### Parse Arguments
 
 Extract from `$ARGUMENTS`:
-- **TICKET_ID**: first positional argument (e.g., `BRE-339`)
-- **PIPELINE_NAME**: value after `--pipeline` flag (e.g., `default`), defaults to `"default"` if omitted
+- **TICKETS**: array of `{ticket_id, pipeline}` objects parsed from each space-separated token.
+  - Token `BRE-342:default` → `{ticket_id: "BRE-342", pipeline: "default"}`
+  - Token `BRE-341:mobile` → `{ticket_id: "BRE-341", pipeline: "mobile"}`
+  - Token `BRE-339` (no colon) → `{ticket_id: "BRE-339", pipeline: "default"}`
+- At least one token is required.
 
-Use `TICKET_ID` (not raw `$ARGUMENTS`) in all bun script calls throughout this document.
+Use `{TICKET_ID}` and `{PIPELINE[TICKET_ID]}` (the per-ticket pipeline name) in all bun script calls. Never use a single shared pipeline name across all tickets.
 
 ---
 
-## Pipeline Initialization (Steps 0–5)
+## Pipeline Initialization
 
-**ALL SIX STEPS MUST EXECUTE IN YOUR FIRST RESPONSE. Your response is not complete until step 5 outputs "Pipeline started."**
+**ALL STEPS MUST EXECUTE IN YOUR FIRST RESPONSE. Your response is not complete until the Launch step outputs "Pipeline started."**
 
-### 0. Execute Specification
+### 1. Crash Recovery (run once)
 
-Before spawning the orchestrator, run specify to create the specification:
+Scan `.collab/state/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun .collab/scripts/orchestrator/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `bun .collab/scripts/orchestrator/commands/status-table.ts`, output "Recovered N agent(s)." **END RESPONSE.**
+
+### 2. Validate (run once)
+
+No arguments -> "Usage: /collab.run <ticket[:pipeline]> [ticket[:pipeline] ...] — e.g. BRE-342:default BRE-341:mobile" and stop.
+
+### 3. Per-Ticket Setup Loop
+
+**For EACH ticket ID in TICKET_IDS**, run steps 3a–3d in order before moving to the next ticket.
+
+#### 3a. Resolve SOURCE_REPO (AI)
+
+*AI LOGIC: Read two JSON files to resolve the source repo path before spawning anything.*
+
+If `.collab/config/multi-repo.json` exists:
+1. Read `specs/{TICKET_ID}/metadata.json` and extract `repo_id` (if present).
+2. If `repo_id` found, read `.collab/config/multi-repo.json` and look up `repos[repo_id].path`.
+3. Store as `SOURCE_REPO[TICKET_ID]` for use in step 3b.
+
+If either file is missing or `repo_id` is absent, `SOURCE_REPO[TICKET_ID]` is unset.
+
+#### 3b. Execute Specification
+
+Run specify to create the specification (and worktree, if needed) before the agent pane spawns:
 
 ```
-Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `$ARGUMENTS` as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
+If SOURCE_REPO[TICKET_ID] is set:
+  Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]} --source-repo {SOURCE_REPO[TICKET_ID]}` as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
+
+Otherwise:
+  Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]}` as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
 ```
 
 This reads the specify instructions and executes them inline — do NOT use the Skill tool.
 
-### 0.5 Continuation checkpoint
+#### 3b.1 Update metadata.json with worktree_path (AI)
+
+*AI LOGIC: Capture the worktree path from specify output and persist it so orchestrator-init.ts can find it.*
+
+After specify completes, scan the output above for a line matching:
+`[specify] Created worktree at <path>`
+
+If found:
+1. Read `specs/{TICKET_ID}/metadata.json` (it already contains `ticket_id` and possibly `repo_id`).
+2. Add or update the `worktree_path` field with the path extracted from the line above.
+3. Write the updated JSON back to `specs/{TICKET_ID}/metadata.json`.
+
+If no such line was found (worktree already existed or specify skipped creation), do nothing — the existing `worktree_path` value (if any) is correct.
+
+#### 3c. Continuation checkpoint
 
 ```bash
-echo "SPECIFY_COMPLETE — continuing initialization"
+echo "SPECIFY_COMPLETE {TICKET_ID} — continuing initialization"
 ```
 
-You MUST run this command after specify completes. DO NOT output any text to the user until step 5.
+You MUST run this command after specify completes for this ticket.
 
-### 1. Crash Recovery
-
-Scan `.collab/state/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun .collab/scripts/orchestrator/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `bun .collab/scripts/orchestrator/commands/status-table.ts`, output "Recovered N agent(s)." **END RESPONSE.**
-
-### 2. Validate
-
-No argument -> "Usage: /collab.run <ticket-id>" and stop.
-
-### 3. Initialize (deterministic)
+#### 3d. Initialize (deterministic)
 
 ```bash
-bun .collab/scripts/orchestrator/commands/orchestrator-init.ts $ARGUMENTS
+bun .collab/scripts/orchestrator/commands/orchestrator-init.ts {TICKET_ID} --pipeline {PIPELINE[TICKET_ID]}
 ```
-Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`. Non-zero exit -> output error, stop.
+Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`, optionally `SOURCE_REPO=...`. Non-zero exit -> output error, stop.
+Store `AGENT_PANE[TICKET_ID]`, `NONCE[TICKET_ID]`, `REGISTRY[TICKET_ID]` for use in later steps.
 
-**Multi-repo detection (AI, after init):** If `.collab/config/multi-repo.json` exists, log "Multi-repo mode active." The registry will contain `repo_id` and `repo_path` fields for this ticket. Signal validation and phase dispatch will automatically route to the per-repo pipeline.json.
+**Pane layout:** First ticket splits the orchestrator pane side-by-side (orchestrator left, agent right). Each subsequent ticket's agent pane is stacked below the previous — all agents remain on the right. This is handled automatically by orchestrator-init.ts.
 
-### 4. Fetch Linear ticket
+**Multi-repo detection:** If `SOURCE_REPO` was emitted, log "Multi-repo mode active for {TICKET_ID}: {SOURCE_REPO}."
 
-`get_issue` MCP with `includeRelations: true`. Store for later use (ticket title, acceptance criteria, description needed for gate evaluation).
+### 4. Fetch Linear tickets (loop)
 
-### 5. Launch
+For EACH ticket ID in TICKET_IDS: call `get_issue` MCP with `includeRelations: true`. Store ticket data (title, acceptance criteria, description) keyed by ticket ID for gate evaluation.
 
+### 5. Launch (loop)
+
+For EACH ticket ID in TICKET_IDS:
 ```bash
 FIRST_PHASE=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts --first)
 bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {TICKET_ID} "$FIRST_PHASE"
 ```
 
-`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for {TICKET_ID}. Waiting for signal..."** **END RESPONSE.**
-`.collab/scripts/webhook-notify.sh {TICKET_ID} none clarify started`
+`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for {N} ticket(s): {TICKET_IDS joined by ', '}. Waiting for signals..."** **END RESPONSE.**
+For EACH ticket ID: `.collab/scripts/webhook-notify.sh {TICKET_ID} none clarify started`
+
+---
+
+## Signal Queue Check (run at the start of EVERY response)
+
+Before routing any input, check `.collab/state/signal-queue/` for pending signals that may have been missed due to context compaction:
+
+```bash
+ls .collab/state/signal-queue/*.json 2>/dev/null
+```
+
+For each file found:
+1. Read the file: `cat .collab/state/signal-queue/{ticket_id}.json` — extract the `signal` field.
+2. Process the signal through **Signal Processing** below exactly as if it had arrived via tmux.
+3. Delete the file after processing: `rm .collab/state/signal-queue/{ticket_id}.json`
+
+Then proceed to Input Routing for the current input.
 
 ---
 
@@ -158,9 +215,7 @@ If `current_step == implement`:
 - Compute `next_phase = current_impl_phase + 1`
 - Update registry to advance the plan:
   ```bash
-  REGFILE=".collab/state/pipeline-registry/{ticket_id}.json"
-  jq '.implement_phase_plan.completed_impl_phases += [.implement_phase_plan.current_impl_phase] | .implement_phase_plan.current_impl_phase += 1' \
-    "$REGFILE" > /tmp/_impl_upd.json && mv /tmp/_impl_upd.json "$REGFILE"
+  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --advance-impl-phase
   ```
 - Re-dispatch implement for the next phase:
   ```bash
@@ -171,8 +226,7 @@ If `current_step == implement`:
 **If `implement_phase_plan` exists AND `current_impl_phase == total_phases`** (all phases done):
 - Remove the plan from registry:
   ```bash
-  REGFILE=".collab/state/pipeline-registry/{ticket_id}.json"
-  jq 'del(.implement_phase_plan)' "$REGFILE" > /tmp/_impl_done.json && mv /tmp/_impl_done.json "$REGFILE"
+  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field implement_phase_plan
   ```
 - Proceed to step b (normal `_COMPLETE` flow).
 
@@ -192,32 +246,22 @@ Only runs when **all** of the following are true:
 
 Procedure:
 
-1. Read global `codeReview` from `.collab/config/pipeline.json`:
+1. Read global and per-phase code review config:
    ```bash
-   PIPELINE=$(cat .collab/config/pipeline.json)
-   CR_ENABLED=$(echo "$PIPELINE" | jq -r '.codeReview.enabled // true')
+   eval "$(bun .collab/scripts/orchestrator/commands/pipeline-config-read.ts codereview --phase {current_step})"
    ```
+   This sets `CR_ENABLED`, `CR_MODEL`, `CR_MAX`, `CR_FILE`, and `PHASE_CR` from `.collab/config/pipeline.json`.
    If `CR_ENABLED == "false"`: skip to step b.
 
 2. Check per-phase override:
-   ```bash
-   PHASE_CR=$(echo "$PIPELINE" | jq -r --arg p "{current_step}" '.phases[$p].codeReview.enabled // "inherit"')
-   ```
    If `PHASE_CR == "false"`: skip to step b.
 
-3. Read review config with defaults:
+3. Read current attempt count from registry:
    ```bash
-   CR_MODEL=$(echo "$PIPELINE" | jq -r '.codeReview.model // "claude-opus-4-6"')
-   CR_MAX=$(echo "$PIPELINE" | jq -r '.codeReview.maxAttempts // 3')
-   CR_FILE=$(echo "$PIPELINE" | jq -r '.codeReview.file // empty')
+   CR_ATTEMPTS=$(bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id} --field code_review_attempts --default 0)
    ```
 
-4. Read current attempt count from registry:
-   ```bash
-   CR_ATTEMPTS=$(bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id} | jq -r '.code_review_attempts // 0')
-   ```
-
-5. Check exhaustion:
+4. Check exhaustion:
    If `CR_ATTEMPTS >= CR_MAX`:
    ```
    "Code review for {ticket_id} exhausted {CR_MAX} attempt(s). Manual review required before advancing."
@@ -225,18 +269,18 @@ Procedure:
    Update registry: `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=blocked`
    `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
 
-6. Increment attempt count:
+5. Increment attempt count:
    ```bash
    NEW_ATTEMPTS=$((CR_ATTEMPTS + 1))
    bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=$NEW_ATTEMPTS
    ```
 
-7. Run code review inline (do NOT use the Skill tool):
+6. Run code review inline (do NOT use the Skill tool):
    Read the file `.claude/commands/collab.codeReview.md` and execute all its instructions inline with `{ticket_id}$([ -n "$CR_FILE" ] && echo " --arch $CR_FILE" || echo "")` as the arguments.
    Do NOT invoke it as `/collab.codeReview` — read the file contents and execute the instructions within this response.
    Parse the output for `REVIEW: PASS` or `REVIEW: FAIL`.
 
-8. Handle verdict:
+7. Handle verdict:
    - **PASS**: Reset attempt count:
      ```bash
      bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=0
@@ -261,13 +305,30 @@ Read `phases[current_step].orchestrator_context` from `.collab/config/pipeline.j
 - If inline string: use directly.
 - **Apply as framing for your entire signal-handling response.** All judgments flow through this context.
 
-##### c. Resolve transition (deterministic)
+##### c. Resolve transition (deterministic + conditional)
 
 ```bash
 TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {current_step} {signal_type})
 ```
 
-Parse `to` and `gate` from output. Exit 2 means no match: log "No transition found for {current_step} → {signal_type}", **END RESPONSE.**
+Parse `to`, `gate`, `if`, and `conditional` from output. Exit 2 means no match: log "No transition found for {current_step} → {signal_type}", **END RESPONSE.**
+
+**If `conditional == true` and `if != null`** — Evaluate the condition (AI):
+
+*AI LOGIC: Evaluate the `if` condition to decide whether to take the conditional branch or fall back to the plain transition.*
+
+Supported conditions:
+- **`hasGroup`**: Does the ticket have an `implement_phase_plan` with remaining phases?
+  ```bash
+  IMPL_PLAN=$(bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id} --field implement_phase_plan --default '{}')
+  ```
+  Parse `current_impl_phase` and `total_phases` from `IMPL_PLAN`.
+  - If `current_impl_phase < total_phases`: condition is **TRUE** → use the conditional `to`.
+  - If `current_impl_phase >= total_phases` OR `implement_phase_plan` is absent/empty: condition is **FALSE** → re-resolve with `--plain`:
+    ```bash
+    TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {current_step} {signal_type} --plain)
+    ```
+    Re-parse `to` and `gate` from the new result.
 
 If `gate != null`: proceed to step **d. Gate Evaluation**.
 If `to != null`: skip to step **e. Goal Gate Check**.
@@ -333,13 +394,12 @@ bun $SCRIPTS/registry-update.ts {ticket_id} current_step={NEXT} status=running
        "completed_impl_phases": []
      }
      ```
-   - Write to registry using jq (jq is a required dependency):
+   - Write to registry (construct the JSON string from the extracted values):
      ```bash
-     REGFILE=".collab/state/pipeline-registry/{ticket_id}.json"
-     PLAN_JSON='{"total_phases":N,"current_impl_phase":1,"phase_names":[...],"completed_impl_phases":[]}'
-     jq --argjson p "$PLAN_JSON" '. + {implement_phase_plan: $p}' "$REGFILE" \
-       > /tmp/_impl_plan.json && mv /tmp/_impl_plan.json "$REGFILE"
+     bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} \
+       'implement_phase_plan={"total_phases":N,"current_impl_phase":1,"phase_names":[...],"completed_impl_phases":[]}'
      ```
+     Replace `N` with the actual total count and `[...]` with the actual phase names array.
    - Dispatch with phase arg and run held-release scan:
      ```bash
      bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} implement --args "phase:1"
@@ -402,21 +462,6 @@ For signals that do not match any suffix above (e.g., `VERIFY_PASS`, `VERIFY_FAI
 ---
 
 ## Command Processing
-
-### [CMD:add {ticket_id} [--repo {repo_id}]]
-
-1. Validate: missing -> usage. Already tracked -> error. Count >= 5 -> error. **END RESPONSE** on any.
-2. If `--repo {repo_id}` is provided: look up `repos[repo_id].path` from `.collab/config/multi-repo.json`. Use that path as the spawn target instead of the worktree. Store `repo_id` and `repo_path` in the new registry entry.
-3. Resolve worktree (same logic as `commands/orchestrator-init.ts`). Split vertically off last agent pane: `bun .collab/scripts/orchestrator/Tmux.ts split -w {last_agent_pane} -c "{spawn_cmd}"`. Generate nonce, create registry atomically, assign next color (1-5), label pane.
-3. Rebalance: `tmux set-window-option main-pane-width {30%}; tmux select-layout main-vertical`
-4. Fetch Linear ticket with `includeRelations: true`.
-5. Dispatch first phase:
-   ```bash
-   FIRST_PHASE=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts --first)
-   bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} "$FIRST_PHASE"
-   ```
-   (Script handles coordination hold automatically — check output for `HELD:` prefix and update status table accordingly.)
-6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Added {ticket_id}." **END RESPONSE.**
 
 ### [CMD:status]
 

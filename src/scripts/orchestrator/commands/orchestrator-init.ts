@@ -52,6 +52,7 @@ export interface InitResult {
   agentPane: string;
   nonce: string;
   registryPath: string;
+  repoPath?: string;
 }
 
 export interface InitContext {
@@ -237,8 +238,9 @@ export function resolvePaths(ctx: InitContext): PathResolution {
     }
   }
 
-  // Build spawn command: multi-repo path takes precedence over worktree
-  const spawnTarget = repoPath ?? worktreePath;
+  // Build spawn command: worktree takes precedence (has symlinked .collab/ with registry).
+  // Fall back to repoPath only when no worktree was created.
+  const spawnTarget = worktreePath ?? repoPath;
   const spawnCmd = spawnTarget
     ? `cd '${spawnTarget}' && claude --dangerously-skip-permissions`
     : "claude --dangerously-skip-permissions";
@@ -288,25 +290,29 @@ export function setupSymlinks(
 // ---------------------------------------------------------------------------
 
 export function spawnAgentPane(
-  orchestratorPane: string,
+  splitTarget: string,
   spawnCmd: string,
   ticketId: string,
-  rb: RollbackState
+  rb: RollbackState,
+  horizontal = true,
+  percentage = 70
 ): string {
   const tmux = new TmuxClient();
-  const agentPane = tmux.splitPane(orchestratorPane, spawnCmd, 70);
+  const agentPane = tmux.splitPane(splitTarget, spawnCmd, percentage, horizontal);
 
   if (!agentPane) {
     throw new OrchestratorError(
       "TMUX",
-      `Failed to split pane from ${orchestratorPane}`
+      `Failed to split pane from ${splitTarget}`
     );
   }
 
   rb.agentPaneCreated = agentPane;
 
-  // Label pane
+  // Set pane title and ensure border-status is on so the title is visible
   tmux.run("select-pane", "-t", agentPane, "-T", ticketId);
+  tmux.run("set-option", "-t", agentPane, "pane-border-status", "top");
+  tmux.run("set-option", "-t", agentPane, "pane-border-format", "#{pane_title}");
 
   return agentPane;
 }
@@ -407,12 +413,30 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     setupSymlinks(worktreePath, repoRoot, rb);
 
     // Step 5: Spawn agent pane
-    const agentPane = spawnAgentPane(ctx.orchestratorPane, spawnCmd, ctx.ticketId, rb);
+    // Layout: first agent splits orchestrator pane horizontally (side-by-side).
+    // Subsequent agents split the previous agent pane vertically (stacked on right).
+    let splitTarget = ctx.orchestratorPane;
+    let horizontal = true;
+    const existingFiles = fs.existsSync(ctx.registryDir)
+      ? fs.readdirSync(ctx.registryDir).filter((f) => f.endsWith(".json"))
+      : [];
+    if (existingFiles.length > 0) {
+      const sorted = existingFiles
+        .map((f) => ({ f, mtime: fs.statSync(path.join(ctx.registryDir, f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);
+      const lastReg = readJsonFile(path.join(ctx.registryDir, sorted[0].f));
+      if (lastReg?.agent_pane_id) {
+        splitTarget = lastReg.agent_pane_id as string;
+        horizontal = false;
+      }
+    }
+    const splitPct = horizontal ? 70 : 50;
+    const agentPane = spawnAgentPane(splitTarget, spawnCmd, ctx.ticketId, rb, horizontal, splitPct);
 
     // Step 6: Create registry
     const { nonce, registryPath } = createRegistry(ctx, agentPane, rb, repoId, repoPath);
 
-    return { agentPane, nonce, registryPath };
+    return { agentPane, nonce, registryPath, repoPath };
   } catch (err) {
     // Any step failure triggers rollback of completed steps
     rollback(rb);
@@ -461,6 +485,9 @@ async function main(): Promise<void> {
     console.log(`AGENT_PANE=${result.agentPane}`);
     console.log(`NONCE=${result.nonce}`);
     console.log(`REGISTRY=${result.registryPath}`);
+    if (result.repoPath) {
+      console.log(`SOURCE_REPO=${result.repoPath}`);
+    }
   } catch (err) {
     handleError(err);
   }

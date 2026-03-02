@@ -29,7 +29,7 @@ const REPO_ROOT = execSync("git rev-parse --show-toplevel", {
   cwd: import.meta.dir,
 }).trim();
 
-const VERIFY_SCRIPT = path.join(REPO_ROOT, "src/scripts/verify-and-complete.sh");
+const VERIFY_SCRIPT = path.join(REPO_ROOT, "src/scripts/verify-and-complete.ts");
 const PHASE_DISPATCH = path.join(REPO_ROOT, "src/scripts/orchestrator/commands/phase-dispatch.ts");
 
 /** Run a shell script with arguments, returning { exitCode, stdout, stderr } */
@@ -123,7 +123,7 @@ describe("verify-and-complete.sh: implement phase", () => {
       ].join("\n"),
     });
 
-    const result = runScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
+    const result = runBunScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain("incomplete");
@@ -141,7 +141,7 @@ describe("verify-and-complete.sh: implement phase", () => {
       ].join("\n"),
     });
 
-    const result = runScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
+    const result = runBunScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
 
     // Exit 0 = verification passed; signal emission may succeed or skip (no registry)
     expect(result.exitCode).toBe(0);
@@ -154,7 +154,7 @@ describe("verify-and-complete.sh: implement phase", () => {
       "specs/001-test-feature/spec.md": "# Spec",
     });
 
-    const result = runScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
+    const result = runBunScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain("not found");
@@ -170,7 +170,7 @@ describe("verify-and-complete.sh: implement phase", () => {
       ].join("\n"),
     });
 
-    const result = runScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
+    const result = runBunScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
 
     expect(result.exitCode).toBe(1);
     // Should report exactly 3 incomplete tasks
@@ -190,7 +190,7 @@ describe("verify-and-complete.sh: implement phase", () => {
 
     // The script uses grep -c "^- [ ]" — only matches lines starting with exactly "- [ ]"
     // Indented items (spaces before dash) don't match "^- [ ]"
-    const result = runScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
+    const result = runBunScript(VERIFY_SCRIPT, ["implement", "Test message"], tmpDir);
 
     expect(result.exitCode).toBe(0); // no top-level incomplete tasks
   });
@@ -215,7 +215,7 @@ describe("verify-and-complete.sh: analyze phase", () => {
       ].join("\n"),
     });
 
-    const result = runScript(VERIFY_SCRIPT, ["analyze", "Analysis complete"], tmpDir);
+    const result = runBunScript(VERIFY_SCRIPT, ["analyze", "Analysis complete"], tmpDir);
 
     // Analyze phase does no verification, just emits signal
     // Signal emission may exit 0 (no registry found) or succeed
@@ -226,7 +226,7 @@ describe("verify-and-complete.sh: analyze phase", () => {
   test("7. analyze phase emits completion signal message", () => {
     tmpDir = createTempRepo({});
 
-    const result = runScript(VERIFY_SCRIPT, ["analyze", "Analysis complete"], tmpDir);
+    const result = runBunScript(VERIFY_SCRIPT, ["analyze", "Analysis complete"], tmpDir);
 
     expect(result.stdout).toContain("Analysis phase checks complete");
     expect(result.stdout).toContain("Emitting completion signal");
@@ -247,7 +247,7 @@ describe("verify-and-complete.sh: generic phases", () => {
   test("8. unknown phase passes with generic success message", () => {
     tmpDir = createTempRepo({});
 
-    const result = runScript(VERIFY_SCRIPT, ["clarify", "Clarify done"], tmpDir);
+    const result = runBunScript(VERIFY_SCRIPT, ["clarify", "Clarify done"], tmpDir);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Phase clarify complete");

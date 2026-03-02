@@ -160,16 +160,17 @@ export class TmuxClient {
   }
 
   /**
-   * Split an existing pane horizontally and run a command in the new pane.
+   * Split an existing pane and run a command in the new pane.
    * Returns the new pane ID (%N) on success, null on failure.
    * @param targetPane - Pane to split (e.g. %123)
    * @param cmd - Command to run in the new pane
-   * @param percentage - Percentage of width for the new pane (default 70)
+   * @param percentage - Percentage of space for the new pane (default 70)
+   * @param horizontal - true = side-by-side (-h), false = stacked top/bottom (default true)
    */
-  splitPane(targetPane: string, cmd: string, percentage = 70): string | null {
+  splitPane(targetPane: string, cmd: string, percentage = 70, horizontal = true): string | null {
     const args = [
       "split-window",
-      "-h",
+      ...(horizontal ? ["-h"] : []),
       "-t", targetPane,
       "-p", String(percentage),
       "-P",

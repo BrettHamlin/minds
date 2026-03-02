@@ -69,10 +69,11 @@ export interface Registry {
 /**
  * Parse a "field=value" string into its components.
  * Returns null if the format is invalid (no '=' or field not lowercase/underscore).
+ * Values are coerced: integers → number, valid JSON objects/arrays → parsed, else string.
  */
 export function parseFieldValue(
   pair: string
-): { field: string; value: string | number } | null {
+): { field: string; value: string | number | object | null } | null {
   const match = pair.match(/^([a-z_]+)=(.+)$/);
   if (!match) return null;
 
@@ -80,8 +81,20 @@ export function parseFieldValue(
   const rawValue = match[2];
 
   // Numeric values stay as numbers
-  const value = /^\d+$/.test(rawValue) ? parseInt(rawValue, 10) : rawValue;
-  return { field, value };
+  if (/^\d+$/.test(rawValue)) {
+    return { field, value: parseInt(rawValue, 10) };
+  }
+
+  // JSON objects and arrays are parsed
+  if (rawValue.startsWith("{") || rawValue.startsWith("[")) {
+    try {
+      return { field, value: JSON.parse(rawValue) };
+    } catch {
+      // Fall through to string
+    }
+  }
+
+  return { field, value: rawValue };
 }
 
 /**
@@ -96,6 +109,46 @@ export function applyUpdates(
   return {
     ...registry,
     ...updates,
+    updated_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+  };
+}
+
+/**
+ * Advance the implement_phase_plan by one step:
+ * - Appends current_impl_phase to completed_impl_phases
+ * - Increments current_impl_phase by 1
+ * Returns a new registry object. Throws if no plan exists.
+ */
+export function advanceImplPhase(
+  registry: Record<string, any>
+): Record<string, any> {
+  const plan = registry.implement_phase_plan as ImplementPhasePlan | undefined;
+  if (!plan) {
+    throw new Error("No implement_phase_plan in registry");
+  }
+  const updated_plan: ImplementPhasePlan = {
+    ...plan,
+    completed_impl_phases: [...plan.completed_impl_phases, plan.current_impl_phase],
+    current_impl_phase: plan.current_impl_phase + 1,
+  };
+  return {
+    ...registry,
+    implement_phase_plan: updated_plan,
+    updated_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+  };
+}
+
+/**
+ * Delete a top-level field from the registry.
+ * Returns a new registry object without the field.
+ */
+export function deleteField(
+  registry: Record<string, any>,
+  fieldName: string
+): Record<string, any> {
+  const { [fieldName]: _removed, ...rest } = registry;
+  return {
+    ...rest,
     updated_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
   };
 }

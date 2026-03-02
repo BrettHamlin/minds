@@ -17,7 +17,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 You are operating in an orchestrated pipeline. The orchestrator waits for your signal to advance. Whenever you have **finished all work for this phase and all tests pass**, run:
 
 ```bash
-.collab/scripts/verify-and-complete.sh implement "Implementation phase finished"
+bun .collab/scripts/verify-and-complete.ts implement "Implementation phase finished"
 ```
 
 This verification script will check that all tasks are complete and automatically emit the signal.
@@ -167,13 +167,13 @@ You do not need to wait for step 10. Any time your response represents "this pha
 
     ```bash
     # If phase scope is active (e.g., phase:2):
-    .collab/scripts/verify-and-complete.sh implement "Phase 2 implementation complete" 2
+    bun .collab/scripts/verify-and-complete.ts implement "Phase 2 implementation complete" 2
 
     # If phase scope is a range (e.g., phase:1-4):
-    .collab/scripts/verify-and-complete.sh implement "Phases 1-4 implementation complete" 1-4
+    bun .collab/scripts/verify-and-complete.ts implement "Phases 1-4 implementation complete" 1-4
 
     # If no phase scope (all phases):
-    .collab/scripts/verify-and-complete.sh implement "Implementation phase finished"
+    bun .collab/scripts/verify-and-complete.ts implement "Implementation phase finished"
     ```
 
     This script will:

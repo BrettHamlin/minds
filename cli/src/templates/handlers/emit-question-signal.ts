@@ -14,6 +14,7 @@
 
 import { $ } from "bun";
 import { execSync } from "child_process";
+import * as fs from "fs";
 
 // Detect repo root and use local paths
 function getRepoRoot(): string {
@@ -52,6 +53,14 @@ async function main() {
     const status = mapResponseState(state, registry.current_step);
     const detail = truncateDetail(text);
     const signalMessage = buildSignalMessage(registry, status, detail);
+
+    // Persist signal to queue before tmux send (survives orchestrator context compaction)
+    const queueDir = `${REPO_ROOT}/.collab/state/signal-queue`;
+    fs.mkdirSync(queueDir, { recursive: true });
+    const queueFile = `${queueDir}/${registry.ticket_id}.json`;
+    const queueTmp = `${queueFile}.tmp`;
+    fs.writeFileSync(queueTmp, JSON.stringify({ signal: signalMessage, emitted_at: new Date().toISOString() }, null, 2) + "\n");
+    fs.renameSync(queueTmp, queueFile);
 
     // Send to orchestrator pane
     const target = registry.orchestrator_pane_id || registry.orchestrator_window_id;
