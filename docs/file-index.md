@@ -60,7 +60,7 @@ Search by tag to find files related to a concept. Each entry has:
 | `src/commands/collab.taskstoissues.md` | Task-to-issues command: converts tasks.md entries into GitHub issues with dependencies | workflow | tasks, github-issues, conversion |
 | `src/commands/collab.cleanup.md` | Cleanup command: removes branch/worktree, tmux pane, registry, and spec directories | workflow | cleanup, branch, worktree, teardown |
 | `src/commands/collab.install.md` | Install command (markdown instructions): describes how to install collab from GitHub into any repo | build | install, distribution, github |
-| `src/commands/collab.install.sh` | Install command (bash): clones collab from GitHub, copies all files to target repo's .claude/.collab/.specify/ | build | install, distribution, github, bash |
+| `src/commands/collab.install.ts` | Install command (TypeScript): clones collab from GitHub, copies all files to target repo's .claude/.collab/.specify/ | build | install, distribution, github, typescript |
 
 ---
 
@@ -111,8 +111,8 @@ TypeScript tests:
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `src/scripts/verify-and-complete.sh` | Verifies phase completion (tasks done, tests pass) and emits completion signal to orchestrator | orchestrator | verify, complete, signal, phase-end |
-| `src/scripts/webhook-notify.sh` | Sends phase change notifications to OpenClaw webhook (forwards to Discord) | orchestrator | webhook, notification, discord, openclaw |
+| `src/scripts/verify-and-complete.ts` | Verifies phase completion (tasks done, tests pass) and emits completion signal to orchestrator | orchestrator | verify, complete, signal, phase-end |
+| `src/scripts/webhook-notify.ts` | Sends phase change notifications to OpenClaw webhook (forwards to Discord) | orchestrator | webhook, notification, discord, openclaw |
 
 ---
 
@@ -244,12 +244,12 @@ TypeScript tests:
 
 ---
 
-### src/.specify/scripts/bash/
+### src/.specify/scripts/
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `src/.specify/scripts/bash/create-new-feature.sh` | Creates feature branch/worktree with spec directory structure and metadata.json | workflow | feature-creation, branch, worktree, metadata |
-| `src/.specify/scripts/bash/test-ticket-extraction.sh` | Test script for ticket ID extraction regex patterns (BRE-XXX, JIRA-456, etc.) | tests | ticket-id, extraction, regex, test |
+| `src/.specify/scripts/create-new-feature.ts` | Creates feature branch/worktree with spec directory structure and metadata.json | workflow | feature-creation, branch, worktree, metadata |
+| `src/.specify/scripts/create-new-feature.test.ts` | Tests for ticket ID extraction regex patterns and feature creation (replaces test-ticket-extraction.sh) | tests | ticket-id, extraction, regex, bun-test |
 
 ---
 
@@ -417,12 +417,11 @@ TypeScript tests:
 
 ---
 
-### .specify/scripts/bash/
+### .specify/scripts/
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `.specify/scripts/bash/create-new-feature.sh` | Runtime copy: creates feature branch/worktree (source of truth: src/.specify/) | workflow | feature-creation, runtime-copy |
-| `.specify/scripts/bash/test-ticket-extraction.sh` | Runtime copy: ticket ID extraction tests (source of truth: src/.specify/) | tests | ticket-id, runtime-copy |
+| `.specify/scripts/create-new-feature.ts` | Runtime copy: creates feature branch/worktree (source of truth: src/.specify/) | workflow | feature-creation, runtime-copy |
 | `.specify/scripts/bash/check-prerequisites.sh` | Consolidated prerequisite checking: paths, available docs, feature dir (NO src/ equivalent) | workflow | prerequisites, validation, paths |
 | `.specify/scripts/bash/common.sh` | Shared functions: repo root detection, branch detection (NO src/ equivalent) | workflow | common, shared, utilities |
 | `.specify/scripts/bash/setup-plan.sh` | Plan setup: creates plan.md from template (NO src/ equivalent) | workflow | plan, setup, template |
@@ -456,8 +455,8 @@ TypeScript tests:
 |------|---------------|-----------|------|
 | `.collab/scripts/orchestrator/*.sh` | Runtime copies of all orchestrator bash scripts (12 files) | orchestrator | runtime-copy |
 | `.collab/scripts/orchestrator/Tmux.ts` | Runtime copy of Tmux CLI utility | orchestrator | runtime-copy |
-| `.collab/scripts/verify-and-complete.sh` | Runtime copy of verify-and-complete script | orchestrator | runtime-copy |
-| `.collab/scripts/webhook-notify.sh` | Runtime copy of webhook notification script | orchestrator | runtime-copy |
+| `.collab/scripts/verify-and-complete.ts` | Runtime copy of verify-and-complete script | orchestrator | runtime-copy |
+| `.collab/scripts/webhook-notify.ts` | Runtime copy of webhook notification script | orchestrator | runtime-copy |
 
 ---
 
@@ -498,7 +497,7 @@ TypeScript tests:
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
 | `.claude/commands/collab.*.md` | Runtime copies of all 15 command files from src/commands/ | workflow | runtime-copy, commands |
-| `.claude/commands/collab.install.sh` | Runtime copy of install shell script | build | runtime-copy, install |
+| `.claude/commands/collab.install.ts` | Runtime copy of install TypeScript script | build | runtime-copy, install |
 
 ---
 

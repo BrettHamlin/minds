@@ -25,11 +25,16 @@ export interface CodeReviewDirective {
   maxAttempts?: number;
 }
 
+export interface MetricsDirective {
+  enabled: boolean;
+}
+
 export interface PipelineAST {
   phases: PhaseDecl[];
   gates: GateDecl[];
   defaultModel?: string; // "haiku" | "sonnet" | "opus"
   codeReview?: CodeReviewDirective;
+  metrics?: MetricsDirective;
 }
 
 export interface PhaseDecl {
@@ -47,6 +52,13 @@ export interface CodeReviewModifier {
   loc: SourceLocation;
 }
 
+export interface MetricsModifier {
+  kind: "metrics";
+  /** Only off is supported from phase-level syntax */
+  enabled: false;
+  loc: SourceLocation;
+}
+
 export type Modifier =
   | TerminalModifier
   | CommandModifier
@@ -58,7 +70,8 @@ export type Modifier =
   | ModelModifier
   | BeforeModifier
   | AfterModifier
-  | CodeReviewModifier;
+  | CodeReviewModifier
+  | MetricsModifier;
 
 export interface ModelModifier {
   kind: "model";

@@ -29,7 +29,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Run the install script from the cloned repo
-bash "$TEMP_DIR/src/commands/collab.install.sh"
+bun "$TEMP_DIR/src/commands/collab.install.ts"
 
 # Clean up temp directory
 rm -rf "$TEMP_DIR" 2>/dev/null
@@ -58,4 +58,4 @@ After running `/collab.install`, your repo will have:
 - **Fast**: Installation commands are deterministic, no AI interpretation overhead
 - **Discoverable**: `/collab.install` command shows up in Claude Code command list
 - **Simple**: Step-by-step instructions are clear and easy to follow
-- **Maintainable**: All install logic lives in `src/commands/collab.install.sh`
+- **Maintainable**: All install logic lives in `src/commands/collab.install.ts`

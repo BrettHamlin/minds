@@ -114,10 +114,10 @@ describe("collab init", () => {
       expect(stat.mode & 0o111).toBeGreaterThan(0);
     }
 
-    // Check .sh command files are executable if they exist
-    const installSh = join(dir, ".claude/commands/collab.install.sh");
-    if (existsSync(installSh)) {
-      const stat = statSync(installSh);
+    // Check .ts command files are executable if they exist
+    const installTs = join(dir, ".claude/commands/collab.install.ts");
+    if (existsSync(installTs)) {
+      const stat = statSync(installTs);
       expect(stat.mode & 0o111).toBeGreaterThan(0);
     }
   });

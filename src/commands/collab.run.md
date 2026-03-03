@@ -115,7 +115,7 @@ bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {TICKET_ID} "$FIRST_
 ```
 
 `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for {N} ticket(s): {TICKET_IDS joined by ', '}. Waiting for signals..."** **END RESPONSE.**
-For EACH ticket ID: `.collab/scripts/webhook-notify.sh {TICKET_ID} none clarify started`
+For EACH ticket ID: `.collab/scripts/webhook-notify.ts {TICKET_ID} none clarify started`
 
 ---
 
@@ -341,9 +341,13 @@ If `to != null`: skip to step **e. Goal Gate Check**.
 2. Read the gate prompt file at `gates[gate_name].prompt`. Resolve `${TOKEN}` expressions for context variables in the prompt's YAML front matter.
 3. Evaluate using: Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, analysis.md if present, etc.).
 4. Your response must contain exactly one keyword from `gates[gate_name].on`. Match it.
-5. Look up the matched response: `bun .collab/scripts/orchestrator/transition-resolve.ts --gate {gate_name} {keyword}`
-6. **Feedback**: If matched response has `"feedback": true`, relay your full evaluation to the agent before routing.
-7. **Route**:
+5. Record gate decision (non-fatal — if exit 2/3, log and continue):
+   ```bash
+   bun .collab/scripts/orchestrator/record-gate.ts {ticket_id} {gate_name} {keyword}
+   ```
+6. Look up the matched response: `bun .collab/scripts/orchestrator/transition-resolve.ts --gate {gate_name} {keyword}`
+7. **Feedback**: If matched response has `"feedback": true`, relay your full evaluation to the agent before routing.
+8. **Route**:
    - Response has `to`: set `NEXT={to}`, proceed to **e. Goal Gate Check**.
    - Response has no `to` (retry): increment `retry_count` in registry. Check `on_exhaust` if `retry_count >= max_retries`. Then re-dispatch:
      ```bash
@@ -443,7 +447,7 @@ In step **a** (_COMPLETE handler), after appending phase history, read `phases[c
   ```
   Wait for hook `_COMPLETE`, then proceed to step b. Log: "After-hook '{hook_phase}' dispatched for {ticket_id} after '{current_step}'."
 - If `after` is absent or empty: proceed normally.
-`.collab/scripts/webhook-notify.sh {ticket_id} {current_step} {NEXT} running`
+`.collab/scripts/webhook-notify.ts {ticket_id} {current_step} {NEXT} running`
 
 #### `_ERROR` or `_FAILED` -- Error
 
@@ -453,7 +457,7 @@ In step **a** (_COMPLETE handler), after appending phase history, read `phases[c
    bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {current_step}
    ```
 3. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." **END RESPONSE.**
-4. `.collab/scripts/webhook-notify.sh {ticket_id} {step} {step} error`
+4. `.collab/scripts/webhook-notify.ts {ticket_id} {step} {step} error`
 
 #### Any other signal -- Phase-specific outcome (transition routing)
 
@@ -481,10 +485,25 @@ Validate. `rm .collab/state/pipeline-registry/{ticket_id}.json`. `bun .collab/sc
 
 When `IS_TERMINAL == "true"` in the Advance step:
 
-1. `rm .collab/state/pipeline-registry/{ticket_id}.json`
-2. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
-3. `.collab/scripts/webhook-notify.sh {ticket_id} {current_step} done complete`
-4. Other agents running -> wait. None remain -> "All pipelines complete."
+System nodes — all are non-fatal (exit 2 or 3 = log warning and continue):
+
+1. Draft PR (`.before` TERMINAL node):
+   `bun .collab/scripts/orchestrator/create-draft-pr.ts {ticket_id}`
+
+2. Complete run (stamps `completed_at`, `duration_ms`, `outcome`):
+   `bun .collab/scripts/orchestrator/complete-run.ts {ticket_id}`
+
+3. Classify run (stamps `autonomous`, `intervention_count`):
+   `bun .collab/scripts/orchestrator/classify-run.ts {ticket_id}`
+
+4. Gate accuracy (evaluates gate decisions — runs after complete-run, which sets `runs.outcome`):
+   `bun .collab/scripts/orchestrator/gate-accuracy-check.ts {ticket_id}`
+
+Cleanup:
+5. `rm .collab/state/pipeline-registry/{ticket_id}.json`
+6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
+7. `.collab/scripts/webhook-notify.ts {ticket_id} {current_step} done complete`
+8. Other agents running -> wait. None remain -> "All pipelines complete."
 
 ---
 

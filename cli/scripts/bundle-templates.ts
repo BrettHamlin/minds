@@ -63,11 +63,15 @@ const copies: Array<{ from: string; to: string; filter?: (name: string) => boole
     filter: (name: string) => !name.endsWith(".test.ts")
   },
   { from: "src/scripts/verify-and-complete.ts", to: "scripts/verify-and-complete.ts" },
-  { from: "src/scripts/webhook-notify.sh", to: "scripts/webhook-notify.sh" },
+  { from: "src/scripts/webhook-notify.ts", to: "scripts/webhook-notify.ts" },
   { from: "src/config", to: "config" },
   { from: "src/lib/pipeline", to: "lib-pipeline" },
   { from: "src/hooks", to: "hooks" },
-  { from: ".specify/scripts", to: "specify-scripts" },
+  {
+    from: ".specify/scripts",
+    to: "specify-scripts",
+    filter: (name: string) => !name.endsWith(".test.ts")
+  },
   { from: ".specify/templates", to: "specify-templates" },
   { from: "src/claude-settings.json", to: "claude-settings.json" },
 ];

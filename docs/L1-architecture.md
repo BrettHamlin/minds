@@ -121,7 +121,7 @@ The repository uses a two-layer model:
 - **`src/`** = Canonical source of truth (git-tracked)
 - **`.claude/`, `.collab/`, `.specify/`** = Runtime directories (gitignored, populated by install)
 
-Install (`scripts/install.sh` for local, `collab.install.sh` for remote) copies from `src/` to runtime directories. This means:
+Install (`scripts/install.sh` for local, `collab.install.ts` for remote) copies from `src/` to runtime directories. This means:
 - Edit in `src/`, never in runtime dirs (Constitution Principle I)
 - Runtime dirs don't exist in fresh clones until install runs
 - `.test.ts` files are excluded from deployment

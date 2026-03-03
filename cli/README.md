@@ -45,7 +45,7 @@ Running `collab init` scaffolds the following into your repo:
 .collab/
   config/          # pipeline.json, verify config, gate prompts
   handlers/        # Signal emission TypeScript handlers
-  scripts/         # verify-and-complete.sh, webhook-notify.sh
+  scripts/         # verify-and-complete.ts, webhook-notify.ts
   scripts/orchestrator/  # Orchestrator command scripts
   lib/pipeline/    # Shared pipeline library
   memory/          # constitution.md (skip if exists)

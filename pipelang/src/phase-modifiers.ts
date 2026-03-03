@@ -22,6 +22,7 @@ import type {
   BeforeModifier,
   AfterModifier,
   CodeReviewModifier,
+  MetricsModifier,
   SourceLocation,
 } from "./types";
 import { VALID_MODEL_NAMES } from "./types";
@@ -448,6 +449,22 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
       ctx.advance(); // consume "off"
       if (!ctx.expect("RPAREN")) return null;
       return { kind: "codeReview", enabled: false, loc } satisfies CodeReviewModifier;
+    }
+
+    case "metrics": {
+      const t = ctx.peek();
+      if (t.kind !== "IDENT" || t.value !== "off") {
+        ctx.addError(
+          `.metrics() only supports .metrics(off) from a phase. Use @metrics() directive for global configuration.`,
+          { line: t.line, col: t.col }
+        );
+        while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+        if (ctx.check("RPAREN")) ctx.advance();
+        return null;
+      }
+      ctx.advance(); // consume "off"
+      if (!ctx.expect("RPAREN")) return null;
+      return { kind: "metrics", enabled: false, loc } satisfies MetricsModifier;
     }
 
     default:

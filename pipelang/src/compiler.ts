@@ -13,6 +13,7 @@ import type {
   CompiledGate,
   CompiledPipeline,
   CompiledCodeReview,
+  CompiledMetrics,
 } from "../../src/lib/pipeline/types";
 export type {
   CompiledTransition,
@@ -24,6 +25,7 @@ export type {
   CompiledGate,
   CompiledPipeline,
   CompiledCodeReview,
+  CompiledMetrics,
 };
 
 // Model name → Claude model ID
@@ -189,6 +191,8 @@ export function compile(ast: PipelineAST): CompiledPipeline {
         compiled.after.push({ phase: mod.phase });
       } else if (mod.kind === "codeReview") {
         compiled.codeReview = { enabled: false };
+      } else if (mod.kind === "metrics") {
+        compiled.metrics = { enabled: false };
       }
     }
 
@@ -239,6 +243,11 @@ export function compile(ast: PipelineAST): CompiledPipeline {
       if (cr.file !== undefined) compiledCr.file = cr.file;
       result.codeReview = compiledCr;
     }
+  }
+
+  // Compile @metrics directive
+  if (ast.metrics !== undefined) {
+    result.metrics = { enabled: ast.metrics.enabled };
   }
 
   return result;

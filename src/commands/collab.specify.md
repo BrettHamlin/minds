@@ -25,7 +25,7 @@ The text the user typed after `/collab.specify` in the triggering message **is**
 1. Fetch the ticket from Linear using `get_issue` with `includeRelations: true`
 2. Extract the ticket title and description
 3. Use the ticket ID and description for all subsequent steps
-4. When calling create-new-feature.sh, prepend the ticket ID to the feature description so the script can extract it
+4. When calling create-new-feature.ts, prepend the ticket ID to the feature description so the script can extract it
 
 Given that feature description, do this:
 
@@ -68,15 +68,15 @@ Given that feature description, do this:
         - If the user provides a path, store it as `SOURCE_REPO`
       - If they match, skip this step (no `--source-repo` needed)
 
-   d. Run the script `.specify/scripts/bash/create-new-feature.sh --json --worktree "$ARGUMENTS"` with the calculated number and short-name:
+   d. Run the script `.specify/scripts/create-new-feature.ts --json --worktree "$ARGUMENTS"` with the calculated number and short-name:
       - Pass `--number N+1` and `--short-name "your-short-name"` along with the feature description
       - **CRITICAL**: If the input was a ticket ID, prepend it to the feature description (e.g., "BRE-202 Build a tool that...") so the script's regex can extract it
       - **--worktree is mandatory** for orchestrator workflows to keep the orchestrator pane on the main branch
       - Optionally specify `--worktree-path <dir>` to override the default worktree location (default: `../worktrees/`)
       - If `SOURCE_REPO` was set in step c.5, add `--source-repo "$SOURCE_REPO"` to the command
-      - Example: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 5 --short-name "user-auth" "Add user authentication"`
-      - Example with ticket: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 5 --short-name "user-auth" "BRE-202 Add user authentication"`
-      - Example with source repo: `.specify/scripts/bash/create-new-feature.sh --json --worktree --number 3 --short-name "add-clips" --source-repo ~/Code/projects/paper-clips-backend "BRE-158 Add clips endpoint"`
+      - Example: `.specify/scripts/create-new-feature.ts --json --worktree --number 5 --short-name "user-auth" "Add user authentication"`
+      - Example with ticket: `.specify/scripts/create-new-feature.ts --json --worktree --number 5 --short-name "user-auth" "BRE-202 Add user authentication"`
+      - Example with source repo: `.specify/scripts/create-new-feature.ts --json --worktree --number 3 --short-name "add-clips" --source-repo ~/Code/projects/paper-clips-backend "BRE-158 Add clips endpoint"`
 
    **IMPORTANT**:
    - Check all three sources (remote branches, local branches, specs directories) to find the highest number

@@ -35,6 +35,10 @@ export interface CompiledCodeReview {
   maxAttempts?: number;
 }
 
+export interface CompiledMetrics {
+  enabled: boolean;
+}
+
 export interface CompiledPhase {
   command?: string;
   signals?: string[];
@@ -51,6 +55,8 @@ export interface CompiledPhase {
   after?: Array<{ phase: string }>;
   /** Per-phase codeReview override (only enabled:false is supported from .codeReview(off)) */
   codeReview?: Pick<CompiledCodeReview, "enabled">;
+  /** Per-phase metrics override (only enabled:false is supported from .metrics(off)) */
+  metrics?: Pick<CompiledMetrics, "enabled">;
 }
 
 export interface CompiledGateResponse {
@@ -70,6 +76,7 @@ export interface CompiledPipeline {
   version: string;
   defaultModel?: string;
   codeReview?: CompiledCodeReview;
+  metrics?: CompiledMetrics;
   phases: Record<string, CompiledPhase>;
   gates?: Record<string, CompiledGate>;
 }

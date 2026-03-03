@@ -568,9 +568,9 @@ When `goal-gate-check.ts` returns `REDIRECT:blindqa`, the orchestrator dispatche
 
 ## The Install State Machine
 
-### Remote Install (collab.install.sh)
+### Remote Install (collab.install.ts)
 
-Located at `src/commands/collab.install.sh`. Installs collab into any git repository from GitHub.
+Located at `src/commands/collab.install.ts`. Installs collab into any git repository from GitHub.
 
 **Precondition**: Must be in a git repository (`.git` directory exists).
 
@@ -589,11 +589,11 @@ Located at `src/commands/collab.install.sh`. Installs collab into any git reposi
    - `.specify/templates/`
 3. **Copy files**:
    - `src/commands/*.md` --> `.claude/commands/`
-   - `src/commands/collab.install.sh` --> `.claude/commands/collab.install.sh` (+x)
+   - `src/commands/collab.install.ts` --> `.claude/commands/collab.install.ts`
    - `src/skills/*` --> `.claude/skills/`
    - `src/handlers/*.ts` --> `.collab/handlers/` (+x)
    - `src/scripts/orchestrator/*.{sh,ts}` (excluding `*.test.ts`) --> `.collab/scripts/orchestrator/` (+x on .sh)
-   - `src/scripts/*.sh` (top-level, e.g., `verify-and-complete.sh`, `webhook-notify.sh`) --> `.collab/scripts/`
+   - `src/scripts/*.{sh,ts}` (top-level, e.g., `verify-and-complete.ts`, `webhook-notify.ts`) --> `.collab/scripts/`
    - `.specify/scripts/*` --> `.specify/scripts/`
    - `.specify/templates/*` --> `.specify/templates/`
 4. **Conditional copies** (skip if already exists, user may have customized):
@@ -606,7 +606,7 @@ Located at `src/commands/collab.install.sh`. Installs collab into any git reposi
    - `src/config/orchestrator-contexts/*` --> `.collab/config/orchestrator-contexts/`
    - `src/config/displays/*` --> `.collab/config/displays/`
 6. **Set permissions**: `chmod +x` on all `.sh` files in `.collab/scripts/orchestrator/`
-7. **Verify**: check that key files exist (`collab.install.md`, `collab.install.sh`, `collab.specify.md`, skills, handlers)
+7. **Verify**: check that key files exist (`collab.install.md`, `collab.install.ts`, `collab.specify.md`, skills, handlers)
 8. **Cleanup**: remove temp directory
 
 ### Local Install (scripts/install.sh)
@@ -632,11 +632,11 @@ Complete source-to-destination mapping for remote install:
 | Source | Destination | Update Policy |
 |---|---|---|
 | `src/commands/*.md` | `.claude/commands/` | Always overwrite |
-| `src/commands/collab.install.sh` | `.claude/commands/collab.install.sh` | Always overwrite |
+| `src/commands/collab.install.ts` | `.claude/commands/collab.install.ts` | Always overwrite |
 | `src/skills/*` | `.claude/skills/` | Always overwrite |
 | `src/handlers/*.ts` | `.collab/handlers/` | Always overwrite |
 | `src/scripts/orchestrator/*.{sh,ts}` | `.collab/scripts/orchestrator/` | Always overwrite |
-| `src/scripts/*.sh` | `.collab/scripts/` | Always overwrite |
+| `src/scripts/*.{sh,ts}` | `.collab/scripts/` | Always overwrite |
 | `src/config/pipeline.json` | `.collab/config/pipeline.json` | Always overwrite |
 | `src/config/*.schema.json` | `.collab/config/` | Always overwrite |
 | `src/config/orchestrator-contexts/*` | `.collab/config/orchestrator-contexts/` | Always overwrite |
@@ -832,7 +832,7 @@ Output: `AGENT_PANE={id}`, `NONCE={hex}`, `REGISTRY={path}`
 
 ---
 
-## Verify and Complete (verify-and-complete.sh)
+## Verify and Complete (verify-and-complete.ts)
 
 Agent-side script that verifies phase completion conditions before emitting the signal:
 
@@ -846,19 +846,19 @@ After verification passes, emits the completion signal via `emit-question-signal
 
 ---
 
-## Webhook Notifications (webhook-notify.sh)
+## Webhook Notifications (webhook-notify.ts)
 
 Sends phase change notifications to an OpenClaw webhook endpoint which forwards to Discord.
 
 ```bash
-webhook-notify.sh <ticket_id> <from_phase> <to_phase> <status>
+webhook-notify.ts <ticket_id> <from_phase> <to_phase> <status>
 ```
 
 Called after:
-- Pipeline start: `webhook-notify.sh BRE-233 none clarify started`
-- Phase advance: `webhook-notify.sh BRE-233 clarify plan running`
-- Error: `webhook-notify.sh BRE-233 plan plan error`
-- Completion: `webhook-notify.sh BRE-233 blindqa done complete`
+- Pipeline start: `webhook-notify.ts BRE-233 none clarify started`
+- Phase advance: `webhook-notify.ts BRE-233 clarify plan running`
+- Error: `webhook-notify.ts BRE-233 plan plan error`
+- Completion: `webhook-notify.ts BRE-233 blindqa done complete`
 
 ---
 
