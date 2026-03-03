@@ -593,7 +593,7 @@ Located at `src/commands/collab.install.ts`. Installs collab into any git reposi
    - `src/skills/*` --> `.claude/skills/`
    - `src/handlers/*.ts` --> `.collab/handlers/` (+x)
    - `src/scripts/orchestrator/*.{sh,ts}` (excluding `*.test.ts`) --> `.collab/scripts/orchestrator/` (+x on .sh)
-   - `src/scripts/*.{sh,ts}` (top-level, e.g., `verify-and-complete.sh`, `webhook-notify.ts`) --> `.collab/scripts/`
+   - `src/scripts/*.{sh,ts}` (top-level, e.g., `verify-and-complete.ts`, `webhook-notify.ts`) --> `.collab/scripts/`
    - `.specify/scripts/*` --> `.specify/scripts/`
    - `.specify/templates/*` --> `.specify/templates/`
 4. **Conditional copies** (skip if already exists, user may have customized):
@@ -832,7 +832,7 @@ Output: `AGENT_PANE={id}`, `NONCE={hex}`, `REGISTRY={path}`
 
 ---
 
-## Verify and Complete (verify-and-complete.sh)
+## Verify and Complete (verify-and-complete.ts)
 
 Agent-side script that verifies phase completion conditions before emitting the signal:
 

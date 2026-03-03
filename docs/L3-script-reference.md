@@ -579,9 +579,9 @@ Error JSON on stderr for invalid signals.
 
 ---
 
-### verify-and-complete.sh
+### verify-and-complete.ts
 
-**Path**: `src/scripts/verify-and-complete.sh`
+**Path**: `src/scripts/verify-and-complete.ts`
 **Language**: Bash
 **Purpose**: Verify that a phase is complete (phase-specific checks) and automatically emit the completion signal to the orchestrator via `emit-question-signal.ts`.
 **Called by**: Phase commands (`collab.implement`, `collab.analyze`) at the end of their execution
@@ -676,7 +676,7 @@ All handlers live in `src/handlers/` and are deployed to `.collab/handlers/`.
 **Path**: `src/handlers/emit-question-signal.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: Emit PHASE_QUESTION or PHASE_COMPLETE signals to the orchestrator. Called directly by phase commands (collab.clarify, collab.plan, collab.tasks) before AskUserQuestion or at completion.
-**Called by**: `collab.clarify` (before each AskUserQuestion and at completion), `collab.plan` (at completion), `collab.tasks` (at completion), `verify-and-complete.sh` (at completion)
+**Called by**: `collab.clarify` (before each AskUserQuestion and at completion), `collab.plan` (at completion), `collab.tasks` (at completion), `verify-and-complete.ts` (at completion)
 **Dependencies**: `pipeline-signal.ts`, `Tmux.ts`, `bun`
 
 **Arguments**:
@@ -1113,7 +1113,7 @@ All phase commands live in `src/commands/` and are deployed to `.claude/commands
 **Purpose**: Perform non-destructive cross-artifact consistency and quality analysis across spec.md, plan.md, and tasks.md. Read-only during initial analysis; applies orchestrator-directed remediations afterward.
 **Called by**: Orchestrator phase dispatch
 
-**Signal Contract**: At completion: `.collab/scripts/verify-and-complete.sh analyze "Analysis phase finished"`
+**Signal Contract**: At completion: `.collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"`
 
 **Key Behaviors**:
 1. Runs `check-prerequisites.sh --json --require-tasks --include-tasks`.
@@ -1133,7 +1133,7 @@ All phase commands live in `src/commands/` and are deployed to `.claude/commands
 **Purpose**: Execute the implementation plan by processing all tasks in tasks.md. Follows TDD approach, respects task dependencies and parallel markers.
 **Called by**: Orchestrator phase dispatch
 
-**Signal Contract**: At completion: `.collab/scripts/verify-and-complete.sh implement "Implementation phase finished"`
+**Signal Contract**: At completion: `.collab/scripts/verify-and-complete.ts implement "Implementation phase finished"`
 
 **Key Behaviors**:
 1. Runs `check-prerequisites.sh --json --require-tasks --include-tasks`.

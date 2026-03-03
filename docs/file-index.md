@@ -111,7 +111,7 @@ TypeScript tests:
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `src/scripts/verify-and-complete.sh` | Verifies phase completion (tasks done, tests pass) and emits completion signal to orchestrator | orchestrator | verify, complete, signal, phase-end |
+| `src/scripts/verify-and-complete.ts` | Verifies phase completion (tasks done, tests pass) and emits completion signal to orchestrator | orchestrator | verify, complete, signal, phase-end |
 | `src/scripts/webhook-notify.ts` | Sends phase change notifications to OpenClaw webhook (forwards to Discord) | orchestrator | webhook, notification, discord, openclaw |
 
 ---
@@ -455,7 +455,7 @@ TypeScript tests:
 |------|---------------|-----------|------|
 | `.collab/scripts/orchestrator/*.sh` | Runtime copies of all orchestrator bash scripts (12 files) | orchestrator | runtime-copy |
 | `.collab/scripts/orchestrator/Tmux.ts` | Runtime copy of Tmux CLI utility | orchestrator | runtime-copy |
-| `.collab/scripts/verify-and-complete.sh` | Runtime copy of verify-and-complete script | orchestrator | runtime-copy |
+| `.collab/scripts/verify-and-complete.ts` | Runtime copy of verify-and-complete script | orchestrator | runtime-copy |
 | `.collab/scripts/webhook-notify.ts` | Runtime copy of webhook notification script | orchestrator | runtime-copy |
 
 ---
