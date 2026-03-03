@@ -1223,3 +1223,239 @@ describe("collab.deploy-verify.md executor wiring", () => {
     expect(content).toContain("bun .collab/scripts/deploy-verify-executor");
   });
 });
+
+// ===========================================================================
+// verify-execute-executor.ts: smoke tests (12 tests)
+// ===========================================================================
+
+describe("verify-execute-executor.ts: verification checks", () => {
+  const VE_EXECUTOR = path.join(REPO_ROOT, "src/scripts/verify-execute-executor.ts");
+  let tmpDir: string;
+  let mockHandle: { kill: () => void } | null = null;
+
+  function setupVerifyChecklist(dir: string, config: object): void {
+    const collabPath = path.join(dir, ".collab");
+    if (fs.existsSync(collabPath)) {
+      const stat = fs.lstatSync(collabPath);
+      if (stat.isSymbolicLink()) {
+        fs.unlinkSync(collabPath);
+      }
+    }
+    fs.mkdirSync(path.join(dir, ".collab", "config"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ".collab/config/verify-checklist.json"),
+      JSON.stringify(config)
+    );
+  }
+
+  afterAll(() => {
+    if (mockHandle) {
+      mockHandle.kill();
+      mockHandle = null;
+    }
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  test("52. file_exists passes — exit 0 VERIFY_EXECUTE_COMPLETE", () => {
+    tmpDir = createTempRepo({
+      "src/index.ts": "export default {};",
+    });
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "file_exists", path: "src/index.ts", label: "index exists" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_COMPLETE");
+    expect(result.stdout).toContain("1/1");
+  });
+
+  test("53. file_exists fails — exit 1 VERIFY_EXECUTE_FAILED", () => {
+    tmpDir = createTempRepo({});
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "file_exists", path: "nonexistent.ts", label: "missing file" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_FAILED");
+  });
+
+  test("54. file_contains match — exit 0", () => {
+    tmpDir = createTempRepo({
+      "src/app.ts": "export default function handler() { return 42; }",
+    });
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "file_contains", path: "src/app.ts", pattern: "export default", label: "has export" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_COMPLETE");
+  });
+
+  test("55. file_contains no match — exit 1", () => {
+    tmpDir = createTempRepo({
+      "src/app.ts": "const x = 1;",
+    });
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "file_contains", path: "src/app.ts", pattern: "export default", label: "has export" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_FAILED");
+  });
+
+  test("56. command_succeeds passes — exit 0", () => {
+    tmpDir = createTempRepo({});
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "command_succeeds", command: "echo ok", label: "echo ok" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_COMPLETE");
+  });
+
+  test("57. command_succeeds fails — exit 1", () => {
+    tmpDir = createTempRepo({});
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "command_succeeds", command: "exit 1", label: "fail cmd" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_FAILED");
+  });
+
+  test("58. config missing — exit 2 VERIFY_EXECUTE_ERROR", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_ERROR");
+  });
+
+  test("59. empty checks array — exit 0 (vacuous pass)", () => {
+    tmpDir = createTempRepo({});
+    setupVerifyChecklist(tmpDir, { checks: [] });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_COMPLETE");
+    expect(result.stdout).toContain("0/0");
+  });
+
+  test("60. json_field match — exit 0", () => {
+    tmpDir = createTempRepo({
+      "package.json": JSON.stringify({ name: "test-pkg", version: "1.0.0" }),
+    });
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "json_field", path: "package.json", field: "version", expected: "1.0.0", label: "version check" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_COMPLETE");
+  });
+
+  test("61. json_field mismatch — exit 1", () => {
+    tmpDir = createTempRepo({
+      "package.json": JSON.stringify({ name: "test-pkg", version: "0.9.0" }),
+    });
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "json_field", path: "package.json", field: "version", expected: "1.0.0", label: "version check" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_FAILED");
+  });
+
+  test("62. http_200 passes — mock server returns 200", () => {
+    mockHandle = startMockHttpServer(
+      9989,
+      'return new Response("OK", { status: 200 });'
+    );
+
+    tmpDir = createTempRepo({});
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "http_200", url: "http://localhost:9989/api/health", label: "health check" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_COMPLETE");
+
+    mockHandle.kill();
+    mockHandle = null;
+  });
+
+  test("63. http_200 fails — mock server returns 500", () => {
+    mockHandle = startMockHttpServer(
+      9989,
+      'return new Response("Internal Server Error", { status: 500 });'
+    );
+
+    tmpDir = createTempRepo({});
+    setupVerifyChecklist(tmpDir, {
+      checks: [
+        { type: "http_200", url: "http://localhost:9989/api/health", label: "health check" },
+      ],
+    });
+
+    const result = runBunScript(VE_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("VERIFY_EXECUTE_FAILED");
+
+    mockHandle.kill();
+    mockHandle = null;
+  });
+});
+
+// ===========================================================================
+// collab.verify-execute.md executor wiring test (1 test)
+// ===========================================================================
+
+describe("collab.verify-execute.md executor wiring", () => {
+  test("64. command references verify-execute-executor.ts call path", () => {
+    const content = fs.readFileSync(
+      path.join(REPO_ROOT, "src/commands/collab.verify-execute.md"),
+      "utf-8"
+    );
+    expect(content).toContain("bun .collab/scripts/verify-execute-executor");
+  });
+});

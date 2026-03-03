@@ -38,74 +38,52 @@ If no ticket ID provided, emit error signal and exit:
 bun .collab/handlers/emit-verify-execute-signal.ts error "No ticket ID provided"
 ```
 
-### 2. Read Verification Checklist
+### Step 0: Extract Checklist (Agent-Driven)
 
-Read the ticket spec from `specs/*/spec.md` or the Linear ticket description. Extract the verification checklist — these are the concrete steps to execute.
+1. Read `specs/*/spec.md` (or Linear ticket AC)
+2. For each verification item, classify as deterministic or agent-driven
+3. Write structured checklist to `.collab/config/verify-checklist.json`
+   - Deterministic checks go in `checks[]`: `file_exists`, `file_contains`, `http_200`, `command_succeeds`, `json_field`
+   - Agent checks go in `agentChecks[]`: anything requiring browser, DB, or complex logic
 
-If no spec or checklist found, emit error:
+### Step 1: Deterministic Checks (Executor)
+
+Call the deterministic verification executor. This script reads `.collab/config/verify-checklist.json`, executes each check by type, and prints a verdict line to stdout.
+
 ```bash
-bun .collab/handlers/emit-verify-execute-signal.ts error "No verification checklist found in ticket spec"
+bun .collab/scripts/verify-execute-executor.ts --cwd <worktree-path> 2>&1
 ```
 
-### 3. Execute Checks Sequentially
+Capture:
+- The **last line** of stdout — verdict in format `VERIFY_EXECUTE_COMPLETE | detail` or `VERIFY_EXECUTE_FAILED | detail` or `VERIFY_EXECUTE_ERROR | detail`
+- The **exit code**: `0` = pass, `1` = fail, `2` = error
 
-For each check in the checklist, execute the appropriate action:
+Do NOT duplicate executor logic inline — config reading, file checks, HTTP calls, command execution, and JSON field checks are all handled by the executor.
 
-**Shell commands** (`bun test`, `npx vitest run`, `wrangler d1 execute`):
-- Run the command and capture stdout/stderr
-- Pass: exit code 0
-- Fail: non-zero exit code
-
-**HTTP calls** (`curl` to local dev or preview URL):
-- Make the request and capture response status + body
-- Pass: expected HTTP status (usually 200/201)
-- Fail: unexpected status or connection error
-
-**Database state checks**:
-- Query the database and verify expected state
-- Pass: expected rows/tables exist
-- Fail: missing or incorrect data
-
-**Playwright browser flows** (if needed):
-- Use the Browser skill for visual/interactive checks
-- Pass: expected elements visible and functional
-- Fail: elements missing or broken
-
-Record evidence per check: command output, response body, screenshot.
-
-### 4. Produce Structured Report
-
-Format results as:
-
-```
-VERIFY_EXECUTE REPORT — {TICKET_ID}
-Environment: {base_url or context}
-
-PASSED ({pass_count}/{total_count}):
-  ✓ {check description} — {evidence summary}
-
-FAILED ({fail_count}/{total_count}):
-  ✗ {check description}
-    → Error: {error message}
-    → Command: {command that was run}
-    → Output: {relevant output}
-
-Result: {PASSED|FAILED} — {summary}
-```
-
-### 5. Emit Signal
-
-**All checks pass:**
+**Exit 2 — Emit `VERIFY_EXECUTE_ERROR` and STOP:**
 ```bash
-bun .collab/handlers/emit-verify-execute-signal.ts pass "All {total} checks passed"
+bun .collab/handlers/emit-verify-execute-signal.ts error "${verdict_detail}"
 ```
 
-**Any check fails:**
+**Exit 1 — Emit `VERIFY_EXECUTE_FAILED` and STOP:**
 ```bash
-bun .collab/handlers/emit-verify-execute-signal.ts fail "{fail_count} of {total} checks failed"
+bun .collab/handlers/emit-verify-execute-signal.ts fail "${verdict_detail}"
 ```
 
-### 6. On VERIFY_EXECUTE_FAILED — Remediation
+**Exit 0 — All deterministic checks passed. Proceed to Step 2.**
+
+### Step 2: Agent-Driven Checks
+
+Only reached when Step 1 passes (exit 0). Read `agentChecks` from the config — these are checks the executor cannot handle:
+1. Execute each using appropriate tools (Browser skill, DB client, etc.)
+2. If any fail → emit `VERIFY_EXECUTE_FAILED` with details
+3. If all pass → emit `VERIFY_EXECUTE_COMPLETE`
+
+```bash
+bun .collab/handlers/emit-verify-execute-signal.ts pass "All checks passed"
+```
+
+### On VERIFY_EXECUTE_FAILED — Remediation
 
 When verification fails, the orchestrator sends the structured failure report back to the agent pane. The agent reviews failures, fixes the underlying issues, and re-runs this command.
 
@@ -113,9 +91,10 @@ The self-loop is managed by the pipeline config (`VERIFY_EXECUTE_FAILED → veri
 
 ## Design Rationale
 
-This command follows the proven `collab.run-tests` pattern:
-- **Deterministic signals** via explicit handler calls (not hooks)
+This command follows the proven `collab.deploy-verify` two-layer pattern:
+- **Layer 1 (deterministic)** — executor handles file, HTTP, command, JSON checks
+- **Layer 2 (agent-driven)** — agent handles Playwright, DB, complex logic
 - **Structured evidence** — every check has captured output
-- **Project-agnostic** — reads checklist from ticket spec, no hardcoded checks
+- **Project-agnostic** — reads checklist from agent-generated config
 - **Signal contract** documented and versioned independently
 - **Pipeline persistence** — signal written to queue before tmux send
