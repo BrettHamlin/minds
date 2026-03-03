@@ -74,6 +74,7 @@ interface RollbackState {
   specifySymlinkCreated?: string;
   registryCreated?: string;
   busServerPid?: number;
+  bridgePid?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +174,28 @@ export function teardownBusServer(pid: number, portFile?: string): void {
       console.error(`Failed to remove bus port file: ${err}`);
     }
   }
+}
+
+/**
+ * Starts the bus-signal-bridge daemon as a detached background process.
+ * The bridge subscribes to the bus SSE stream and delivers signals to the
+ * orchestrator pane via tmux send-keys (last-mile delivery).
+ */
+export function startBusSignalBridge(
+  repoRoot: string,
+  busUrl: string,
+  channel: string,
+  orchestratorPane: string
+): { pid: number } {
+  const bridgePath = path.join(repoRoot, "transport", "bus-signal-bridge.ts");
+  const proc = spawn("bun", [bridgePath, busUrl, channel, orchestratorPane], {
+    cwd: repoRoot,
+    stdio: "ignore",
+    detached: true,
+  });
+  proc.unref();
+  console.error(`Bus signal bridge started: pid=${proc.pid} channel=${channel}`);
+  return { pid: proc.pid! };
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +457,8 @@ export function createRegistry(
   pipelineVariant?: string,
   transport?: string,
   busServerPid?: number,
-  busUrl?: string
+  busUrl?: string,
+  bridgePid?: number
 ): { nonce: string; registryPath: string } {
   const nonce = crypto.randomBytes(4).toString("hex").substring(0, 8);
 
@@ -460,6 +484,7 @@ export function createRegistry(
   if (transport) registry.transport = transport;
   if (busServerPid !== undefined) registry.bus_server_pid = busServerPid;
   if (busUrl) registry.bus_url = busUrl;
+  if (bridgePid !== undefined) registry.bridge_pid = bridgePid;
 
   writeJsonAtomic(registryPath, registry);
   rb.registryCreated = registryPath;
@@ -473,6 +498,11 @@ export function createRegistry(
 
 function rollback(rb: RollbackState, repoRoot?: string): void {
   console.error("Rolling back partial initialization...");
+
+  if (rb.bridgePid !== undefined) {
+    try { process.kill(rb.bridgePid, "SIGTERM"); } catch { /* already dead */ }
+    console.error(`Killed signal bridge (pid ${rb.bridgePid})`);
+  }
 
   if (rb.busServerPid !== undefined) {
     const portFile = repoRoot ? path.join(repoRoot, ".collab", "bus-port") : undefined;
@@ -539,13 +569,24 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     let busServerPid: number | undefined;
     let busUrl: string | undefined;
 
+    let bridgePid: number | undefined;
+
     if (transport === "bus") {
-      console.error("Transport: bus — starting bus server...");
+      console.error("Transport: bus — starting bus server and signal bridge...");
       const bus = await startBusServer(ctx.repoRoot);
       busServerPid = bus.pid;
       busUrl = bus.url;
       rb.busServerPid = busServerPid;
       console.error(`Bus server started: pid=${busServerPid} url=${busUrl}`);
+
+      const bridge = startBusSignalBridge(
+        ctx.repoRoot,
+        busUrl,
+        `pipeline-${ctx.ticketId}`,
+        ctx.orchestratorPane
+      );
+      bridgePid = bridge.pid;
+      rb.bridgePid = bridgePid;
     } else {
       console.error("Transport: tmux");
     }
@@ -585,7 +626,7 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     // Step 7: Create registry
     const { nonce, registryPath } = createRegistry(
       ctx, agentPane, rb, repoId, repoPath, pipelineVariant,
-      transport, busServerPid, busUrl
+      transport, busServerPid, busUrl, bridgePid
     );
 
     return { agentPane, nonce, registryPath, repoPath };
