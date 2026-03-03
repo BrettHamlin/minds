@@ -1004,3 +1004,60 @@ describe("emit-deploy-verify-signal.ts: signal emission", () => {
     expect(queue.signal).toContain("/briefing returned 500");
   });
 });
+
+// ===========================================================================
+// collab.run-tests.md executor wiring tests (3 tests)
+// ===========================================================================
+
+describe("collab.run-tests.md executor wiring", () => {
+  function readCommandFile(): string {
+    return fs.readFileSync(
+      path.join(REPO_ROOT, "src/commands/collab.run-tests.md"),
+      "utf-8"
+    );
+  }
+
+  test("40. command references run-tests-executor.ts", () => {
+    const content = readCommandFile();
+    expect(content).toContain("run-tests-executor.ts");
+  });
+
+  test("41. command contains deterministic executor call path", () => {
+    const content = readCommandFile();
+    expect(content).toContain("bun .collab/scripts/run-tests-executor");
+  });
+
+  test("42. command does NOT contain inline execution logic (spawnSync)", () => {
+    const content = readCommandFile();
+    expect(content).not.toContain("spawnSync");
+  });
+});
+
+// ===========================================================================
+// collab.visual-verify.md executor wiring tests (3 tests)
+// ===========================================================================
+
+describe("collab.visual-verify.md executor wiring", () => {
+  function readCommandFile(): string {
+    return fs.readFileSync(
+      path.join(REPO_ROOT, "src/commands/collab.visual-verify.md"),
+      "utf-8"
+    );
+  }
+
+  test("43. command references visual-verify-executor.ts", () => {
+    const content = readCommandFile();
+    expect(content).toContain("visual-verify-executor.ts");
+  });
+
+  test("44. command has two-layer structure (Layer 1 + Layer 2)", () => {
+    const content = readCommandFile();
+    expect(content).toContain("Layer 1");
+    expect(content).toContain("Layer 2");
+  });
+
+  test("45. command contains deterministic executor call path", () => {
+    const content = readCommandFile();
+    expect(content).toContain("bun .collab/scripts/visual-verify-executor");
+  });
+});

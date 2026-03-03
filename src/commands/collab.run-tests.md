@@ -38,68 +38,42 @@ If no ticket ID provided, emit error signal and exit:
 bun .collab/handlers/emit-run-tests-signal.ts error "No ticket ID provided"
 ```
 
-### 2. Read Test Configuration
+### 2. Run Test Executor
 
-Read `.collab/config/run-tests.json`:
-
-```json
-{
-  "command": "npx vitest run",
-  "workingDir": ".",
-  "timeout": 120,
-  "requiredTestFiles": []
-}
-```
-
-Fields:
-- `command` (required) — the test command to execute
-- `workingDir` (optional, default `.`) — working directory for test execution
-- `timeout` (optional, default 120) — max seconds before killing the test process
-- `requiredTestFiles` (optional) — specific test files that must be run and pass
-
-If config file is missing or malformed, emit error:
-```bash
-bun .collab/handlers/emit-run-tests-signal.ts error "Config file .collab/config/run-tests.json not found or malformed"
-```
-
-### 3. Execute Test Command
-
-Run the configured command in the configured working directory:
+Call the deterministic test executor script. This script reads `.collab/config/run-tests.json`, executes the configured test command, and prints a single verdict line to stdout.
 
 ```bash
-cd "${workingDir}" && timeout ${timeout}s ${command} 2>&1
+bun .collab/scripts/run-tests-executor.ts --cwd <worktree-path> 2>&1
 ```
 
 Capture:
-- Full stdout + stderr combined output
-- Exit code
+- The **last line** of stdout — this is the verdict in format `RUN_TESTS_COMPLETE | detail` or `RUN_TESTS_FAILED | detail` or `RUN_TESTS_ERROR | detail`
+- The **exit code**: `0` = pass, `1` = fail, `2` = error
 
-### 4. Check Required Test Files (if configured)
+Do NOT duplicate executor logic inline — config reading, command execution, timeout handling, and required file checking are all handled by the executor.
 
-If `requiredTestFiles` is set and non-empty, verify each listed file appears in the test output. This confirms the specific files were actually run.
+### 3. Map Result and Emit Signal
 
-If any required file is missing from output, treat as failure.
+Based on the executor exit code, emit the corresponding pipeline signal:
 
-### 5. Evaluate Result and Emit Signal
-
-**Case A: Tests Pass (exit code 0, all required files verified)**
+**Exit 0 — Tests Pass:**
 ```bash
 bun .collab/handlers/emit-run-tests-signal.ts pass "All tests passed"
 ```
 
-**Case B: Tests Fail (exit code non-zero)**
+**Exit 1 — Tests Fail:**
 ```bash
-bun .collab/handlers/emit-run-tests-signal.ts fail "Tests failed: ${truncated_output}"
+bun .collab/handlers/emit-run-tests-signal.ts fail "${verdict_detail}"
 ```
 
-Include the full test output in the signal detail (truncated to 200 chars by the handler).
+Include the verdict detail from the executor's last stdout line in the signal.
 
-**Case C: Command Error (command not found, timeout, config error)**
+**Exit 2 — Execution Error:**
 ```bash
-bun .collab/handlers/emit-run-tests-signal.ts error "Test command failed to execute: ${error_message}"
+bun .collab/handlers/emit-run-tests-signal.ts error "${verdict_detail}"
 ```
 
-### 6. On RUN_TESTS_FAILED — Remediation
+### 4. On RUN_TESTS_FAILED — Remediation
 
 When tests fail, the orchestrator will send the full test output back to the agent pane as a remediation prompt. The agent fixes the code and re-runs this command.
 
