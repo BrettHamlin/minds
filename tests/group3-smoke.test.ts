@@ -1538,6 +1538,12 @@ describe("pre-deploy-summary.ts: deployment context aggregation", () => {
 
   test("66. missing deploy config — exit 0 with warnings", () => {
     tmpDir = createTempRepo({});
+    const collabPath = path.join(tmpDir, ".collab");
+    if (fs.existsSync(collabPath)) {
+      const stat = fs.lstatSync(collabPath);
+      if (stat.isSymbolicLink()) fs.unlinkSync(collabPath);
+    }
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
     setupSpecAndConfig(tmpDir, {
       specMd: "# Test Feature\n\n- [ ] AC1: Works\n",
       metadata: { ticket_id: "BRE-100", branch_name: "feat/test" },
@@ -1677,5 +1683,74 @@ describe("collab.install.ts: installer scaffold logic", () => {
       fs.readFileSync(path.join(tmpDir, ".collab/config/visual-verify.json"), "utf-8")
     );
     expect(newConfig.baseUrl).toBe("http://localhost:3000");
+  });
+});
+
+// ===========================================================================
+// emit-code-review-signal.ts: signal emission smoke tests (3 tests)
+// ===========================================================================
+
+describe("emit-code-review-signal.ts: signal emission", () => {
+  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-code-review-signal.ts");
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  function setupMockRegistry(dir: string): void {
+    const registryDir = path.join(dir, ".collab/state/pipeline-registry");
+    fs.mkdirSync(registryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(registryDir, "TEST-001.json"),
+      JSON.stringify({
+        ticket_id: "TEST-001",
+        current_step: "code_review",
+        nonce: "smoke-nonce",
+        agent_pane_id: "%test-orch",
+        orchestrator_pane_id: "%orch-fake",
+        status: "running",
+      })
+    );
+  }
+
+  test("71. pass event exits 0 and writes signal queue file", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["pass", "Review passed"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    expect(fs.existsSync(queueFile)).toBe(true);
+  });
+
+  test("72. queue file contains CODE_REVIEW_COMPLETE in SIGNAL format", () => {
+    // Reuses tmpDir from test 71 (same afterAll cleanup)
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+
+    expect(queue.signal).toContain("[SIGNAL:TEST-001:smoke-nonce]");
+    expect(queue.signal).toContain("CODE_REVIEW_COMPLETE");
+    expect(queue.emitted_at).toBeDefined();
+  });
+
+  test("73. fail event writes CODE_REVIEW_FAILED to queue", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["fail", "Blocking findings: missing error handling"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+    expect(queue.signal).toContain("CODE_REVIEW_FAILED");
+    expect(queue.signal).toContain("Blocking findings: missing error handling");
   });
 });

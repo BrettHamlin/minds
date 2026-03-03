@@ -125,6 +125,24 @@ Checks:
 
 ---
 
+## Signal Emission
+
+After outputting the structured REVIEW block, emit the pipeline signal:
+
+**On PASS:**
+```bash
+bun .collab/handlers/emit-code-review-signal.ts pass "Review passed"
+```
+
+**On FAIL:**
+```bash
+bun .collab/handlers/emit-code-review-signal.ts fail "Blocking findings: {brief summary}"
+```
+
+This writes a signal to the queue and notifies the orchestrator. Do not skip this step.
+
+---
+
 ## Rules
 
 1. **No partial passes.** If anything is blocking, output FAIL.
@@ -132,4 +150,4 @@ Checks:
 3. **Tests are mandatory.** Failing tests = automatic FAIL, no exceptions.
 4. **Don't evaluate effort.** "A lot of code was written" is not a reason to pass.
 5. **Do not fix the code.** Report findings only — the implementing agent will fix them.
-6. Your output must end with the structured REVIEW block. The orchestrator parses `REVIEW: PASS` or `REVIEW: FAIL` from your output.
+6. Output the structured REVIEW block, then emit the signal using the commands above.
