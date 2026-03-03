@@ -1538,6 +1538,12 @@ describe("pre-deploy-summary.ts: deployment context aggregation", () => {
 
   test("66. missing deploy config — exit 0 with warnings", () => {
     tmpDir = createTempRepo({});
+    const collabPath = path.join(tmpDir, ".collab");
+    if (fs.existsSync(collabPath)) {
+      const stat = fs.lstatSync(collabPath);
+      if (stat.isSymbolicLink()) fs.unlinkSync(collabPath);
+    }
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
     setupSpecAndConfig(tmpDir, {
       specMd: "# Test Feature\n\n- [ ] AC1: Works\n",
       metadata: { ticket_id: "BRE-100", branch_name: "feat/test" },
