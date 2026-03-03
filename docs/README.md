@@ -32,6 +32,13 @@ This documentation uses **progressive disclosure** — four layers of increasing
 **Covers**: Every file in the codebase indexed by path, responsibility, subsystem, and searchable tags
 **When to use**: You need to find a file by what it does rather than where it is. Answers "where is X?" questions.
 
+### E2E Test Runbooks
+
+**Directory**: `e2e-runbooks/`
+**Audience**: Anyone running E2E validation tests, AI agents executing test protocols
+**Covers**: Step-by-step procedures for single-repo and multi-repo pipeline tests, system knowledge base, diagnosis and fix workflows
+**When to use**: After collab source changes, before merging to main. Start with `e2e-runbooks/knowledge-base.md` for context, then follow the specific runbook.
+
 ### Issues & Recommendations
 
 **File**: `issues-and-recommendations.md`
@@ -49,6 +56,8 @@ This documentation uses **progressive disclosure** — four layers of increasing
 | What does script X do? | L3-script-reference.md |
 | Where is file Y? | file-index.md |
 | What's broken? | issues-and-recommendations.md |
+| How do I run E2E tests? | e2e-runbooks/README.md |
+| What do I need to know before testing? | e2e-runbooks/knowledge-base.md |
 
 ## Freshness
 
