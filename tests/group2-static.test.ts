@@ -673,6 +673,23 @@ describe("emit-deploy-verify-signal.ts handler", () => {
 });
 
 // ===========================================================================
+// deploy-verify-executor.ts static tests (2 tests)
+// ===========================================================================
+
+describe("deploy-verify-executor.ts file", () => {
+  test("70. deploy-verify-executor.ts exists", () => {
+    const fullPath = path.join(REPO_ROOT, "src/scripts/deploy-verify-executor.ts");
+    expect(fs.existsSync(fullPath)).toBe(true);
+  });
+
+  test("71. deploy-verify-executor.ts uses getRepoRoot pattern", () => {
+    const content = readSourceFile("src/scripts/deploy-verify-executor.ts");
+    expect(content).toContain("getRepoRoot");
+    expect(content).toContain("git rev-parse --show-toplevel");
+  });
+});
+
+// ===========================================================================
 // deploy variant config tests (7 tests)
 // ===========================================================================
 

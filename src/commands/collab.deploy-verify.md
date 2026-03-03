@@ -38,62 +38,52 @@ If no ticket ID provided, emit error signal and exit:
 bun .collab/handlers/emit-deploy-verify-signal.ts error "No ticket ID provided"
 ```
 
-### 2. Read Deploy Verification Config
+### 2. Layer 1 — Deterministic HTTP Smoke Checks (Executor)
 
-Read `.collab/config/deploy-verify.json`:
+Call the deterministic deploy verify executor. This script reads `.collab/config/deploy-verify.json`, polls the production URL until it responds, then checks each smoke route for HTTP 200 and response time.
 
-```json
-{
-  "productionUrl": "https://paper-clips.net",
-  "smokeRoutes": ["/", "/briefing", "/auth/login"],
-  "pollIntervalSeconds": 15,
-  "maxWaitSeconds": 300
-}
-```
-
-Fields:
-- `productionUrl` (required) — base URL of the production deployment
-- `smokeRoutes` (required) — routes to verify after deploy
-- `pollIntervalSeconds` (optional, default 15) — interval between readiness polls
-- `maxWaitSeconds` (optional, default 300) — max wait for production to respond
-
-If config file is missing or malformed, emit error:
 ```bash
-bun .collab/handlers/emit-deploy-verify-signal.ts error "Config file .collab/config/deploy-verify.json not found"
+bun .collab/scripts/deploy-verify-executor.ts --cwd <worktree-path> 2>&1
 ```
 
-### 3. Poll Production URL
+Capture:
+- The **last line** of stdout — verdict in format `DEPLOY_VERIFY_COMPLETE | detail` or `DEPLOY_VERIFY_FAILED | detail` or `DEPLOY_VERIFY_ERROR | detail`
+- The **exit code**: `0` = pass, `1` = fail, `2` = error
 
-Poll `productionUrl` at the configured interval until it returns HTTP 200 (CF Pages deploys can take 1-2 minutes).
+Do NOT duplicate executor logic inline — config reading, URL polling, route checking, and response time capture are all handled by the executor.
 
-If timeout exceeded:
+**Exit 2 — Emit `DEPLOY_VERIFY_ERROR` and STOP:**
 ```bash
-bun .collab/handlers/emit-deploy-verify-signal.ts fail "Production URL did not respond within {maxWaitSeconds}s"
+bun .collab/handlers/emit-deploy-verify-signal.ts error "${verdict_detail}"
 ```
 
-### 4. Run Smoke Routes
+**Exit 1 — Emit `DEPLOY_VERIFY_FAILED` and STOP:**
+```bash
+bun .collab/handlers/emit-deploy-verify-signal.ts fail "${verdict_detail}"
+```
 
-For each route in `smokeRoutes`:
+**Exit 0 — HTTP smoke checks passed. Proceed to Layer 2.**
+
+### 3. Layer 2 — Agent-Driven Browser Checks (Optional)
+
+Only reached when Layer 1 passes (exit 0). For each smoke route:
 1. Navigate to `productionUrl + route` using the Browser skill (Playwright)
-2. Verify HTTP status is 200
-3. Check for console errors on the page
-4. Capture evidence (screenshot, response status)
+2. Check for console errors and JS exceptions on the page
+3. Capture screenshots for visual confirmation
 
-Collect all failures.
-
-### 5. Emit Signal
-
-**All routes pass:**
+If any Browser-based issues found, emit failure:
 ```bash
-bun .collab/handlers/emit-deploy-verify-signal.ts pass "All {total} smoke routes passed"
+bun .collab/handlers/emit-deploy-verify-signal.ts fail "Browser: ${details}"
 ```
 
-**Any route fails:**
+### 4. Emit Success Signal
+
+If both Layer 1 and Layer 2 pass:
 ```bash
-bun .collab/handlers/emit-deploy-verify-signal.ts fail "{fail_count} of {total} routes failed: {route_list}"
+bun .collab/handlers/emit-deploy-verify-signal.ts pass "All smoke routes healthy"
 ```
 
-### 6. On DEPLOY_VERIFY_FAILED — Remediation
+### 5. On DEPLOY_VERIFY_FAILED — Remediation
 
 When verification fails, the orchestrator routes to the next phase per pipeline config (typically `deploy_human_gate` which presents fix-forward / rollback / investigate options via AskUserQuestion).
 

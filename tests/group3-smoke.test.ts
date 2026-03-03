@@ -55,17 +55,42 @@ function runScript(
 function runBunScript(
   scriptPath: string,
   args: string[],
-  cwd?: string
+  cwd?: string,
+  timeout?: number
 ): { exitCode: number; stdout: string; stderr: string } {
   const result = spawnSync("bun", [scriptPath, ...args], {
     encoding: "utf-8",
     cwd: cwd || REPO_ROOT,
     env: { ...process.env, TMUX_PANE: "%test-orch", TMUX: "test" },
+    timeout,
   });
   return {
     exitCode: result.status ?? 1,
     stdout: result.stdout || "",
     stderr: result.stderr || "",
+  };
+}
+
+/**
+ * Start a mock HTTP server as a separate process.
+ * spawnSync blocks the event loop, so Bun.serve in-process can't respond.
+ * This starts a real subprocess that can handle requests independently.
+ */
+function startMockHttpServer(
+  port: number,
+  handler: string
+): { kill: () => void } {
+  const script = `Bun.serve({ port: ${port}, fetch(req) { ${handler} } }); setInterval(() => {}, 60000);`;
+  const proc = require("child_process").spawn("bun", ["-e", script], {
+    stdio: "pipe",
+    detached: false,
+  });
+  // Sync sleep to let server bind
+  spawnSync("sleep", ["0.5"]);
+  return {
+    kill: () => {
+      try { proc.kill(); } catch {}
+    },
   };
 }
 
@@ -1059,5 +1084,142 @@ describe("collab.visual-verify.md executor wiring", () => {
   test("45. command contains deterministic executor call path", () => {
     const content = readCommandFile();
     expect(content).toContain("bun .collab/scripts/visual-verify-executor");
+  });
+});
+
+// ===========================================================================
+// deploy-verify-executor.ts: smoke tests with mock HTTP server (5 tests)
+// ===========================================================================
+
+describe("deploy-verify-executor.ts: deploy verification", () => {
+  const DV_EXECUTOR = path.join(REPO_ROOT, "src/scripts/deploy-verify-executor.ts");
+  let tmpDir: string;
+  let mockHandle: { kill: () => void } | null = null;
+
+  function setupDeployVerifyConfig(dir: string, config: object): void {
+    // If .collab is a symlink, remove it first
+    const collabPath = path.join(dir, ".collab");
+    if (fs.existsSync(collabPath)) {
+      const stat = fs.lstatSync(collabPath);
+      if (stat.isSymbolicLink()) {
+        fs.unlinkSync(collabPath);
+      }
+    }
+    fs.mkdirSync(path.join(dir, ".collab", "config"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ".collab/config/deploy-verify.json"),
+      JSON.stringify(config)
+    );
+  }
+
+  afterAll(() => {
+    if (mockHandle) {
+      mockHandle.kill();
+      mockHandle = null;
+    }
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  test("46. all routes healthy — exit 0 emits DEPLOY_VERIFY_COMPLETE", () => {
+    // Start mock server as separate process (spawnSync blocks event loop)
+    mockHandle = startMockHttpServer(
+      9990,
+      'return new Response("OK", { status: 200 });'
+    );
+
+    tmpDir = createTempRepo({});
+    setupDeployVerifyConfig(tmpDir, {
+      productionUrl: "http://localhost:9990",
+      smokeRoutes: ["/", "/briefing"],
+      pollIntervalSeconds: 1,
+      maxWaitSeconds: 5,
+    });
+
+    const result = runBunScript(DV_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("DEPLOY_VERIFY_COMPLETE");
+
+    mockHandle.kill();
+    mockHandle = null;
+  });
+
+  test("47. route returns 503 — exit 1 emits DEPLOY_VERIFY_FAILED", () => {
+    mockHandle = startMockHttpServer(
+      9990,
+      'const url = new URL(req.url); if (url.pathname === "/briefing") return new Response("", { status: 503 }); return new Response("OK", { status: 200 });'
+    );
+
+    tmpDir = createTempRepo({});
+    setupDeployVerifyConfig(tmpDir, {
+      productionUrl: "http://localhost:9990",
+      smokeRoutes: ["/", "/briefing"],
+      pollIntervalSeconds: 1,
+      maxWaitSeconds: 5,
+    });
+
+    const result = runBunScript(DV_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("DEPLOY_VERIFY_FAILED");
+    expect(result.stdout).toContain("/briefing");
+
+    mockHandle.kill();
+    mockHandle = null;
+  });
+
+  test("48. server unreachable — exit 1 emits DEPLOY_VERIFY_FAILED", () => {
+    // No mock server running — port 9991 should be unreachable
+    tmpDir = createTempRepo({});
+    setupDeployVerifyConfig(tmpDir, {
+      productionUrl: "http://localhost:9991",
+      smokeRoutes: ["/"],
+      pollIntervalSeconds: 1,
+      maxWaitSeconds: 3,
+    });
+
+    const result = runBunScript(DV_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect([1, 2]).toContain(result.exitCode);
+    expect(result.stdout).toMatch(/DEPLOY_VERIFY_FAILED|DEPLOY_VERIFY_ERROR/);
+  });
+
+  test("49. config missing — exit 2 emits DEPLOY_VERIFY_ERROR", () => {
+    tmpDir = createTempRepo({});
+
+    // Replace .collab symlink with empty config dir (no deploy-verify.json)
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+
+    const result = runBunScript(DV_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("DEPLOY_VERIFY_ERROR");
+  });
+
+  test("50. config missing productionUrl — exit 2 emits DEPLOY_VERIFY_ERROR", () => {
+    tmpDir = createTempRepo({});
+    setupDeployVerifyConfig(tmpDir, {
+      smokeRoutes: ["/"],
+    });
+
+    const result = runBunScript(DV_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("DEPLOY_VERIFY_ERROR");
+  });
+});
+
+// ===========================================================================
+// collab.deploy-verify.md executor wiring test (1 test)
+// ===========================================================================
+
+describe("collab.deploy-verify.md executor wiring", () => {
+  test("51. command references deploy-verify-executor.ts call path", () => {
+    const content = fs.readFileSync(
+      path.join(REPO_ROOT, "src/commands/collab.deploy-verify.md"),
+      "utf-8"
+    );
+    expect(content).toContain("bun .collab/scripts/deploy-verify-executor");
   });
 });
