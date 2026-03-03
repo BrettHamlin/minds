@@ -413,3 +413,68 @@ describe("pipeline-variants/backend.json structure", () => {
     expect(variant.phases.run_tests.transitions.RUN_TESTS_COMPLETE.to).toBe("blindqa");
   });
 });
+
+// ===========================================================================
+// frontend-ui variant config tests (6 tests)
+// ===========================================================================
+
+describe("pipeline-variants/frontend-ui.json structure", () => {
+  const variantPath = path.join(REPO_ROOT, ".collab/config/pipeline-variants/frontend-ui.json");
+
+  test("36. frontend-ui.json exists", () => {
+    expect(fs.existsSync(variantPath)).toBe(true);
+  });
+
+  test("37. frontend-ui.json version is 3.1", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    expect(variant.version).toBe("3.1");
+  });
+
+  test("38. all to: targets reference phases that exist", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseNames = new Set(Object.keys(variant.phases));
+
+    for (const [phaseName, phase] of Object.entries(variant.phases) as [string, any][]) {
+      if (phase.terminal) continue;
+      for (const [signal, transition] of Object.entries(phase.transitions ?? {}) as [string, any][]) {
+        expect(
+          phaseNames.has(transition.to),
+          `Phase '${phaseName}' signal '${signal}' targets '${transition.to}' which does not exist`
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("39. done phase has terminal: true", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    expect(variant.phases.done.terminal).toBe(true);
+  });
+
+  test("40. run_tests is before visual_verify", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseIds = Object.keys(variant.phases);
+
+    const runTestsIdx = phaseIds.indexOf("run_tests");
+    const visualVerifyIdx = phaseIds.indexOf("visual_verify");
+
+    expect(runTestsIdx).toBeGreaterThanOrEqual(0);
+    expect(visualVerifyIdx).toBeGreaterThan(runTestsIdx);
+
+    // Verify routing: run_tests → visual_verify
+    expect(variant.phases.run_tests.transitions.RUN_TESTS_COMPLETE.to).toBe("visual_verify");
+  });
+
+  test("41. visual_verify is before blindqa", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseIds = Object.keys(variant.phases);
+
+    const visualVerifyIdx = phaseIds.indexOf("visual_verify");
+    const blindqaIdx = phaseIds.indexOf("blindqa");
+
+    expect(visualVerifyIdx).toBeGreaterThanOrEqual(0);
+    expect(blindqaIdx).toBeGreaterThan(visualVerifyIdx);
+
+    // Verify routing: visual_verify → blindqa
+    expect(variant.phases.visual_verify.transitions.VISUAL_VERIFY_COMPLETE.to).toBe("blindqa");
+  });
+});
