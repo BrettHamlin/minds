@@ -342,3 +342,74 @@ describe("pipeline.json structure", () => {
     expect(runTests.transitions.RUN_TESTS_ERROR.to).toBe("run_tests");
   });
 });
+
+// ===========================================================================
+// backend variant config tests (6 tests)
+// ===========================================================================
+
+describe("pipeline-variants/backend.json structure", () => {
+  const variantPath = path.join(REPO_ROOT, ".collab/config/pipeline-variants/backend.json");
+
+  test("30. backend.json exists", () => {
+    expect(fs.existsSync(variantPath)).toBe(true);
+  });
+
+  test("31. backend.json version is 3.1", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    expect(variant.version).toBe("3.1");
+  });
+
+  test("32. all to: targets reference phases that exist", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseNames = new Set(Object.keys(variant.phases));
+
+    for (const [phaseName, phase] of Object.entries(variant.phases) as [string, any][]) {
+      if (phase.terminal) continue;
+      for (const [signal, transition] of Object.entries(phase.transitions ?? {}) as [string, any][]) {
+        expect(
+          phaseNames.has(transition.to),
+          `Phase '${phaseName}' signal '${signal}' targets '${transition.to}' which does not exist`
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("33. done phase has terminal: true", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    expect(variant.phases.done.terminal).toBe(true);
+  });
+
+  test("34. spec_critique is between clarify and plan", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseIds = Object.keys(variant.phases);
+
+    const clarifyIdx = phaseIds.indexOf("clarify");
+    const specCritiqueIdx = phaseIds.indexOf("spec_critique");
+    const planIdx = phaseIds.indexOf("plan");
+
+    expect(clarifyIdx).toBeGreaterThanOrEqual(0);
+    expect(specCritiqueIdx).toBeGreaterThan(clarifyIdx);
+    expect(planIdx).toBeGreaterThan(specCritiqueIdx);
+
+    // Verify routing: clarify → spec_critique → plan
+    expect(variant.phases.clarify.transitions.CLARIFY_COMPLETE.to).toBe("spec_critique");
+    expect(variant.phases.spec_critique.transitions.SPEC_CRITIQUE_COMPLETE.to).toBe("plan");
+  });
+
+  test("35. run_tests is between codeReview and blindqa", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseIds = Object.keys(variant.phases);
+
+    const codeReviewIdx = phaseIds.indexOf("codeReview");
+    const runTestsIdx = phaseIds.indexOf("run_tests");
+    const blindqaIdx = phaseIds.indexOf("blindqa");
+
+    expect(codeReviewIdx).toBeGreaterThanOrEqual(0);
+    expect(runTestsIdx).toBeGreaterThan(codeReviewIdx);
+    expect(blindqaIdx).toBeGreaterThan(runTestsIdx);
+
+    // Verify routing: codeReview → run_tests → blindqa
+    expect(variant.phases.codeReview.transitions.CODE_REVIEW_PASS.to).toBe("run_tests");
+    expect(variant.phases.run_tests.transitions.RUN_TESTS_COMPLETE.to).toBe("blindqa");
+  });
+});
