@@ -5,6 +5,7 @@
 // parsing SSE frames.
 
 import type { Transport, Message, Unsubscribe } from "./Transport.ts";
+import { generateAgentPrompt } from "./bus-agent.ts";
 
 export class BusTransport implements Transport {
   // Track active AbortControllers so teardown() can close all SSE streams.
@@ -113,10 +114,7 @@ export class BusTransport implements Transport {
 
   // ── agentPrompt ────────────────────────────────────────────────────────────
 
-  agentPrompt(_agentId: string, channel: string): string {
-    return [
-      `POST to ${this.busUrl}/publish with channel: ${channel}`,
-      `Body: { channel, from, type, payload }`,
-    ].join("\n");
+  agentPrompt(agentId: string, channel: string): string {
+    return generateAgentPrompt(agentId, this.busUrl, channel);
   }
 }
