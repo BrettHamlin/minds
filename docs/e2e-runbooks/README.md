@@ -2,6 +2,32 @@
 
 End-to-end test procedures for validating collab pipeline changes. Run these after ANY source changes before declaring production-ready.
 
+## Fastest Way: E2ETester Agent
+
+There is a custom Claude Code agent that automates the entire E2E test process. It sets up its own workspace, runs the test, monitors every transition, and delegates fixes autonomously.
+
+**To use it**, spawn it from any Claude Code session:
+
+> "Spawn an E2ETester to run BRE-337"
+
+Or just:
+
+> "Run the E2E test"
+
+The agent will:
+1. Ask you 3 questions (which test, which feature ticket, which branch)
+2. Set up a workspace: 🧠 (brain/monitor), 🛸 (dev pane for fixes), 🎯 (test window)
+3. Run cleanup, launch the pipeline, monitor every transition
+4. On failure: diagnose, send fix instructions to 🛸, rebuild, re-run
+
+**Agent files:**
+- Definition: `~/.claude/agents/E2ETester.md`
+- Knowledge base: `~/.claude/skills/Agents/E2ETesterContext.md`
+
+If you prefer to run tests manually, use the runbooks below.
+
+---
+
 ## Runbooks
 
 | Runbook | Linear Ticket | What it validates |

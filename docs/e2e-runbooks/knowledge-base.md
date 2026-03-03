@@ -6,6 +6,22 @@ Read this before running any E2E test. This is the source of truth — the Linea
 
 ---
 
+## E2ETester Agent (Recommended)
+
+Instead of following runbooks manually, use the **E2ETester** custom Claude Code agent. It automates the entire process.
+
+**Spawn it from any session:**
+> "Spawn an E2ETester to run BRE-337"
+
+It will ask you 3 questions (test type, feature ticket, branch), then autonomously set up a 3-pane workspace, run cleanup, launch the pipeline, monitor every transition, and delegate fixes if anything breaks.
+
+- Agent definition: `~/.claude/agents/E2ETester.md`
+- Agent context: `~/.claude/skills/Agents/E2ETesterContext.md`
+
+The rest of this document is the knowledge base the agent loads at startup. You can also read it yourself for manual testing.
+
+---
+
 ## What is Collab?
 
 Collab is a **pipeline orchestration system for Claude Code**. It drives autonomous software development by:
