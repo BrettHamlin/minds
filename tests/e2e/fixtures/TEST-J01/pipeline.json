@@ -1,0 +1,29 @@
+{
+  "version": "3.1",
+  "phases": {
+    "tasks": {
+      "command": "/collab.tasks",
+      "signals": ["TASKS_COMPLETE"],
+      "transitions": { "TASKS_COMPLETE": { "to": "pre_deploy_confirm" } }
+    },
+    "pre_deploy_confirm": {
+      "command": "/collab.pre-deploy-confirm",
+      "signals": ["PRE_DEPLOY_CONFIRM_COMPLETE", "PRE_DEPLOY_CONFIRM_FAILED", "PRE_DEPLOY_CONFIRM_ERROR"],
+      "transitions": {
+        "PRE_DEPLOY_CONFIRM_COMPLETE": { "to": "implement" },
+        "PRE_DEPLOY_CONFIRM_FAILED": { "to": "pre_deploy_confirm" },
+        "PRE_DEPLOY_CONFIRM_ERROR": { "to": "escalate" }
+      }
+    },
+    "implement": {
+      "command": "/collab.implement",
+      "signals": ["IMPLEMENT_COMPLETE", "IMPLEMENT_WAITING", "IMPLEMENT_ERROR"],
+      "transitions": {
+        "IMPLEMENT_COMPLETE": { "to": "done" },
+        "IMPLEMENT_ERROR": { "to": "implement" }
+      }
+    },
+    "escalate": { "terminal": true },
+    "done": { "terminal": true }
+  }
+}

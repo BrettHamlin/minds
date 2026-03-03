@@ -1,0 +1,5 @@
+[
+  { "trigger": "/collab.tasks", "signal": "TASKS_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "/collab.pre-deploy-confirm", "signal": "PRE_DEPLOY_CONFIRM_COMPLETE", "delay_seconds": 2 },
+  { "trigger": "/collab.implement", "signal": "IMPLEMENT_COMPLETE", "delay_seconds": 1 }
+]

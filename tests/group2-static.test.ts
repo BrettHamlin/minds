@@ -585,3 +585,46 @@ describe("emit-verify-execute-signal.ts handler", () => {
     expect(content).toContain("emit-phase-signal");
   });
 });
+
+// ===========================================================================
+// collab.pre-deploy-confirm.md command file tests (3 tests)
+// ===========================================================================
+
+describe("collab.pre-deploy-confirm.md command file", () => {
+  test("53. collab.pre-deploy-confirm.md exists", () => {
+    const fullPath = path.join(REPO_ROOT, "src/commands/collab.pre-deploy-confirm.md");
+    expect(fs.existsSync(fullPath)).toBe(true);
+  });
+
+  test("54. collab.pre-deploy-confirm.md contains all three signal names", () => {
+    const content = readSourceFile("src/commands/collab.pre-deploy-confirm.md");
+
+    expect(content).toContain("PRE_DEPLOY_CONFIRM_COMPLETE");
+    expect(content).toContain("PRE_DEPLOY_CONFIRM_FAILED");
+    expect(content).toContain("PRE_DEPLOY_CONFIRM_ERROR");
+  });
+
+  test("55. collab.pre-deploy-confirm.md uses correct signal format", () => {
+    const content = readSourceFile("src/commands/collab.pre-deploy-confirm.md");
+
+    expect(content).toContain("[SIGNAL:TICKET_ID:NONCE]");
+  });
+});
+
+// ===========================================================================
+// emit-pre-deploy-confirm-signal.ts handler tests (2 tests)
+// ===========================================================================
+
+describe("emit-pre-deploy-confirm-signal.ts handler", () => {
+  test("56. emit-pre-deploy-confirm-signal.ts exists", () => {
+    const fullPath = path.join(REPO_ROOT, "src/handlers/emit-pre-deploy-confirm-signal.ts");
+    expect(fs.existsSync(fullPath)).toBe(true);
+  });
+
+  test("57. emit-pre-deploy-confirm-signal.ts uses emitPhaseSignal factory", () => {
+    const content = readSourceFile("src/handlers/emit-pre-deploy-confirm-signal.ts");
+
+    expect(content).toContain('emitPhaseSignal("pre_deploy_confirm"');
+    expect(content).toContain("emit-phase-signal");
+  });
+});
