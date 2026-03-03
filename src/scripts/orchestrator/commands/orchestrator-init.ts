@@ -75,6 +75,7 @@ interface RollbackState {
   registryCreated?: string;
   busServerPid?: number;
   bridgePid?: number;
+  commandBridgePid?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +196,29 @@ export function startBusSignalBridge(
   });
   proc.unref();
   console.error(`Bus signal bridge started: pid=${proc.pid} channel=${channel}`);
+  return { pid: proc.pid! };
+}
+
+/**
+ * Starts the bus-command-bridge daemon as a detached background process.
+ * The bridge subscribes to the bus SSE stream and delivers commands to the
+ * agent pane via tmux send-keys (last-mile delivery).
+ * Started after the agent pane is spawned (requires agentPane ID).
+ */
+export function startBusCommandBridge(
+  repoRoot: string,
+  busUrl: string,
+  channel: string,
+  agentPane: string
+): { pid: number } {
+  const bridgePath = path.join(repoRoot, "transport", "bus-command-bridge.ts");
+  const proc = spawn("bun", [bridgePath, busUrl, channel, agentPane], {
+    cwd: repoRoot,
+    stdio: "ignore",
+    detached: true,
+  });
+  proc.unref();
+  console.error(`Bus command bridge started: pid=${proc.pid} channel=${channel} pane=${agentPane}`);
   return { pid: proc.pid! };
 }
 
@@ -458,7 +482,8 @@ export function createRegistry(
   transport?: string,
   busServerPid?: number,
   busUrl?: string,
-  bridgePid?: number
+  bridgePid?: number,
+  commandBridgePid?: number
 ): { nonce: string; registryPath: string } {
   const nonce = crypto.randomBytes(4).toString("hex").substring(0, 8);
 
@@ -485,6 +510,7 @@ export function createRegistry(
   if (busServerPid !== undefined) registry.bus_server_pid = busServerPid;
   if (busUrl) registry.bus_url = busUrl;
   if (bridgePid !== undefined) registry.bridge_pid = bridgePid;
+  if (commandBridgePid !== undefined) registry.command_bridge_pid = commandBridgePid;
 
   writeJsonAtomic(registryPath, registry);
   rb.registryCreated = registryPath;
@@ -498,6 +524,11 @@ export function createRegistry(
 
 function rollback(rb: RollbackState, repoRoot?: string): void {
   console.error("Rolling back partial initialization...");
+
+  if (rb.commandBridgePid !== undefined) {
+    try { process.kill(rb.commandBridgePid, "SIGTERM"); } catch { /* already dead */ }
+    console.error(`Killed command bridge (pid ${rb.commandBridgePid})`);
+  }
 
   if (rb.bridgePid !== undefined) {
     try { process.kill(rb.bridgePid, "SIGTERM"); } catch { /* already dead */ }
@@ -570,6 +601,7 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     let busUrl: string | undefined;
 
     let bridgePid: number | undefined;
+    let commandBridgePid: number | undefined;
 
     if (transport === "bus") {
       console.error("Transport: bus — starting bus server and signal bridge...");
@@ -623,10 +655,22 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     const splitPct = horizontal ? 70 : 50;
     const agentPane = spawnAgentPane(splitTarget, spawnCmd, ctx.ticketId, rb, horizontal, splitPct);
 
+    // Start command bridge after agent pane is known (requires agentPane ID for last-mile delivery)
+    if (transport === "bus" && busUrl) {
+      const cmdBridge = startBusCommandBridge(
+        ctx.repoRoot,
+        busUrl,
+        `pipeline-${ctx.ticketId}`,
+        agentPane
+      );
+      commandBridgePid = cmdBridge.pid;
+      rb.commandBridgePid = commandBridgePid;
+    }
+
     // Step 7: Create registry
     const { nonce, registryPath } = createRegistry(
       ctx, agentPane, rb, repoId, repoPath, pipelineVariant,
-      transport, busServerPid, busUrl, bridgePid
+      transport, busServerPid, busUrl, bridgePid, commandBridgePid
     );
 
     return { agentPane, nonce, registryPath, repoPath };
