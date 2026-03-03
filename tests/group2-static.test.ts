@@ -478,3 +478,67 @@ describe("pipeline-variants/frontend-ui.json structure", () => {
     expect(variant.phases.visual_verify.transitions.VISUAL_VERIFY_COMPLETE.to).toBe("blindqa");
   });
 });
+
+// ===========================================================================
+// verification variant config tests (6 tests)
+// ===========================================================================
+
+describe("pipeline-variants/verification.json structure", () => {
+  const variantPath = path.join(REPO_ROOT, ".collab/config/pipeline-variants/verification.json");
+
+  test("42. verification.json exists", () => {
+    expect(fs.existsSync(variantPath)).toBe(true);
+  });
+
+  test("43. verification.json version is 3.1", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    expect(variant.version).toBe("3.1");
+  });
+
+  test("44. all to: targets reference phases that exist", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseNames = new Set(Object.keys(variant.phases));
+
+    for (const [phaseName, phase] of Object.entries(variant.phases) as [string, any][]) {
+      if (phase.terminal) continue;
+      for (const [signal, transition] of Object.entries(phase.transitions ?? {}) as [string, any][]) {
+        expect(
+          phaseNames.has(transition.to),
+          `Phase '${phaseName}' signal '${signal}' targets '${transition.to}' which does not exist`
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("45. done and escalate are both terminal", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    expect(variant.phases.done.terminal).toBe(true);
+    expect(variant.phases.escalate.terminal).toBe(true);
+  });
+
+  test("46. verify_execute is between clarify and done", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseIds = Object.keys(variant.phases);
+
+    const clarifyIdx = phaseIds.indexOf("clarify");
+    const verifyIdx = phaseIds.indexOf("verify_execute");
+    const doneIdx = phaseIds.indexOf("done");
+
+    expect(clarifyIdx).toBeGreaterThanOrEqual(0);
+    expect(verifyIdx).toBeGreaterThan(clarifyIdx);
+    expect(doneIdx).toBeGreaterThan(verifyIdx);
+
+    // Verify routing: clarify → verify_execute → done
+    expect(variant.phases.clarify.transitions.CLARIFY_COMPLETE.to).toBe("verify_execute");
+    expect(variant.phases.verify_execute.transitions.VERIFY_EXECUTE_COMPLETE.to).toBe("done");
+  });
+
+  test("47. only 2 non-terminal phases (clarify, verify_execute)", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const nonTerminal = Object.entries(variant.phases).filter(
+      ([, phase]: [string, any]) => !phase.terminal
+    );
+    expect(nonTerminal.length).toBe(2);
+    expect(nonTerminal.map(([name]) => name)).toEqual(["clarify", "verify_execute"]);
+  });
+});
