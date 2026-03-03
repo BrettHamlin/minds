@@ -52,20 +52,27 @@ describe("resolveTransport: @debug directive (Level 1)", () => {
   });
 });
 
-// ── Level 3: COLLAB_TRANSPORT env var override ────────────────────────────────
-// (Checked first in code — highest priority despite being called "Level 3"
-//  in the ticket, because it's the emergency/CI escape hatch.)
+// ── Level 2: COLLAB_TRANSPORT env var override ────────────────────────────────
+// Overrides auto-detect but NOT @debug (Level 1 always wins).
 
 describe("resolveTransport: COLLAB_TRANSPORT env var override", () => {
-  test("COLLAB_TRANSPORT=tmux returns TmuxTransport regardless of directives", async () => {
+  test("COLLAB_TRANSPORT=tmux returns TmuxTransport when no directives", async () => {
     process.env["COLLAB_TRANSPORT"] = "tmux";
     const t = await resolveTransport([]);
     expect(t).toBeInstanceOf(TmuxTransport);
   });
 
-  test("COLLAB_TRANSPORT=tmux wins even when @debug is absent (no double-call issue)", async () => {
+  test("COLLAB_TRANSPORT=tmux returns TmuxTransport with unrelated directives", async () => {
     process.env["COLLAB_TRANSPORT"] = "tmux";
     const t = await resolveTransport(["@metrics"]);
+    expect(t).toBeInstanceOf(TmuxTransport);
+  });
+
+  test("@debug beats COLLAB_TRANSPORT=bus — Level 1 cannot be overridden", async () => {
+    // This is the key priority regression test:
+    // even with COLLAB_TRANSPORT=bus set, @debug in the pipeline must win.
+    process.env["COLLAB_TRANSPORT"] = "bus";
+    const t = await resolveTransport(["@debug"]);
     expect(t).toBeInstanceOf(TmuxTransport);
   });
 
