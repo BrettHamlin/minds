@@ -707,6 +707,34 @@ describe("deploy-verify-executor.ts file", () => {
 });
 
 // ===========================================================================
+// pre-deploy-summary.ts static tests (1 test)
+// ===========================================================================
+
+describe("pre-deploy-summary.ts file", () => {
+  test("74. pre-deploy-summary.ts exists", () => {
+    const fullPath = path.join(REPO_ROOT, "src/scripts/pre-deploy-summary.ts");
+    expect(fs.existsSync(fullPath)).toBe(true);
+  });
+
+  test("75. pre-deploy-summary.ts uses getRepoRoot pattern", () => {
+    const content = readSourceFile("src/scripts/pre-deploy-summary.ts");
+    expect(content).toContain("getRepoRoot");
+    expect(content).toContain("git rev-parse --show-toplevel");
+  });
+});
+
+// ===========================================================================
+// collab.pre-deploy-confirm.md executor wiring test (1 test)
+// ===========================================================================
+
+describe("collab.pre-deploy-confirm.md executor wiring", () => {
+  test("76. command references pre-deploy-summary.ts call path", () => {
+    const content = readSourceFile("src/commands/collab.pre-deploy-confirm.md");
+    expect(content).toContain("bun .collab/scripts/pre-deploy-summary.ts");
+  });
+});
+
+// ===========================================================================
 // deploy variant config tests (7 tests)
 // ===========================================================================
 

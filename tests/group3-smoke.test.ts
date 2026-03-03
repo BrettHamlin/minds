@@ -1459,3 +1459,133 @@ describe("collab.verify-execute.md executor wiring", () => {
     expect(content).toContain("bun .collab/scripts/verify-execute-executor");
   });
 });
+
+// ===========================================================================
+// pre-deploy-summary.ts: smoke tests (4 tests)
+// ===========================================================================
+
+describe("pre-deploy-summary.ts: deployment context aggregation", () => {
+  const PDS_EXECUTOR = path.join(REPO_ROOT, "src/scripts/pre-deploy-summary.ts");
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  function setupSpecAndConfig(
+    dir: string,
+    opts: {
+      specMd?: string;
+      metadata?: object | string;
+      deployVerify?: object | string;
+    }
+  ): void {
+    // Create specs directory with spec.md and metadata.json
+    if (opts.specMd !== undefined) {
+      fs.mkdirSync(path.join(dir, "specs/test-feature"), { recursive: true });
+      fs.writeFileSync(path.join(dir, "specs/test-feature/spec.md"), opts.specMd);
+    }
+    if (opts.metadata !== undefined) {
+      fs.mkdirSync(path.join(dir, "specs/test-feature"), { recursive: true });
+      const content = typeof opts.metadata === "string"
+        ? opts.metadata
+        : JSON.stringify(opts.metadata);
+      fs.writeFileSync(path.join(dir, "specs/test-feature/metadata.json"), content);
+    }
+    // Create deploy-verify.json
+    if (opts.deployVerify !== undefined) {
+      const collabPath = path.join(dir, ".collab");
+      if (fs.existsSync(collabPath)) {
+        const stat = fs.lstatSync(collabPath);
+        if (stat.isSymbolicLink()) fs.unlinkSync(collabPath);
+      }
+      fs.mkdirSync(path.join(dir, ".collab/config"), { recursive: true });
+      const content = typeof opts.deployVerify === "string"
+        ? opts.deployVerify
+        : JSON.stringify(opts.deployVerify);
+      fs.writeFileSync(path.join(dir, ".collab/config/deploy-verify.json"), content);
+    }
+  }
+
+  test("65. full context — exit 0 with all fields populated", () => {
+    tmpDir = createTempRepo({});
+    setupSpecAndConfig(tmpDir, {
+      specMd: "# BRE-248 Next.js initial setup\n\n- [ ] AC1: Landing page renders\n- [ ] AC2: Auth flow works\n",
+      metadata: {
+        ticket_id: "BRE-248",
+        branch_name: "feat/BRE-248-nextjs-setup",
+        pipeline_variant: "deploy",
+        project_name: "paper-clips-frontend",
+      },
+      deployVerify: {
+        productionUrl: "https://paper-clips.net",
+        smokeRoutes: ["/", "/briefing"],
+      },
+    });
+
+    const result = runBunScript(PDS_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.ticketId).toBe("BRE-248");
+    expect(json.ticketTitle).toContain("Next.js initial setup");
+    expect(json.productionUrl).toBe("https://paper-clips.net");
+    expect(json.smokeRoutes).toEqual(["/", "/briefing"]);
+    expect(json.service).toBe("paper-clips-frontend");
+    expect(json.acSummary.length).toBe(2);
+    expect(json.warnings.length).toBe(0);
+  });
+
+  test("66. missing deploy config — exit 0 with warnings", () => {
+    tmpDir = createTempRepo({});
+    setupSpecAndConfig(tmpDir, {
+      specMd: "# Test Feature\n\n- [ ] AC1: Works\n",
+      metadata: { ticket_id: "BRE-100", branch_name: "feat/test" },
+    });
+
+    const result = runBunScript(PDS_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.ticketId).toBe("BRE-100");
+    expect(json.warnings).toContain("deploy-verify.json not found");
+    expect(json.productionUrl).toBeUndefined();
+  });
+
+  test("67. missing spec — exit 0 with warnings and partial data", () => {
+    tmpDir = createTempRepo({});
+    // Only deploy config, no spec directory
+    const collabPath = path.join(tmpDir, ".collab");
+    if (fs.existsSync(collabPath)) {
+      const stat = fs.lstatSync(collabPath);
+      if (stat.isSymbolicLink()) fs.unlinkSync(collabPath);
+    }
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".collab/config/deploy-verify.json"),
+      JSON.stringify({ productionUrl: "https://example.com", smokeRoutes: ["/"] })
+    );
+
+    const result = runBunScript(PDS_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.warnings).toContain("No spec directory found (specs/*/spec.md)");
+    expect(json.productionUrl).toBe("https://example.com");
+  });
+
+  test("68. malformed metadata — exit 0 with warnings", () => {
+    tmpDir = createTempRepo({});
+    setupSpecAndConfig(tmpDir, {
+      specMd: "# Test\n",
+      metadata: "not valid json{{{",
+      deployVerify: { productionUrl: "https://example.com", smokeRoutes: ["/"] },
+    });
+
+    const result = runBunScript(PDS_EXECUTOR, ["--cwd", tmpDir], tmpDir, 15000);
+
+    expect(result.exitCode).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.warnings).toContain("metadata.json found but malformed");
+  });
+});
