@@ -879,3 +879,33 @@ describe("collab.install.ts installer updates", () => {
     expect(content).toContain("/collab.deploy-verify");
   });
 });
+
+// ===========================================================================
+// collab.run.md argument parsing tests (3 tests)
+// ===========================================================================
+
+describe("collab.run.md argument parsing — Linear label lookup", () => {
+  test("85. collab.run.md instructs get_issue lookup for bare ticket tokens", () => {
+    const content = readSourceFile("src/commands/collab.run.md");
+
+    // Must instruct the orchestrator to call get_issue MCP when no :pipeline suffix
+    expect(content).toContain("get_issue");
+    expect(content).toContain("pipeline:*");
+  });
+
+  test("86. collab.run.md documents pipeline label fallback to default", () => {
+    const content = readSourceFile("src/commands/collab.run.md");
+
+    // Must still document the fallback to "default" when no label is found
+    expect(content).toContain('pipeline: "default"');
+    // Must describe the label-found path
+    expect(content).toContain("pipeline:verification");
+  });
+
+  test("87. collab.run.md usage message mentions Linear label inference", () => {
+    const content = readSourceFile("src/commands/collab.run.md");
+
+    // Usage hint must mention that pipeline can be inferred from Linear label
+    expect(content).toContain("inferred from Linear label");
+  });
+});

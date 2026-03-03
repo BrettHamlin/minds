@@ -12,15 +12,15 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 ## Arguments
 
-`$ARGUMENTS` = one or more `ticket:pipeline` pairs (e.g., `BRE-342:default BRE-341:mobile`). The `:pipeline` suffix is optional and defaults to `"default"` when omitted.
+`$ARGUMENTS` = one or more `ticket:pipeline` pairs (e.g., `BRE-342:default BRE-341:mobile`). The `:pipeline` suffix is optional; when omitted, the ticket's Linear labels are checked for a `pipeline:*` label (e.g., `pipeline:backend`). If found, that variant is used; otherwise defaults to `"default"`.
 
 ### Parse Arguments
 
 Extract from `$ARGUMENTS`:
 - **TICKETS**: array of `{ticket_id, pipeline}` objects parsed from each space-separated token.
-  - Token `BRE-342:default` → `{ticket_id: "BRE-342", pipeline: "default"}`
+  - Token `BRE-342:backend` → `{ticket_id: "BRE-342", pipeline: "backend"}`
   - Token `BRE-341:mobile` → `{ticket_id: "BRE-341", pipeline: "mobile"}`
-  - Token `BRE-339` (no colon) → `{ticket_id: "BRE-339", pipeline: "default"}`
+  - Token `BRE-339` (no colon) → call `get_issue` MCP for the ticket and scan its labels for one matching `pipeline:*`. If found (e.g. `pipeline:verification`), use the suffix as the pipeline name → `{ticket_id: "BRE-339", pipeline: "verification"}`. If no `pipeline:*` label exists → `{ticket_id: "BRE-339", pipeline: "default"}`.
 - At least one token is required.
 
 Use `{TICKET_ID}` and `{PIPELINE[TICKET_ID]}` (the per-ticket pipeline name) in all bun script calls. Never use a single shared pipeline name across all tickets.
@@ -37,7 +37,7 @@ Scan `.collab/state/pipeline-registry/*.json`. For each where `orchestrator_pane
 
 ### 2. Validate (run once)
 
-No arguments -> "Usage: /collab.run <ticket[:pipeline]> [ticket[:pipeline] ...] — e.g. BRE-342:default BRE-341:mobile" and stop.
+No arguments -> "Usage: /collab.run <ticket[:pipeline]> [ticket[:pipeline] ...] — e.g. BRE-342:default BRE-341:mobile or BRE-339 (pipeline inferred from Linear label)" and stop.
 
 ### 3. Per-Ticket Setup Loop
 
