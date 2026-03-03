@@ -38,72 +38,61 @@ If no ticket ID provided, emit error signal and exit:
 bun .collab/handlers/emit-visual-verify-signal.ts error "No ticket ID provided"
 ```
 
-### 2. Read Verification Configuration
+### 2. Start Dev Server (if configured)
 
-Read `.collab/config/visual-verify.json`:
-
-```json
-{
-  "baseUrl": "http://localhost:3000",
-  "startCommand": "bun run dev",
-  "readyPath": "/",
-  "readyTimeout": 30,
-  "routes": [
-    { "path": "/", "name": "home", "selectors": [".feed-card", "nav", "footer"] }
-  ]
-}
-```
-
-Fields:
-- `baseUrl` (required) — base URL of the dev server
-- `startCommand` (optional) — command to start the dev server
-- `readyPath` (optional, default `/`) — path to poll for readiness
-- `readyTimeout` (optional, default 30) — seconds to wait for server readiness
-- `routes` (required) — routes to check with their expected DOM selectors
-
-If config file is missing or malformed, emit error:
-```bash
-bun .collab/handlers/emit-visual-verify-signal.ts error "Config file .collab/config/visual-verify.json not found"
-```
-
-### 3. Start Dev Server (if configured)
-
-If `startCommand` is set, start the dev server as a background process. Poll `baseUrl + readyPath` until it returns HTTP 200 (up to `readyTimeout` seconds).
+Read `.collab/config/visual-verify.json`. If `startCommand` is configured, start the dev server as a background process BEFORE calling the executor. Poll `baseUrl + readyPath` until it returns HTTP 200 (up to `readyTimeout` seconds).
 
 If the server fails to start or times out, emit error:
 ```bash
 bun .collab/handlers/emit-visual-verify-signal.ts error "Dev server failed to start within 30s"
 ```
 
-### 4. Layer 1 — Structural Checks
+### 3. Layer 1 — Deterministic Structural Checks (Executor)
 
-For each route in the config:
-1. Fetch `baseUrl + route.path`
-2. Verify HTTP status is 200
-3. Parse HTML and check each selector in `route.selectors` exists in the DOM
+Call the deterministic visual verify executor. This script reads `.collab/config/visual-verify.json`, fetches each configured route, checks DOM selectors, and prints a single verdict line to stdout.
 
-Collect all structural failures. If any exist, emit failure:
 ```bash
-bun .collab/handlers/emit-visual-verify-signal.ts fail "Structural: .feed-card not found on /briefing"
+bun .collab/scripts/visual-verify-executor.ts --cwd <worktree-path> 2>&1
 ```
 
-### 5. Layer 2 — Visual Diff (when Playwright available)
+Capture:
+- The **last line** of stdout — verdict in format `VISUAL_VERIFY_COMPLETE | detail` or `VISUAL_VERIFY_FAILED | detail` or `VISUAL_VERIFY_ERROR | detail`
+- The **exit code**: `0` = pass, `1` = fail, `2` = error
 
-For routes with reference screenshots in the configured `referenceDir`:
+Do NOT duplicate executor logic inline — config validation, route fetching, and selector checking are all handled by the executor.
+
+**Exit 2 — Emit `VISUAL_VERIFY_ERROR` and STOP:**
+```bash
+bun .collab/handlers/emit-visual-verify-signal.ts error "${verdict_detail}"
+```
+
+**Exit 1 — Emit `VISUAL_VERIFY_FAILED` and STOP:**
+```bash
+bun .collab/handlers/emit-visual-verify-signal.ts fail "${verdict_detail}"
+```
+
+**Exit 0 — Structural checks passed. Proceed to Layer 2.**
+
+### 4. Layer 2 — Agent-Driven Visual Diff (Playwright)
+
+Only reached when Layer 1 passes (exit 0). For routes with reference screenshots in the configured `referenceDir`:
 1. Navigate to each route with Playwright
 2. Use `toHaveScreenshot()` with `mask` for dynamic regions
 3. If diff exceeds `maxDiffPixelRatio`, record failure
 
-If any visual diff exceeds threshold, emit failure with details.
+If any visual diff exceeds threshold, emit failure:
+```bash
+bun .collab/handlers/emit-visual-verify-signal.ts fail "Visual diff: ${details}"
+```
 
-### 6. Emit Success Signal
+### 5. Emit Success Signal
 
-If all checks pass:
+If both Layer 1 and Layer 2 pass:
 ```bash
 bun .collab/handlers/emit-visual-verify-signal.ts pass "All structural and visual checks passed"
 ```
 
-### 7. On VISUAL_VERIFY_FAILED — Remediation
+### 6. On VISUAL_VERIFY_FAILED — Remediation
 
 When verification fails, the orchestrator sends the structured failure report back to the agent pane. The agent fixes the code and re-runs this command.
 
