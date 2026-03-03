@@ -1,0 +1,4 @@
+[
+  { "trigger": "/collab.clarify", "signal": "CLARIFY_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "/collab.verify-execute", "signal": "VERIFY_EXECUTE_COMPLETE", "delay_seconds": 1 }
+]

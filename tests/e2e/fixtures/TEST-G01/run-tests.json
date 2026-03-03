@@ -1,0 +1,4 @@
+{
+  "command": "echo 'tests passed'",
+  "timeout": 30
+}

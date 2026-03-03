@@ -39,8 +39,22 @@ phase(implement)
     }
     .signals(IMPLEMENT_COMPLETE, IMPLEMENT_WAITING, IMPLEMENT_ERROR)
     .on(IMPLEMENT_COMPLETE, when: hasGroup, to: tasks)
-    .on(IMPLEMENT_COMPLETE, otherwise, to: blindqa)
+    .on(IMPLEMENT_COMPLETE, otherwise, to: run_tests)
     .on(IMPLEMENT_ERROR, to: implement)
+
+phase(run_tests)
+    .command("/collab.run-tests")
+    .signals(RUN_TESTS_COMPLETE, RUN_TESTS_FAILED, RUN_TESTS_ERROR)
+    .on(RUN_TESTS_COMPLETE, to: visual_verify)
+    .on(RUN_TESTS_FAILED, to: run_tests)
+    .on(RUN_TESTS_ERROR, to: run_tests)
+
+phase(visual_verify)
+    .command("/collab.visual-verify")
+    .signals(VISUAL_VERIFY_COMPLETE, VISUAL_VERIFY_FAILED, VISUAL_VERIFY_ERROR)
+    .on(VISUAL_VERIFY_COMPLETE, to: blindqa)
+    .on(VISUAL_VERIFY_FAILED, to: visual_verify)
+    .on(VISUAL_VERIFY_ERROR, to: visual_verify)
 
 phase(blindqa)
     .actions {

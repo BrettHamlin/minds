@@ -1,0 +1,5 @@
+[
+  { "trigger": "/collab.clarify", "signal": "CLARIFY_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "/collab.verify-execute", "signal": "VERIFY_EXECUTE_FAILED", "delay_seconds": 1, "note": "first attempt fails" },
+  { "trigger": "/collab.verify-execute", "signal": "VERIFY_EXECUTE_COMPLETE", "delay_seconds": 1, "note": "retry succeeds" }
+]

@@ -65,11 +65,25 @@ describe("e2e/pipeline-walk: happy path clarify → done", () => {
     expect(resp.nextPhase).toBe("implement");
   });
 
-  test("5. implement + IMPLEMENT_COMPLETE (otherwise) → advance to blindqa", () => {
+  test("5. implement + IMPLEMENT_COMPLETE (otherwise) → advance to run_tests", () => {
     const rows = compiled.phases["implement"].conditionalTransitions ?? [];
     const t = resolveConditionalTransition(rows, "IMPLEMENT_COMPLETE");
     expect(t).not.toBeNull();
-    expect(t).toEqual({ to: "blindqa" });
+    expect(t).toEqual({ to: "run_tests" });
+  });
+
+  test("5a. run_tests + RUN_TESTS_COMPLETE → advance to visual_verify", () => {
+    const t = resolveTransition("run_tests", "RUN_TESTS_COMPLETE", compiled);
+    expect(t).not.toBeNull();
+    expect(t!.to).toBe("visual_verify");
+    expect(t!.gate).toBeNull();
+  });
+
+  test("5b. visual_verify + VISUAL_VERIFY_COMPLETE → advance to blindqa", () => {
+    const t = resolveTransition("visual_verify", "VISUAL_VERIFY_COMPLETE", compiled);
+    expect(t).not.toBeNull();
+    expect(t!.to).toBe("blindqa");
+    expect(t!.gate).toBeNull();
   });
 
   test("6. blindqa + BLINDQA_COMPLETE → advance to done", () => {
@@ -84,7 +98,7 @@ describe("e2e/pipeline-walk: happy path clarify → done", () => {
     expect(result).toBeNull();
   });
 
-  test("8. full happy-path walk visits exactly 7 phases ending at done", () => {
+  test("8. full happy-path walk visits exactly 9 phases ending at done", () => {
     // Simulate the orchestrator routing through the entire pipeline.
     // At each step we call the appropriate routing function and advance.
     const visited: string[] = ["clarify"];
@@ -124,7 +138,7 @@ describe("e2e/pipeline-walk: happy path clarify → done", () => {
       visited.push(current);
     }
 
-    // Step 5: implement → blindqa (otherwise branch)
+    // Step 5: implement → run_tests (otherwise branch)
     {
       const rows = compiled.phases[current].conditionalTransitions ?? [];
       const t = resolveConditionalTransition(rows, "IMPLEMENT_COMPLETE")!;
@@ -132,14 +146,28 @@ describe("e2e/pipeline-walk: happy path clarify → done", () => {
       visited.push(current);
     }
 
-    // Step 6: blindqa → done
+    // Step 6: run_tests → visual_verify
+    {
+      const t = resolveTransition(current, "RUN_TESTS_COMPLETE", compiled)!;
+      current = t.to!;
+      visited.push(current);
+    }
+
+    // Step 7: visual_verify → blindqa
+    {
+      const t = resolveTransition(current, "VISUAL_VERIFY_COMPLETE", compiled)!;
+      current = t.to!;
+      visited.push(current);
+    }
+
+    // Step 8: blindqa → done
     {
       const t = resolveTransition(current, "BLINDQA_COMPLETE", compiled)!;
       current = t.to!;
       visited.push(current);
     }
 
-    expect(visited).toEqual(["clarify", "plan", "tasks", "analyze", "implement", "blindqa", "done"]);
+    expect(visited).toEqual(["clarify", "plan", "tasks", "analyze", "implement", "run_tests", "visual_verify", "blindqa", "done"]);
     expect(compiled.phases[current].terminal).toBe(true);
   });
 });
@@ -219,5 +247,15 @@ describe("e2e/pipeline-walk: error self-loop paths", () => {
   test("20. blindqa + BLINDQA_ERROR → back to blindqa", () => {
     const t = resolveTransition("blindqa", "BLINDQA_ERROR", compiled);
     expect(t!.to).toBe("blindqa");
+  });
+
+  test("21. visual_verify + VISUAL_VERIFY_FAILED → back to visual_verify", () => {
+    const t = resolveTransition("visual_verify", "VISUAL_VERIFY_FAILED", compiled);
+    expect(t!.to).toBe("visual_verify");
+  });
+
+  test("22. visual_verify + VISUAL_VERIFY_ERROR → back to visual_verify", () => {
+    const t = resolveTransition("visual_verify", "VISUAL_VERIFY_ERROR", compiled);
+    expect(t!.to).toBe("visual_verify");
   });
 });

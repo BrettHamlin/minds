@@ -1,0 +1,21 @@
+{
+  "version": "3.1",
+  "phases": {
+    "clarify": {
+      "command": "/collab.clarify",
+      "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"],
+      "transitions": { "CLARIFY_COMPLETE": { "to": "deploy_verify" } }
+    },
+    "deploy_verify": {
+      "command": "/collab.deploy-verify",
+      "signals": ["DEPLOY_VERIFY_COMPLETE", "DEPLOY_VERIFY_FAILED", "DEPLOY_VERIFY_ERROR"],
+      "transitions": {
+        "DEPLOY_VERIFY_COMPLETE": { "to": "done" },
+        "DEPLOY_VERIFY_FAILED": { "to": "deploy_verify" },
+        "DEPLOY_VERIFY_ERROR": { "to": "escalate" }
+      }
+    },
+    "escalate": { "terminal": true },
+    "done": { "terminal": true }
+  }
+}
