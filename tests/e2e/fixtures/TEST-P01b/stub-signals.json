@@ -1,0 +1,22 @@
+[
+  { "trigger": "/collab.clarify", "signal": "CLARIFY_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "/collab.spec-critique", "signal": "SPEC_CRITIQUE_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "/collab.plan", "signal": "PLAN_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "plan_review", "signal": "PLAN_REVIEW_APPROVED", "delay_seconds": 1 },
+  { "trigger": "/collab.tasks", "signal": "TASKS_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "/collab.analyze", "signal": "ANALYZE_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "analyze_review", "signal": "ANALYZE_REVIEW_APPROVED", "delay_seconds": 1 },
+  { "trigger": "/collab.implement", "signal": "IMPLEMENT_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "/collab.codeReview", "signal": "CODE_REVIEW_PASS", "delay_seconds": 1 },
+  { "trigger": "/collab.run-tests", "signal": "RUN_TESTS_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "/collab.blindqa", "signal": "BLINDQA_COMPLETE", "delay_seconds": 1 },
+  { "trigger": "/collab.pre-deploy-confirm", "signal": "PRE_DEPLOY_CONFIRM_COMPLETE", "delay_seconds": 2 },
+  { "trigger": "/collab.deploy-verify", "signal": "DEPLOY_VERIFY_FAILED", "delay_seconds": 1, "note": "first deploy fails" },
+  { "trigger": "/collab.deploy-verify", "signal": "DEPLOY_FIX_FORWARD", "delay_seconds": 1, "note": "human chooses fix-forward" },
+  { "trigger": "/collab.implement", "signal": "IMPLEMENT_COMPLETE", "delay_seconds": 1, "note": "fix-forward implement" },
+  { "trigger": "/collab.codeReview", "signal": "CODE_REVIEW_PASS", "delay_seconds": 1, "note": "fix-forward code review" },
+  { "trigger": "/collab.run-tests", "signal": "RUN_TESTS_COMPLETE", "delay_seconds": 1, "note": "fix-forward run tests" },
+  { "trigger": "/collab.blindqa", "signal": "BLINDQA_COMPLETE", "delay_seconds": 1, "note": "fix-forward blindqa" },
+  { "trigger": "/collab.pre-deploy-confirm", "signal": "PRE_DEPLOY_CONFIRM_COMPLETE", "delay_seconds": 1, "note": "fix-forward pre-deploy confirm" },
+  { "trigger": "/collab.deploy-verify", "signal": "DEPLOY_VERIFY_COMPLETE", "delay_seconds": 1, "note": "second deploy succeeds" }
+]

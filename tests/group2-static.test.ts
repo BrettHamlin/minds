@@ -671,3 +671,81 @@ describe("emit-deploy-verify-signal.ts handler", () => {
     expect(content).toContain("emit-phase-signal");
   });
 });
+
+// ===========================================================================
+// deploy variant config tests (7 tests)
+// ===========================================================================
+
+describe("pipeline-variants/deploy.json structure", () => {
+  const variantPath = path.join(REPO_ROOT, ".collab/config/pipeline-variants/deploy.json");
+
+  test("63. deploy.json exists", () => {
+    expect(fs.existsSync(variantPath)).toBe(true);
+  });
+
+  test("64. deploy.json version is 3.1", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    expect(variant.version).toBe("3.1");
+  });
+
+  test("65. all to: targets reference phases that exist", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseNames = new Set(Object.keys(variant.phases));
+
+    for (const [phaseName, phase] of Object.entries(variant.phases) as [string, any][]) {
+      if (phase.terminal) continue;
+      for (const [signal, transition] of Object.entries(phase.transitions ?? {}) as [string, any][]) {
+        expect(
+          phaseNames.has(transition.to),
+          `Phase '${phaseName}' signal '${signal}' targets '${transition.to}' which does not exist`
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("66. done and escalate are both terminal", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    expect(variant.phases.done.terminal).toBe(true);
+    expect(variant.phases.escalate.terminal).toBe(true);
+  });
+
+  test("67. pre_deploy_confirm is between blindqa and deploy_verify", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseIds = Object.keys(variant.phases);
+
+    const blindqaIdx = phaseIds.indexOf("blindqa");
+    const preDeployIdx = phaseIds.indexOf("pre_deploy_confirm");
+    const deployVerifyIdx = phaseIds.indexOf("deploy_verify");
+
+    expect(blindqaIdx).toBeGreaterThanOrEqual(0);
+    expect(preDeployIdx).toBeGreaterThan(blindqaIdx);
+    expect(deployVerifyIdx).toBeGreaterThan(preDeployIdx);
+
+    // Verify routing: blindqa → pre_deploy_confirm → deploy_verify
+    expect(variant.phases.blindqa.transitions.BLINDQA_COMPLETE.to).toBe("pre_deploy_confirm");
+    expect(variant.phases.pre_deploy_confirm.transitions.PRE_DEPLOY_CONFIRM_COMPLETE.to).toBe("deploy_verify");
+  });
+
+  test("68. deploy_human_gate has all 3 decision signals", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const gate = variant.phases.deploy_human_gate;
+
+    expect(gate).toBeDefined();
+    expect(gate.signals).toContain("DEPLOY_FIX_FORWARD");
+    expect(gate.signals).toContain("DEPLOY_ROLLBACK");
+    expect(gate.signals).toContain("DEPLOY_INVESTIGATE");
+    expect(gate.signals.length).toBe(3);
+
+    // FIX_FORWARD loops back to implement; ROLLBACK and INVESTIGATE escalate
+    expect(gate.transitions.DEPLOY_FIX_FORWARD.to).toBe("implement");
+    expect(gate.transitions.DEPLOY_ROLLBACK.to).toBe("escalate");
+    expect(gate.transitions.DEPLOY_INVESTIGATE.to).toBe("escalate");
+  });
+
+  test("69. deploy variant has no visual_verify phase", () => {
+    const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
+    const phaseIds = Object.keys(variant.phases);
+
+    expect(phaseIds).not.toContain("visual_verify");
+  });
+});
