@@ -628,3 +628,46 @@ describe("emit-pre-deploy-confirm-signal.ts handler", () => {
     expect(content).toContain("emit-phase-signal");
   });
 });
+
+// ===========================================================================
+// collab.deploy-verify.md command file tests (3 tests)
+// ===========================================================================
+
+describe("collab.deploy-verify.md command file", () => {
+  test("58. collab.deploy-verify.md exists", () => {
+    const fullPath = path.join(REPO_ROOT, "src/commands/collab.deploy-verify.md");
+    expect(fs.existsSync(fullPath)).toBe(true);
+  });
+
+  test("59. collab.deploy-verify.md contains all three signal names", () => {
+    const content = readSourceFile("src/commands/collab.deploy-verify.md");
+
+    expect(content).toContain("DEPLOY_VERIFY_COMPLETE");
+    expect(content).toContain("DEPLOY_VERIFY_FAILED");
+    expect(content).toContain("DEPLOY_VERIFY_ERROR");
+  });
+
+  test("60. collab.deploy-verify.md uses correct signal format", () => {
+    const content = readSourceFile("src/commands/collab.deploy-verify.md");
+
+    expect(content).toContain("[SIGNAL:TICKET_ID:NONCE]");
+  });
+});
+
+// ===========================================================================
+// emit-deploy-verify-signal.ts handler tests (2 tests)
+// ===========================================================================
+
+describe("emit-deploy-verify-signal.ts handler", () => {
+  test("61. emit-deploy-verify-signal.ts exists", () => {
+    const fullPath = path.join(REPO_ROOT, "src/handlers/emit-deploy-verify-signal.ts");
+    expect(fs.existsSync(fullPath)).toBe(true);
+  });
+
+  test("62. emit-deploy-verify-signal.ts uses emitPhaseSignal factory", () => {
+    const content = readSourceFile("src/handlers/emit-deploy-verify-signal.ts");
+
+    expect(content).toContain('emitPhaseSignal("deploy_verify"');
+    expect(content).toContain("emit-phase-signal");
+  });
+});

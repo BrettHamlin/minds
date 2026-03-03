@@ -936,3 +936,71 @@ describe("emit-pre-deploy-confirm-signal.ts: signal emission", () => {
     expect(queue.signal).toContain("Deploy aborted by user");
   });
 });
+
+// ===========================================================================
+// emit-deploy-verify-signal.ts: signal emission smoke tests (3 tests)
+// ===========================================================================
+
+describe("emit-deploy-verify-signal.ts: signal emission", () => {
+  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-deploy-verify-signal.ts");
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  function setupMockRegistry(dir: string): void {
+    const registryDir = path.join(dir, ".collab/state/pipeline-registry");
+    fs.mkdirSync(registryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(registryDir, "TEST-001.json"),
+      JSON.stringify({
+        ticket_id: "TEST-001",
+        current_step: "deploy_verify",
+        nonce: "smoke-nonce",
+        agent_pane_id: "%test-orch",
+        orchestrator_pane_id: "%orch-fake",
+        status: "running",
+      })
+    );
+  }
+
+  test("37. pass event exits 0 and writes signal queue file", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["pass", "All smoke routes passed"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    expect(fs.existsSync(queueFile)).toBe(true);
+  });
+
+  test("38. queue file contains DEPLOY_VERIFY_COMPLETE in SIGNAL format", () => {
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+
+    expect(queue.signal).toContain("[SIGNAL:TEST-001:smoke-nonce]");
+    expect(queue.signal).toContain("DEPLOY_VERIFY_COMPLETE");
+    expect(queue.emitted_at).toBeDefined();
+  });
+
+  test("39. fail event writes DEPLOY_VERIFY_FAILED to queue", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["fail", "/briefing returned 500"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+    expect(queue.signal).toContain("DEPLOY_VERIFY_FAILED");
+    expect(queue.signal).toContain("/briefing returned 500");
+  });
+});
