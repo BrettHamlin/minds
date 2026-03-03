@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS runs (
   outcome            TEXT,
   autonomous         INTEGER,
   intervention_count INTEGER DEFAULT 0,
-  config_hash        TEXT
+  config_hash        TEXT,
+  pr_url             TEXT,
+  pr_number          INTEGER,
+  pr_branch          TEXT
 );
 
 CREATE TABLE IF NOT EXISTS phases (
@@ -89,6 +92,26 @@ CREATE TABLE IF NOT EXISTS interventions (
 `;
 
 // ============================================================================
+// Migrations
+// ============================================================================
+
+const PR_MIGRATIONS = [
+  "ALTER TABLE runs ADD COLUMN pr_url TEXT",
+  "ALTER TABLE runs ADD COLUMN pr_number INTEGER",
+  "ALTER TABLE runs ADD COLUMN pr_branch TEXT",
+];
+
+function applyPrMigrations(db: Database): void {
+  for (const sql of PR_MIGRATIONS) {
+    try {
+      db.exec(sql);
+    } catch {
+      /* column already exists in this DB */
+    }
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -117,6 +140,7 @@ export function openMetricsDb(dbPath: string): Database {
   }
   const db = new Database(dbPath, { create: true });
   db.exec(SCHEMA_SQL);
+  applyPrMigrations(db);
   return db;
 }
 
@@ -127,6 +151,7 @@ export function openMetricsDb(dbPath: string): Database {
 export function openInMemoryMetricsDb(): Database {
   const db = new Database(":memory:");
   db.exec(SCHEMA_SQL);
+  applyPrMigrations(db);
   return db;
 }
 
@@ -184,6 +209,26 @@ export function completeRun(
       `UPDATE runs SET completed_at = ?, duration_ms = ?, outcome = ? WHERE id = ?`
     )
     .run(completedAt, durationMs, outcome, runId);
+}
+
+// ============================================================================
+// PR Stamping
+// ============================================================================
+
+/**
+ * Stamp a completed PR's URL, number, and branch onto the runs row.
+ * Called by create-draft-pr.ts after successful gh pr create.
+ */
+export function stampPrOnRun(
+  db: Database,
+  runId: string,
+  prUrl: string,
+  prNumber: number,
+  prBranch: string
+): void {
+  db.query(
+    "UPDATE runs SET pr_url = ?, pr_number = ?, pr_branch = ? WHERE id = ?"
+  ).run(prUrl, prNumber, prBranch, runId);
 }
 
 // ============================================================================
