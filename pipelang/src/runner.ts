@@ -10,6 +10,7 @@
 
 import type { CompiledPipeline, CompiledGate, CompiledTransition, ConditionalTransitionRow } from "../../src/lib/pipeline/types";
 import { tmux, sleepMs, sendToPane, openAgentPane, pollForSignal } from "./tmux";
+import { resolveTransport } from "../../transport/index.ts";
 
 // ── Agent lifecycle interface ─────────────────────────────────────────────────
 
@@ -43,6 +44,11 @@ export interface RunOptions {
    * Override in tests to inject deterministic gate responses.
    */
   gateLifecycle?: (gateName: string, gatePrompt: string | { ai: string } | { inline: string }) => AgentLifecycle;
+  /**
+   * Pipeline-level directives (e.g. ["@debug"]) used to select the Transport
+   * implementation via resolveTransport(). Default: [] (auto-detect).
+   */
+  directives?: string[];
 }
 
 // ── Result types ──────────────────────────────────────────────────────────────
@@ -126,7 +132,14 @@ export async function runPipeline(
       sendAfterOpen: `/collab.gate ${name}`,
       waitForPromptMs: 3_000,
     }),
+    directives = [],
   } = opts;
+
+  // Resolve transport based on pipeline directives and environment.
+  // TmuxTransport is the default; BusTransport is selected when the bus
+  // is reachable and @debug is not set. Existing tmux calls below are
+  // unchanged — BRE-345/346 will wire them to the transport methods.
+  const _transport = await resolveTransport(directives);
 
   const phaseKeys = Object.keys(pipeline.phases);
   if (phaseKeys.length === 0) {
