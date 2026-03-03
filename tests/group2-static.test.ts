@@ -811,3 +811,55 @@ describe("pipeline-variants/deploy.json structure", () => {
     expect(phaseIds).not.toContain("visual_verify");
   });
 });
+
+// ===========================================================================
+// collab.install.ts installer tests (6 tests)
+// ===========================================================================
+
+describe("collab.install.ts installer updates", () => {
+  test("77. collab.install.ts contains pipeline-variants copy section", () => {
+    const content = readSourceFile("src/commands/collab.install.ts");
+    expect(content).toContain("pipeline-variants");
+    expect(content).toContain("variantsDir");
+  });
+
+  test("78. collab.install.ts contains command config scaffold section", () => {
+    const content = readSourceFile("src/commands/collab.install.ts");
+    expect(content).toContain("commandConfigs");
+    expect(content).toContain("configScaffoldCount");
+    expect(content).toContain("scaffold");
+  });
+
+  test("79. src/config/defaults/run-tests.json exists and is valid JSON", () => {
+    const fullPath = path.join(REPO_ROOT, "src/config/defaults/run-tests.json");
+    expect(fs.existsSync(fullPath)).toBe(true);
+    const content = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
+    expect(content.command).toBe("npm test");
+    expect(content.timeout).toBe(120);
+  });
+
+  test("80. src/config/defaults/visual-verify.json exists and is valid JSON", () => {
+    const fullPath = path.join(REPO_ROOT, "src/config/defaults/visual-verify.json");
+    expect(fs.existsSync(fullPath)).toBe(true);
+    const content = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
+    expect(content.baseUrl).toBe("http://localhost:3000");
+    expect(content.routes).toBeArray();
+  });
+
+  test("81. src/config/defaults/deploy-verify.json exists and is valid JSON", () => {
+    const fullPath = path.join(REPO_ROOT, "src/config/defaults/deploy-verify.json");
+    expect(fs.existsSync(fullPath)).toBe(true);
+    const content = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
+    expect(content.productionUrl).toBe("https://your-app.example.com");
+    expect(content.smokeRoutes).toEqual(["/"]);
+  });
+
+  test("82. collab.install.ts lists all 5 new commands in Available Commands", () => {
+    const content = readSourceFile("src/commands/collab.install.ts");
+    expect(content).toContain("/collab.run-tests");
+    expect(content).toContain("/collab.visual-verify");
+    expect(content).toContain("/collab.verify-execute");
+    expect(content).toContain("/collab.pre-deploy-confirm");
+    expect(content).toContain("/collab.deploy-verify");
+  });
+});

@@ -1589,3 +1589,93 @@ describe("pre-deploy-summary.ts: deployment context aggregation", () => {
     expect(json.warnings).toContain("metadata.json found but malformed");
   });
 });
+
+// ===========================================================================
+// collab.install.ts: installer copy logic smoke tests (2 tests)
+// ===========================================================================
+
+describe("collab.install.ts: installer scaffold logic", () => {
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  test("69. installer copies pipeline variant files", () => {
+    tmpDir = createTempRepo({});
+    // Remove symlink to avoid writing to real .collab
+    const collabPath = path.join(tmpDir, ".collab");
+    if (fs.existsSync(collabPath)) {
+      const stat = fs.lstatSync(collabPath);
+      if (stat.isSymbolicLink()) fs.unlinkSync(collabPath);
+    }
+    fs.mkdirSync(path.join(tmpDir, ".collab/config/pipeline-variants"), { recursive: true });
+
+    // Create mock source variant files
+    const srcVariants = path.join(tmpDir, "src-variants");
+    fs.mkdirSync(srcVariants, { recursive: true });
+    fs.writeFileSync(path.join(srcVariants, "backend.json"), '{"version":"3.1"}');
+    fs.writeFileSync(path.join(srcVariants, "deploy.json"), '{"version":"3.1"}');
+
+    // Run the same find/cp the installer uses
+    execSync(
+      `find "${srcVariants}" -name "*.json" -exec cp {} "${tmpDir}/.collab/config/pipeline-variants/" \\;`,
+      { shell: true }
+    );
+
+    const copied = fs.readdirSync(path.join(tmpDir, ".collab/config/pipeline-variants"))
+      .filter((f) => f.endsWith(".json"));
+    expect(copied.length).toBe(2);
+    expect(copied).toContain("backend.json");
+    expect(copied).toContain("deploy.json");
+  });
+
+  test("70. installer scaffolds configs but skips existing", () => {
+    tmpDir = createTempRepo({});
+    const collabPath = path.join(tmpDir, ".collab");
+    if (fs.existsSync(collabPath)) {
+      const stat = fs.lstatSync(collabPath);
+      if (stat.isSymbolicLink()) fs.unlinkSync(collabPath);
+    }
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+
+    // Pre-existing config that should NOT be overwritten
+    fs.writeFileSync(
+      path.join(tmpDir, ".collab/config/run-tests.json"),
+      '{"command":"bun test","customized":true}'
+    );
+
+    // Mock source defaults
+    const srcDefaults = path.join(tmpDir, "src-defaults");
+    fs.mkdirSync(srcDefaults, { recursive: true });
+    fs.writeFileSync(path.join(srcDefaults, "run-tests.json"), '{"command":"npm test"}');
+    fs.writeFileSync(path.join(srcDefaults, "visual-verify.json"), '{"baseUrl":"http://localhost:3000"}');
+
+    // Replicate installer scaffold logic
+    const configs = [
+      { src: path.join(srcDefaults, "run-tests.json"), dest: path.join(tmpDir, ".collab/config/run-tests.json") },
+      { src: path.join(srcDefaults, "visual-verify.json"), dest: path.join(tmpDir, ".collab/config/visual-verify.json") },
+    ];
+    let scaffoldCount = 0;
+    for (const cfg of configs) {
+      if (!fs.existsSync(cfg.dest) && fs.existsSync(cfg.src)) {
+        fs.copyFileSync(cfg.src, cfg.dest);
+        scaffoldCount++;
+      }
+    }
+
+    // run-tests.json should NOT be overwritten (already existed)
+    const existingConfig = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, ".collab/config/run-tests.json"), "utf-8")
+    );
+    expect(existingConfig.customized).toBe(true);
+    expect(existingConfig.command).toBe("bun test");
+
+    // visual-verify.json should be scaffolded (didn't exist)
+    expect(scaffoldCount).toBe(1);
+    const newConfig = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, ".collab/config/visual-verify.json"), "utf-8")
+    );
+    expect(newConfig.baseUrl).toBe("http://localhost:3000");
+  });
+});

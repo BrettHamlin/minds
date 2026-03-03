@@ -1,0 +1,6 @@
+{
+  "productionUrl": "https://your-app.example.com",
+  "smokeRoutes": ["/"],
+  "pollIntervalSeconds": 15,
+  "maxWaitSeconds": 300
+}
