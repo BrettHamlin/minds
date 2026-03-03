@@ -3,7 +3,7 @@
 // Description: Install collab workflow system into the current repository from GitHub
 
 import { execSync } from "child_process";
-import { existsSync, readdirSync, mkdirSync, copyFileSync, chmodSync } from "fs";
+import { existsSync, readdirSync, mkdirSync, copyFileSync, chmodSync, statSync } from "fs";
 import { join } from "path";
 
 // Check if we're in a git repository
@@ -81,7 +81,7 @@ if (existsSync(skillsSrc)) {
   skillCount = readdirSync(join(repoRoot, ".claude/skills"))
     .filter((f) => {
       try {
-        return require("fs").statSync(join(repoRoot, ".claude/skills", f)).isDirectory();
+        return statSync(join(repoRoot, ".claude/skills", f)).isDirectory();
       } catch { return false; }
     }).length;
 } else {
