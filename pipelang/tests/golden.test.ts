@@ -48,9 +48,9 @@ describe("golden: parse + validate (AC1, AC2)", () => {
     expect(exitCode).toBe(0);
   });
 
-  test("all 7 phases are declared (AC1)", () => {
+  test("all 8 phases are declared (AC1)", () => {
     expect(ast!.phases.map((p) => p.name)).toEqual([
-      "clarify", "plan", "tasks", "analyze", "implement", "blindqa", "done",
+      "clarify", "plan", "tasks", "analyze", "implement", "run_tests", "blindqa", "done",
     ]);
   });
 
@@ -123,9 +123,9 @@ describe("golden: phase compilation (AC3)", () => {
     expect(rows[0]).toEqual({ signal: "IMPLEMENT_COMPLETE", if: "hasGroup", to: "tasks" });
   });
 
-  test("implement IMPLEMENT_COMPLETE otherwise → blindqa", () => {
+  test("implement IMPLEMENT_COMPLETE otherwise → run_tests", () => {
     const rows = compiled!.phases["implement"].conditionalTransitions!;
-    expect(rows[1]).toEqual({ signal: "IMPLEMENT_COMPLETE", to: "blindqa" });
+    expect(rows[1]).toEqual({ signal: "IMPLEMENT_COMPLETE", to: "run_tests" });
   });
 
   test("implement IMPLEMENT_ERROR self-loops", () => {
@@ -234,14 +234,14 @@ describe("golden: model selection and I/O derivation (AC4)", () => {
   });
 
   test("non-terminal phases all have model set", () => {
-    const nonTerminal = ["clarify", "plan", "tasks", "analyze", "implement", "blindqa"];
+    const nonTerminal = ["clarify", "plan", "tasks", "analyze", "implement", "run_tests", "blindqa"];
     for (const name of nonTerminal) {
       expect(compiled!.phases[name].model).toBeDefined();
     }
   });
 
   test("non-terminal phases all have outputs", () => {
-    const nonTerminal = ["clarify", "plan", "tasks", "analyze", "implement", "blindqa"];
+    const nonTerminal = ["clarify", "plan", "tasks", "analyze", "implement", "run_tests", "blindqa"];
     for (const name of nonTerminal) {
       expect(compiled!.phases[name].outputs).toEqual([`${name}_output`]);
     }
@@ -266,10 +266,10 @@ describe("golden: file is source of truth (AC5)", () => {
     expect(out.version).toBe("3.1");
   });
 
-  test("compiled JSON has all 7 phases", () => {
+  test("compiled JSON has all 8 phases", () => {
     const { stdout } = runCLI(["compile", GOLDEN_FILE]);
     const out = JSON.parse(stdout);
-    expect(Object.keys(out.phases)).toHaveLength(7);
+    expect(Object.keys(out.phases)).toHaveLength(8);
   });
 
   test("compiled JSON has both gates", () => {

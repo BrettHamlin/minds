@@ -136,6 +136,32 @@ describe("analyze gate (src/config/gates/analyze.md)", () => {
 });
 
 // ===========================================================================
+// collab.run-tests.md command file tests (3 tests)
+// ===========================================================================
+
+describe("collab.run-tests.md command file", () => {
+  test("19. collab.run-tests.md exists", () => {
+    const fullPath = path.join(REPO_ROOT, "src/commands/collab.run-tests.md");
+    expect(fs.existsSync(fullPath)).toBe(true);
+  });
+
+  test("20. collab.run-tests.md contains all three signal names", () => {
+    const content = readSourceFile("src/commands/collab.run-tests.md");
+
+    expect(content).toContain("RUN_TESTS_COMPLETE");
+    expect(content).toContain("RUN_TESTS_FAILED");
+    expect(content).toContain("RUN_TESTS_ERROR");
+  });
+
+  test("21. collab.run-tests.md uses correct signal format", () => {
+    const content = readSourceFile("src/commands/collab.run-tests.md");
+
+    // Must reference the SIGNAL format used by pipeline-signal.ts
+    expect(content).toContain("[SIGNAL:TICKET_ID:NONCE]");
+  });
+});
+
+// ===========================================================================
 // CLAUDE.md depth override tests (3 tests)
 // ===========================================================================
 
@@ -178,7 +204,7 @@ describe("pipeline.json structure", () => {
     expect(pipeline.version).toBe("3.1");
   });
 
-  test("11. pipeline.json has all 7 phases", () => {
+  test("11. pipeline.json has all 8 phases", () => {
     pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
     const phaseIds = Object.keys(pipeline.phases);
 
@@ -187,9 +213,10 @@ describe("pipeline.json structure", () => {
     expect(phaseIds).toContain("tasks");
     expect(phaseIds).toContain("analyze");
     expect(phaseIds).toContain("implement");
+    expect(phaseIds).toContain("run_tests");
     expect(phaseIds).toContain("blindqa");
     expect(phaseIds).toContain("done");
-    expect(phaseIds.length).toBe(7);
+    expect(phaseIds.length).toBe(8);
   });
 
   test("12. blindqa phase has goal_gate always", () => {
@@ -212,5 +239,25 @@ describe("pipeline.json structure", () => {
     const escalation = analyzeGate.on.ESCALATION;
     expect(escalation.feedback).toBe("raw");
     expect(escalation.to).toBeUndefined();
+  });
+
+  test("17. pipeline.json run_tests phase has correct signals", () => {
+    pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
+    const runTests = pipeline.phases["run_tests"];
+
+    expect(runTests).toBeDefined();
+    expect(runTests.signals).toContain("RUN_TESTS_COMPLETE");
+    expect(runTests.signals).toContain("RUN_TESTS_FAILED");
+    expect(runTests.signals).toContain("RUN_TESTS_ERROR");
+    expect(runTests.signals.length).toBe(3);
+  });
+
+  test("18. pipeline.json run_tests transitions route correctly", () => {
+    pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
+    const runTests = pipeline.phases["run_tests"];
+
+    expect(runTests.transitions.RUN_TESTS_COMPLETE.to).toBe("blindqa");
+    expect(runTests.transitions.RUN_TESTS_FAILED.to).toBe("run_tests");
+    expect(runTests.transitions.RUN_TESTS_ERROR.to).toBe("run_tests");
   });
 });

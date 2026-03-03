@@ -65,11 +65,18 @@ describe("e2e/pipeline-walk: happy path clarify → done", () => {
     expect(resp.nextPhase).toBe("implement");
   });
 
-  test("5. implement + IMPLEMENT_COMPLETE (otherwise) → advance to blindqa", () => {
+  test("5. implement + IMPLEMENT_COMPLETE (otherwise) → advance to run_tests", () => {
     const rows = compiled.phases["implement"].conditionalTransitions ?? [];
     const t = resolveConditionalTransition(rows, "IMPLEMENT_COMPLETE");
     expect(t).not.toBeNull();
-    expect(t).toEqual({ to: "blindqa" });
+    expect(t).toEqual({ to: "run_tests" });
+  });
+
+  test("5a. run_tests + RUN_TESTS_COMPLETE → advance to blindqa", () => {
+    const t = resolveTransition("run_tests", "RUN_TESTS_COMPLETE", compiled);
+    expect(t).not.toBeNull();
+    expect(t!.to).toBe("blindqa");
+    expect(t!.gate).toBeNull();
   });
 
   test("6. blindqa + BLINDQA_COMPLETE → advance to done", () => {
@@ -84,7 +91,7 @@ describe("e2e/pipeline-walk: happy path clarify → done", () => {
     expect(result).toBeNull();
   });
 
-  test("8. full happy-path walk visits exactly 7 phases ending at done", () => {
+  test("8. full happy-path walk visits exactly 8 phases ending at done", () => {
     // Simulate the orchestrator routing through the entire pipeline.
     // At each step we call the appropriate routing function and advance.
     const visited: string[] = ["clarify"];
@@ -124,7 +131,7 @@ describe("e2e/pipeline-walk: happy path clarify → done", () => {
       visited.push(current);
     }
 
-    // Step 5: implement → blindqa (otherwise branch)
+    // Step 5: implement → run_tests (otherwise branch)
     {
       const rows = compiled.phases[current].conditionalTransitions ?? [];
       const t = resolveConditionalTransition(rows, "IMPLEMENT_COMPLETE")!;
@@ -132,14 +139,21 @@ describe("e2e/pipeline-walk: happy path clarify → done", () => {
       visited.push(current);
     }
 
-    // Step 6: blindqa → done
+    // Step 6: run_tests → blindqa
+    {
+      const t = resolveTransition(current, "RUN_TESTS_COMPLETE", compiled)!;
+      current = t.to!;
+      visited.push(current);
+    }
+
+    // Step 7: blindqa → done
     {
       const t = resolveTransition(current, "BLINDQA_COMPLETE", compiled)!;
       current = t.to!;
       visited.push(current);
     }
 
-    expect(visited).toEqual(["clarify", "plan", "tasks", "analyze", "implement", "blindqa", "done"]);
+    expect(visited).toEqual(["clarify", "plan", "tasks", "analyze", "implement", "run_tests", "blindqa", "done"]);
     expect(compiled.phases[current].terminal).toBe(true);
   });
 });

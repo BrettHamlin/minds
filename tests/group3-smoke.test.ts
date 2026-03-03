@@ -31,6 +31,7 @@ const REPO_ROOT = execSync("git rev-parse --show-toplevel", {
 
 const VERIFY_SCRIPT = path.join(REPO_ROOT, "src/scripts/verify-and-complete.ts");
 const PHASE_DISPATCH = path.join(REPO_ROOT, "src/scripts/orchestrator/commands/phase-dispatch.ts");
+const RUN_TESTS_EXECUTOR = path.join(REPO_ROOT, "src/scripts/run-tests-executor.ts");
 
 /** Run a shell script with arguments, returning { exitCode, stdout, stderr } */
 function runScript(
@@ -91,6 +92,16 @@ function createTempRepo(files: Record<string, string>): string {
   );
 
   return tmpDir;
+}
+
+/** Replace .collab symlink with a real config dir containing run-tests.json */
+function setupRunTestsConfig(tmpDir: string, config: object): void {
+  fs.unlinkSync(path.join(tmpDir, ".collab"));
+  fs.mkdirSync(path.join(tmpDir, ".collab", "config"), { recursive: true });
+  fs.writeFileSync(
+    path.join(tmpDir, ".collab/config/run-tests.json"),
+    JSON.stringify(config)
+  );
 }
 
 /** Remove temp dir recursively */
@@ -390,5 +401,141 @@ describe("pipeline.json: phase command resolution via jq", () => {
       const hasCommand = !!(phase.command || phase.actions);
       expect(hasCommand, `Phase '${id}' missing command or actions`).toBe(true);
     }
+  });
+});
+
+// ===========================================================================
+// emit-run-tests-signal.ts: signal emission smoke tests (3 tests)
+// ===========================================================================
+
+describe("emit-run-tests-signal.ts: signal emission", () => {
+  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-run-tests-signal.ts");
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  function setupMockRegistry(dir: string): void {
+    const registryDir = path.join(dir, ".collab/state/pipeline-registry");
+    fs.mkdirSync(registryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(registryDir, "TEST-001.json"),
+      JSON.stringify({
+        ticket_id: "TEST-001",
+        current_step: "run_tests",
+        nonce: "smoke-nonce",
+        agent_pane_id: "%test-orch",
+        orchestrator_pane_id: "%orch-fake",
+        status: "running",
+      })
+    );
+  }
+
+  test("18. pass event exits 0 and writes signal queue file", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["pass", "All tests passed"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    expect(fs.existsSync(queueFile)).toBe(true);
+  });
+
+  test("19. queue file contains RUN_TESTS_COMPLETE in SIGNAL format", () => {
+    // Reuses tmpDir from test 18 (same afterAll cleanup)
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+
+    expect(queue.signal).toContain("[SIGNAL:TEST-001:smoke-nonce]");
+    expect(queue.signal).toContain("RUN_TESTS_COMPLETE");
+    expect(queue.emitted_at).toBeDefined();
+  });
+
+  test("20. fail event writes RUN_TESTS_FAILED to queue", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["fail", "3 tests failed"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+    expect(queue.signal).toContain("RUN_TESTS_FAILED");
+    expect(queue.signal).toContain("3 tests failed");
+  });
+});
+
+// ===========================================================================
+// run-tests-executor.ts: test execution smoke tests (4 tests)
+// ===========================================================================
+
+describe("run-tests-executor.ts: test execution", () => {
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  test("14. tests pass — echo exit 0 emits RUN_TESTS_COMPLETE", () => {
+    tmpDir = createTempRepo({});
+    setupRunTestsConfig(tmpDir, {
+      command: 'echo "all tests passed"',
+      workingDir: ".",
+      timeout: 30,
+    });
+
+    const result = runBunScript(RUN_TESTS_EXECUTOR, ["--cwd", tmpDir], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("RUN_TESTS_COMPLETE");
+  });
+
+  test("15. tests fail — exit 1 emits RUN_TESTS_FAILED", () => {
+    tmpDir = createTempRepo({});
+    setupRunTestsConfig(tmpDir, {
+      command: 'sh -c "echo FAIL: my-test; exit 1"',
+      workingDir: ".",
+      timeout: 30,
+    });
+
+    const result = runBunScript(RUN_TESTS_EXECUTOR, ["--cwd", tmpDir], tmpDir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("RUN_TESTS_FAILED");
+  });
+
+  test("16. stdout captured in signal body", () => {
+    tmpDir = createTempRepo({});
+    setupRunTestsConfig(tmpDir, {
+      command: 'sh -c "echo FAIL: line 42; exit 1"',
+      workingDir: ".",
+      timeout: 30,
+    });
+
+    const result = runBunScript(RUN_TESTS_EXECUTOR, ["--cwd", tmpDir], tmpDir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("FAIL: line 42");
+  });
+
+  test("17. config missing emits RUN_TESTS_ERROR", () => {
+    tmpDir = createTempRepo({});
+
+    // Replace .collab symlink with empty config dir (no run-tests.json)
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+
+    const result = runBunScript(RUN_TESTS_EXECUTOR, ["--cwd", tmpDir], tmpDir);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("RUN_TESTS_ERROR");
   });
 });

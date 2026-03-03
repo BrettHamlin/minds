@@ -1,0 +1,42 @@
+{
+  "version": "3.1",
+  "phases": {
+    "clarify": {
+      "command": "/collab.clarify",
+      "signals": [
+        "CLARIFY_COMPLETE",
+        "CLARIFY_ERROR"
+      ],
+      "transitions": {
+        "CLARIFY_COMPLETE": {
+          "to": "run_tests"
+        },
+        "CLARIFY_ERROR": {
+          "to": "clarify"
+        }
+      }
+    },
+    "run_tests": {
+      "command": "/collab.run-tests",
+      "signals": [
+        "RUN_TESTS_COMPLETE",
+        "RUN_TESTS_FAILED",
+        "RUN_TESTS_ERROR"
+      ],
+      "transitions": {
+        "RUN_TESTS_COMPLETE": {
+          "to": "done"
+        },
+        "RUN_TESTS_FAILED": {
+          "to": "run_tests"
+        },
+        "RUN_TESTS_ERROR": {
+          "to": "run_tests"
+        }
+      }
+    },
+    "done": {
+      "terminal": true
+    }
+  }
+}

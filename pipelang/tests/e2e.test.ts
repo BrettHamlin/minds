@@ -66,9 +66,9 @@ describe("e2e: compiled schema shape", () => {
     expect(typeof (compiled as { phases: unknown }).phases).toBe("object");
   });
 
-  test("phases has 7 keys in declaration order", () => {
+  test("phases has 8 keys in declaration order", () => {
     const keys = Object.keys((compiled as { phases: Record<string, unknown> }).phases);
-    expect(keys).toEqual(["clarify", "plan", "tasks", "analyze", "implement", "blindqa", "done"]);
+    expect(keys).toEqual(["clarify", "plan", "tasks", "analyze", "implement", "run_tests", "blindqa", "done"]);
   });
 
   test("gates is an object keyed by name", () => {
@@ -170,10 +170,10 @@ describe("e2e: phase-advance.sh jq queries", () => {
     expect(Number(stdout)).toBe(0);
   });
 
-  test("index of done is 6", () => {
+  test("index of done is 7", () => {
     const { stdout, ok } = jq('(.phases | keys_unsorted | index($id)) // empty', { id: "done" });
     expect(ok).toBe(true);
-    expect(Number(stdout)).toBe(6);
+    expect(Number(stdout)).toBe(7);
   });
 
   test("index of nonexistent phase is empty", () => {
@@ -185,7 +185,7 @@ describe("e2e: phase-advance.sh jq queries", () => {
   test("keys_unsorted preserves declaration order", () => {
     const { stdout, ok } = jq('[.phases | keys_unsorted[]] | join(", ")', {});
     expect(ok).toBe(true);
-    expect(stdout).toBe("clarify, plan, tasks, analyze, implement, blindqa, done");
+    expect(stdout).toBe("clarify, plan, tasks, analyze, implement, run_tests, blindqa, done");
   });
 
   test("key at index 0 is clarify (first phase)", () => {
@@ -200,10 +200,10 @@ describe("e2e: phase-advance.sh jq queries", () => {
     expect(stdout).toBe("plan");
   });
 
-  test("phase count is 7", () => {
+  test("phase count is 8", () => {
     const { stdout, ok } = jq('.phases | keys_unsorted | length', {});
     expect(ok).toBe(true);
-    expect(Number(stdout)).toBe(7);
+    expect(Number(stdout)).toBe(8);
   });
 });
 
@@ -312,7 +312,7 @@ describe("e2e: transition-resolve.sh jq queries", () => {
     const condRows = JSON.parse(cond.stdout) as Array<{ signal: string; if?: string; to?: string }>;
     expect(condRows).toHaveLength(2);
     expect(condRows[0]).toEqual({ signal: "IMPLEMENT_COMPLETE", if: "hasGroup", to: "tasks" });
-    expect(condRows[1]).toEqual({ signal: "IMPLEMENT_COMPLETE", to: "blindqa" });
+    expect(condRows[1]).toEqual({ signal: "IMPLEMENT_COMPLETE", to: "run_tests" });
     expect(direct.stdout).toBe("");
   });
 
