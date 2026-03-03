@@ -122,7 +122,7 @@ describe("e2e/schema-compat: schema drift guard (category 7)", () => {
     }
   });
 
-  test("12. collab.pipeline compiles to the 7 expected phases in order", () => {
+  test("12. collab.pipeline compiles to the 9 expected phases in order", () => {
     const phaseNames = Object.keys(compiled.phases);
     expect(phaseNames).toEqual([
       "clarify",
@@ -130,6 +130,8 @@ describe("e2e/schema-compat: schema drift guard (category 7)", () => {
       "tasks",
       "analyze",
       "implement",
+      "run_tests",
+      "visual_verify",
       "blindqa",
       "done",
     ]);

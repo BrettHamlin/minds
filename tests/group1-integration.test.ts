@@ -176,7 +176,7 @@ describe("transition-resolve.ts", () => {
     expect(json.gate).toBe("analyze_review");
   });
 
-  test("11. implement IMPLEMENT_COMPLETE resolves conditionally (hasGroup → tasks, otherwise → blindqa)", () => {
+  test("11. implement IMPLEMENT_COMPLETE resolves conditionally (hasGroup → tasks, otherwise → run_tests)", () => {
     const result = runScript("transition-resolve.ts", ["implement", "IMPLEMENT_COMPLETE"]);
 
     expect(result.exitCode).toBe(0);

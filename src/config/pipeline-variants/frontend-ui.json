@@ -1,0 +1,93 @@
+{
+  "version": "3.1",
+  "phases": {
+    "clarify": {
+      "command": "/collab.clarify",
+      "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"],
+      "transitions": { "CLARIFY_COMPLETE": { "to": "spec_critique" } }
+    },
+    "spec_critique": {
+      "command": "/collab.spec-critique",
+      "signals": ["SPEC_CRITIQUE_COMPLETE", "SPEC_CRITIQUE_BLOCKED"],
+      "transitions": {
+        "SPEC_CRITIQUE_COMPLETE": { "to": "plan" },
+        "SPEC_CRITIQUE_BLOCKED": { "to": "clarify" }
+      }
+    },
+    "plan": {
+      "command": "/collab.plan",
+      "signals": ["PLAN_COMPLETE"],
+      "transitions": { "PLAN_COMPLETE": { "to": "plan_review" } }
+    },
+    "plan_review": {
+      "command": "/collab.plan",
+      "signals": ["PLAN_REVIEW_APPROVED", "PLAN_REVIEW_REJECTED"],
+      "transitions": {
+        "PLAN_REVIEW_APPROVED": { "to": "tasks" },
+        "PLAN_REVIEW_REJECTED": { "to": "plan" }
+      }
+    },
+    "tasks": {
+      "command": "/collab.tasks",
+      "signals": ["TASKS_COMPLETE"],
+      "transitions": { "TASKS_COMPLETE": { "to": "analyze" } }
+    },
+    "analyze": {
+      "command": "/collab.analyze",
+      "signals": ["ANALYZE_COMPLETE"],
+      "transitions": { "ANALYZE_COMPLETE": { "to": "analyze_review" } }
+    },
+    "analyze_review": {
+      "command": "/collab.analyze",
+      "signals": ["ANALYZE_REVIEW_APPROVED", "ANALYZE_REVIEW_REJECTED"],
+      "transitions": {
+        "ANALYZE_REVIEW_APPROVED": { "to": "implement" },
+        "ANALYZE_REVIEW_REJECTED": { "to": "analyze" }
+      }
+    },
+    "implement": {
+      "command": "/collab.implement",
+      "signals": ["IMPLEMENT_COMPLETE", "IMPLEMENT_WAITING", "IMPLEMENT_ERROR"],
+      "transitions": {
+        "IMPLEMENT_COMPLETE": { "to": "codeReview" },
+        "IMPLEMENT_ERROR": { "to": "implement" }
+      }
+    },
+    "codeReview": {
+      "command": "/collab.codeReview",
+      "signals": ["CODE_REVIEW_PASS", "CODE_REVIEW_FAIL"],
+      "transitions": {
+        "CODE_REVIEW_PASS": { "to": "run_tests" },
+        "CODE_REVIEW_FAIL": { "to": "implement" }
+      }
+    },
+    "run_tests": {
+      "command": "/collab.run-tests",
+      "signals": ["RUN_TESTS_COMPLETE", "RUN_TESTS_FAILED", "RUN_TESTS_ERROR"],
+      "transitions": {
+        "RUN_TESTS_COMPLETE": { "to": "visual_verify" },
+        "RUN_TESTS_FAILED": { "to": "run_tests" },
+        "RUN_TESTS_ERROR": { "to": "escalate" }
+      }
+    },
+    "visual_verify": {
+      "command": "/collab.visual-verify",
+      "signals": ["VISUAL_VERIFY_COMPLETE", "VISUAL_VERIFY_FAILED", "VISUAL_VERIFY_ERROR"],
+      "transitions": {
+        "VISUAL_VERIFY_COMPLETE": { "to": "blindqa" },
+        "VISUAL_VERIFY_FAILED": { "to": "visual_verify" },
+        "VISUAL_VERIFY_ERROR": { "to": "escalate" }
+      }
+    },
+    "blindqa": {
+      "command": "/collab.blindqa",
+      "signals": ["BLINDQA_COMPLETE", "BLINDQA_FAILED", "BLINDQA_ERROR", "BLINDQA_QUESTION"],
+      "transitions": {
+        "BLINDQA_COMPLETE": { "to": "done" },
+        "BLINDQA_FAILED": { "to": "implement" }
+      }
+    },
+    "escalate": { "terminal": true },
+    "done": { "terminal": true }
+  }
+}

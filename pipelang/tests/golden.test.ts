@@ -48,9 +48,9 @@ describe("golden: parse + validate (AC1, AC2)", () => {
     expect(exitCode).toBe(0);
   });
 
-  test("all 7 phases are declared (AC1)", () => {
+  test("all 9 phases are declared (AC1)", () => {
     expect(ast!.phases.map((p) => p.name)).toEqual([
-      "clarify", "plan", "tasks", "analyze", "implement", "blindqa", "done",
+      "clarify", "plan", "tasks", "analyze", "implement", "run_tests", "visual_verify", "blindqa", "done",
     ]);
   });
 
@@ -123,13 +123,40 @@ describe("golden: phase compilation (AC3)", () => {
     expect(rows[0]).toEqual({ signal: "IMPLEMENT_COMPLETE", if: "hasGroup", to: "tasks" });
   });
 
-  test("implement IMPLEMENT_COMPLETE otherwise → blindqa", () => {
+  test("implement IMPLEMENT_COMPLETE otherwise → run_tests", () => {
     const rows = compiled!.phases["implement"].conditionalTransitions!;
-    expect(rows[1]).toEqual({ signal: "IMPLEMENT_COMPLETE", to: "blindqa" });
+    expect(rows[1]).toEqual({ signal: "IMPLEMENT_COMPLETE", to: "run_tests" });
   });
 
   test("implement IMPLEMENT_ERROR self-loops", () => {
     expect(compiled!.phases["implement"].transitions!["IMPLEMENT_ERROR"]).toEqual({ to: "implement" });
+  });
+
+  test("run_tests RUN_TESTS_COMPLETE → visual_verify", () => {
+    expect(compiled!.phases["run_tests"].transitions!["RUN_TESTS_COMPLETE"]).toEqual({ to: "visual_verify" });
+  });
+
+  test("visual_verify command is correct", () => {
+    expect(compiled!.phases["visual_verify"].command).toBe("/collab.visual-verify");
+  });
+
+  test("visual_verify signals include COMPLETE, FAILED, ERROR", () => {
+    const sigs = compiled!.phases["visual_verify"].signals!;
+    expect(sigs).toContain("VISUAL_VERIFY_COMPLETE");
+    expect(sigs).toContain("VISUAL_VERIFY_FAILED");
+    expect(sigs).toContain("VISUAL_VERIFY_ERROR");
+  });
+
+  test("visual_verify VISUAL_VERIFY_COMPLETE → blindqa", () => {
+    expect(compiled!.phases["visual_verify"].transitions!["VISUAL_VERIFY_COMPLETE"]).toEqual({ to: "blindqa" });
+  });
+
+  test("visual_verify VISUAL_VERIFY_FAILED self-loops", () => {
+    expect(compiled!.phases["visual_verify"].transitions!["VISUAL_VERIFY_FAILED"]).toEqual({ to: "visual_verify" });
+  });
+
+  test("visual_verify VISUAL_VERIFY_ERROR self-loops", () => {
+    expect(compiled!.phases["visual_verify"].transitions!["VISUAL_VERIFY_ERROR"]).toEqual({ to: "visual_verify" });
   });
 
   test("blindqa has actions block (AC3)", () => {
@@ -234,14 +261,14 @@ describe("golden: model selection and I/O derivation (AC4)", () => {
   });
 
   test("non-terminal phases all have model set", () => {
-    const nonTerminal = ["clarify", "plan", "tasks", "analyze", "implement", "blindqa"];
+    const nonTerminal = ["clarify", "plan", "tasks", "analyze", "implement", "run_tests", "visual_verify", "blindqa"];
     for (const name of nonTerminal) {
       expect(compiled!.phases[name].model).toBeDefined();
     }
   });
 
   test("non-terminal phases all have outputs", () => {
-    const nonTerminal = ["clarify", "plan", "tasks", "analyze", "implement", "blindqa"];
+    const nonTerminal = ["clarify", "plan", "tasks", "analyze", "implement", "run_tests", "visual_verify", "blindqa"];
     for (const name of nonTerminal) {
       expect(compiled!.phases[name].outputs).toEqual([`${name}_output`]);
     }
@@ -266,10 +293,10 @@ describe("golden: file is source of truth (AC5)", () => {
     expect(out.version).toBe("3.1");
   });
 
-  test("compiled JSON has all 7 phases", () => {
+  test("compiled JSON has all 9 phases", () => {
     const { stdout } = runCLI(["compile", GOLDEN_FILE]);
     const out = JSON.parse(stdout);
-    expect(Object.keys(out.phases)).toHaveLength(7);
+    expect(Object.keys(out.phases)).toHaveLength(9);
   });
 
   test("compiled JSON has both gates", () => {

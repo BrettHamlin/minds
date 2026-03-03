@@ -78,7 +78,7 @@ describe("lint: no bare /collab.X skill invocations in command files", () => {
               `    → Replace with: Read the file \`.claude/commands/<cmd>.md\` and execute inline. Do NOT invoke it as a /collab.X skill.`
           )
           .join("\n");
-        expect.fail(
+        throw new Error(
           `ERROR: Bare /collab.X Skill invocation(s) found — these will trigger a Skill tool response boundary:\n${msg}`
         );
       }

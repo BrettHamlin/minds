@@ -26,6 +26,7 @@ The text the user typed after `/collab.specify` in the triggering message **is**
 2. Extract the ticket title and description
 3. Use the ticket ID and description for all subsequent steps
 4. When calling create-new-feature.ts, prepend the ticket ID to the feature description so the script can extract it
+5. **Pipeline variant detection**: Check the ticket's labels for any matching `pipeline:*` (e.g., `pipeline:backend`, `pipeline:ios`). If found, store the variant name (text after `pipeline:`) for later writing to metadata.json. If multiple `pipeline:*` labels are found, warn and use the first match.
 
 Given that feature description, do this:
 
@@ -77,6 +78,13 @@ Given that feature description, do this:
       - Example: `.specify/scripts/create-new-feature.ts --json --worktree --number 5 --short-name "user-auth" "Add user authentication"`
       - Example with ticket: `.specify/scripts/create-new-feature.ts --json --worktree --number 5 --short-name "user-auth" "BRE-202 Add user authentication"`
       - Example with source repo: `.specify/scripts/create-new-feature.ts --json --worktree --number 3 --short-name "add-clips" --source-repo ~/Code/projects/paper-clips-backend "BRE-158 Add clips endpoint"`
+
+   e. **Pipeline Variant** (only when ticket has `pipeline:*` labels from step 5 above):
+      After create-new-feature.ts completes and outputs JSON with FEATURE_DIR, update the metadata.json:
+      - Read `FEATURE_DIR/metadata.json`
+      - Add `"pipeline_variant": "<variant>"` (e.g., `"pipeline_variant": "backend"`)
+      - Write it back
+      - This tells orchestrator-init.ts to load `pipeline-variants/<variant>.json` instead of the default `pipeline.json`
 
    **IMPORTANT**:
    - Check all three sources (remote branches, local branches, specs directories) to find the highest number

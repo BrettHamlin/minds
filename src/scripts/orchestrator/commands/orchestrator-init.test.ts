@@ -6,6 +6,7 @@ import {
   validateSchema,
   resolvePaths,
   setupSymlinks,
+  createRegistry,
 } from "./orchestrator-init";
 import type { InitContext } from "./orchestrator-init";
 
@@ -181,6 +182,44 @@ describe("orchestrator-init: resolvePaths() multi-repo", () => {
   });
 });
 
+describe("orchestrator-init: resolvePaths() pipeline variant", () => {
+  test("12. metadata.json with pipeline_variant → returns variant", () => {
+    const ctx = makeCtx("TEST-INIT-VAR-001");
+    const specDir = path.join(tmpDir, "specs", "test-init-var-001");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-INIT-VAR-001", pipeline_variant: "backend" })
+    );
+
+    const result = resolvePaths(ctx);
+    expect(result.pipelineVariant).toBe("backend");
+
+    fs.rmSync(specDir, { recursive: true });
+  });
+
+  test("13. metadata.json without pipeline_variant → variant is undefined", () => {
+    const ctx = makeCtx("TEST-INIT-VAR-002");
+    const specDir = path.join(tmpDir, "specs", "test-init-var-002");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-INIT-VAR-002" })
+    );
+
+    const result = resolvePaths(ctx);
+    expect(result.pipelineVariant).toBeUndefined();
+
+    fs.rmSync(specDir, { recursive: true });
+  });
+
+  test("14. no metadata.json → variant is undefined", () => {
+    const ctx = makeCtx("TEST-INIT-VAR-003");
+    const result = resolvePaths(ctx);
+    expect(result.pipelineVariant).toBeUndefined();
+  });
+});
+
 describe("orchestrator-init: setupSymlinks()", () => {
   test("6. creates .claude and .collab symlinks in worktree", () => {
     const worktreePath = path.join(tmpDir, "worktrees", "symlink-test");
@@ -201,5 +240,49 @@ describe("orchestrator-init: setupSymlinks()", () => {
     const rb = {};
     // Should not throw
     expect(() => setupSymlinks(null, tmpDir, rb)).not.toThrow();
+  });
+});
+
+describe("orchestrator-init: createRegistry() pipeline variant", () => {
+  test("15. registry includes pipeline_variant when provided", () => {
+    const ctx = makeCtx("TEST-REG-VAR-001");
+    // Write a minimal pipeline.json so createRegistry can read first phase
+    fs.writeFileSync(
+      ctx.configPath,
+      JSON.stringify({ version: "3.1", phases: { clarify: { terminal: false } } })
+    );
+
+    const rb = {};
+    const { nonce, registryPath } = createRegistry(
+      ctx, "%test-agent", rb, undefined, undefined, "backend"
+    );
+
+    const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+    expect(registry.pipeline_variant).toBe("backend");
+    expect(registry.ticket_id).toBe("TEST-REG-VAR-001");
+    expect(nonce).toBeTruthy();
+
+    // Cleanup
+    fs.unlinkSync(registryPath);
+    fs.unlinkSync(ctx.configPath);
+  });
+
+  test("16. registry omits pipeline_variant when not provided", () => {
+    const ctx = makeCtx("TEST-REG-VAR-002");
+    fs.writeFileSync(
+      ctx.configPath,
+      JSON.stringify({ version: "3.1", phases: { clarify: { terminal: false } } })
+    );
+
+    const rb = {};
+    const { registryPath } = createRegistry(
+      ctx, "%test-agent", rb, undefined, undefined
+    );
+
+    const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+    expect(registry.pipeline_variant).toBeUndefined();
+
+    fs.unlinkSync(registryPath);
+    fs.unlinkSync(ctx.configPath);
   });
 });

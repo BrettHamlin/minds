@@ -127,13 +127,13 @@ describe("e2e/transition-resolve: resolveTransition(compiled, ...)", () => {
 });
 
 describe("e2e/transition-resolve: resolveConditionalTransition(rows, ...)", () => {
-  test("13. implement IMPLEMENT_COMPLETE → otherwise branch → to: blindqa", () => {
+  test("13. implement IMPLEMENT_COMPLETE → otherwise branch → to: run_tests", () => {
     const rows = compiled.phases["implement"].conditionalTransitions ?? [];
     expect(rows.length).toBeGreaterThan(0);
 
     const result = resolveConditionalTransition(rows, "IMPLEMENT_COMPLETE");
     expect(result).not.toBeNull();
-    expect(result).toEqual({ to: "blindqa" });
+    expect(result).toEqual({ to: "run_tests" });
   });
 
   test("14. implement rows have both conditional (hasGroup) and otherwise branches", () => {
@@ -146,7 +146,7 @@ describe("e2e/transition-resolve: resolveConditionalTransition(rows, ...)", () =
     expect(hasGroupBranch).toBeDefined();
     expect(hasGroupBranch!.to).toBe("tasks");
     expect(otherwiseBranch).toBeDefined();
-    expect(otherwiseBranch!.to).toBe("blindqa");
+    expect(otherwiseBranch!.to).toBe("run_tests");
   });
 
   test("15. unknown signal returns null", () => {

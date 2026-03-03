@@ -45,6 +45,7 @@ const dirs = [
   ".collab/handlers",
   ".collab/memory",
   ".collab/scripts/orchestrator",
+  ".collab/config/pipeline-variants",
   ".collab/state/pipeline-registry",
   ".collab/state/pipeline-groups",
   ".specify/scripts",
@@ -180,6 +181,42 @@ console.log("  -> pipeline.json updated");
 execSync(`cp "${tempDir}/src/config/"*.schema.json "${repoRoot}/.collab/config/"`, { shell: true });
 console.log("  -> schema files updated");
 
+// Pipeline variant configs
+mkdirSync(join(repoRoot, ".collab/config/pipeline-variants"), { recursive: true });
+const variantsDir = join(tempDir, "src/config/pipeline-variants");
+if (existsSync(variantsDir)) {
+  execSync(
+    `find "${variantsDir}" -name "*.json" -exec cp {} "${repoRoot}/.collab/config/pipeline-variants/" \\;`,
+    { shell: true }
+  );
+  const variantCount = readdirSync(join(repoRoot, ".collab/config/pipeline-variants"))
+    .filter((f) => f.endsWith(".json")).length;
+  console.log(`  -> Pipeline variants: ${variantCount} configs`);
+} else {
+  console.log("  -> Pipeline variants: none found in source");
+}
+
+// Default command configs (scaffold only — skip if user has customized)
+const commandConfigs = [
+  { src: "src/config/defaults/run-tests.json", dest: ".collab/config/run-tests.json" },
+  { src: "src/config/defaults/visual-verify.json", dest: ".collab/config/visual-verify.json" },
+  { src: "src/config/defaults/deploy-verify.json", dest: ".collab/config/deploy-verify.json" },
+];
+let configScaffoldCount = 0;
+for (const cfg of commandConfigs) {
+  const destPath = join(repoRoot, cfg.dest);
+  const srcPath = join(tempDir, cfg.src);
+  if (!existsSync(destPath) && existsSync(srcPath)) {
+    copyFileSync(srcPath, destPath);
+    configScaffoldCount++;
+  }
+}
+if (configScaffoldCount > 0) {
+  console.log(`  -> Command configs: ${configScaffoldCount} defaults scaffolded`);
+} else {
+  console.log("  -> Command configs: already exist, skipping");
+}
+
 // Orchestrator contexts
 mkdirSync(join(repoRoot, ".collab/config/orchestrator-contexts"), { recursive: true });
 execSync(
@@ -275,6 +312,8 @@ console.log(`  Workflow:       ${scriptCount} scripts -> .specify/scripts/bash/`
 console.log(`  Templates:      ${templateCount} files -> .specify/templates/`);
 console.log(`  Memory:         .collab/memory/constitution.md`);
 console.log(`  Config:          .collab/config/verify-config.json, pipeline.json, verify-patterns.json`);
+console.log(`  Variants:       pipeline-variants/*.json -> .collab/config/pipeline-variants/`);
+console.log(`  Command Cfgs:   ${configScaffoldCount} defaults -> .collab/config/`);
 console.log("");
 console.log(`Installed in: ${repoRoot}`);
 console.log("");
@@ -290,6 +329,11 @@ console.log("  /collab.checklist  - Generate quality checklist");
 console.log("  /collab.constitution - Manage project principles");
 console.log("  /collab.taskstoissues - Convert tasks to GitHub issues");
 console.log("  /collab.blindqa    - Blind verification testing");
+console.log("  /collab.run-tests      - Execute test suite");
+console.log("  /collab.visual-verify  - Visual verification");
+console.log("  /collab.verify-execute - Verification checklist execution");
+console.log("  /collab.pre-deploy-confirm - Pre-deploy human gate");
+console.log("  /collab.deploy-verify  - Post-deploy smoke verification");
 console.log("  /collab.cleanup    - Clean up completed feature (branch/worktree)");
 console.log("");
 console.log("Next Steps:");

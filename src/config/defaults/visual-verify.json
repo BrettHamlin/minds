@@ -1,0 +1,9 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "startCommand": "",
+  "readyPath": "/",
+  "readyTimeout": 30,
+  "routes": [
+    { "path": "/", "name": "home", "selectors": [] }
+  ]
+}
