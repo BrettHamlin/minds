@@ -5,7 +5,7 @@
  *
  * Verifies:
  *   - run_tests phase exists with correct signals and command
- *   - RUN_TESTS_COMPLETE routes to blindqa
+ *   - RUN_TESTS_COMPLETE routes to visual_verify
  *   - RUN_TESTS_FAILED and RUN_TESTS_ERROR self-loop to run_tests
  *   - TEST-G01 fixture has correct structure for integration testing
  */
@@ -95,10 +95,10 @@ describe("e2e/run-tests-routing: phase definition", () => {
 // ── run_tests transition routing ─────────────────────────────────────────────
 
 describe("e2e/run-tests-routing: transitions", () => {
-  test("8. RUN_TESTS_COMPLETE → advance to blindqa", () => {
+  test("8. RUN_TESTS_COMPLETE → advance to visual_verify", () => {
     const t = resolveTransition("run_tests", "RUN_TESTS_COMPLETE", compiled);
     expect(t).not.toBeNull();
-    expect(t!.to).toBe("blindqa");
+    expect(t!.to).toBe("visual_verify");
     expect(t!.gate).toBeNull();
   });
 

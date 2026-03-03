@@ -474,6 +474,142 @@ describe("emit-run-tests-signal.ts: signal emission", () => {
 });
 
 // ===========================================================================
+// emit-visual-verify-signal.ts: signal emission smoke tests (3 tests)
+// ===========================================================================
+
+describe("emit-visual-verify-signal.ts: signal emission", () => {
+  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-visual-verify-signal.ts");
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  function setupMockRegistry(dir: string): void {
+    const registryDir = path.join(dir, ".collab/state/pipeline-registry");
+    fs.mkdirSync(registryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(registryDir, "TEST-001.json"),
+      JSON.stringify({
+        ticket_id: "TEST-001",
+        current_step: "visual_verify",
+        nonce: "smoke-nonce",
+        agent_pane_id: "%test-orch",
+        orchestrator_pane_id: "%orch-fake",
+        status: "running",
+      })
+    );
+  }
+
+  test("21. pass event exits 0 and writes signal queue file", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["pass", "All checks passed"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    expect(fs.existsSync(queueFile)).toBe(true);
+  });
+
+  test("22. queue file contains VISUAL_VERIFY_COMPLETE in SIGNAL format", () => {
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+
+    expect(queue.signal).toContain("[SIGNAL:TEST-001:smoke-nonce]");
+    expect(queue.signal).toContain("VISUAL_VERIFY_COMPLETE");
+    expect(queue.emitted_at).toBeDefined();
+  });
+
+  test("23. fail event writes VISUAL_VERIFY_FAILED to queue", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["fail", "Selector missing"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+    expect(queue.signal).toContain("VISUAL_VERIFY_FAILED");
+    expect(queue.signal).toContain("Selector missing");
+  });
+});
+
+// ===========================================================================
+// visual-verify-executor.ts: structural check smoke tests (4 tests)
+// ===========================================================================
+
+describe("visual-verify-executor.ts: structural checks", () => {
+  const VV_EXECUTOR = path.join(REPO_ROOT, "src/scripts/visual-verify-executor.ts");
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  function setupVisualVerifyConfig(dir: string, config: object): void {
+    fs.unlinkSync(path.join(dir, ".collab"));
+    fs.mkdirSync(path.join(dir, ".collab", "config"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ".collab/config/visual-verify.json"),
+      JSON.stringify(config)
+    );
+  }
+
+  test("24. config missing emits VISUAL_VERIFY_ERROR", () => {
+    tmpDir = createTempRepo({});
+
+    // Replace .collab symlink with empty config dir (no visual-verify.json)
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+
+    const result = runBunScript(VV_EXECUTOR, ["--cwd", tmpDir], tmpDir);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("VISUAL_VERIFY_ERROR");
+  });
+
+  test("25. config without baseUrl emits VISUAL_VERIFY_ERROR", () => {
+    tmpDir = createTempRepo({});
+    setupVisualVerifyConfig(tmpDir, { routes: [] });
+
+    const result = runBunScript(VV_EXECUTOR, ["--cwd", tmpDir], tmpDir);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("VISUAL_VERIFY_ERROR");
+  });
+
+  test("26. config without routes emits VISUAL_VERIFY_ERROR", () => {
+    tmpDir = createTempRepo({});
+    setupVisualVerifyConfig(tmpDir, { baseUrl: "http://localhost:3000" });
+
+    const result = runBunScript(VV_EXECUTOR, ["--cwd", tmpDir], tmpDir);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toContain("VISUAL_VERIFY_ERROR");
+  });
+
+  test("27. unreachable server emits VISUAL_VERIFY_FAILED", () => {
+    tmpDir = createTempRepo({});
+    setupVisualVerifyConfig(tmpDir, {
+      baseUrl: "http://localhost:19999",
+      routes: [{ path: "/", name: "Home", selectors: [".app"] }],
+    });
+
+    const result = runBunScript(VV_EXECUTOR, ["--cwd", tmpDir], tmpDir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("VISUAL_VERIFY_FAILED");
+  });
+});
+
+// ===========================================================================
 // run-tests-executor.ts: test execution smoke tests (4 tests)
 // ===========================================================================
 

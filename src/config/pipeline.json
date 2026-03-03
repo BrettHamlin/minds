@@ -146,7 +146,7 @@
       ],
       "transitions": {
         "RUN_TESTS_COMPLETE": {
-          "to": "blindqa"
+          "to": "visual_verify"
         },
         "RUN_TESTS_FAILED": {
           "to": "run_tests"
@@ -163,6 +163,35 @@
       ],
       "outputs": [
         "run_tests_output"
+      ]
+    },
+    "visual_verify": {
+      "command": "/collab.visual-verify",
+      "signals": [
+        "VISUAL_VERIFY_COMPLETE",
+        "VISUAL_VERIFY_FAILED",
+        "VISUAL_VERIFY_ERROR"
+      ],
+      "transitions": {
+        "VISUAL_VERIFY_COMPLETE": {
+          "to": "blindqa"
+        },
+        "VISUAL_VERIFY_FAILED": {
+          "to": "visual_verify"
+        },
+        "VISUAL_VERIFY_ERROR": {
+          "to": "visual_verify"
+        }
+      },
+      "model": "claude-sonnet-4-6",
+      "inputs": [
+        "ticket_spec",
+        "implement_output",
+        "run_tests_output",
+        "visual_verify_output"
+      ],
+      "outputs": [
+        "visual_verify_output"
       ]
     },
     "blindqa": {
@@ -199,6 +228,7 @@
         "ticket_spec",
         "implement_output",
         "run_tests_output",
+        "visual_verify_output",
         "blindqa_output"
       ],
       "outputs": [

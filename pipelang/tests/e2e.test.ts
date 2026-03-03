@@ -66,9 +66,9 @@ describe("e2e: compiled schema shape", () => {
     expect(typeof (compiled as { phases: unknown }).phases).toBe("object");
   });
 
-  test("phases has 8 keys in declaration order", () => {
+  test("phases has 9 keys in declaration order", () => {
     const keys = Object.keys((compiled as { phases: Record<string, unknown> }).phases);
-    expect(keys).toEqual(["clarify", "plan", "tasks", "analyze", "implement", "run_tests", "blindqa", "done"]);
+    expect(keys).toEqual(["clarify", "plan", "tasks", "analyze", "implement", "run_tests", "visual_verify", "blindqa", "done"]);
   });
 
   test("gates is an object keyed by name", () => {
@@ -170,10 +170,10 @@ describe("e2e: phase-advance.sh jq queries", () => {
     expect(Number(stdout)).toBe(0);
   });
 
-  test("index of done is 7", () => {
+  test("index of done is 8", () => {
     const { stdout, ok } = jq('(.phases | keys_unsorted | index($id)) // empty', { id: "done" });
     expect(ok).toBe(true);
-    expect(Number(stdout)).toBe(7);
+    expect(Number(stdout)).toBe(8);
   });
 
   test("index of nonexistent phase is empty", () => {
@@ -185,7 +185,7 @@ describe("e2e: phase-advance.sh jq queries", () => {
   test("keys_unsorted preserves declaration order", () => {
     const { stdout, ok } = jq('[.phases | keys_unsorted[]] | join(", ")', {});
     expect(ok).toBe(true);
-    expect(stdout).toBe("clarify, plan, tasks, analyze, implement, run_tests, blindqa, done");
+    expect(stdout).toBe("clarify, plan, tasks, analyze, implement, run_tests, visual_verify, blindqa, done");
   });
 
   test("key at index 0 is clarify (first phase)", () => {
@@ -200,10 +200,10 @@ describe("e2e: phase-advance.sh jq queries", () => {
     expect(stdout).toBe("plan");
   });
 
-  test("phase count is 8", () => {
+  test("phase count is 9", () => {
     const { stdout, ok } = jq('.phases | keys_unsorted | length', {});
     expect(ok).toBe(true);
-    expect(Number(stdout)).toBe(8);
+    expect(Number(stdout)).toBe(9);
   });
 });
 

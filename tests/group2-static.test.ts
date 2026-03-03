@@ -162,6 +162,57 @@ describe("collab.run-tests.md command file", () => {
 });
 
 // ===========================================================================
+// collab.visual-verify.md command file tests (3 tests)
+// ===========================================================================
+
+describe("collab.visual-verify.md command file", () => {
+  test("22. collab.visual-verify.md exists", () => {
+    const fullPath = path.join(REPO_ROOT, "src/commands/collab.visual-verify.md");
+    expect(fs.existsSync(fullPath)).toBe(true);
+  });
+
+  test("23. collab.visual-verify.md contains all three signal names", () => {
+    const content = readSourceFile("src/commands/collab.visual-verify.md");
+
+    expect(content).toContain("VISUAL_VERIFY_COMPLETE");
+    expect(content).toContain("VISUAL_VERIFY_FAILED");
+    expect(content).toContain("VISUAL_VERIFY_ERROR");
+  });
+
+  test("24. collab.visual-verify.md uses correct signal format", () => {
+    const content = readSourceFile("src/commands/collab.visual-verify.md");
+
+    expect(content).toContain("[SIGNAL:TICKET_ID:NONCE]");
+  });
+});
+
+// ===========================================================================
+// pipeline.json visual_verify phase tests (2 tests)
+// ===========================================================================
+
+describe("pipeline.json visual_verify phase", () => {
+  test("25. pipeline.json visual_verify phase has correct signals", () => {
+    const pipeline = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, ".collab/config/pipeline.json"), "utf-8"));
+    const vv = pipeline.phases["visual_verify"];
+
+    expect(vv).toBeDefined();
+    expect(vv.signals).toContain("VISUAL_VERIFY_COMPLETE");
+    expect(vv.signals).toContain("VISUAL_VERIFY_FAILED");
+    expect(vv.signals).toContain("VISUAL_VERIFY_ERROR");
+    expect(vv.signals.length).toBe(3);
+  });
+
+  test("26. pipeline.json visual_verify transitions route correctly", () => {
+    const pipeline = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, ".collab/config/pipeline.json"), "utf-8"));
+    const vv = pipeline.phases["visual_verify"];
+
+    expect(vv.transitions.VISUAL_VERIFY_COMPLETE.to).toBe("blindqa");
+    expect(vv.transitions.VISUAL_VERIFY_FAILED.to).toBe("visual_verify");
+    expect(vv.transitions.VISUAL_VERIFY_ERROR.to).toBe("visual_verify");
+  });
+});
+
+// ===========================================================================
 // CLAUDE.md depth override tests (3 tests)
 // ===========================================================================
 
@@ -204,7 +255,7 @@ describe("pipeline.json structure", () => {
     expect(pipeline.version).toBe("3.1");
   });
 
-  test("11. pipeline.json has all 8 phases", () => {
+  test("11. pipeline.json has all 9 phases", () => {
     pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
     const phaseIds = Object.keys(pipeline.phases);
 
@@ -214,9 +265,10 @@ describe("pipeline.json structure", () => {
     expect(phaseIds).toContain("analyze");
     expect(phaseIds).toContain("implement");
     expect(phaseIds).toContain("run_tests");
+    expect(phaseIds).toContain("visual_verify");
     expect(phaseIds).toContain("blindqa");
     expect(phaseIds).toContain("done");
-    expect(phaseIds.length).toBe(8);
+    expect(phaseIds.length).toBe(9);
   });
 
   test("12. blindqa phase has goal_gate always", () => {
@@ -256,7 +308,7 @@ describe("pipeline.json structure", () => {
     pipeline = JSON.parse(fs.readFileSync(pipelinePath, "utf-8"));
     const runTests = pipeline.phases["run_tests"];
 
-    expect(runTests.transitions.RUN_TESTS_COMPLETE.to).toBe("blindqa");
+    expect(runTests.transitions.RUN_TESTS_COMPLETE.to).toBe("visual_verify");
     expect(runTests.transitions.RUN_TESTS_FAILED.to).toBe("run_tests");
     expect(runTests.transitions.RUN_TESTS_ERROR.to).toBe("run_tests");
   });
