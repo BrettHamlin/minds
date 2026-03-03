@@ -813,6 +813,22 @@ describe("pipeline-variants/deploy.json structure", () => {
 });
 
 // ===========================================================================
+// emit-code-review-signal.ts handler tests (2 tests)
+// ===========================================================================
+
+describe("emit-code-review-signal.ts handler", () => {
+  test("83. emit-code-review-signal.ts exists", () => {
+    const fullPath = path.join(REPO_ROOT, "src/handlers/emit-code-review-signal.ts");
+    expect(fs.existsSync(fullPath)).toBe(true);
+  });
+
+  test("84. collab.codeReview.md references emit-code-review-signal.ts", () => {
+    const content = readSourceFile("src/commands/collab.codeReview.md");
+    expect(content).toContain("emit-code-review-signal.ts");
+  });
+});
+
+// ===========================================================================
 // collab.install.ts installer tests (6 tests)
 // ===========================================================================
 
