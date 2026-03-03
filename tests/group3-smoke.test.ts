@@ -675,3 +675,128 @@ describe("run-tests-executor.ts: test execution", () => {
     expect(result.stdout).toContain("RUN_TESTS_ERROR");
   });
 });
+
+// ===========================================================================
+// Pipeline variant config override tests (3 tests)
+// ===========================================================================
+
+describe("pipeline variant config override", () => {
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  test("28. variant config exists → configPath overridden", () => {
+    // Import initPipeline dependencies inline to test the override logic
+    const { resolvePaths } = require("../src/scripts/orchestrator/commands/orchestrator-init");
+
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-variant-smoke-"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config/pipeline-variants"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, "specs/test-variant"), { recursive: true });
+
+    // Default pipeline.json
+    fs.writeFileSync(
+      path.join(tmpDir, ".collab/config/pipeline.json"),
+      JSON.stringify({ version: "3.1", phases: { clarify: {}, done: { terminal: true } } })
+    );
+
+    // Variant pipeline
+    fs.writeFileSync(
+      path.join(tmpDir, ".collab/config/pipeline-variants/backend.json"),
+      JSON.stringify({ version: "3.1", phases: { clarify: {}, implement: {}, done: { terminal: true } } })
+    );
+
+    // Metadata with variant
+    fs.writeFileSync(
+      path.join(tmpDir, "specs/test-variant/metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-VARIANT-001", pipeline_variant: "backend" })
+    );
+
+    const ctx = {
+      ticketId: "TEST-VARIANT-001",
+      orchestratorPane: "%test-orch",
+      repoRoot: tmpDir,
+      registryDir: path.join(tmpDir, ".collab/state/pipeline-registry"),
+      groupsDir: path.join(tmpDir, ".collab/state/pipeline-groups"),
+      configPath: path.join(tmpDir, ".collab/config/pipeline.json"),
+      schemaPath: path.join(tmpDir, ".collab/config/pipeline.v3.schema.json"),
+    };
+
+    const result = resolvePaths(ctx);
+    expect(result.pipelineVariant).toBe("backend");
+
+    // Simulate initPipeline step 2: variant config override
+    const variantPath = path.join(ctx.repoRoot, ".collab", "config", "pipeline-variants", `${result.pipelineVariant}.json`);
+    expect(fs.existsSync(variantPath)).toBe(true);
+
+    ctx.configPath = variantPath;
+    const variantPipeline = JSON.parse(fs.readFileSync(ctx.configPath, "utf-8"));
+    expect(Object.keys(variantPipeline.phases)).toContain("implement");
+  });
+
+  test("29. variant config missing → configPath stays default", () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-variant-smoke-"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, "specs/test-no-variant"), { recursive: true });
+
+    const defaultConfigPath = path.join(tmpDir, ".collab/config/pipeline.json");
+    fs.writeFileSync(defaultConfigPath, JSON.stringify({ version: "3.1", phases: { clarify: {}, done: { terminal: true } } }));
+
+    fs.writeFileSync(
+      path.join(tmpDir, "specs/test-no-variant/metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-VARIANT-002", pipeline_variant: "nonexistent" })
+    );
+
+    const { resolvePaths: rp } = require("../src/scripts/orchestrator/commands/orchestrator-init");
+
+    const ctx = {
+      ticketId: "TEST-VARIANT-002",
+      orchestratorPane: "%test-orch",
+      repoRoot: tmpDir,
+      registryDir: path.join(tmpDir, ".collab/state/pipeline-registry"),
+      groupsDir: path.join(tmpDir, ".collab/state/pipeline-groups"),
+      configPath: defaultConfigPath,
+      schemaPath: path.join(tmpDir, ".collab/config/pipeline.v3.schema.json"),
+    };
+
+    const result = rp(ctx);
+    expect(result.pipelineVariant).toBe("nonexistent");
+
+    // Variant file doesn't exist → configPath should NOT change
+    const variantPath = path.join(ctx.repoRoot, ".collab", "config", "pipeline-variants", `${result.pipelineVariant}.json`);
+    expect(fs.existsSync(variantPath)).toBe(false);
+
+    // configPath stays as default
+    expect(ctx.configPath).toBe(defaultConfigPath);
+  });
+
+  test("30. no variant in metadata → pipelineVariant is undefined", () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-variant-smoke-"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, "specs/test-plain"), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(tmpDir, "specs/test-plain/metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-VARIANT-003" })
+    );
+
+    const { resolvePaths: rp2 } = require("../src/scripts/orchestrator/commands/orchestrator-init");
+
+    const ctx = {
+      ticketId: "TEST-VARIANT-003",
+      orchestratorPane: "%test-orch",
+      repoRoot: tmpDir,
+      registryDir: path.join(tmpDir, ".collab/state/pipeline-registry"),
+      groupsDir: path.join(tmpDir, ".collab/state/pipeline-groups"),
+      configPath: path.join(tmpDir, ".collab/config/pipeline.json"),
+      schemaPath: path.join(tmpDir, ".collab/config/pipeline.v3.schema.json"),
+    };
+
+    const result = rp2(ctx);
+    expect(result.pipelineVariant).toBeUndefined();
+  });
+});

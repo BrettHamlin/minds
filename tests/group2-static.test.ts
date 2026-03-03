@@ -242,6 +242,35 @@ describe("CLAUDE.md PAI depth override for pipeline messages", () => {
 });
 
 // ===========================================================================
+// pipeline variant routing tests (3 tests)
+// ===========================================================================
+
+describe("pipeline variant routing instructions", () => {
+  test("27. collab.specify.md has pipeline variant detection step", () => {
+    const content = readSourceFile("src/commands/collab.specify.md");
+
+    expect(content).toContain("pipeline:");
+    expect(content).toContain("pipeline_variant");
+  });
+
+  test("28. collab.specify.md instructs updating metadata.json with pipeline_variant", () => {
+    const content = readSourceFile("src/commands/collab.specify.md");
+
+    expect(content).toContain("metadata.json");
+    expect(content).toContain("pipeline_variant");
+    expect(content).toContain("pipeline-variants");
+  });
+
+  test("29. orchestrator-init.ts reads pipeline_variant from metadata", () => {
+    const content = readSourceFile("src/scripts/orchestrator/commands/orchestrator-init.ts");
+
+    expect(content).toContain("pipeline_variant");
+    expect(content).toContain("pipeline-variants");
+    expect(content).toContain("pipelineVariant");
+  });
+});
+
+// ===========================================================================
 // pipeline.json structure tests (4 tests)
 // ===========================================================================
 

@@ -4,12 +4,13 @@
  * orchestrator-init.ts - Initialize pipeline run for a ticket
  *
  * Performs all setup steps needed to start a new pipeline agent:
- *   Step 1: Schema validation of pipeline.json
- *   Step 2: Coordination cycle detection
- *   Step 3: Resolve repo and worktree paths
- *   Step 4: Set up symlinks (.claude/ and .collab/)
- *   Step 5: Spawn agent pane
- *   Step 6: Create registry atomically
+ *   Step 1: Resolve repo, worktree, and variant paths
+ *   Step 2: Variant config override (pipeline-variants/{variant}.json)
+ *   Step 3: Schema validation of pipeline config
+ *   Step 4: Coordination cycle detection
+ *   Step 5: Set up symlinks (.claude/ and .collab/)
+ *   Step 6: Spawn agent pane
+ *   Step 7: Create registry atomically
  *
  * Implements rollback: if a step fails, all completed steps are undone.
  *
@@ -167,6 +168,7 @@ export interface PathResolution {
   spawnCmd: string;
   repoId?: string;
   repoPath?: string;
+  pipelineVariant?: string;
 }
 
 export function resolvePaths(ctx: InitContext): PathResolution {
@@ -185,6 +187,7 @@ export function resolvePaths(ctx: InitContext): PathResolution {
   // Scan for metadata.json matching ticket ID
   let worktreePath: string | null = null;
   let metadataRepoId: string | undefined;
+  let pipelineVariant: string | undefined;
   const specsGlob = path.join(repoRoot, "specs");
 
   if (fs.existsSync(specsGlob)) {
@@ -208,6 +211,7 @@ export function resolvePaths(ctx: InitContext): PathResolution {
       }
 
       metadataRepoId = metadata.repo_id as string | undefined;
+      pipelineVariant = metadata.pipeline_variant as string | undefined;
       break;
     }
   }
@@ -249,7 +253,7 @@ export function resolvePaths(ctx: InitContext): PathResolution {
     console.error("No worktree or multi-repo path found, using current directory");
   }
 
-  return { repoRoot, worktreePath, spawnCmd, repoId, repoPath };
+  return { repoRoot, worktreePath, spawnCmd, repoId, repoPath, pipelineVariant };
 }
 
 // ---------------------------------------------------------------------------
@@ -326,7 +330,8 @@ export function createRegistry(
   agentPane: string,
   rb: RollbackState,
   repoId?: string,
-  repoPath?: string
+  repoPath?: string,
+  pipelineVariant?: string
 ): { nonce: string; registryPath: string } {
   const nonce = crypto.randomBytes(4).toString("hex").substring(0, 8);
 
@@ -348,6 +353,7 @@ export function createRegistry(
 
   if (repoId) registry.repo_id = repoId;
   if (repoPath) registry.repo_path = repoPath;
+  if (pipelineVariant) registry.pipeline_variant = pipelineVariant;
 
   writeJsonAtomic(registryPath, registry);
   rb.registryCreated = registryPath;
@@ -400,19 +406,30 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
   const rb: RollbackState = {};
 
   try {
-    // Step 1: Schema validation
+    // Step 1: Resolve paths (determines variant before validation)
+    const { repoRoot, worktreePath, spawnCmd, repoId, repoPath, pipelineVariant } = resolvePaths(ctx);
+
+    // Step 2: Variant config override
+    if (pipelineVariant) {
+      const variantPath = path.join(ctx.repoRoot, ".collab", "config", "pipeline-variants", `${pipelineVariant}.json`);
+      if (fs.existsSync(variantPath)) {
+        ctx.configPath = variantPath;
+        console.error(`Using pipeline variant '${pipelineVariant}': ${variantPath}`);
+      } else {
+        console.error(`Warning: pipeline variant '${pipelineVariant}' not found at ${variantPath}, using default pipeline.json`);
+      }
+    }
+
+    // Step 3: Schema validation
     validateSchema(ctx);
 
-    // Step 2: Coordination check
+    // Step 4: Coordination check
     runCoordinationCheck(ctx);
 
-    // Step 3: Resolve paths
-    const { repoRoot, worktreePath, spawnCmd, repoId, repoPath } = resolvePaths(ctx);
-
-    // Step 4: Symlinks
+    // Step 5: Symlinks
     setupSymlinks(worktreePath, repoRoot, rb);
 
-    // Step 5: Spawn agent pane
+    // Step 6: Spawn agent pane
     // Layout: first agent splits orchestrator pane horizontally (side-by-side).
     // Subsequent agents split the previous agent pane vertically (stacked on right).
     let splitTarget = ctx.orchestratorPane;
@@ -433,8 +450,8 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     const splitPct = horizontal ? 70 : 50;
     const agentPane = spawnAgentPane(splitTarget, spawnCmd, ctx.ticketId, rb, horizontal, splitPct);
 
-    // Step 6: Create registry
-    const { nonce, registryPath } = createRegistry(ctx, agentPane, rb, repoId, repoPath);
+    // Step 7: Create registry
+    const { nonce, registryPath } = createRegistry(ctx, agentPane, rb, repoId, repoPath, pipelineVariant);
 
     return { agentPane, nonce, registryPath, repoPath };
   } catch (err) {
