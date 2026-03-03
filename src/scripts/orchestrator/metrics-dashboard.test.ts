@@ -13,6 +13,7 @@ import {
   stampPrOnRun,
 } from "../../lib/pipeline/metrics";
 import { updateGateAccuracy } from "../../lib/pipeline/gate-accuracy";
+import { spawnCli } from "./test-helpers";
 import { classifyRun } from "../../lib/pipeline/classify-run";
 
 const CLI_PATH = join(import.meta.dir, "metrics-dashboard.ts");
@@ -81,21 +82,8 @@ afterAll(() => {
   }
 });
 
-async function runCli(
-  args: string[],
-  cwd = tmpDir
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const proc = Bun.spawn(["bun", CLI_PATH, ...args], {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { stdout, stderr, exitCode };
+function runCli(args: string[], cwd = tmpDir) {
+  return spawnCli(CLI_PATH, args, cwd);
 }
 
 // ============================================================================

@@ -20,7 +20,7 @@
  *   3 = skipped (@metrics disabled)
  */
 
-import { getRepoRoot, readJsonFile } from "./orchestrator-utils";
+import { getRepoRoot, exitIfMetricsDisabled } from "./orchestrator-utils";
 import { openMetricsDb } from "../../lib/pipeline/metrics";
 import { updateGateAccuracy, getGateAccuracyReport } from "../../lib/pipeline/gate-accuracy";
 
@@ -37,12 +37,7 @@ function main(): void {
 
   const repoRoot = getRepoRoot();
 
-  // Check @metrics directive — skip if disabled
-  const pipeline = readJsonFile(`${repoRoot}/.collab/config/pipeline.json`);
-  if (pipeline?.metrics?.enabled === false) {
-    console.log(JSON.stringify({ skipped: true, reason: "@metrics(false)" }));
-    process.exit(3);
-  }
+  exitIfMetricsDisabled(repoRoot);
 
   try {
     const dbPath = `${repoRoot}/.collab/state/metrics.db`;

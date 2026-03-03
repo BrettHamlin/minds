@@ -481,10 +481,25 @@ Validate. `rm .collab/state/pipeline-registry/{ticket_id}.json`. `bun .collab/sc
 
 When `IS_TERMINAL == "true"` in the Advance step:
 
-1. `rm .collab/state/pipeline-registry/{ticket_id}.json`
-2. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
-3. `.collab/scripts/webhook-notify.ts {ticket_id} {current_step} done complete`
-4. Other agents running -> wait. None remain -> "All pipelines complete."
+System nodes — all are non-fatal (exit 2 or 3 = log warning and continue):
+
+1. Draft PR (`.before` TERMINAL node):
+   `bun .collab/scripts/orchestrator/create-draft-pr.ts {ticket_id}`
+
+2. Complete run (stamps `completed_at`, `duration_ms`, `outcome`):
+   `bun .collab/scripts/orchestrator/complete-run.ts {ticket_id}`
+
+3. Classify run (stamps `autonomous`, `intervention_count`):
+   `bun .collab/scripts/orchestrator/classify-run.ts {ticket_id}`
+
+4. Gate accuracy (evaluates gate decisions — runs after complete-run, which sets `runs.outcome`):
+   `bun .collab/scripts/orchestrator/gate-accuracy-check.ts {ticket_id}`
+
+Cleanup:
+5. `rm .collab/state/pipeline-registry/{ticket_id}.json`
+6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
+7. `.collab/scripts/webhook-notify.ts {ticket_id} {current_step} done complete`
+8. Other agents running -> wait. None remain -> "All pipelines complete."
 
 ---
 
