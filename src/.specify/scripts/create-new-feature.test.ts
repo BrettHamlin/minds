@@ -1,6 +1,6 @@
 import { describe, test, expect, afterEach, beforeEach } from "bun:test";
-import { join } from "path";
-import { mkdirSync, rmSync, existsSync, readdirSync, writeFileSync } from "fs";
+import { join, basename, resolve } from "path";
+import { mkdirSync, rmSync, existsSync, readdirSync, writeFileSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import {
   extractTicketId,
@@ -235,5 +235,127 @@ describe("create-new-feature E2E", () => {
     // Verify files were created
     expect(existsSync(json.WORKTREE_DIR)).toBe(true);
     expect(existsSync(json.SPEC_FILE)).toBe(true);
+  });
+});
+
+// ─── Integration Tests: --source-repo writes repo_id to metadata.json ────────
+
+describe("--source-repo writes repo_id to metadata.json", () => {
+  let controlDir: string; // simulates the collab control plane repo
+  let sourceDir: string;  // simulates the external source repo
+
+  beforeEach(() => {
+    controlDir = join(tmpdir(), `cnf-control-${process.pid}-${Date.now()}`);
+    sourceDir = join(tmpdir(), `cnf-source-${process.pid}-${Date.now()}`);
+    mkdirSync(controlDir, { recursive: true });
+    mkdirSync(sourceDir, { recursive: true });
+
+    // Init control repo (where create-new-feature.ts runs from)
+    Bun.spawnSync(["git", "init"], { cwd: controlDir });
+    Bun.spawnSync(["git", "commit", "--allow-empty", "-m", "init"], { cwd: controlDir });
+
+    // Init source repo (passed via --source-repo)
+    Bun.spawnSync(["git", "init"], { cwd: sourceDir });
+    Bun.spawnSync(["git", "commit", "--allow-empty", "-m", "init"], { cwd: sourceDir });
+  });
+
+  afterEach(() => {
+    try { rmSync(controlDir, { recursive: true }); } catch { /* ignore */ }
+    try { rmSync(sourceDir, { recursive: true }); } catch { /* ignore */ }
+  });
+
+  test("--source-repo writes repo_id = basename of resolved source path", async () => {
+    const worktreePath = join(controlDir, "worktrees");
+    const proc = Bun.spawn(
+      [
+        "bun", SCRIPT_PATH,
+        "--json",
+        "--worktree",
+        "--worktree-path", worktreePath,
+        "--number", "1",
+        "--short-name", "cross-repo",
+        "--source-repo", sourceDir,
+        "BRE-340: Cross-repo feature",
+      ],
+      { stdout: "pipe", stderr: "pipe", cwd: controlDir }
+    );
+    const [stdout, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+
+    const json = JSON.parse(stdout.trim());
+    const branchName = json.BRANCH_NAME;
+
+    // metadata.json is written to specs/<branch>/ in the control repo
+    const metadataPath = join(controlDir, "specs", branchName, "metadata.json");
+    expect(existsSync(metadataPath)).toBe(true);
+
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf-8"));
+    expect(metadata.repo_id).toBe(basename(resolve(sourceDir)));
+  });
+
+  test("repo_id equals basename of resolved source path (trailing slash stripped)", async () => {
+    const worktreePath = join(controlDir, "worktrees");
+    const sourceWithSlash = sourceDir + "/";
+    const proc = Bun.spawn(
+      [
+        "bun", SCRIPT_PATH,
+        "--json",
+        "--worktree",
+        "--worktree-path", worktreePath,
+        "--number", "2",
+        "--short-name", "trailing-slash",
+        "--source-repo", sourceWithSlash,
+        "BRE-340: Trailing slash test",
+      ],
+      { stdout: "pipe", stderr: "pipe", cwd: controlDir }
+    );
+    const [stdout, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+
+    const json = JSON.parse(stdout.trim());
+    const branchName = json.BRANCH_NAME;
+    const metadataPath = join(controlDir, "specs", branchName, "metadata.json");
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf-8"));
+
+    // resolve() strips trailing slash before basename() runs
+    expect(metadata.repo_id).toBe(basename(resolve(sourceDir)));
+    expect(metadata.repo_id).not.toContain("/");
+  });
+
+  test("WITHOUT --source-repo, repo_id is absent from metadata.json (backward compat)", async () => {
+    const worktreePath = join(controlDir, "worktrees");
+    const proc = Bun.spawn(
+      [
+        "bun", SCRIPT_PATH,
+        "--json",
+        "--worktree",
+        "--worktree-path", worktreePath,
+        "--number", "3",
+        "--short-name", "no-source",
+        "BRE-340: No source repo",
+      ],
+      { stdout: "pipe", stderr: "pipe", cwd: controlDir }
+    );
+    const [stdout, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+
+    const json = JSON.parse(stdout.trim());
+    const branchName = json.BRANCH_NAME;
+    const metadataPath = join(controlDir, "specs", branchName, "metadata.json");
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf-8"));
+
+    expect(metadata).not.toHaveProperty("repo_id");
   });
 });

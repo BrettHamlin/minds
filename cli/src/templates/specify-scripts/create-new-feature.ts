@@ -18,7 +18,7 @@ import {
   copyFileSync,
   writeFileSync,
 } from "fs";
-import { join, dirname, basename } from "path";
+import { join, dirname, basename, resolve } from "path";
 
 // ─── Stop words (exact list from bash script) ───────────────────────────────
 
@@ -458,6 +458,7 @@ function main(): void {
       worktree_path: worktreeDir,
       branch_name: branchName,
       created_at: createdAt,
+      ...(args.sourceRepo ? { repo_id: basename(resolve(args.sourceRepo)) } : {}),
     };
 
     writeFileSync(
