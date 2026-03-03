@@ -341,9 +341,13 @@ If `to != null`: skip to step **e. Goal Gate Check**.
 2. Read the gate prompt file at `gates[gate_name].prompt`. Resolve `${TOKEN}` expressions for context variables in the prompt's YAML front matter.
 3. Evaluate using: Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, analysis.md if present, etc.).
 4. Your response must contain exactly one keyword from `gates[gate_name].on`. Match it.
-5. Look up the matched response: `bun .collab/scripts/orchestrator/transition-resolve.ts --gate {gate_name} {keyword}`
-6. **Feedback**: If matched response has `"feedback": true`, relay your full evaluation to the agent before routing.
-7. **Route**:
+5. Record gate decision (non-fatal — if exit 2/3, log and continue):
+   ```bash
+   bun .collab/scripts/orchestrator/record-gate.ts {ticket_id} {gate_name} {keyword}
+   ```
+6. Look up the matched response: `bun .collab/scripts/orchestrator/transition-resolve.ts --gate {gate_name} {keyword}`
+7. **Feedback**: If matched response has `"feedback": true`, relay your full evaluation to the agent before routing.
+8. **Route**:
    - Response has `to`: set `NEXT={to}`, proceed to **e. Goal Gate Check**.
    - Response has no `to` (retry): increment `retry_count` in registry. Check `on_exhaust` if `retry_count >= max_retries`. Then re-dispatch:
      ```bash
