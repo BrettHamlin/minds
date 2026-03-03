@@ -800,3 +800,71 @@ describe("pipeline variant config override", () => {
     expect(result.pipelineVariant).toBeUndefined();
   });
 });
+
+// ===========================================================================
+// emit-verify-execute-signal.ts: signal emission smoke tests (3 tests)
+// ===========================================================================
+
+describe("emit-verify-execute-signal.ts: signal emission", () => {
+  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-verify-execute-signal.ts");
+  let tmpDir: string;
+
+  afterAll(() => {
+    if (tmpDir) cleanupTempDir(tmpDir);
+  });
+
+  function setupMockRegistry(dir: string): void {
+    const registryDir = path.join(dir, ".collab/state/pipeline-registry");
+    fs.mkdirSync(registryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(registryDir, "TEST-001.json"),
+      JSON.stringify({
+        ticket_id: "TEST-001",
+        current_step: "verify_execute",
+        nonce: "smoke-nonce",
+        agent_pane_id: "%test-orch",
+        orchestrator_pane_id: "%orch-fake",
+        status: "running",
+      })
+    );
+  }
+
+  test("31. pass event exits 0 and writes signal queue file", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["pass", "All checks passed"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    expect(fs.existsSync(queueFile)).toBe(true);
+  });
+
+  test("32. queue file contains VERIFY_EXECUTE_COMPLETE in SIGNAL format", () => {
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+
+    expect(queue.signal).toContain("[SIGNAL:TEST-001:smoke-nonce]");
+    expect(queue.signal).toContain("VERIFY_EXECUTE_COMPLETE");
+    expect(queue.emitted_at).toBeDefined();
+  });
+
+  test("33. fail event writes VERIFY_EXECUTE_FAILED to queue", () => {
+    tmpDir = createTempRepo({});
+    fs.unlinkSync(path.join(tmpDir, ".collab"));
+    fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
+    setupMockRegistry(tmpDir);
+
+    const result = runBunScript(EMIT_HANDLER, ["fail", "2 of 6 checks failed"], tmpDir);
+
+    expect(result.exitCode).toBe(0);
+
+    const queueFile = path.join(tmpDir, ".collab/state/signal-queue/TEST-001.json");
+    const queue = JSON.parse(fs.readFileSync(queueFile, "utf-8"));
+    expect(queue.signal).toContain("VERIFY_EXECUTE_FAILED");
+    expect(queue.signal).toContain("2 of 6 checks failed");
+  });
+});

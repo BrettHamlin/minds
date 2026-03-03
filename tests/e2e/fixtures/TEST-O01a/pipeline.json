@@ -7,7 +7,7 @@
       "transitions": { "CLARIFY_COMPLETE": { "to": "verify_execute" } }
     },
     "verify_execute": {
-      "command": "/collab.visual-verify",
+      "command": "/collab.verify-execute",
       "signals": ["VERIFY_EXECUTE_COMPLETE", "VERIFY_EXECUTE_FAILED", "VERIFY_EXECUTE_ERROR"],
       "transitions": {
         "VERIFY_EXECUTE_COMPLETE": { "to": "done" },
