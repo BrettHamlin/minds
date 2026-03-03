@@ -609,10 +609,10 @@ Error JSON on stderr for invalid signals.
 
 ---
 
-### webhook-notify.sh
+### webhook-notify.ts
 
-**Path**: `src/scripts/webhook-notify.sh`
-**Language**: Bash
+**Path**: `src/scripts/webhook-notify.ts`
+**Language**: TypeScript
 **Purpose**: Send phase change notifications to the OpenClaw webhook endpoint, which forwards to Discord.
 **Called by**: `/collab.run` orchestrator after phase transitions
 **Dependencies**: `curl`
@@ -1040,7 +1040,7 @@ All phase commands live in `src/commands/` and are deployed to `.claude/commands
 2. Generates a 2-4 word short name for the branch from the feature description.
 3. Checks existing branches (local, remote, specs directories) to determine the next feature number.
 4. Source repo detection: if ticket project differs from current repo, prompts user for the target repo path.
-5. Runs `create-new-feature.sh` with `--json --worktree` to create the branch and directory structure.
+5. Runs `create-new-feature.ts` with `--json --worktree` to create the branch and directory structure.
 6. Loads the spec template and fills it with derived requirements, user scenarios, acceptance criteria.
 7. Runs specification quality validation with a self-generated checklist at `checklists/requirements.md`.
 8. Resolves any `[NEEDS CLARIFICATION]` markers by making informed guesses based on context.
@@ -1227,7 +1227,7 @@ All phase commands live in `src/commands/` and are deployed to `.claude/commands
 
 **Key Behaviors**:
 1. Clones the collab repo from GitHub (branch: dev, depth: 1) into a temp directory.
-2. Runs `src/commands/collab.install.sh` from the cloned repo.
+2. Runs `src/commands/collab.install.ts` from the cloned repo.
 3. Cleans up temp directory.
 4. Installs: `.claude/commands/`, `.claude/skills/`, `.collab/handlers/`, `.collab/scripts/`, `.collab/memory/`, `.specify/scripts/`, `.specify/templates/`.
 
@@ -1295,14 +1295,14 @@ All phase commands live in `src/commands/` and are deployed to `.claude/commands
 
 ## 7. Workflow Scripts
 
-All workflow scripts live in `.specify/scripts/bash/`.
+All workflow scripts live in `.specify/scripts/`.
 
 ---
 
-### create-new-feature.sh
+### create-new-feature.ts
 
-**Path**: `.specify/scripts/bash/create-new-feature.sh`
-**Language**: Bash
+**Path**: `.specify/scripts/create-new-feature.ts`
+**Language**: TypeScript
 **Purpose**: Create a new feature branch (or worktree), spec directory, and initialize spec.md from template. Supports auto-numbering, worktree mode, and source repo override.
 **Called by**: `collab.specify` command
 **Dependencies**: `git`, `jq` (for metadata.json), spec-template.md
@@ -1461,21 +1461,13 @@ All workflow scripts live in `.specify/scripts/bash/`.
 
 ---
 
-### test-ticket-extraction.sh
+### create-new-feature.test.ts (replaces test-ticket-extraction.sh)
 
-**Path**: `.specify/scripts/bash/test-ticket-extraction.sh`
-**Language**: Bash
-**Purpose**: Test script for verifying ticket ID extraction regex patterns. Runs a suite of test cases against the generic `([A-Z]+)-([0-9]+)` pattern.
-**Called by**: Manual testing only
-**Dependencies**: None
-
-**Arguments**: None.
-
-**Exit Codes**:
-| Code | Meaning |
-|------|---------|
-| 0 | All tests passed |
-| 1 | Some tests failed |
+**Path**: `.specify/scripts/create-new-feature.test.ts`
+**Language**: TypeScript (bun:test)
+**Purpose**: Tests for ticket ID extraction regex patterns and feature creation logic. Replaced the former `test-ticket-extraction.sh` bash script with bun:test.
+**Called by**: `bun test`
+**Dependencies**: `bun:test`
 
 **Test Cases**: BRE-123, PROJ-456, FEAT-789, CUSTOM-999, ABC-1, JIRA-12345, no-ticket strings, edge cases (multiple IDs, lowercase).
 

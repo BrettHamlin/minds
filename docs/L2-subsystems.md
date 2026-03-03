@@ -441,7 +441,7 @@ the shared signal format require updating this emitter separately.
 Templates are markdown files that provide consistent starting points for spec
 creation artifacts. They live in `.specify/templates/` and are copied into feature
 directories by the specification workflow scripts (particularly
-`create-new-feature.sh` and `setup-plan.sh`).
+`create-new-feature.ts` and `setup-plan.sh`).
 
 Templates use placeholder markers (like `{Feature Name}`, `[description]`,
 `<!-- ... -->` comments) that are meant to be filled in by humans or AI agents
@@ -473,7 +473,7 @@ after the template is copied.
 ### Relationship to Rest of Collab
 
 Templates are consumed by the **specification workflow scripts** (Section 7). The
-`create-new-feature.sh` script copies `spec-template.md` and `tasks-template.md`
+`create-new-feature.ts` script copies `spec-template.md` and `tasks-template.md`
 into the new feature directory. `setup-plan.sh` copies `plan-template.md`. The
 `update-agent-context.sh` script uses `agent-file-template.md` as the base for
 generating AI agent context files.
@@ -509,7 +509,7 @@ happens in a separate directory).
 
 | File | What it does |
 |------|-------------|
-| `.specify/scripts/bash/create-new-feature.sh` | The primary feature scaffolding script. Creates a git branch with a smart name derived from the feature title (stop-word filtering, kebab-case, 244-byte GitHub limit). Supports flags: `--json` (machine-readable output), `--worktree` (create a git worktree instead of a branch), `--worktree-path` (custom worktree location), `--short-name` (override auto-generated name), `--number` (override auto-increment number), `--source-repo` (create worktree from a different repository). Auto-increments feature numbers by scanning `specs/` directories and existing branch names. Creates the feature directory under `specs/{number}-{name}/`, copies `spec-template.md` and `tasks-template.md` from templates. Writes `metadata.json` with `feature_name`, `branch_name`, `worktree_path`, and `created_at` for worktree discovery by the orchestrator. |
+| `.specify/scripts/bash/create-new-feature.ts` | The primary feature scaffolding script. Creates a git branch with a smart name derived from the feature title (stop-word filtering, kebab-case, 244-byte GitHub limit). Supports flags: `--json` (machine-readable output), `--worktree` (create a git worktree instead of a branch), `--worktree-path` (custom worktree location), `--short-name` (override auto-generated name), `--number` (override auto-increment number), `--source-repo` (create worktree from a different repository). Auto-increments feature numbers by scanning `specs/` directories and existing branch names. Creates the feature directory under `specs/{number}-{name}/`, copies `spec-template.md` and `tasks-template.md` from templates. Writes `metadata.json` with `feature_name`, `branch_name`, `worktree_path`, and `created_at` for worktree discovery by the orchestrator. |
 | `.specify/scripts/bash/common.sh` | Shared utility functions. `get_repo_root` (walks up to find `.git/`). `get_current_branch` (priority: `SPECIFY_FEATURE` env > git branch > specs dir scan > `main` fallback). `has_git` (git availability check). `check_feature_branch` (verifies current branch follows naming convention). `find_feature_dir_by_prefix` (locates feature directory from branch prefix). `get_feature_paths` (outputs eval-able shell variables for spec, plan, tasks, and other artifact paths). |
 | `.specify/scripts/bash/check-prerequisites.sh` | Validates that required artifacts exist before proceeding. Checks for `plan.md` by default. Flags: `--require-tasks` (also require tasks.md), `--include-tasks` (include tasks.md in output if it exists), `--paths-only` (output just file paths, no status messages). Builds a list of available documents and exits non-zero if required files are missing. |
 | `.specify/scripts/bash/setup-plan.sh` | Copies `plan-template.md` from templates into the current feature directory as `plan.md`. Supports `--json` flag for machine-readable output. Sources `common.sh` to resolve paths. |
@@ -518,7 +518,7 @@ happens in a separate directory).
 ### Inputs, Outputs, and Side Effects
 
 **Inputs:**
-- Feature title/description (command-line argument to `create-new-feature.sh`)
+- Feature title/description (command-line argument to `create-new-feature.ts`)
 - Flags: `--json`, `--worktree`, `--worktree-path`, `--short-name`, `--number`,
   `--source-repo`, `--require-tasks`, `--include-tasks`, `--paths-only`
 - `plan.md` content (parsed by `update-agent-context.sh` for technology extraction)
@@ -544,7 +544,7 @@ happens in a separate directory).
 
 The workflow scripts are the **bootstrapping layer** for the pipeline. Before the
 orchestrator can run, a feature needs a branch, a spec directory, and template files.
-`create-new-feature.sh` sets all of this up. The `metadata.json` it writes is read
+`create-new-feature.ts` sets all of this up. The `metadata.json` it writes is read
 by `orchestrator-init.sh` to discover the worktree path and set up symlinks.
 
 `update-agent-context.sh` ensures that whatever AI coding tool an agent uses, it has
@@ -557,7 +557,7 @@ proceeding to implementation.
 
 ### Implementation Status
 
-**Complete and operational.** All five scripts are functional. `create-new-feature.sh`
+**Complete and operational.** All five scripts are functional. `create-new-feature.ts`
 supports both in-repo and worktree modes with the `--source-repo` flag for external
 repositories. `update-agent-context.sh` supports 17+ AI coding tools. `common.sh`
 provides reliable path resolution with multiple fallback strategies.
@@ -566,7 +566,7 @@ provides reliable path resolution with multiple fallback strategies.
 - `update-agent-context.sh` is ~800 lines and handles many edge cases for different
   agent file formats. Adding new AI coding tools requires adding a new section to
   this script.
-- The `--source-repo` flag on `create-new-feature.sh` was added to support external
+- The `--source-repo` flag on `create-new-feature.ts` was added to support external
   repositories (e.g., creating a worktree from `paper-clips-backend` while the
   control plane remains in `collab`).
 

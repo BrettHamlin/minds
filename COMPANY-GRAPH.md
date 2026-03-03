@@ -535,7 +535,7 @@ This is already the separation he describes. The restructuring is about adding w
 **Why:** ISC #14: Collab is the control plane that runs graphs for OTHER projects. Currently locked to collab repo.
 
 **How:**
-- `create-new-feature.sh --source-repo` overrides REPO_ROOT to target repo
+- `create-new-feature.ts --source-repo` overrides REPO_ROOT to target repo
 - Worktrees created from target repo, not collab
 - Orchestrator symlinks `.claude/` and `.collab/` back to collab (already works)
 - Pattern documented in MEMORY.md — needs implementation

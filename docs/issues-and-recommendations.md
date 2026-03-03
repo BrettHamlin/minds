@@ -18,10 +18,10 @@
 ### 1. Hardcoded Webhook Token in Source Code
 
 **Category**: Security
-**Files**: `src/scripts/webhook-notify.sh` (line 19)
-**Description**: The webhook authentication token `63010287709179dece1406557973ad6415e7e548420069b43821c54b49598170` is hardcoded directly in the source file. This file is committed to git and distributed via `collab.install.sh` to any repo that installs collab, leaking the token to all consumers.
+**Files**: `src/scripts/webhook-notify.ts` (line 19)
+**Description**: The webhook authentication token `63010287709179dece1406557973ad6415e7e548420069b43821c54b49598170` is hardcoded directly in the source file. This file is committed to git and distributed via `collab.install.ts` to any repo that installs collab, leaking the token to all consumers.
 **Impact**: Anyone who installs collab gets the OpenClaw webhook bearer token. If the repo is public or shared broadly, this token is exposed. An attacker could send arbitrary notifications to the Discord channel.
-**Remediation**: Move the token to an environment variable (e.g., `COLLAB_HOOKS_TOKEN`). Update `webhook-notify.sh` to read from `$COLLAB_HOOKS_TOKEN` with a fallback error message if unset. Add the variable to `.env.example`.
+**Remediation**: Move the token to an environment variable (e.g., `COLLAB_HOOKS_TOKEN`). Update `webhook-notify.ts` to read from `$COLLAB_HOOKS_TOKEN` with a fallback error message if unset. Add the variable to `.env.example`.
 
 ---
 
@@ -36,13 +36,13 @@
 - `.specify/scripts/bash/setup-plan.sh` -- NO `src/.specify/` equivalent
 - `.specify/scripts/bash/update-agent-context.sh` -- NO `src/.specify/` equivalent
 
-**Description**: The collab constitution (Principle I: Source Directory Authority) states that `src/` is the canonical source of truth and runtime directories are populated from it. However, four scripts exist only in `.specify/scripts/bash/` with no corresponding files in `src/.specify/scripts/bash/`. The `src/.specify/scripts/bash/` directory contains only `create-new-feature.sh` and `test-ticket-extraction.sh`.
+**Description**: The collab constitution (Principle I: Source Directory Authority) states that `src/` is the canonical source of truth and runtime directories are populated from it. However, four scripts exist only in `.specify/scripts/bash/` with no corresponding files in `src/.specify/scripts/`. The `src/.specify/scripts/` directory contains only `create-new-feature.ts` and `create-new-feature.test.ts`.
 
-The install script (`collab.install.sh` line 89) copies from `.specify/scripts/*` during remote install -- meaning it copies from the runtime location of the *source repo*, not from `src/.specify/`. This works for the collab repo itself but violates the src/ authority principle.
+The install script (`collab.install.ts` line 89) copies from `.specify/scripts/*` during remote install -- meaning it copies from the runtime location of the *source repo*, not from `src/.specify/`. This works for the collab repo itself but violates the src/ authority principle.
 
 **Impact**: These files can only be edited in the runtime location. If the install script is ever changed to copy from `src/.specify/`, these four files will be silently dropped. New contributors following the "edit src/ only" rule will not find these files.
 
-**Remediation**: Copy all four files to `src/.specify/scripts/bash/`. Update the install script to copy from `src/.specify/` instead of `.specify/`. This is documented in MEMORY.md as a known TODO.
+**Remediation**: Copy all four files to `src/.specify/scripts/`. Update the install script to copy from `src/.specify/` instead of `.specify/`. This is documented in MEMORY.md as a known TODO.
 
 ---
 
@@ -51,14 +51,14 @@ The install script (`collab.install.sh` line 89) copies from `.specify/scripts/*
 **Category**: Sync
 **Files**:
 - `scripts/install.sh` (legacy) deploys handlers to `.claude/hooks/handlers/`
-- `src/commands/collab.install.sh` (current) deploys handlers to `.collab/handlers/`
+- `src/commands/collab.install.ts` (current) deploys handlers to `.collab/handlers/`
 - Signal handlers reference `.collab/handlers/` paths at runtime
 
-**Description**: Two install scripts exist with different handler deployment targets. The legacy `scripts/install.sh` installs handlers to `.claude/hooks/handlers/`, while the current `src/commands/collab.install.sh` installs them to `.collab/handlers/`. The signal emission handlers (`emit-question-signal.ts`, etc.) and the orchestrator commands reference `.collab/handlers/` as the runtime path. The legacy install script would deploy to the wrong location.
+**Description**: Two install scripts exist with different handler deployment targets. The legacy `scripts/install.sh` installs handlers to `.claude/hooks/handlers/`, while the current `src/commands/collab.install.ts` installs them to `.collab/handlers/`. The signal emission handlers (`emit-question-signal.ts`, etc.) and the orchestrator commands reference `.collab/handlers/` as the runtime path. The legacy install script would deploy to the wrong location.
 
-**Impact**: If someone uses `scripts/install.sh` instead of `collab.install.sh`, handlers will be installed to the wrong directory and signal emission will fail silently.
+**Impact**: If someone uses `scripts/install.sh` instead of `collab.install.ts`, handlers will be installed to the wrong directory and signal emission will fail silently.
 
-**Remediation**: Either delete `scripts/install.sh` entirely (it is the legacy version) or update it to match `collab.install.sh` handler paths. Recommend deletion since `collab.install.sh` is the authoritative install path.
+**Remediation**: Either delete `scripts/install.sh` entirely (it is the legacy version) or update it to match `collab.install.ts` handler paths. Recommend deletion since `collab.install.ts` is the authoritative install path.
 
 ---
 
@@ -71,7 +71,7 @@ The install script (`collab.install.sh` line 89) copies from `.specify/scripts/*
 
 **Description**: Both files exist in the `.collab/config/` runtime directory but have NO corresponding source files in `src/config/`. The active pipeline uses v3 (`pipeline.json` with `"version": "3.0"`). The `orchestrator-init.sh` validates against `pipeline.v3.schema.json` exclusively. No script, handler, or command references v2 files.
 
-These files are NOT deployed by `collab.install.sh` (the install script copies `src/config/pipeline.json` and `src/config/*.schema.json` -- since v2 files do not exist in `src/config/`, they are never copied). They appear to be leftover from a manual migration in the collab repo itself.
+These files are NOT deployed by `collab.install.ts` (the install script copies `src/config/pipeline.json` and `src/config/*.schema.json` -- since v2 files do not exist in `src/config/`, they are never copied). They appear to be leftover from a manual migration in the collab repo itself.
 
 **Impact**: Confusion for developers who might think v2 is still active. Occupies config directory space. No functional impact since nothing reads them.
 
@@ -182,7 +182,7 @@ Verified: `pipeline.json` gates reference `.collab/config/gates/plan.md` and `.c
 **Category**: Configuration
 **Files**: `.collab/config/verify-config.json`, `src/config/verify-config.json`
 
-**Description**: The verify configuration specifies `"command": "go test ./..."` as the test command. This is only appropriate for the Go attractor module, not for the general case. The Relay server uses `vitest`, the CLI uses `vitest`, and TypeScript orchestrator tests use `bun:test`. When deployed to other repositories via `collab.install.sh`, this command will fail unless the target project uses Go.
+**Description**: The verify configuration specifies `"command": "go test ./..."` as the test command. This is only appropriate for the Go attractor module, not for the general case. The Relay server uses `vitest`, the CLI uses `vitest`, and TypeScript orchestrator tests use `bun:test`. When deployed to other repositories via `collab.install.ts`, this command will fail unless the target project uses Go.
 
 **Impact**: The verify phase will run the wrong test command in non-Go projects. The install script copies this as-is during first install (skips if already exists).
 
