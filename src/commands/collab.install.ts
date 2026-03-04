@@ -103,6 +103,7 @@ const dirs = [
   ".collab/state/pipeline-registry",
   ".collab/state/pipeline-groups",
   ".collab/lib",
+  ".collab/hooks",
   ".specify/scripts",
   ".specify/templates",
 ];
@@ -263,6 +264,23 @@ if (existsSync(join(tempDir, "transport"))) {
     `find "${repoRoot}/.collab/transport" -name "*.ts" -exec chmod +x {} \\;`,
     { shell: true }
   );
+}
+
+// Hooks (Claude Code settings.json references these)
+const hooksSrc = join(tempDir, "src/hooks");
+if (existsSync(hooksSrc)) {
+  for (const f of readdirSync(hooksSrc)) {
+    if (!f.endsWith(".ts") || f.endsWith(".test.ts")) continue;
+    const srcPath = join(hooksSrc, f);
+    if (statSync(srcPath).isFile()) {
+      copyFileSync(srcPath, join(repoRoot, ".collab/hooks", f));
+    }
+  }
+  execSync(
+    `find "${join(repoRoot, ".collab/hooks")}" -name "*.ts" -exec chmod +x {} \\;`,
+    { shell: true }
+  );
+  console.log("Hooks installed");
 }
 
 // Pipeline config (always overwrite to keep runtime in sync with source)
