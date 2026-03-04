@@ -146,9 +146,26 @@ ls .collab/state/signal-queue/*.json 2>/dev/null
 For each file found:
 1. Read the file: `cat .collab/state/signal-queue/{ticket_id}.json` — extract the `signal` field.
 2. Process the signal through **Signal Processing** below exactly as if it had arrived via tmux.
-3. Delete the file after processing: `rm .collab/state/signal-queue/{ticket_id}.json`
+3. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm .collab/state/signal-queue/{filename}`
 
 Then proceed to Input Routing for the current input.
+
+---
+
+## Signal Drain
+
+Run this **before every END RESPONSE** to process any signals that arrived during this turn:
+
+```bash
+ls .collab/state/signal-queue/*.json 2>/dev/null
+```
+
+For each file found:
+1. Read the file: `cat .collab/state/signal-queue/{filename}` — extract the `signal` field.
+2. Process the signal through **Signal Processing** above exactly as if it had arrived via tmux.
+3. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm .collab/state/signal-queue/{filename}`
+
+If no files remain, end the response normally.
 
 ---
 
@@ -192,7 +209,7 @@ The signal `detail` field contains the question and all options encoded with `§
    tmux send-keys -t {agent_pane_id} Enter  # confirm selection
    ```
 5. `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=answered`
-6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Answered for {ticket_id}: {choice}." **END RESPONSE.**
+6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Answered for {ticket_id}: {choice}." Run **Signal Drain** before ending.
 
 #### `_COMPLETE` -- Step finished
 
@@ -237,7 +254,7 @@ If `current_step == implement`:
   ```bash
   bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} implement --args "phase:{next_phase}"
   ```
-- `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Phase {current_impl_phase} of {total_phases} complete for {ticket_id}. Dispatching phase {next_phase}." **END RESPONSE.**
+- `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Phase {current_impl_phase} of {total_phases} complete for {ticket_id}. Dispatching phase {next_phase}." Run **Signal Drain** before ending.
 
 **If `implement_phase_plan` exists AND `current_impl_phase == total_phases`** (all phases done):
 - Remove the plan from registry:
@@ -369,7 +386,7 @@ If `to != null`: skip to step **e. Goal Gate Check**.
      ```bash
      bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {current_step}
      ```
-     Status table. **END RESPONSE.**
+     Status table. Run **Signal Drain** before ending.
 
 ##### e. Goal gate check (deterministic)
 
@@ -400,7 +417,7 @@ If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
 1. Read registry: `bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id}`
 2. Check for `held_by` field in the output.
 3. **If `held_by` is set:**
-   a. If `hold_external == true`: log "⏸ {ticket_id} is held by external blocker {held_by} — manual release required." Set `status=held`. `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+   a. If `hold_external == true`: log "⏸ {ticket_id} is held by external blocker {held_by} — manual release required." Set `status=held`. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
    b. Check if the blocker has completed by reading its registry:
       ```bash
       bun .collab/scripts/orchestrator/commands/registry-read.ts {held_by} 2>/dev/null || echo "REGISTRY_MISSING"
@@ -413,7 +430,7 @@ If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
         bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_external
         ```
         Then continue to the normal advance below.
-      - If blocker registry exists (blocker still running): set `status=held`, log "⏸ {ticket_id} is held, waiting for {held_by} to complete." `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+      - If blocker registry exists (blocker still running): set `status=held`, log "⏸ {ticket_id} is held, waiting for {held_by} to complete." `bun .collab/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
 4. **If `held_by` is not set**: proceed normally (no hold).
 
 Update registry and dispatch next phase:
@@ -463,7 +480,7 @@ bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {NEXT}
 bun $SCRIPTS/held-release-scan.ts {ticket_id}
 ```
 
-`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "'{current_step}' complete for {ticket_id}. Advancing to '{NEXT}'." **END RESPONSE.**
+`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "'{current_step}' complete for {ticket_id}. Advancing to '{NEXT}'." Run **Signal Drain** before ending.
 
 ##### f.1 Before hooks (AI)
 
@@ -497,7 +514,7 @@ In step **a** (_COMPLETE handler), after appending phase history, read `phases[c
    ```bash
    bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {current_step}
    ```
-3. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." **END RESPONSE.**
+3. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." Run **Signal Drain** before ending.
 4. `.collab/scripts/webhook-notify.ts {ticket_id} {step} {step} error`
 
 #### Any other signal -- Phase-specific outcome (transition routing)
