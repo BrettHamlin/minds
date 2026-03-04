@@ -14,7 +14,7 @@
       "command": "/collab.test",
       "signals": ["TEST_COMPLETE", "TEST_FAILED", "TEST_ERROR"],
       "transitions": {
-        "TEST_COMPLETE": { "to": "retest" },
+        "TEST_COMPLETE": { "to": "done" },
         "TEST_FAILED": { "to": "diagnose" },
         "TEST_ERROR": { "to": "diagnose" }
       }

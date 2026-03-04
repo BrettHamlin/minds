@@ -259,11 +259,13 @@ describe("collab.install.ts structural checks", () => {
   });
 
   test("14. orchestrator scripts copy preserves commands/ subdir structure", () => {
-    // The fix uses: cd "${tempDir}/src/scripts/orchestrator" && find . ... -exec sh -c 'mkdir -p ...'
-    expect(installSrc).toContain('cd "${tempDir}/src/scripts/orchestrator"');
-    expect(installSrc).toContain("mkdir -p");
+    // The fix uses TypeScript native readdirSync/copyFileSync loops (not shell find|while
+    // which silently fails in Bun's execSync). Must iterate top-level files and subdirs.
+    expect(installSrc).toContain("readdirSync(orchSrc)");
+    expect(installSrc).toContain("copyFileSync");
+    // Should NOT use the old shell find|while pattern that silently fails in Bun
+    expect(installSrc).not.toContain('cd "${tempDir}/src/scripts/orchestrator"');
     // Should NOT use the old flattening pattern (find -exec cp {} to flat dir)
-    // The old bad pattern had -exec cp {} ".../orchestrator/" without mkdir -p
     expect(installSrc).not.toContain(
       `-exec cp {} "\${repoRoot}/.collab/scripts/orchestrator/" \\;`
     );

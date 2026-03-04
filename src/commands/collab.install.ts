@@ -188,14 +188,28 @@ if (existsSync(handlersSrc)) {
 // Orchestrator scripts (preserve commands/ subdirectory, exclude *.test.ts)
 const orchSrc = join(tempDir, "src/scripts/orchestrator");
 if (existsSync(orchSrc)) {
-  const orchDest = join(repoRoot, ".collab/scripts/orchestrator");
-  // Use shell find + mkdir -p to preserve subdirectory structure
+  // Copy top-level scripts
+  for (const f of readdirSync(orchSrc)) {
+    const fp = join(orchSrc, f);
+    if (statSync(fp).isDirectory()) continue;
+    if (!f.endsWith(".ts") && !f.endsWith(".sh")) continue;
+    if (f.endsWith(".test.ts")) continue;
+    copyFileSync(fp, join(repoRoot, ".collab/scripts/orchestrator", f));
+  }
+  // Copy subdirectories (e.g. commands/)
+  for (const dir of readdirSync(orchSrc)) {
+    const dirPath = join(orchSrc, dir);
+    if (!statSync(dirPath).isDirectory()) continue;
+    const destDir = join(repoRoot, ".collab/scripts/orchestrator", dir);
+    mkdirSync(destDir, { recursive: true });
+    for (const f of readdirSync(dirPath)) {
+      if (!f.endsWith(".ts") && !f.endsWith(".sh")) continue;
+      if (f.endsWith(".test.ts")) continue;
+      copyFileSync(join(dirPath, f), join(destDir, f));
+    }
+  }
   execSync(
-    `cd "${tempDir}/src/scripts/orchestrator" && find . \\( -name "*.ts" -o -name "*.sh" \\) ! -name "*.test.ts" | while IFS= read -r f; do mkdir -p "${orchDest}/$(dirname "$f")" && cp "$f" "${orchDest}/$f"; done`,
-    { shell: true }
-  );
-  execSync(
-    `find "${orchDest}" \\( -name "*.sh" -o -name "*.ts" \\) -exec chmod +x {} \\;`,
+    `find "${join(repoRoot, ".collab/scripts/orchestrator")}" \\( -name "*.sh" -o -name "*.ts" \\) -exec chmod +x {} \\;`,
     { shell: true }
   );
 }
