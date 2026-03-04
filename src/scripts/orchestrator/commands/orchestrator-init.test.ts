@@ -414,6 +414,46 @@ describe("orchestrator-init: findDependencyHold()", () => {
     expect(hold).not.toBeNull();
     expect(hold!.external).toBe(true);
   });
+
+  test("35. implicitBlockedBy creates a hold when no metadata blockedBy exists", () => {
+    writeMetadata("FDH-400", { ticket_id: "FDH-400" }); // no blockedBy in metadata
+    const hold = findDependencyHold(
+      "FDH-400",
+      ["FDH-400", "FDH-BACKEND-400"],
+      holdSpecsDir,
+      ["FDH-BACKEND-400"]
+    );
+    expect(hold).not.toBeNull();
+    expect(hold!.held_ticket).toBe("FDH-400");
+    expect(hold!.blocked_by).toBe("FDH-BACKEND-400");
+    expect(hold!.reason).toBe("implicit variant dependency");
+    expect(hold!.external).toBe(false); // blocker is in sessionTickets
+  });
+
+  test("36. implicit blocker not in session → external=true", () => {
+    writeMetadata("FDH-500", { ticket_id: "FDH-500" });
+    const hold = findDependencyHold(
+      "FDH-500",
+      ["FDH-500"], // FDH-BACKEND-500 not in session
+      holdSpecsDir,
+      ["FDH-BACKEND-500"]
+    );
+    expect(hold).not.toBeNull();
+    expect(hold!.external).toBe(true);
+  });
+
+  test("37. implicit hold skipped when explicit metadata hold already covers same blocker", () => {
+    writeMetadata("FDH-600", { ticket_id: "FDH-600", blockedBy: ["FDH-BACKEND-600"] });
+    const hold = findDependencyHold(
+      "FDH-600",
+      ["FDH-600", "FDH-BACKEND-600"],
+      holdSpecsDir,
+      ["FDH-BACKEND-600"] // same blocker as metadata
+    );
+    // Should return one hold, not two
+    expect(hold).not.toBeNull();
+    expect(hold!.reason).toBe("Linear blockedBy"); // explicit takes precedence (found first)
+  });
 });
 
 // ---------------------------------------------------------------------------

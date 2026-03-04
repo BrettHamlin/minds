@@ -34,7 +34,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { execSync, spawn } from "child_process";
-import { buildAdjacency, detectCycles, buildDependencyHolds, type DependencyHold } from "./coordination-check";
+import { buildAdjacency, detectCycles, buildDependencyHolds, detectImplicitDependencies, type DependencyHold } from "./coordination-check";
 import {
   getRepoRoot,
   readJsonFile,
@@ -319,15 +319,37 @@ export function runCoordinationCheck(ctx: InitContext): void {
 
 /**
  * Find the dependency hold for a specific ticket from the current session.
- * Returns the hold record if the ticket has a Linear blockedBy dependency,
- * or null if the ticket has no dependencies.
+ * Returns the hold record if the ticket has a Linear blockedBy dependency or
+ * an implicit variant dependency, or null if the ticket has no dependencies.
+ *
+ * @param implicitBlockedBy - Optional ticket IDs inferred from variant relationships
+ *   (e.g., verification blocked by backend). These are merged with any explicit
+ *   blockedBy entries from metadata.json. Duplicates are skipped.
  */
 export function findDependencyHold(
   ticketId: string,
   sessionTickets: string[],
-  specsDir: string
+  specsDir: string,
+  implicitBlockedBy?: string[]
 ): DependencyHold | null {
   const holds = buildDependencyHolds(sessionTickets, specsDir);
+
+  // Inject implicit holds (variant-inferred deps not present in metadata.json).
+  if (implicitBlockedBy && implicitBlockedBy.length > 0) {
+    const pipelineSet = new Set(sessionTickets);
+    for (const blocker of implicitBlockedBy) {
+      // Skip if already covered by an explicit hold for this ticket+blocker pair.
+      if (holds.some((h) => h.held_ticket === ticketId && h.blocked_by === blocker)) continue;
+      holds.push({
+        held_ticket: ticketId,
+        blocked_by: blocker,
+        release_when: "done",
+        reason: "implicit variant dependency",
+        external: !pipelineSet.has(blocker),
+      });
+    }
+  }
+
   return holds.find((h) => h.held_ticket === ticketId) ?? null;
 }
 
@@ -661,7 +683,7 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     // Step 4: Coordination check
     runCoordinationCheck(ctx);
 
-    // Step 4.5: Dependency hold detection (Linear blockedBy)
+    // Step 4.5: Dependency hold detection (Linear blockedBy + implicit variant deps)
     const specsDir = path.join(repoRoot, "specs");
     const sessionTickets: string[] = [];
     if (fs.existsSync(ctx.registryDir)) {
@@ -672,7 +694,27 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
       }
     }
     sessionTickets.push(ctx.ticketId);
-    const depHold = findDependencyHold(ctx.ticketId, sessionTickets, specsDir);
+
+    // Auto-detect implicit blockers from variant relationships (e.g., verification blocked by backend).
+    const implicitBlockers = detectImplicitDependencies(
+      ctx.ticketId,
+      pipelineVariant,
+      ctx.registryDir,
+      specsDir
+    );
+    if (implicitBlockers.length > 0) {
+      console.error(
+        `Implicit variant dependency: ${ctx.ticketId} (${pipelineVariant ?? "no variant"}) ` +
+        `blocked by backend ticket(s): ${implicitBlockers.join(", ")}`
+      );
+    } else if (pipelineVariant && pipelineVariant !== "backend") {
+      console.error(
+        `Warning: ${ctx.ticketId} is a '${pipelineVariant}' variant but no backend ticket found ` +
+        `in registry or specs/ — no implicit hold applied`
+      );
+    }
+
+    const depHold = findDependencyHold(ctx.ticketId, sessionTickets, specsDir, implicitBlockers);
     if (depHold) {
       const blockerType = depHold.external ? "external" : "internal";
       console.error(

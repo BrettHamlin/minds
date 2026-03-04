@@ -212,6 +212,65 @@ export function buildDependencyHolds(
   return holds;
 }
 
+/**
+ * Detect implicit dependencies for a ticket based on pipeline variant relationships.
+ *
+ * For multi-ticket pipelines, verification/frontend/any non-backend variants inherently
+ * depend on backend variants completing first. This function scans the registry for active
+ * backend tickets and returns them as implicit blockers for non-backend variants.
+ *
+ * Backend tickets never have implicit dependencies (they are the root producers).
+ *
+ * @param ticketId    - The ticket being initialized (excluded from results).
+ * @param pipelineVariant - The pipeline variant for this ticket (e.g., "backend", "verification").
+ * @param registryDir - Path to the pipeline registry directory.
+ * @param specsDir    - Optional specs/ path; used as fallback when registry has no backend entries.
+ * @returns Array of ticket IDs that implicitly block this ticket. Empty for backend variants.
+ */
+export function detectImplicitDependencies(
+  ticketId: string,
+  pipelineVariant: string | undefined,
+  registryDir: string,
+  specsDir?: string
+): string[] {
+  // Backend tickets never have implicit dependencies on other variants.
+  if (pipelineVariant === "backend") {
+    return [];
+  }
+
+  const implicit: string[] = [];
+
+  // Primary: scan registry for active backend tickets.
+  if (fs.existsSync(registryDir)) {
+    for (const file of fs.readdirSync(registryDir)) {
+      if (!file.endsWith(".json")) continue;
+      const reg = readJsonFile(path.join(registryDir, file)) as Record<string, unknown> | null;
+      if (!reg) continue;
+      if (reg.ticket_id === ticketId) continue;
+      if (reg.pipeline_variant === "backend") {
+        implicit.push(reg.ticket_id as string);
+      }
+    }
+  }
+
+  // Fallback: scan specs/ metadata.json when registry has no backend entries yet.
+  // Covers the case where the backend ticket exists but hasn't been initialized.
+  if (implicit.length === 0 && specsDir && fs.existsSync(specsDir)) {
+    for (const entry of fs.readdirSync(specsDir)) {
+      const metadataPath = path.join(specsDir, entry, "metadata.json");
+      if (!fs.existsSync(metadataPath)) continue;
+      const metadata = readJsonFile(metadataPath) as Record<string, unknown> | null;
+      if (!metadata) continue;
+      if (metadata.ticket_id === ticketId) continue;
+      if (metadata.pipeline_variant === "backend") {
+        implicit.push(metadata.ticket_id as string);
+      }
+    }
+  }
+
+  return [...new Set(implicit)];
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
