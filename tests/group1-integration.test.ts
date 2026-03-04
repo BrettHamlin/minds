@@ -14,6 +14,27 @@ import * as path from "path";
 import { execSync } from "child_process";
 
 // ---------------------------------------------------------------------------
+// Test-suite setup: ensure .collab/config/pipeline.json mirrors the source of
+// truth at src/config/pipeline.json.  The .collab/ directory is gitignored and
+// may be absent or stale in fresh checkouts.  Orchestrator scripts resolve
+// pipeline.json at ${repoRoot}/.collab/config/pipeline.json, so we keep it in
+// sync here rather than requiring a manual install step.
+// ---------------------------------------------------------------------------
+
+{
+  const _root = execSync("git rev-parse --show-toplevel", {
+    encoding: "utf-8",
+    cwd: import.meta.dir,
+  }).trim();
+  const _src = path.join(_root, "src/config/pipeline.json");
+  const _dst = path.join(_root, ".collab/config/pipeline.json");
+  if (fs.existsSync(_src)) {
+    fs.mkdirSync(path.dirname(_dst), { recursive: true });
+    fs.copyFileSync(_src, _dst);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

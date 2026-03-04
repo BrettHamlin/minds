@@ -1,0 +1,16 @@
+{
+  "name": "plan",
+  "type": "pipeline",
+  "version": "1.1.0",
+  "description": "Implementation planning from spec artifacts",
+  "author": "Brett Hamlin",
+  "repository": "https://github.com/BrettHamlin/collab-registry",
+  "dependencies": [
+    { "name": "specify", "version": ">=1.0.0" }
+  ],
+  "cliDependencies": [
+    { "name": "bun", "version": ">=1.0.0", "required": true, "installHint": "curl -fsSL https://bun.sh/install | bash" }
+  ],
+  "commands": ["commands/collab.plan.md"],
+  "checksum": "ghi789"
+}

@@ -12,6 +12,39 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 
+// Ensure .collab/config/pipeline.json is in sync with src/config/pipeline.json
+// before any tests run (module-level, so it runs even in parallel test execution).
+{
+  const _root = execSync("git rev-parse --show-toplevel", {
+    encoding: "utf-8",
+    cwd: import.meta.dir,
+  }).trim();
+  const _src = path.join(_root, "src/config/pipeline.json");
+  const _dst = path.join(_root, ".collab/config/pipeline.json");
+  if (fs.existsSync(_src)) {
+    fs.mkdirSync(path.dirname(_dst), { recursive: true });
+    fs.copyFileSync(_src, _dst);
+  }
+}
+
+// Ensure .collab/config/pipeline-variants/ is in sync with src/config/pipeline-variants/
+{
+  const _root = execSync("git rev-parse --show-toplevel", {
+    encoding: "utf-8",
+    cwd: import.meta.dir,
+  }).trim();
+  const _variantsSrc = path.join(_root, "src/config/pipeline-variants");
+  const _variantsDst = path.join(_root, ".collab/config/pipeline-variants");
+  if (fs.existsSync(_variantsSrc)) {
+    fs.mkdirSync(_variantsDst, { recursive: true });
+    for (const f of fs.readdirSync(_variantsSrc)) {
+      if (f.endsWith(".json")) {
+        fs.copyFileSync(path.join(_variantsSrc, f), path.join(_variantsDst, f));
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

@@ -20,6 +20,22 @@ import * as path from "path";
 import * as os from "os";
 import { execSync, spawnSync } from "child_process";
 
+// Ensure .collab/config/pipeline.json is in sync with src/config/pipeline.json
+// before any tests run.  Phase-dispatch tests copy this file into temp repos;
+// they need the v3.1 format, not whatever stale content may be present locally.
+{
+  const _root = execSync("git rev-parse --show-toplevel", {
+    encoding: "utf-8",
+    cwd: import.meta.dir,
+  }).trim();
+  const _src = path.join(_root, "src/config/pipeline.json");
+  const _dst = path.join(_root, ".collab/config/pipeline.json");
+  if (fs.existsSync(_src)) {
+    fs.mkdirSync(path.dirname(_dst), { recursive: true });
+    fs.copyFileSync(_src, _dst);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
