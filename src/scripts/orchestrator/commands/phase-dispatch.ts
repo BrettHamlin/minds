@@ -38,6 +38,7 @@ import {
 } from "../../../lib/pipeline";
 import type { CompiledPipeline, CompiledPhase, CompiledAction } from "../../../lib/pipeline";
 import { applyUpdates } from "../../../lib/pipeline";
+import { resolveTransportPath } from "../../../lib/resolve-transport";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -153,18 +154,15 @@ export async function publishCommandToBus(
   agentPane: string
 ): Promise<{ published: boolean }> {
   try {
-    const resp = await fetch(`${busUrl}/publish`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        channel: `pipeline-${ticketId}`,
-        from: "orchestrator",
-        type: "command",
-        payload: { command, phase, agent_pane: agentPane },
-      }),
-      signal: AbortSignal.timeout(5000),
+    const { BusTransport } = await import(resolveTransportPath("BusTransport.ts"));
+    const transport = new BusTransport(busUrl);
+    await transport.publish(`pipeline-${ticketId}`, {
+      channel: `pipeline-${ticketId}`,
+      from: "orchestrator",
+      type: "command",
+      payload: { command, phase, agent_pane: agentPane },
     });
-    return { published: resp.ok };
+    return { published: true };
   } catch {
     return { published: false };
   }
@@ -197,19 +195,25 @@ export async function dispatchToAgent(
   delay: number = 1,
   transportOpts?: TransportOpts
 ): Promise<DispatchResult> {
-  const transport = transportOpts?.transport ?? "tmux";
+  const transportType = transportOpts?.transport ?? "tmux";
   const busUrl = transportOpts?.busUrl;
   const ticketId = transportOpts?.ticketId;
+  const phase = transportOpts?.phase ?? "unknown";
 
-  if (transport === "bus" && busUrl && ticketId) {
-    const result = await publishCommandToBus(
-      busUrl,
-      ticketId,
-      transportOpts?.phase ?? "unknown",
-      command,
-      paneId
-    );
-    return { dispatched: true, received: result.published, paneId, command };
+  if (transportType === "bus" && busUrl && ticketId) {
+    const { BusTransport } = await import(resolveTransportPath("BusTransport.ts"));
+    const transport = new BusTransport(busUrl);
+    try {
+      await transport.publish(`pipeline-${ticketId}`, {
+        channel: `pipeline-${ticketId}`,
+        from: "orchestrator",
+        type: "command",
+        payload: { command, phase, agent_pane: paneId },
+      });
+      return { dispatched: true, received: true, paneId, command };
+    } catch {
+      return { dispatched: true, received: false, paneId, command };
+    }
   }
 
   const tmux = new TmuxClient();

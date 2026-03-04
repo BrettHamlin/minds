@@ -12,11 +12,13 @@ import type { Transport, Message, Unsubscribe } from "./Transport.ts";
 import * as fs from "fs";
 import * as path from "path";
 
-// Resolve tmux-client.ts: .collab/lib/ (installed) or src/lib/ (dev)
+// Resolve tmux-client.ts: works from both transport/ (dev) and .collab/transport/ (installed)
 const thisDir = path.dirname(new URL(import.meta.url).pathname);
-let tmuxClientPath = path.resolve(thisDir, "../.collab/lib/pipeline/tmux-client.ts");
+let repoRoot = path.resolve(thisDir, "..");
+if (path.basename(repoRoot) === ".collab") repoRoot = path.resolve(repoRoot, "..");
+let tmuxClientPath = path.join(repoRoot, ".collab/lib/pipeline/tmux-client.ts");
 if (!fs.existsSync(tmuxClientPath)) {
-  tmuxClientPath = path.resolve(thisDir, "../src/lib/pipeline/tmux-client.ts");
+  tmuxClientPath = path.join(repoRoot, "src/lib/pipeline/tmux-client.ts");
 }
 const { tmux, sleepMs, sendToPane } = await import(tmuxClientPath);
 

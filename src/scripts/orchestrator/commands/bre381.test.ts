@@ -179,7 +179,7 @@ describe("teardownBusPids()", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test("8. kills real process by PID and port file removed", () => {
+  test("8. kills real process by PID and port file removed", async () => {
     // Spawn a process using Bun.spawn (synchronous; we just need the PID)
     const proc = Bun.spawn(["sleep", "100"], { stdio: ["ignore", "ignore", "ignore"] });
     const pid = proc.pid;
@@ -188,7 +188,7 @@ describe("teardownBusPids()", () => {
     fs.writeFileSync(portFile, String(pid));
 
     // teardownBusPids should kill the process and remove the port file
-    teardownBusPids({ busServerPid: pid, busPortFile: portFile });
+    await teardownBusPids({ busServerPid: pid, busPortFile: portFile });
 
     expect(fs.existsSync(portFile)).toBe(false);
 
@@ -197,10 +197,10 @@ describe("teardownBusPids()", () => {
     // Verifying the port file removal is sufficient proof the function ran.
   });
 
-  test("9. non-existent PIDs → silently handled (no throw)", () => {
+  test("9. non-existent PIDs → silently handled (no throw)", async () => {
     let threw = false;
     try {
-      teardownBusPids({
+      await teardownBusPids({
         busServerPid: 999991,   // non-existent
         bridgePid: 999992,
         commandBridgePid: 999993,
@@ -211,19 +211,19 @@ describe("teardownBusPids()", () => {
     expect(threw).toBe(false);
   });
 
-  test("10. removes bus port file if it exists", () => {
+  test("10. removes bus port file if it exists", async () => {
     const portFile = path.join(tmpDir, "bus-port");
     fs.writeFileSync(portFile, "49999");
 
-    teardownBusPids({ busPortFile: portFile });
+    await teardownBusPids({ busPortFile: portFile });
 
     expect(fs.existsSync(portFile)).toBe(false);
   });
 
-  test("11. skips missing port file (no throw)", () => {
+  test("11. skips missing port file (no throw)", async () => {
     let threw = false;
     try {
-      teardownBusPids({
+      await teardownBusPids({
         busPortFile: path.join(tmpDir, "nonexistent-port-file"),
       });
     } catch {
