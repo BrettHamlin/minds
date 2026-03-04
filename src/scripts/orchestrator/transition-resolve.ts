@@ -22,7 +22,8 @@
  *   3 = file error (pipeline.json missing/malformed)
  */
 
-import { getRepoRoot, readJsonFile } from "./orchestrator-utils";
+import { getRepoRoot, readJsonFile, resolvePipelineConfigPath, getRegistryPath } from "../../lib/pipeline";
+import * as path from "path";
 import { resolveTransition } from "../../lib/pipeline/transitions";
 
 // Re-export for test backward compatibility
@@ -47,20 +48,30 @@ export function resolveGateResponse(
 // CLI Entry Point
 // ============================================================================
 
+function parseVariantArgs(args: string[]): { variant: string | undefined; ticketId: string | undefined } {
+  const pipelineIdx = args.indexOf("--pipeline");
+  const variant = pipelineIdx !== -1 && args[pipelineIdx + 1] ? args[pipelineIdx + 1] : undefined;
+  const ticketIdx = args.indexOf("--ticket");
+  const ticketId = ticketIdx !== -1 && args[ticketIdx + 1] ? args[ticketIdx + 1] : undefined;
+  return { variant, ticketId };
+}
+
 function main(): void {
   const args = process.argv.slice(2);
+  const repoRoot = getRepoRoot();
+  const registryDir = path.join(repoRoot, ".collab", "state", "pipeline-registry");
 
   // --gate GATE_NAME KEYWORD: look up a gate response object
   if (args[0] === "--gate") {
     if (args.length < 3) {
-      console.error("Usage: transition-resolve.ts --gate <GATE_NAME> <KEYWORD>");
+      console.error("Usage: transition-resolve.ts --gate <GATE_NAME> <KEYWORD> [--pipeline <variant>] [--ticket <id>]");
       process.exit(1);
     }
     const gateName = args[1];
     const keyword = args[2];
 
-    const repoRoot = getRepoRoot();
-    const configPath = `${repoRoot}/.collab/config/pipeline.json`;
+    const { variant, ticketId } = parseVariantArgs(args.slice(3));
+    const configPath = resolvePipelineConfigPath(repoRoot, { variant, ticketId, registryDir });
     const pipeline = readJsonFile(configPath);
 
     if (pipeline === null) {
@@ -80,19 +91,27 @@ function main(): void {
     return;
   }
 
-  if (args.length < 2) {
+  // Filter out --pipeline, --ticket, and --plain flags before checking positional args
+  const positional = args.filter(
+    (a, i) =>
+      a !== "--plain" &&
+      a !== "--pipeline" && args[i - 1] !== "--pipeline" &&
+      a !== "--ticket" && args[i - 1] !== "--ticket"
+  );
+
+  if (positional.length < 2) {
     console.error(
-      "Usage: transition-resolve.ts <CURRENT_PHASE> <SIGNAL_TYPE> [--plain]"
+      "Usage: transition-resolve.ts <CURRENT_PHASE> <SIGNAL_TYPE> [--plain] [--pipeline <variant>] [--ticket <id>]"
     );
     process.exit(1);
   }
 
-  const currentPhase = args[0];
-  const signalType = args[1];
+  const currentPhase = positional[0];
+  const signalType = positional[1];
   const plainOnly = args.includes("--plain");
 
-  const repoRoot = getRepoRoot();
-  const configPath = `${repoRoot}/.collab/config/pipeline.json`;
+  const { variant, ticketId } = parseVariantArgs(args);
+  const configPath = resolvePipelineConfigPath(repoRoot, { variant, ticketId, registryDir });
   const pipeline = readJsonFile(configPath);
 
   if (pipeline === null) {

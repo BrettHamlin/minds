@@ -1,5 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { resolveTransition, resolveGateResponse, type TransitionResult } from "./transition-resolve";
+import { resolvePipelineConfigPath, writeJsonAtomic } from "../../lib/pipeline";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 // ============================================================================
 // Test pipeline fixture
@@ -252,5 +256,60 @@ describe("resolveGateResponse", () => {
 
   test("returns null for pipeline without gates field", () => {
     expect(resolveGateResponse(PIPELINE, "plan_review", "APPROVED")).toBeNull();
+  });
+});
+
+// ============================================================================
+// Variant config loading (resolvePipelineConfigPath integration)
+// ============================================================================
+
+describe("transition-resolve: variant config loading", () => {
+  let tmpDir: string;
+  let variantsDir: string;
+  let registryDir: string;
+
+  beforeAll(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-transition-variant-"));
+    variantsDir = path.join(tmpDir, ".collab", "config", "pipeline-variants");
+    registryDir = path.join(tmpDir, ".collab", "state", "pipeline-registry");
+    fs.mkdirSync(path.join(tmpDir, ".collab", "config"), { recursive: true });
+    fs.mkdirSync(variantsDir, { recursive: true });
+    fs.mkdirSync(registryDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(tmpDir, ".collab", "config", "pipeline.json"),
+      JSON.stringify({ version: "3.1", phases: {}, id: "default" })
+    );
+    fs.writeFileSync(
+      path.join(variantsDir, "hotfix.json"),
+      JSON.stringify({ version: "3.1", phases: {}, id: "hotfix" })
+    );
+    writeJsonAtomic(path.join(registryDir, "BRE-TR.json"), {
+      ticket_id: "BRE-TR",
+      pipeline_variant: "hotfix",
+    });
+  });
+
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("1. --pipeline variant resolves to variant config file", () => {
+    const configPath = resolvePipelineConfigPath(tmpDir, { variant: "hotfix" });
+    expect(configPath).toBe(path.join(variantsDir, "hotfix.json"));
+    expect(fs.existsSync(configPath)).toBe(true);
+  });
+
+  test("2. --ticket reads pipeline_variant from registry", () => {
+    const configPath = resolvePipelineConfigPath(tmpDir, {
+      ticketId: "BRE-TR",
+      registryDir,
+    });
+    expect(configPath).toBe(path.join(variantsDir, "hotfix.json"));
+  });
+
+  test("3. unknown variant falls back to default pipeline.json", () => {
+    const configPath = resolvePipelineConfigPath(tmpDir, { variant: "unknown" });
+    expect(configPath).toBe(path.join(tmpDir, ".collab", "config", "pipeline.json"));
   });
 });

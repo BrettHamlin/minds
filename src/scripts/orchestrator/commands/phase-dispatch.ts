@@ -31,6 +31,7 @@ import {
   readJsonFile,
   writeJsonAtomic,
   getRegistryPath,
+  resolvePipelineConfigPath,
   TmuxClient,
   OrchestratorError,
   handleError,
@@ -299,11 +300,18 @@ async function main(): Promise<void> {
   const [ticketId, phaseId] = args;
   const argsIdx = args.indexOf("--args");
   const extraArgs = argsIdx !== -1 && args[argsIdx + 1] ? args[argsIdx + 1] : null;
+  const pipelineIdx = args.indexOf("--pipeline");
+  const pipelineVariantFlag = pipelineIdx !== -1 && args[pipelineIdx + 1] ? args[pipelineIdx + 1] : undefined;
 
   try {
     const repoRoot = getRepoRoot();
-    const configPath = `${repoRoot}/.collab/config/pipeline.json`;
     const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
+    // Resolve config: explicit --pipeline flag > registry pipeline_variant > default pipeline.json
+    const configPath = resolvePipelineConfigPath(repoRoot, {
+      variant: pipelineVariantFlag,
+      ticketId,
+      registryDir,
+    });
 
     const pipeline = readJsonFile(configPath) as CompiledPipeline | null;
     if (!pipeline) {

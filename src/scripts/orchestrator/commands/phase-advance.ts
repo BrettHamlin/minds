@@ -24,9 +24,11 @@
 import {
   getRepoRoot,
   readJsonFile,
+  resolvePipelineConfigPath,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
+import * as path from "path";
 import type { CompiledPipeline } from "../../../lib/pipeline";
 
 /**
@@ -80,16 +82,21 @@ function main(): void {
   const args = process.argv.slice(2);
   if (args.length < 1) {
     console.error(
-      "Usage: phase-advance.ts <CURRENT_PHASE>\n" +
-      "       phase-advance.ts --first\n" +
-      "       phase-advance.ts --is-terminal <PHASE>"
+      "Usage: phase-advance.ts <CURRENT_PHASE> [--pipeline <variant>] [--ticket <id>]\n" +
+      "       phase-advance.ts --first [--pipeline <variant>] [--ticket <id>]\n" +
+      "       phase-advance.ts --is-terminal <PHASE> [--pipeline <variant>] [--ticket <id>]"
     );
     process.exit(1);
   }
 
   try {
     const repoRoot = getRepoRoot();
-    const configPath = `${repoRoot}/.collab/config/pipeline.json`;
+    const registryDir = path.join(repoRoot, ".collab", "state", "pipeline-registry");
+    const pipelineIdx = args.indexOf("--pipeline");
+    const variant = pipelineIdx !== -1 && args[pipelineIdx + 1] ? args[pipelineIdx + 1] : undefined;
+    const ticketIdx = args.indexOf("--ticket");
+    const ticketId = ticketIdx !== -1 && args[ticketIdx + 1] ? args[ticketIdx + 1] : undefined;
+    const configPath = resolvePipelineConfigPath(repoRoot, { variant, ticketId, registryDir });
     const pipeline = readJsonFile(configPath) as CompiledPipeline | null;
 
     if (pipeline === null) {

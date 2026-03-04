@@ -8,10 +8,10 @@ import {
   waitForPhaseCompletion,
 } from "./phase-dispatch";
 import type { CompiledPipeline } from "../../../lib/pipeline";
+import { writeJsonAtomic, resolvePipelineConfigPath } from "../../../lib/pipeline";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { writeJsonAtomic } from "../../../lib/pipeline";
 
 const PIPELINE: CompiledPipeline = {
   version: "3.1",
@@ -267,5 +267,71 @@ describe("phase-dispatch: waitForPhaseCompletion()", () => {
   test("17. returns false when registry file does not exist", async () => {
     const result = await waitForPhaseCompletion(path.join(tmpDir, "nonexistent.json"), "setup", 1);
     expect(result).toBe(false);
+  });
+});
+
+// ============================================================================
+// Variant config loading (resolvePipelineConfigPath integration)
+// ============================================================================
+
+describe("phase-dispatch: variant config loading", () => {
+  let tmpDir: string;
+  let variantsDir: string;
+  let registryDir: string;
+
+  beforeAll(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-dispatch-variant-"));
+    variantsDir = path.join(tmpDir, ".collab", "config", "pipeline-variants");
+    registryDir = path.join(tmpDir, ".collab", "state", "pipeline-registry");
+    fs.mkdirSync(path.join(tmpDir, ".collab", "config"), { recursive: true });
+    fs.mkdirSync(variantsDir, { recursive: true });
+    fs.mkdirSync(registryDir, { recursive: true });
+
+    // Default pipeline.json
+    fs.writeFileSync(
+      path.join(tmpDir, ".collab", "config", "pipeline.json"),
+      JSON.stringify({ version: "3.1", phases: {}, id: "default" })
+    );
+    // Variant file
+    fs.writeFileSync(
+      path.join(variantsDir, "fast.json"),
+      JSON.stringify({ version: "3.1", phases: {}, id: "fast" })
+    );
+    // Registry entry with pipeline_variant
+    writeJsonAtomic(path.join(registryDir, "BRE-DISP.json"), {
+      ticket_id: "BRE-DISP",
+      pipeline_variant: "fast",
+    });
+  });
+
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("18. registry pipeline_variant 'fast' resolves to variant path", () => {
+    const configPath = resolvePipelineConfigPath(tmpDir, {
+      ticketId: "BRE-DISP",
+      registryDir,
+    });
+    expect(configPath).toBe(path.join(variantsDir, "fast.json"));
+    expect(fs.existsSync(configPath)).toBe(true);
+  });
+
+  test("19. --pipeline flag overrides registry pipeline_variant", () => {
+    // 'fast' exists and is in registry, but explicit variant overrides it
+    const configPath = resolvePipelineConfigPath(tmpDir, {
+      variant: "fast",
+      ticketId: "BRE-DISP",
+      registryDir,
+    });
+    expect(configPath).toBe(path.join(variantsDir, "fast.json"));
+  });
+
+  test("20. no registry entry falls back to default pipeline.json", () => {
+    const configPath = resolvePipelineConfigPath(tmpDir, {
+      ticketId: "BRE-MISSING",
+      registryDir,
+    });
+    expect(configPath).toBe(path.join(tmpDir, ".collab", "config", "pipeline.json"));
   });
 });
