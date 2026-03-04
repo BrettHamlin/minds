@@ -7,7 +7,7 @@
 // All tests require tmux to be available. They are skipped otherwise.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { writeFileSync, chmodSync, unlinkSync, existsSync } from "fs";
+import { writeFileSync, chmodSync, unlinkSync, existsSync, mkdirSync, rmSync } from "fs";
 import { spawnSync } from "bun";
 import { runPipeline, type RunOptions, type AgentLifecycle } from "../src/runner";
 import type { CompiledPipeline } from "../src/compiler";
@@ -95,11 +95,11 @@ const STUB_DIR = "/tmp/pipelang-slice4-stubs";
 const ARTIFACT_FILE = "/tmp/pipelang-slice4-artifact.txt";
 
 beforeAll(() => {
-  spawnSync(["mkdir", "-p", STUB_DIR]);
+  mkdirSync(STUB_DIR, { recursive: true });
 });
 
 afterAll(() => {
-  spawnSync(["rm", "-rf", STUB_DIR]);
+  rmSync(STUB_DIR, { recursive: true, force: true });
   if (existsSync(ARTIFACT_FILE)) unlinkSync(ARTIFACT_FILE);
 });
 
