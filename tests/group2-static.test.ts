@@ -429,20 +429,27 @@ describe("pipeline-variants/backend.json structure", () => {
     expect(variant.phases.spec_critique.transitions.SPEC_CRITIQUE_COMPLETE.to).toBe("plan");
   });
 
-  test("35. run_tests is between codeReview and blindqa", () => {
+  test("35. implement routes directly to run_tests; codeReview is top-level config not a phase", () => {
     const variant = JSON.parse(fs.readFileSync(variantPath, "utf-8"));
     const phaseIds = Object.keys(variant.phases);
 
-    const codeReviewIdx = phaseIds.indexOf("codeReview");
     const runTestsIdx = phaseIds.indexOf("run_tests");
     const blindqaIdx = phaseIds.indexOf("blindqa");
 
-    expect(codeReviewIdx).toBeGreaterThanOrEqual(0);
-    expect(runTestsIdx).toBeGreaterThan(codeReviewIdx);
-    expect(blindqaIdx).toBeGreaterThan(runTestsIdx);
+    // codeReview must NOT be a phase (it's an orchestrator-internal step)
+    expect(phaseIds.indexOf("codeReview")).toBe(-1);
 
-    // Verify routing: codeReview → run_tests → blindqa
-    expect(variant.phases.codeReview.transitions.CODE_REVIEW_PASS.to).toBe("run_tests");
+    // Top-level codeReview config must exist
+    expect(variant.codeReview).toBeDefined();
+    expect(typeof variant.codeReview).toBe("object");
+    expect(variant.codeReview.enabled).toBe(true);
+
+    // implement goes directly to run_tests
+    expect(variant.phases.implement.transitions.IMPLEMENT_COMPLETE.to).toBe("run_tests");
+
+    // run_tests → blindqa ordering preserved
+    expect(runTestsIdx).toBeGreaterThanOrEqual(0);
+    expect(blindqaIdx).toBeGreaterThan(runTestsIdx);
     expect(variant.phases.run_tests.transitions.RUN_TESTS_COMPLETE.to).toBe("blindqa");
   });
 });

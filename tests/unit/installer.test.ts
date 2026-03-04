@@ -142,7 +142,6 @@ describe("collab.install.ts", () => {
       "collab.analyze.md",
       "collab.blindqa.md",
       "collab.clarify.md",
-      "collab.codeReview.md",
       "collab.deploy-verify.md",
       "collab.implement.md",
       "collab.plan.md",
@@ -165,8 +164,8 @@ describe("collab.install.ts", () => {
 
     // These commands are NOT referenced by any pipeline variant config and NOT
     // in CORE_COMMANDS — they must not be present after a fresh install.
-    // (Pipeline-variant-referenced commands like collab.plan.md, collab.spec-critique.md,
-    // and collab.codeReview.md ARE now installed automatically — see test 2.)
+    // (Pipeline-variant-referenced commands like collab.plan.md and collab.spec-critique.md
+    // ARE now installed automatically — see test 2.)
     const forbidden = [
       "collab.specify.md",       // install via 'pipelines install specify'
       "collab.checklist.md",     // not in any variant config
@@ -326,7 +325,6 @@ describe("collab.install.ts", () => {
     // and must be present after install so pipeline dispatch works correctly.
     const variantCommands = [
       "collab.spec-critique.md",    // backend, frontend-ui, test variants
-      "collab.codeReview.md",        // backend, frontend-ui variants
       "collab.pre-deploy-confirm.md",// deploy variant
       "collab.deploy-verify.md",     // deploy variant
       "collab.test.md",              // test variant

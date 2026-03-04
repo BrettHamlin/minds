@@ -1,6 +1,11 @@
 {
   "version": "3.1",
   "transport": "bus",
+  "codeReview": {
+    "enabled": true,
+    "model": "claude-opus-4-6",
+    "maxAttempts": 3
+  },
   "phases": {
     "clarify": {
       "command": "/collab.clarify",
@@ -50,16 +55,8 @@
       "command": "/collab.implement",
       "signals": ["IMPLEMENT_COMPLETE", "IMPLEMENT_WAITING", "IMPLEMENT_ERROR"],
       "transitions": {
-        "IMPLEMENT_COMPLETE": { "to": "codeReview" },
+        "IMPLEMENT_COMPLETE": { "to": "run_tests" },
         "IMPLEMENT_ERROR": { "to": "implement" }
-      }
-    },
-    "codeReview": {
-      "command": "/collab.codeReview",
-      "signals": ["CODE_REVIEW_PASS", "CODE_REVIEW_FAIL"],
-      "transitions": {
-        "CODE_REVIEW_PASS": { "to": "run_tests" },
-        "CODE_REVIEW_FAIL": { "to": "implement" }
       }
     },
     "run_tests": {
