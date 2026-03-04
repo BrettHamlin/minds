@@ -53,6 +53,16 @@ After running `/collab.install`, your repo will have:
     └── templates/          # File generation templates
 ```
 
+## Next Steps
+
+After `/collab.install` completes, install workflow pipelines to enable phase commands:
+
+```
+/pipelines
+```
+
+This opens the pipeline registry browser where you can install pre-built workflow packs. Run **`/pipelines`** and select `full-workflow` to install all standard phase commands (`collab.clarify`, `collab.plan`, `collab.implement`, etc.) needed to run `/collab.run`.
+
 ## Why This Architecture?
 
 - **Fast**: Installation commands are deterministic, no AI interpretation overhead

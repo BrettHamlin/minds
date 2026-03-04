@@ -39,6 +39,22 @@ Scan `.collab/state/pipeline-registry/*.json`. For each where `orchestrator_pane
 
 No arguments -> "Usage: /collab.run <ticket[:pipeline]> [ticket[:pipeline] ...] — e.g. BRE-342:default BRE-341:mobile or BRE-339 (pipeline inferred from Linear label)" and stop.
 
+### 2.5. Pre-flight Command Check (run once)
+
+Before starting orchestration, verify that the phase commands needed by the pipeline exist:
+
+```bash
+ls .claude/commands/collab.clarify.md .claude/commands/collab.plan.md .claude/commands/collab.implement.md 2>/dev/null | wc -l
+```
+
+If fewer than 3 files are found, auto-install the pipeline pack:
+
+```bash
+.collab/bin/collab pipelines install full-workflow --yes
+```
+
+If `.collab/bin/collab` does not exist (older install), log a warning and continue: "Warning: .collab/bin/collab not found — skipping pipeline pack check. Run /collab.install to upgrade."
+
 ### 3. Per-Ticket Setup Loop
 
 **For EACH ticket ID in TICKET_IDS**, run steps 3a–3d in order before moving to the next ticket.
