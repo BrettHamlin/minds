@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { buildAdjacency, detectCycles, buildDependencyHolds } from "./coordination-check";
+import { buildAdjacency, detectCycles, buildDependencyHolds, detectImplicitDependencies } from "./coordination-check";
 
 let specsDir: string;
 let tmpDir: string;
@@ -194,5 +194,125 @@ describe("coordination-check: buildDependencyHolds()", () => {
     const holds = buildDependencyHolds(["BRE-380", "BRE-381"], holdSpecsDir);
     expect(holds).toHaveLength(1);
     expect(holds[0].blocked_by).toBe("BRE-381");
+  });
+});
+
+// ============================================================================
+// detectImplicitDependencies() tests
+// ============================================================================
+
+describe("coordination-check: detectImplicitDependencies()", () => {
+  let implicitTmpDir: string;
+  let implicitRegistryDir: string;
+  let implicitSpecsDir: string;
+
+  beforeAll(() => {
+    implicitTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-implicit-"));
+    implicitRegistryDir = path.join(implicitTmpDir, "pipeline-registry");
+    implicitSpecsDir = path.join(implicitTmpDir, "specs");
+    fs.mkdirSync(implicitRegistryDir, { recursive: true });
+    fs.mkdirSync(implicitSpecsDir, { recursive: true });
+  });
+
+  afterAll(() => {
+    fs.rmSync(implicitTmpDir, { recursive: true, force: true });
+  });
+
+  function writeRegistry(ticketId: string, data: Record<string, unknown>): void {
+    fs.writeFileSync(
+      path.join(implicitRegistryDir, `${ticketId}.json`),
+      JSON.stringify({ ticket_id: ticketId, ...data })
+    );
+  }
+
+  function writeSpecMetadata(ticketId: string, data: Record<string, unknown>): void {
+    const dir = path.join(implicitSpecsDir, ticketId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "metadata.json"),
+      JSON.stringify({ ticket_id: ticketId, ...data })
+    );
+  }
+
+  test("18. backend variant → returns empty (no spurious implicit deps)", () => {
+    writeRegistry("BRE-BACKEND-100", { pipeline_variant: "backend" });
+    const result = detectImplicitDependencies("BRE-BACKEND-101", "backend", implicitRegistryDir);
+    expect(result).toEqual([]);
+  });
+
+  test("19. verification variant with backend in registry → detects backend as blocker", () => {
+    writeRegistry("BRE-BACKEND-200", { pipeline_variant: "backend" });
+    const result = detectImplicitDependencies(
+      "BRE-VERIFY-200",
+      "verification",
+      implicitRegistryDir
+    );
+    expect(result).toContain("BRE-BACKEND-200");
+  });
+
+  test("20. non-backend variant with no registry entry → specs/ fallback detects backend", () => {
+    // Use a fresh empty registry dir to isolate this test from registry writes above
+    const emptyRegistry = path.join(implicitTmpDir, "empty-registry");
+    fs.mkdirSync(emptyRegistry, { recursive: true });
+    writeSpecMetadata("BRE-BACKEND-300", { pipeline_variant: "backend" });
+
+    const result = detectImplicitDependencies(
+      "BRE-VERIFY-300",
+      "verification",
+      emptyRegistry,
+      implicitSpecsDir
+    );
+    expect(result).toContain("BRE-BACKEND-300");
+  });
+
+  test("21. explicit blockedBy in metadata still works — no regression (via buildDependencyHolds)", () => {
+    writeSpecMetadata("BRE-EXPLICIT-401", { blockedBy: ["BRE-EXPLICIT-402"] });
+    const holds = buildDependencyHolds(
+      ["BRE-EXPLICIT-401", "BRE-EXPLICIT-402"],
+      implicitSpecsDir
+    );
+    const hold = holds.find((h) => h.held_ticket === "BRE-EXPLICIT-401");
+    expect(hold).not.toBeNull();
+    expect(hold!.blocked_by).toBe("BRE-EXPLICIT-402");
+    expect(hold!.reason).toBe("Linear blockedBy");
+  });
+
+  test("22. no variant → non-backend path, scans registry for backend", () => {
+    writeRegistry("BRE-BACKEND-500", { pipeline_variant: "backend" });
+    const result = detectImplicitDependencies(
+      "BRE-NOTYPE-500",
+      undefined,
+      implicitRegistryDir
+    );
+    expect(result).toContain("BRE-BACKEND-500");
+  });
+
+  test("23. ticket does not block itself", () => {
+    writeRegistry("BRE-BACKEND-600", { pipeline_variant: "backend" });
+    // If the ticket IS the backend, it should not appear in its own implicit deps list
+    const result = detectImplicitDependencies(
+      "BRE-BACKEND-600",
+      "backend",
+      implicitRegistryDir
+    );
+    expect(result).not.toContain("BRE-BACKEND-600");
+    expect(result).toHaveLength(0);
+  });
+
+  test("24. deduplicates backend ticket appearing in both registry and specs/", () => {
+    const dedupRegistry = path.join(implicitTmpDir, "dedup-registry");
+    fs.mkdirSync(dedupRegistry, { recursive: true });
+    writeRegistry("BRE-BACKEND-700", { pipeline_variant: "backend" });
+    writeSpecMetadata("BRE-BACKEND-700", { pipeline_variant: "backend" });
+
+    // Registry finds it first; deduplicate via Set
+    const result = detectImplicitDependencies(
+      "BRE-VERIFY-700",
+      "verification",
+      implicitRegistryDir,
+      implicitSpecsDir
+    );
+    const count = result.filter((id) => id === "BRE-BACKEND-700").length;
+    expect(count).toBe(1);
   });
 });
