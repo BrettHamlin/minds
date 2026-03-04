@@ -196,12 +196,15 @@ describe("collab.install.ts", () => {
   });
 
   // ── Test 5 ────────────────────────────────────────────────────────────────
-  test("5. installed-pipelines.json is initialized as {}", () => {
+  test("5. installed-pipelines.json is initialized with valid schema", () => {
     const statePath = join(sharedDir, ".collab/state/installed-pipelines.json");
     expect(existsSync(statePath)).toBe(true);
 
-    const content = readFileSync(statePath, "utf8").trim();
-    expect(content).toBe("{}");
+    const parsed = JSON.parse(readFileSync(statePath, "utf8"));
+    expect(parsed.version).toBe("1");
+    expect(parsed.pipelines).toEqual({});
+    expect(parsed.clis).toEqual({});
+    expect(typeof parsed.installedAt).toBe("string");
   });
 
   // ── Test 6 ────────────────────────────────────────────────────────────────
