@@ -81,9 +81,16 @@ export async function handleCommandMessage(
 
 // ── SSE subscription loop ──────────────────────────────────────────────────
 
+// Persists across reconnects so the server can skip already-delivered messages
+let lastEventId: string | null = null;
+
 async function subscribeSSE(busUrl: string, channel: string, agentPane: string): Promise<void> {
   const url = `${busUrl}/subscribe/${encodeURIComponent(channel)}`;
-  const res = await fetch(url);
+  const headers: HeadersInit = {};
+  if (lastEventId !== null) {
+    headers["Last-Event-ID"] = lastEventId;
+  }
+  const res = await fetch(url, { headers });
 
   if (!res.ok || !res.body) {
     throw new Error(`SSE connect failed: ${res.status}`);
@@ -103,8 +110,11 @@ async function subscribeSSE(busUrl: string, channel: string, agentPane: string):
 
     for (const frame of frames) {
       if (!frame.trim()) continue;
+      let frameId: string | null = null;
       for (const line of frame.split("\n")) {
-        if (line.startsWith("data: ")) {
+        if (line.startsWith("id: ")) {
+          frameId = line.slice(4).trim();
+        } else if (line.startsWith("data: ")) {
           try {
             const msg = JSON.parse(line.slice(6));
             await handleCommandMessage(msg, agentPane, busUrl, channel);
@@ -113,6 +123,7 @@ async function subscribeSSE(busUrl: string, channel: string, agentPane: string):
           }
         }
       }
+      if (frameId !== null) lastEventId = frameId;
     }
   }
 }

@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 
 export interface BusMessage {
   id: string;
+  seq: number;
   channel: string;
   from: string;
   type: string;
@@ -31,6 +32,8 @@ const RING_BUFFER_SIZE = 100;
 
 // channel → ring buffer of recent messages
 const buffers = new Map<string, BusMessage[]>();
+
+let seqCounter = 0;
 
 // channel → set of active SSE subscriber controllers
 type SseController = ReadableStreamDefaultController<Uint8Array>;
@@ -59,7 +62,7 @@ function pushToBuffer(channel: string, msg: BusMessage): void {
 
 function sseEvent(msg: BusMessage): Uint8Array {
   const data = JSON.stringify(msg);
-  return new TextEncoder().encode(`data: ${data}\n\n`);
+  return new TextEncoder().encode(`id: ${msg.seq}\ndata: ${data}\n\n`);
 }
 
 function fanOut(channel: string, msg: BusMessage): void {
@@ -96,6 +99,7 @@ function handlePublish(req: Request): Response {
 
       const msg: BusMessage = {
         id: crypto.randomUUID(),
+        seq: ++seqCounter,
         channel,
         from,
         type,
@@ -115,9 +119,14 @@ function handlePublish(req: Request): Response {
     .catch(() => new Response("Bad Request: invalid JSON", { status: 400 }));
 }
 
-function handleSubscribe(channel: string): Response {
+function handleSubscribe(channel: string, req: Request): Response {
+  const lastEventIdHeader = req.headers.get("Last-Event-ID");
+  const lastSeq = lastEventIdHeader !== null ? parseInt(lastEventIdHeader, 10) : -1;
+
   const channelSubs = getSubscribers(channel);
-  const buffered = getBuffer(channel).slice(); // snapshot of ring buffer
+  const buffered = getBuffer(channel)
+    .filter((m) => isNaN(lastSeq) || m.seq > lastSeq)
+    .slice(); // snapshot of ring buffer, filtered for resume
 
   let controller!: SseController;
 
@@ -174,10 +183,12 @@ export function createServer(port = 0) {
   buffers.clear();
   subscribers.clear();
   messageCount = 0;
+  seqCounter = 0;
   startTime = Date.now();
 
   const server = Bun.serve({
     port,
+    idleTimeout: 0,
     fetch(req) {
       const url = new URL(req.url);
       const path = url.pathname;
@@ -193,7 +204,7 @@ export function createServer(port = 0) {
       const subMatch = path.match(SUBSCRIBE_RE);
       if (req.method === "GET" && subMatch) {
         const channel = decodeURIComponent(subMatch[1]);
-        return handleSubscribe(channel);
+        return handleSubscribe(channel, req);
       }
 
       return new Response("Not Found", { status: 404 });
