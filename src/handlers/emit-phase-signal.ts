@@ -11,9 +11,9 @@
  *   emitPhaseSignal("blindqa", { start: "awaitingInput", pass: "completed", fail: "failed" });
  */
 
-import { $ } from "bun";
 import { execSync } from "child_process";
 import * as fs from "fs";
+import { resolveTransportPath } from "../lib/resolve-transport";
 
 function getRepoRoot(): string {
   try {
@@ -29,9 +29,12 @@ function getRepoRoot(): string {
  * When COLLAB_TRANSPORT=bus and BUS_URL is set: publishes to the bus server.
  * The bus-signal-bridge daemon subscribes and delivers last-mile tmux send.
  *
- * When COLLAB_TRANSPORT=tmux or unset: sends directly via tmux send-keys.
+ * When COLLAB_TRANSPORT=tmux or unset: sends directly via tmux send-keys
+ * using TmuxTransport.
  *
  * Always safe to call: both paths are best-effort (queue file is the durable artifact).
+ *
+ * @param tmuxPath - Unused (kept for backward compatibility)
  */
 export async function dispatchSignal(
   signalMessage: string,
@@ -41,26 +44,30 @@ export async function dispatchSignal(
   nonce: string,
   tmuxPath: string
 ): Promise<void> {
-  const transport = process.env.COLLAB_TRANSPORT ?? "";
+  const transportType = process.env.COLLAB_TRANSPORT ?? "";
   const busUrl = process.env.BUS_URL ?? "";
 
-  if (transport === "bus" && busUrl) {
-    // Resolve bus-agent.ts: .collab/transport/ (installed) or transport/ (dev)
-    const root = getRepoRoot();
-    let busAgentPath = `${root}/.collab/transport/bus-agent.ts`;
-    if (!fs.existsSync(busAgentPath)) {
-      busAgentPath = `${root}/transport/bus-agent.ts`;
-    }
-    const { publishSafe } = await import(busAgentPath);
-    await publishSafe(busUrl, `pipeline-${ticketId}`, `agent-${phaseName}`, "signal", {
-      signal: signalMessage,
-      ticket_id: ticketId,
-      nonce,
+  if (transportType === "bus" && busUrl) {
+    // Bus transport: publish signal to the pipeline channel
+    const { BusTransport } = await import(resolveTransportPath("BusTransport.ts"));
+    const transport = new BusTransport(busUrl);
+    await transport.publish(`pipeline-${ticketId}`, {
+      channel: `pipeline-${ticketId}`,
+      from: `agent-${phaseName}`,
+      type: "signal",
+      payload: { signal: signalMessage, ticket_id: ticketId, nonce },
     });
   } else {
-    // Tmux path (default)
+    // Tmux transport (default): send signal directly to orchestrator pane
     try {
-      await $`bun ${tmuxPath} send -w ${orchestratorTarget} -t ${signalMessage} -d 1`.quiet();
+      const { TmuxTransport } = await import(resolveTransportPath("TmuxTransport.ts"));
+      const transport = new TmuxTransport();
+      await transport.publish(orchestratorTarget, {
+        channel: orchestratorTarget,
+        from: `agent-${phaseName}`,
+        type: "signal",
+        payload: signalMessage,
+      });
     } catch {
       const tag = `Emit${phaseName.charAt(0).toUpperCase() + phaseName.slice(1)}Signal`;
       console.error(`[${tag}] Warning: tmux send failed (signal persisted to queue)`);

@@ -18,6 +18,7 @@ import {
   readJsonFile,
   getRegistryPath,
 } from "../../../lib/pipeline";
+import { resolveTransportPath } from "../../../lib/resolve-transport";
 
 // ---------------------------------------------------------------------------
 // Core logic (exported for testing)
@@ -33,25 +34,17 @@ export interface TeardownOpts {
 /**
  * Kill the bus server and signal/command bridge processes, then remove
  * the bus port file. Non-fatal: silently handles already-dead processes.
+ *
+ * Delegates process termination to BusTransport.teardown() which encapsulates
+ * the lifecycle kill logic.
  */
-export function teardownBusPids(opts: TeardownOpts): void {
+export async function teardownBusPids(opts: TeardownOpts): Promise<void> {
   const { busServerPid, bridgePid, commandBridgePid, busPortFile } = opts;
 
-  const targets: [string, number | undefined][] = [
-    ["bus server", busServerPid],
-    ["signal bridge", bridgePid],
-    ["command bridge", commandBridgePid],
-  ];
-
-  for (const [label, pid] of targets) {
-    if (pid === undefined) continue;
-    try {
-      process.kill(pid, "SIGTERM");
-      console.error(`Killed ${label} (pid ${pid})`);
-    } catch {
-      console.error(`${label} (pid ${pid}) already dead or not found`);
-    }
-  }
+  // Delegate process killing to BusTransport.teardown()
+  const { BusTransport } = await import(resolveTransportPath("BusTransport.ts"));
+  const transport = new BusTransport("", { busServerPid, bridgePid, commandBridgePid });
+  await transport.teardown();
 
   if (busPortFile && fs.existsSync(busPortFile)) {
     try {
@@ -85,7 +78,7 @@ if (import.meta.main) {
     process.exit(0);
   }
 
-  teardownBusPids({
+  await teardownBusPids({
     busServerPid: registry.bus_server_pid as number | undefined,
     bridgePid: registry.bridge_pid as number | undefined,
     commandBridgePid: registry.command_bridge_pid as number | undefined,

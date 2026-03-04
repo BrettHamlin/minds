@@ -44,6 +44,7 @@ import {
   handleError,
 } from "../../../lib/pipeline";
 import type { CompiledPipeline } from "../../../lib/pipeline";
+import { resolveTransportPath } from "../../../lib/resolve-transport";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -607,37 +608,26 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     // Step 3: Schema validation
     validateSchema(ctx);
 
-    // Step 2.5: Resolve transport and start bus server if needed
-    const transport = resolveTransportFromConfig(ctx.configPath);
-    let busServerPid: number | undefined;
-    let busUrl: string | undefined;
+    // Step 2.5: Resolve transport and start bus lifecycle if needed
+    const transportType = resolveTransportFromConfig(ctx.configPath);
+    let busTransport: { start: Function; getLifecycleInfo: Function; injectAgentEnv: Function; startCommandBridge: Function } | undefined;
 
-    let bridgePid: number | undefined;
-    let commandBridgePid: number | undefined;
-
-    if (transport === "bus") {
+    if (transportType === "bus") {
       console.error("Transport: bus — starting bus server and signal bridge...");
-      const bus = await startBusServer(ctx.repoRoot);
-      busServerPid = bus.pid;
-      busUrl = bus.url;
-      rb.busServerPid = busServerPid;
-      console.error(`Bus server started: pid=${busServerPid} url=${busUrl}`);
-
-      const bridge = startBusSignalBridge(
-        ctx.repoRoot,
-        busUrl,
-        `pipeline-${ctx.ticketId}`,
-        ctx.orchestratorPane
-      );
-      bridgePid = bridge.pid;
-      rb.bridgePid = bridgePid;
+      const { BusTransport } = await import(resolveTransportPath("BusTransport.ts"));
+      busTransport = new BusTransport("");
+      await busTransport.start(ctx.repoRoot, ctx.orchestratorPane, ctx.ticketId);
+      const info = busTransport.getLifecycleInfo();
+      console.error(`Bus server started: pid=${info.busServerPid} url=${info.busUrl}`);
+      if (info.busServerPid !== undefined) rb.busServerPid = info.busServerPid;
+      if (info.bridgePid !== undefined) rb.bridgePid = info.bridgePid;
     } else {
       console.error("Transport: tmux");
     }
 
     // Build final spawn command, injecting bus env vars if needed
-    const spawnCmd = transport === "bus" && busUrl
-      ? injectBusEnv(baseSpawnCmd, busUrl)
+    const spawnCmd = busTransport
+      ? busTransport.injectAgentEnv(baseSpawnCmd)
       : baseSpawnCmd;
 
     // Step 4: Coordination check
@@ -668,21 +658,18 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     const agentPane = spawnAgentPane(splitTarget, spawnCmd, ctx.ticketId, rb, horizontal, splitPct);
 
     // Start command bridge after agent pane is known (requires agentPane ID for last-mile delivery)
-    if (transport === "bus" && busUrl) {
-      const cmdBridge = startBusCommandBridge(
-        ctx.repoRoot,
-        busUrl,
-        `pipeline-${ctx.ticketId}`,
-        agentPane
-      );
-      commandBridgePid = cmdBridge.pid;
-      rb.commandBridgePid = commandBridgePid;
+    if (busTransport) {
+      busTransport.startCommandBridge(ctx.repoRoot, agentPane, ctx.ticketId);
+      const info = busTransport.getLifecycleInfo();
+      if (info.commandBridgePid !== undefined) rb.commandBridgePid = info.commandBridgePid;
     }
 
     // Step 7: Create registry
+    const lifecycleInfo = busTransport?.getLifecycleInfo();
     const { nonce, registryPath } = createRegistry(
       ctx, agentPane, rb, repoId, repoPath, pipelineVariant,
-      transport, busServerPid, busUrl, bridgePid, commandBridgePid
+      transportType, lifecycleInfo?.busServerPid, lifecycleInfo?.busUrl,
+      lifecycleInfo?.bridgePid, lifecycleInfo?.commandBridgePid
     );
 
     return { agentPane, nonce, registryPath, repoPath };
