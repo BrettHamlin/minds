@@ -24,7 +24,7 @@ This applies in every scenario: normal completion, after follow-up messages from
 
 ## Goal
 
-Detect and reduce ambiguity in the active feature specification using AskUserQuestion tool for orchestrator compatibility.
+Detect and reduce ambiguity in the active feature specification. In autonomous pipeline mode, auto-resolve using recommended options. In interactive mode, use AskUserQuestion tool for orchestrator compatibility.
 
 ## Execution Steps
 
@@ -34,10 +34,25 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
    ```
    Parse JSON to get `FEATURE_DIR` and `FEATURE_SPEC`.
 
-2. **Load Spec**
+2. **Detect Execution Mode**
+
+   Check if autonomous (orchestrated) mode is active by reading the registry file directly:
+
+   Use the **Read** tool on the absolute path:
+   ```
+   Read: {repo_root}/.collab/state/pipeline-registry/{ticket_id}.json
+   ```
+
+   Where `{repo_root}` is the git repository root (use `git rev-parse --show-toplevel` via Bash if needed), and `{ticket_id}` is extracted from `$ARGUMENTS` or from the `BRANCH` name (e.g., branch `BRE-246-content-curator` → ticket_id `BRE-246`).
+
+   **IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the known path.
+
+   If the file exists and `current_step` contains `clarify`, set `AUTONOMOUS_MODE=true`. Otherwise `AUTONOMOUS_MODE=false`.
+
+3. **Load Spec**
    Read the spec file from `FEATURE_SPEC`.
 
-3. **Ambiguity Scan**
+4. **Ambiguity Scan**
    Analyze spec across taxonomy categories:
    - Functional Scope (out-of-scope, user roles)
    - Data Model (primary keys, relationships, scale)
@@ -49,7 +64,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
    Mark each: Clear / Partial / Missing
 
-4. **Generate Questions** (max 3 for orchestrated mode)
+5. **Generate Questions** (max 3 for orchestrated mode)
 
    For each critical ambiguity:
    - Create 2-4 distinct options
@@ -57,7 +72,22 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
    - Make recommendation the first option
    - Add "(Recommended)" to its description
 
-5. **Ask Questions Using AskUserQuestion Tool**
+6. **Ask Questions / Auto-Resolve**
+
+   ### 6a. AUTONOMOUS MODE (when `AUTONOMOUS_MODE=true`)
+
+   > **Only enter this path when `AUTONOMOUS_MODE=true`. Skip to Step 6b otherwise.**
+
+   In autonomous mode, DO NOT call AskUserQuestion. Instead, auto-resolve each question:
+
+   For each generated question:
+   - Select the **recommended option** (the first option, marked with "(Recommended)")
+   - Record the decision: `[AUTONOMOUS] Selected recommended: <option label>`
+   - Proceed directly to integration (Step 7)
+
+   This ensures the pipeline does not stall waiting for interactive input.
+
+   ### 6b. INTERACTIVE MODE (when `AUTONOMOUS_MODE=false`)
 
    For EACH question:
 
@@ -80,7 +110,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
    {
      questions: [{
        question: "<clear question text>",
-       header: "<category name>",  // e.g., "Notification Types"
+       header: "<category name>",
        multiSelect: false,
        options: [
          {
@@ -106,7 +136,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
    **IMPORTANT**: Always include "Custom answer" option so user can provide their own response if predefined options don't fit.
 
-6. **Integrate Each Answer**
+7. **Integrate Each Answer**
 
    After EACH answer:
    - Create/update `## Clarifications` section
@@ -115,19 +145,19 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
    - Update relevant sections (e.g., add enum to Database Schema)
    - **Save spec file immediately** (atomic write)
 
-7. **Validation**
+8. **Validation**
    - One bullet per answer in Clarifications section
    - Max 3 questions asked total
    - No contradictory statements remain
    - Terminology consistent across sections
 
-8. **Emit Completion Signal**
+9. **Emit Completion Signal**
    ```bash
    bun .collab/handlers/emit-question-signal.ts complete "Clarification phase finished"
    ```
    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 
-9. **Report Completion**
+10. **Report Completion**
    - Number of questions answered
    - Sections updated
    - Path to updated spec
@@ -135,6 +165,9 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
 ## Signal Flow
 
+**Autonomous mode:** Steps 1-4 are skipped entirely. Agent auto-selects recommended options and proceeds directly to integration.
+
+**Interactive mode:**
 1. Agent emits `CLARIFY_QUESTION` via `bun .collab/handlers/emit-question-signal.ts question "question§option1§option2§..."`
 2. Orchestrator receives signal → reads question + options directly from signal `detail` field (no screen capture)
 3. Agent calls AskUserQuestion

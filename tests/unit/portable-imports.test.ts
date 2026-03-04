@@ -113,6 +113,32 @@ function sourceToInstalled(srcRelPath: string): string | null {
   return null;
 }
 
+// ── Reverse-map an installed path back to its source path ───────────────────
+
+function installedToSource(installedRelPath: string): string | null {
+  for (const m of INSTALL_MAPPINGS) {
+    if (installedRelPath.startsWith(m.destDir + "/")) {
+      return installedRelPath.replace(m.destDir, m.srcDir);
+    }
+  }
+  return null;
+}
+
+// ── Check existence by reverse-mapping to source ────────────────────────────
+
+function existsViaSource(installedRelPath: string): boolean {
+  // First check if the file exists directly (covers .collab/ populated case)
+  const absPath = join(PROJECT_ROOT, installedRelPath);
+  if (existsSync(absPath)) return true;
+
+  // Reverse-map to source and check there
+  const srcPath = installedToSource(installedRelPath);
+  if (srcPath) {
+    return existsSync(join(PROJECT_ROOT, srcPath));
+  }
+  return false;
+}
+
 // ── Resolve an import from the installed location ──────────────────────────
 
 function resolveFromInstalled(
@@ -121,19 +147,30 @@ function resolveFromInstalled(
 ): { resolvedPath: string; exists: boolean } {
   const installedDir = dirname(join(PROJECT_ROOT, installedFilePath));
   let resolved = resolve(installedDir, importPath);
+  let relResolved = resolved.replace(PROJECT_ROOT + "/", "");
 
   // Bun resolves .ts extensions and maps .js → .ts
   if (resolved.endsWith(".js")) {
-    const tsVariant = resolved.replace(/\.js$/, ".ts");
-    if (existsSync(tsVariant)) resolved = tsVariant;
+    const tsRel = relResolved.replace(/\.js$/, ".ts");
+    if (existsViaSource(tsRel)) {
+      relResolved = tsRel;
+      resolved = join(PROJECT_ROOT, tsRel);
+    }
   } else if (!resolved.endsWith(".ts") && !resolved.endsWith(".json")) {
-    if (existsSync(resolved + ".ts")) resolved += ".ts";
-    else if (existsSync(resolved + "/index.ts")) resolved += "/index.ts";
+    const tsRel = relResolved + ".ts";
+    const indexRel = relResolved + "/index.ts";
+    if (existsViaSource(tsRel)) {
+      relResolved = tsRel;
+      resolved = join(PROJECT_ROOT, tsRel);
+    } else if (existsViaSource(indexRel)) {
+      relResolved = indexRel;
+      resolved = join(PROJECT_ROOT, indexRel);
+    }
   }
 
   return {
-    resolvedPath: resolved.replace(PROJECT_ROOT + "/", ""),
-    exists: existsSync(resolved),
+    resolvedPath: relResolved,
+    exists: existsViaSource(relResolved),
   };
 }
 
@@ -152,6 +189,10 @@ function escapesCollabBoundary(installedFile: string, resolvedPath: string): boo
 
   // If it starts with .collab/, it's inside the boundary
   if (rel.startsWith(".collab/") || rel.startsWith(".collab\\")) return false;
+
+  // If the path reverse-maps to a known installed source dir, it's fine —
+  // the installer will place it inside .collab/ at runtime
+  if (installedToSource(rel) !== null) return false;
 
   // Anything else escapes — in installed repos, only .collab/ exists.
   // Paths like transport/X, src/X, lib/X all break outside the collab dev repo.
