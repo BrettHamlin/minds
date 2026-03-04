@@ -93,6 +93,7 @@ const dirs = [
   ".collab/bin",
   ".collab/config",
   ".collab/config/pipeline-variants",
+  ".collab/config/test-fixtures",
   ".collab/handlers",
   ".collab/memory",
   ".collab/scripts/orchestrator",
@@ -187,28 +188,14 @@ if (existsSync(handlersSrc)) {
 // Orchestrator scripts (preserve commands/ subdirectory, exclude *.test.ts)
 const orchSrc = join(tempDir, "src/scripts/orchestrator");
 if (existsSync(orchSrc)) {
-  // Copy top-level scripts
-  for (const f of readdirSync(orchSrc)) {
-    const fp = join(orchSrc, f);
-    if (statSync(fp).isDirectory()) continue;
-    if (!f.endsWith(".ts") && !f.endsWith(".sh")) continue;
-    if (f.endsWith(".test.ts")) continue;
-    copyFileSync(fp, join(repoRoot, ".collab/scripts/orchestrator", f));
-  }
-  // Copy subdirectories (e.g. commands/)
-  for (const dir of readdirSync(orchSrc)) {
-    const dirPath = join(orchSrc, dir);
-    if (!statSync(dirPath).isDirectory()) continue;
-    const destDir = join(repoRoot, ".collab/scripts/orchestrator", dir);
-    mkdirSync(destDir, { recursive: true });
-    for (const f of readdirSync(dirPath)) {
-      if (!f.endsWith(".ts") && !f.endsWith(".sh")) continue;
-      if (f.endsWith(".test.ts")) continue;
-      copyFileSync(join(dirPath, f), join(destDir, f));
-    }
-  }
+  const orchDest = join(repoRoot, ".collab/scripts/orchestrator");
+  // Use shell find + mkdir -p to preserve subdirectory structure
   execSync(
-    `find "${repoRoot}/.collab/scripts/orchestrator" \\( -name "*.sh" -o -name "*.ts" \\) -exec chmod +x {} \\;`,
+    `cd "${tempDir}/src/scripts/orchestrator" && find . \\( -name "*.ts" -o -name "*.sh" \\) ! -name "*.test.ts" | while IFS= read -r f; do mkdir -p "${orchDest}/$(dirname "$f")" && cp "$f" "${orchDest}/$f"; done`,
+    { shell: true }
+  );
+  execSync(
+    `find "${orchDest}" \\( -name "*.sh" -o -name "*.ts" \\) -exec chmod +x {} \\;`,
     { shell: true }
   );
 }
@@ -293,6 +280,18 @@ if (existsSync(variantsDir)) {
   console.log("  Warning: src/config/pipeline-variants not found in source — skipping");
 }
 
+// Test fixture configs (always overwrite to keep runtime in sync with source)
+const testFixturesDir = join(tempDir, "src/config/test-fixtures");
+if (existsSync(testFixturesDir)) {
+  execSync(
+    `find "${testFixturesDir}" -name "*.json" -exec cp {} "${join(repoRoot, ".collab/config/test-fixtures/")}" \\;`,
+    { shell: true }
+  );
+  console.log("Test fixture configs installed");
+} else {
+  console.log("  Warning: src/config/test-fixtures not found in source — skipping");
+}
+
 // Default command configs (scaffold only — skip if user has customized)
 const commandConfigs = [
   { src: "src/config/defaults/run-tests.json", dest: ".collab/config/run-tests.json" },
@@ -318,12 +317,7 @@ console.log("Runtime files installed");
 
 const statePath = join(repoRoot, ".collab/state/installed-pipelines.json");
 if (!existsSync(statePath)) {
-  const initialState = JSON.stringify(
-    { version: "1", installedAt: new Date().toISOString(), pipelines: {}, clis: {} },
-    null,
-    2
-  ) + "\n";
-  writeFileSync(statePath, initialState);
+  writeFileSync(statePath, "{}\n");
   console.log("State initialized: .collab/state/installed-pipelines.json");
 } else {
   console.log("State file exists — preserving");

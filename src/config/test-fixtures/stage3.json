@@ -1,0 +1,23 @@
+{
+  "version": "3.1",
+  "transport": "bus",
+  "description": "Stage 3: Two phases — verify phase transition (clarify→plan→done)",
+  "phases": {
+    "clarify": {
+      "command": "/collab.clarify",
+      "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"],
+      "transitions": {
+        "CLARIFY_COMPLETE": { "to": "plan" }
+      }
+    },
+    "plan": {
+      "command": "/collab.plan",
+      "signals": ["PLAN_COMPLETE", "PLAN_ERROR"],
+      "transitions": {
+        "PLAN_COMPLETE": { "to": "done" },
+        "PLAN_ERROR": { "to": "plan" }
+      }
+    },
+    "done": { "terminal": true }
+  }
+}

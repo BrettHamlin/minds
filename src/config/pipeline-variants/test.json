@@ -1,0 +1,62 @@
+{
+  "version": "3.1",
+  "transport": "bus",
+  "phases": {
+    "discover": {
+      "command": "/collab.test",
+      "signals": ["DISCOVER_COMPLETE", "DISCOVER_ERROR"],
+      "transitions": {
+        "DISCOVER_COMPLETE": { "to": "test" },
+        "DISCOVER_ERROR": { "to": "discover" }
+      }
+    },
+    "test": {
+      "command": "/collab.test",
+      "signals": ["TEST_COMPLETE", "TEST_FAILED", "TEST_ERROR"],
+      "transitions": {
+        "TEST_COMPLETE": { "to": "retest" },
+        "TEST_FAILED": { "to": "diagnose" },
+        "TEST_ERROR": { "to": "diagnose" }
+      }
+    },
+    "diagnose": {
+      "command": "/collab.test",
+      "signals": ["DIAGNOSE_COMPLETE", "DIAGNOSE_ERROR"],
+      "transitions": {
+        "DIAGNOSE_COMPLETE": { "to": "fix" },
+        "DIAGNOSE_ERROR": { "to": "diagnose" }
+      }
+    },
+    "fix": {
+      "command": "/collab.test",
+      "signals": ["FIX_COMPLETE", "FIX_ERROR"],
+      "transitions": {
+        "FIX_COMPLETE": { "to": "retest" },
+        "FIX_ERROR": { "to": "diagnose" }
+      }
+    },
+    "retest": {
+      "command": "/collab.test",
+      "signals": ["RETEST_COMPLETE", "RETEST_FAILED", "RETEST_ERROR"],
+      "transitions": {
+        "RETEST_COMPLETE": { "gate": "retest_gate" },
+        "RETEST_FAILED": { "gate": "retest_gate" },
+        "RETEST_ERROR": { "to": "diagnose" }
+      }
+    },
+    "done": { "terminal": true },
+    "escalate": { "terminal": true }
+  },
+  "gates": {
+    "retest_gate": {
+      "on": {
+        "PASS": { "to": "done" },
+        "RETRY": {
+          "to": "diagnose",
+          "maxRetries": 3,
+          "onExhaust": "skip"
+        }
+      }
+    }
+  }
+}

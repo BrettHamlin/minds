@@ -1,0 +1,39 @@
+{
+  "version": "3.1",
+  "transport": "bus",
+  "description": "Stage 4: Gate evaluation — verify gate routing (plan→plan_review gate→tasks→done)",
+  "phases": {
+    "plan": {
+      "command": "/collab.plan",
+      "signals": ["PLAN_COMPLETE", "PLAN_ERROR"],
+      "transitions": {
+        "PLAN_COMPLETE": { "gate": "plan_review" },
+        "PLAN_ERROR": { "to": "plan" }
+      }
+    },
+    "tasks": {
+      "command": "/collab.tasks",
+      "signals": ["TASKS_COMPLETE", "TASKS_ERROR"],
+      "transitions": {
+        "TASKS_COMPLETE": { "to": "done" },
+        "TASKS_ERROR": { "to": "tasks" }
+      }
+    },
+    "done": { "terminal": true }
+  },
+  "gates": {
+    "plan_review": {
+      "prompt": ".collab/config/gates/plan.md",
+      "on": {
+        "APPROVED": { "to": "tasks" },
+        "REVISION_NEEDED": {
+          "to": "plan",
+          "feedback": "enrich",
+          "maxRetries": 3,
+          "onExhaust": "skip"
+        }
+      },
+      "skipTo": "tasks"
+    }
+  }
+}
