@@ -12,7 +12,7 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 ## Arguments
 
-`$ARGUMENTS` = one or more `ticket:pipeline` pairs (e.g., `BRE-342:default BRE-341:mobile`). The `:pipeline` suffix is optional; when omitted, the ticket's Linear labels are checked for a `pipeline:*` label (e.g., `pipeline:backend`). If found, that variant is used; otherwise defaults to `"default"`.
+`$ARGUMENTS` = one or more `ticket:pipeline` pairs (e.g., `BRE-342:default BRE-341:mobile BRE-343:verification`). The `:pipeline` suffix is optional; when omitted, the ticket's Linear labels are checked for a `pipeline:*` label (e.g., `pipeline:backend`, `pipeline:verification`). If found, that variant is used; otherwise defaults to `pipeline: "default"`.
 
 ### Pre-parse: Classify arguments via `resolve-tickets.ts`
 
