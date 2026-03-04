@@ -98,6 +98,7 @@ const dirs = [
   ".collab/transport",
   ".collab/state/pipeline-registry",
   ".collab/state/pipeline-groups",
+  ".collab/lib",
   ".specify/scripts",
   ".specify/templates",
 ];
@@ -202,6 +203,19 @@ if (existsSync(scriptsSrc)) {
   );
   execSync(
     `find "${join(repoRoot, ".collab/scripts")}" -maxdepth 1 \\( -name "*.sh" -o -name "*.ts" \\) -exec chmod +x {} \\;`,
+    { shell: true }
+  );
+}
+
+// Shared library files (src/lib/, excluding tests)
+const libSrc = join(tempDir, "src/lib");
+if (existsSync(libSrc)) {
+  execSync(
+    `find "${libSrc}" -maxdepth 1 -name "*.ts" ! -name "*.test.ts" -exec cp {} "${join(repoRoot, ".collab/lib/")}" \\;`,
+    { shell: true }
+  );
+  execSync(
+    `find "${join(repoRoot, ".collab/lib")}" -name "*.ts" -exec chmod +x {} \\;`,
     { shell: true }
   );
 }
