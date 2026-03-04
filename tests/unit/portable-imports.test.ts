@@ -137,6 +137,27 @@ function resolveFromInstalled(
   };
 }
 
+// ── Check if a resolved path stays within .collab/ ─────────────────────────
+//
+// In an installed repo, only .collab/ exists — not transport/, src/, etc.
+// Imports from .collab/handlers/, .collab/scripts/, .collab/lib/ must resolve
+// to targets WITHIN .collab/. Only .collab/transport/ files may import siblings
+// within .collab/transport/ (they're installed together).
+
+function escapesCollabBoundary(installedFile: string, resolvedPath: string): boolean {
+  // Normalize: strip PROJECT_ROOT prefix if present
+  const rel = resolvedPath.startsWith(PROJECT_ROOT)
+    ? resolvedPath.slice(PROJECT_ROOT.length + 1)
+    : resolvedPath;
+
+  // If it starts with .collab/, it's inside the boundary
+  if (rel.startsWith(".collab/") || rel.startsWith(".collab\\")) return false;
+
+  // Anything else escapes — in installed repos, only .collab/ exists.
+  // Paths like transport/X, src/X, lib/X all break outside the collab dev repo.
+  return true;
+}
+
 // ── The test ───────────────────────────────────────────────────────────────
 
 describe("portable imports", () => {
@@ -157,8 +178,7 @@ describe("portable imports", () => {
           const result = resolveFromInstalled(installedFile, imp.importPath);
 
           if (!result.exists) {
-            // Also check: would it resolve from source? If yes, this is the
-            // exact class of bug we're guarding against.
+            // File doesn't exist at all from installed location
             const srcDir = dirname(join(PROJECT_ROOT, srcFile));
             let srcResolved = resolve(srcDir, imp.importPath);
             if (!srcResolved.endsWith(".ts") && existsSync(srcResolved + ".ts")) {
@@ -171,6 +191,17 @@ describe("portable imports", () => {
               `  Installed at: ${installedFile}\n` +
               `  Resolves to:  ${result.resolvedPath} (NOT FOUND)\n` +
               `  Works from source: ${worksFromSource ? "YES — this import breaks after install!" : "NO — broken everywhere"}`
+            );
+          } else if (escapesCollabBoundary(installedFile, result.resolvedPath)) {
+            // File exists in collab repo but escapes .collab/ boundary.
+            // This works in the collab dev repo (transport/ exists at root)
+            // but breaks in installed repos where only .collab/ exists.
+            failures.push(
+              `${srcFile}:${imp.line} → import("${imp.importPath}")\n` +
+              `  Installed at: ${installedFile}\n` +
+              `  Resolves to:  ${result.resolvedPath} (ESCAPES .collab/ boundary)\n` +
+              `  This import works in the collab repo but breaks in installed repos\n` +
+              `  where only .collab/ exists (not transport/, src/, etc.)`
             );
           }
         }
