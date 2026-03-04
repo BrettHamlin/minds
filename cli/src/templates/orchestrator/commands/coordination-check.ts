@@ -37,6 +37,19 @@ export interface Cycle {
   path: string[];
 }
 
+export interface DependencyHold {
+  /** The ticket that is blocked and should be held. */
+  held_ticket: string;
+  /** The ticket that must complete before the held ticket can advance. */
+  blocked_by: string;
+  /** Phase the blocker must reach before releasing. "done" = fully complete. */
+  release_when: string;
+  /** Human-readable reason for the hold. */
+  reason: string;
+  /** True when the blocker is not part of the current pipeline run. */
+  external: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Pure functions
 // ---------------------------------------------------------------------------
@@ -145,6 +158,58 @@ export function detectCycles(adjacency: Map<string, string[]>): Cycle[] {
   }
 
   return cycles;
+}
+
+/**
+ * Build dependency holds from metadata.json blockedBy fields.
+ *
+ * Reads each ticket's specs/{ticketId}/metadata.json for a `blockedBy` field
+ * (array of ticket IDs) populated by the specify workflow from Linear relations.
+ * Returns one DependencyHold per blocked pair.
+ *
+ * Blockers within the current pipeline run are marked external=false (auto-
+ * releasable). Blockers outside the run are marked external=true (manual release).
+ *
+ * @param ticketIds - All ticket IDs in the current pipeline session.
+ * @param specsDir  - specs/ directory path or array of paths (multi-repo).
+ */
+export function buildDependencyHolds(
+  ticketIds: string[],
+  specsDir: string | string[]
+): DependencyHold[] {
+  const specsDirs = Array.isArray(specsDir) ? specsDir : [specsDir];
+  const pipelineSet = new Set(ticketIds);
+  const holds: DependencyHold[] = [];
+
+  for (const ticketId of ticketIds) {
+    let metadata: Record<string, unknown> | null = null;
+
+    for (const dir of specsDirs) {
+      const candidate = path.join(dir, ticketId, "metadata.json");
+      if (fs.existsSync(candidate)) {
+        metadata = readJsonFile(candidate) as Record<string, unknown> | null;
+        break;
+      }
+    }
+
+    if (!metadata) continue;
+
+    const blockedBy = metadata.blockedBy;
+    if (!Array.isArray(blockedBy) || blockedBy.length === 0) continue;
+
+    for (const blocker of blockedBy) {
+      if (typeof blocker !== "string" || !blocker) continue;
+      holds.push({
+        held_ticket: ticketId,
+        blocked_by: blocker,
+        release_when: "done",
+        reason: "Linear blockedBy",
+        external: !pipelineSet.has(blocker),
+      });
+    }
+  }
+
+  return holds;
 }
 
 // ---------------------------------------------------------------------------

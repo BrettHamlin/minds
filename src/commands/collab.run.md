@@ -391,6 +391,31 @@ IS_TERMINAL=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts --is-te
 ```
 If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
 
+##### f.0 Dependency hold check (AI, before every non-clarify advance)
+
+*AI LOGIC: Check if this ticket is held by a cross-ticket dependency before dispatching the next phase.*
+
+**Only runs when `NEXT != "clarify"`** (clarify always runs in parallel, even for held tickets).
+
+1. Read registry: `bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id}`
+2. Check for `held_by` field in the output.
+3. **If `held_by` is set:**
+   a. If `hold_external == true`: log "⏸ {ticket_id} is held by external blocker {held_by} — manual release required." Set `status=held`. `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+   b. Check if the blocker has completed by reading its registry:
+      ```bash
+      bun .collab/scripts/orchestrator/commands/registry-read.ts {held_by} 2>/dev/null || echo "REGISTRY_MISSING"
+      ```
+      - If output is `REGISTRY_MISSING` (or blocker registry not found): blocker pipeline has completed → proceed to step f (clear hold and advance normally):
+        ```bash
+        bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field held_by
+        bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_release_when
+        bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_reason
+        bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_external
+        ```
+        Then continue to the normal advance below.
+      - If blocker registry exists (blocker still running): set `status=held`, log "⏸ {ticket_id} is held, waiting for {held_by} to complete." `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+4. **If `held_by` is not set**: proceed normally (no hold).
+
 Update registry and dispatch next phase:
 ```bash
 SCRIPTS=.collab/scripts/orchestrator
@@ -519,6 +544,8 @@ System nodes — all are non-fatal (exit 2 or 3 = log warning and continue):
    `bun .collab/scripts/orchestrator/commands/teardown-bus.ts {ticket_id}`
 
 Cleanup:
+4c. Release dependency holds (run before registry deletion so other held tickets can detect completion):
+   `bun .collab/scripts/orchestrator/held-release-scan.ts {ticket_id}`
 5. `rm .collab/state/pipeline-registry/{ticket_id}.json`
 6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
 7. `.collab/scripts/webhook-notify.ts {ticket_id} {current_step} done complete`

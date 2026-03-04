@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { buildAdjacency, detectCycles } from "./coordination-check";
+import { buildAdjacency, detectCycles, buildDependencyHolds } from "./coordination-check";
 
 let specsDir: string;
 let tmpDir: string;
@@ -94,5 +94,105 @@ describe("coordination-check: detectCycles()", () => {
       ["D", [] as string[]],
     ]);
     expect(detectCycles(adj)).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// Helper for buildDependencyHolds tests
+// ============================================================================
+
+let holdSpecsDir: string;
+let holdTmpDir: string;
+
+function setupHoldSpecs(): void {
+  holdTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-dep-holds-"));
+  holdSpecsDir = path.join(holdTmpDir, "specs");
+  fs.mkdirSync(holdSpecsDir, { recursive: true });
+}
+
+function teardownHoldSpecs(): void {
+  fs.rmSync(holdTmpDir, { recursive: true, force: true });
+}
+
+function writeMetadata(ticketId: string, data: Record<string, unknown>): void {
+  const dir = path.join(holdSpecsDir, ticketId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "metadata.json"), JSON.stringify(data));
+}
+
+describe("coordination-check: buildDependencyHolds()", () => {
+  beforeAll(() => setupHoldSpecs());
+  afterAll(() => teardownHoldSpecs());
+
+  test("9. no metadata.json → no holds", () => {
+    const holds = buildDependencyHolds(["BRE-300", "BRE-301"], holdSpecsDir);
+    expect(holds).toHaveLength(0);
+  });
+
+  test("10. metadata.json with no blockedBy → no holds", () => {
+    writeMetadata("BRE-310", { ticket_id: "BRE-310", worktree_path: "/tmp/wt" });
+    const holds = buildDependencyHolds(["BRE-310"], holdSpecsDir);
+    expect(holds).toHaveLength(0);
+  });
+
+  test("11. metadata.json with empty blockedBy array → no holds", () => {
+    writeMetadata("BRE-320", { ticket_id: "BRE-320", blockedBy: [] });
+    const holds = buildDependencyHolds(["BRE-320"], holdSpecsDir);
+    expect(holds).toHaveLength(0);
+  });
+
+  test("12. blockedBy with internal blocker (in session) → hold with external=false", () => {
+    writeMetadata("BRE-330", { ticket_id: "BRE-330", blockedBy: ["BRE-331"] });
+    const holds = buildDependencyHolds(["BRE-330", "BRE-331"], holdSpecsDir);
+    expect(holds).toHaveLength(1);
+    expect(holds[0]).toMatchObject({
+      held_ticket: "BRE-330",
+      blocked_by: "BRE-331",
+      release_when: "done",
+      reason: "Linear blockedBy",
+      external: false,
+    });
+  });
+
+  test("13. blockedBy with external blocker (not in session) → hold with external=true", () => {
+    writeMetadata("BRE-340", { ticket_id: "BRE-340", blockedBy: ["BRE-EXTERNAL"] });
+    const holds = buildDependencyHolds(["BRE-340"], holdSpecsDir);
+    expect(holds).toHaveLength(1);
+    expect(holds[0]).toMatchObject({
+      held_ticket: "BRE-340",
+      blocked_by: "BRE-EXTERNAL",
+      external: true,
+    });
+  });
+
+  test("14. multiple blockers → multiple hold records", () => {
+    writeMetadata("BRE-350", { ticket_id: "BRE-350", blockedBy: ["BRE-351", "BRE-352"] });
+    const holds = buildDependencyHolds(["BRE-350", "BRE-351"], holdSpecsDir);
+    expect(holds).toHaveLength(2);
+    const internal = holds.find((h) => h.blocked_by === "BRE-351");
+    const external = holds.find((h) => h.blocked_by === "BRE-352");
+    expect(internal?.external).toBe(false);
+    expect(external?.external).toBe(true);
+  });
+
+  test("15. ticket with no blockedBy in session with others that do → only affected ticket holds", () => {
+    writeMetadata("BRE-360", { ticket_id: "BRE-360", blockedBy: ["BRE-361"] });
+    writeMetadata("BRE-362", { ticket_id: "BRE-362" }); // no blockedBy
+    const holds = buildDependencyHolds(["BRE-360", "BRE-361", "BRE-362"], holdSpecsDir);
+    expect(holds).toHaveLength(1);
+    expect(holds[0].held_ticket).toBe("BRE-360");
+  });
+
+  test("16. release_when defaults to 'done'", () => {
+    writeMetadata("BRE-370", { ticket_id: "BRE-370", blockedBy: ["BRE-371"] });
+    const holds = buildDependencyHolds(["BRE-370", "BRE-371"], holdSpecsDir);
+    expect(holds[0].release_when).toBe("done");
+  });
+
+  test("17. non-string entries in blockedBy are ignored", () => {
+    writeMetadata("BRE-380", { ticket_id: "BRE-380", blockedBy: [null, 42, "BRE-381", ""] });
+    const holds = buildDependencyHolds(["BRE-380", "BRE-381"], holdSpecsDir);
+    expect(holds).toHaveLength(1);
+    expect(holds[0].blocked_by).toBe("BRE-381");
   });
 });

@@ -34,6 +34,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { execSync, spawn } from "child_process";
+import { buildAdjacency, detectCycles, buildDependencyHolds, type DependencyHold } from "./coordination-check";
 import {
   getRepoRoot,
   readJsonFile,
@@ -279,7 +280,7 @@ export function validateSchema(ctx: InitContext): void {
 }
 
 // ---------------------------------------------------------------------------
-// Step 2: Coordination check
+// Step 2: Coordination check + dependency hold detection
 // ---------------------------------------------------------------------------
 
 export function runCoordinationCheck(ctx: InitContext): void {
@@ -296,8 +297,6 @@ export function runCoordinationCheck(ctx: InitContext): void {
 
   console.error(`Running coordination check for ${sessionTickets.length} tickets...`);
 
-  // Import and run inline (avoids subprocess)
-  const { buildAdjacency, detectCycles } = require("./coordination-check");
   const specsDir = path.join(ctx.repoRoot, "specs");
   const { adjacency, errors } = buildAdjacency(sessionTickets, specsDir);
 
@@ -316,6 +315,20 @@ export function runCoordinationCheck(ctx: InitContext): void {
       `Circular dependencies detected:\n${cycleList}`
     );
   }
+}
+
+/**
+ * Find the dependency hold for a specific ticket from the current session.
+ * Returns the hold record if the ticket has a Linear blockedBy dependency,
+ * or null if the ticket has no dependencies.
+ */
+export function findDependencyHold(
+  ticketId: string,
+  sessionTickets: string[],
+  specsDir: string
+): DependencyHold | null {
+  const holds = buildDependencyHolds(sessionTickets, specsDir);
+  return holds.find((h) => h.held_ticket === ticketId) ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +498,14 @@ export function spawnAgentPane(
 // Step 6: Create registry
 // ---------------------------------------------------------------------------
 
+export interface HoldInfo {
+  held_by: string;
+  hold_release_when: string;
+  hold_reason: string;
+  /** True when the blocker is not part of the current pipeline run (needs manual release). */
+  hold_external: boolean;
+}
+
 export function createRegistry(
   ctx: InitContext,
   agentPane: string,
@@ -496,7 +517,8 @@ export function createRegistry(
   busServerPid?: number,
   busUrl?: string,
   bridgePid?: number,
-  commandBridgePid?: number
+  commandBridgePid?: number,
+  holdInfo?: HoldInfo
 ): { nonce: string; registryPath: string } {
   const nonce = crypto.randomBytes(4).toString("hex").substring(0, 8);
 
@@ -524,6 +546,12 @@ export function createRegistry(
   if (busUrl) registry.bus_url = busUrl;
   if (bridgePid !== undefined) registry.bridge_pid = bridgePid;
   if (commandBridgePid !== undefined) registry.command_bridge_pid = commandBridgePid;
+  if (holdInfo) {
+    registry.held_by = holdInfo.held_by;
+    registry.hold_release_when = holdInfo.hold_release_when;
+    registry.hold_reason = holdInfo.hold_reason;
+    if (holdInfo.hold_external) registry.hold_external = true;
+  }
 
   writeJsonAtomic(registryPath, registry);
   rb.registryCreated = registryPath;
@@ -633,6 +661,26 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     // Step 4: Coordination check
     runCoordinationCheck(ctx);
 
+    // Step 4.5: Dependency hold detection (Linear blockedBy)
+    const specsDir = path.join(repoRoot, "specs");
+    const sessionTickets: string[] = [];
+    if (fs.existsSync(ctx.registryDir)) {
+      for (const file of fs.readdirSync(ctx.registryDir)) {
+        if (!file.endsWith(".json")) continue;
+        const reg = readJsonFile(path.join(ctx.registryDir, file));
+        if (reg?.ticket_id) sessionTickets.push(reg.ticket_id as string);
+      }
+    }
+    sessionTickets.push(ctx.ticketId);
+    const depHold = findDependencyHold(ctx.ticketId, sessionTickets, specsDir);
+    if (depHold) {
+      const blockerType = depHold.external ? "external" : "internal";
+      console.error(
+        `Dependency hold: ${ctx.ticketId} is blocked by ${depHold.blocked_by} ` +
+        `(${blockerType}, release_when=${depHold.release_when})`
+      );
+    }
+
     // Step 5: Symlinks
     setupSymlinks(worktreePath, repoRoot, rb);
 
@@ -666,10 +714,18 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
 
     // Step 7: Create registry
     const lifecycleInfo = busTransport?.getLifecycleInfo();
+    const holdInfo: HoldInfo | undefined = depHold
+      ? {
+          held_by: depHold.blocked_by,
+          hold_release_when: depHold.release_when,
+          hold_reason: depHold.reason,
+          hold_external: depHold.external,
+        }
+      : undefined;
     const { nonce, registryPath } = createRegistry(
       ctx, agentPane, rb, repoId, repoPath, pipelineVariant,
       transportType, lifecycleInfo?.busServerPid, lifecycleInfo?.busUrl,
-      lifecycleInfo?.bridgePid, lifecycleInfo?.commandBridgePid
+      lifecycleInfo?.bridgePid, lifecycleInfo?.commandBridgePid, holdInfo
     );
 
     return { agentPane, nonce, registryPath, repoPath };

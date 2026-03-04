@@ -5,6 +5,7 @@ import * as os from "os";
 import {
   isDependencySatisfied,
   checkHeldTicket,
+  isDependencyHoldSatisfied,
   type Dependency,
 } from "./held-release-scan";
 
@@ -219,5 +220,75 @@ describe("checkHeldTicket", () => {
     const result = checkHeldTicket("BRE-200", waitFor, tmpDir);
     expect(result.satisfied).toBe(false);
     expect(result.blockingDep).toBe("BRE-MISSING:clarify");
+  });
+});
+
+// ============================================================================
+// isDependencyHoldSatisfied
+// ============================================================================
+
+describe("isDependencyHoldSatisfied", () => {
+  let holdTmpDir: string;
+
+  beforeEach(() => {
+    holdTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dep-hold-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(holdTmpDir, { recursive: true, force: true });
+  });
+
+  function writeReg(dir: string, ticketId: string, data: Record<string, any>): void {
+    fs.writeFileSync(path.join(dir, `${ticketId}.json`), JSON.stringify(data, null, 2));
+  }
+
+  test("release_when=done: returns true when blocker registry does not exist", () => {
+    // BRE-400 registry does not exist → pipeline completed
+    expect(isDependencyHoldSatisfied("BRE-400", "done", holdTmpDir)).toBe(true);
+  });
+
+  test("release_when=done: returns false when blocker registry exists", () => {
+    writeReg(holdTmpDir, "BRE-410", { ticket_id: "BRE-410", status: "running" });
+    expect(isDependencyHoldSatisfied("BRE-410", "done", holdTmpDir)).toBe(false);
+  });
+
+  test("release_when=clarify: returns true when blocker has clarify COMPLETE in history", () => {
+    writeReg(holdTmpDir, "BRE-420", {
+      ticket_id: "BRE-420",
+      phase_history: [
+        { phase: "clarify", signal: "CLARIFY_COMPLETE", ts: "2026-01-01T00:00:00Z" },
+      ],
+    });
+    expect(isDependencyHoldSatisfied("BRE-420", "clarify", holdTmpDir)).toBe(true);
+  });
+
+  test("release_when=plan: returns false when blocker only has clarify COMPLETE", () => {
+    writeReg(holdTmpDir, "BRE-430", {
+      ticket_id: "BRE-430",
+      phase_history: [
+        { phase: "clarify", signal: "CLARIFY_COMPLETE", ts: "2026-01-01T00:00:00Z" },
+      ],
+    });
+    expect(isDependencyHoldSatisfied("BRE-430", "plan", holdTmpDir)).toBe(false);
+  });
+
+  test("release_when=plan: returns false when blocker registry does not exist", () => {
+    // For non-done phases, missing registry means blocker never ran → not satisfied
+    expect(isDependencyHoldSatisfied("BRE-440-MISSING", "plan", holdTmpDir)).toBe(false);
+  });
+
+  test("release_when=plan: returns false when phase exists but signal is not _COMPLETE", () => {
+    writeReg(holdTmpDir, "BRE-450", {
+      ticket_id: "BRE-450",
+      phase_history: [
+        { phase: "plan", signal: "PLAN_ERROR", ts: "2026-01-01T00:00:00Z" },
+      ],
+    });
+    expect(isDependencyHoldSatisfied("BRE-450", "plan", holdTmpDir)).toBe(false);
+  });
+
+  test("release_when=done: returns false when blocker registry exists with empty phase_history", () => {
+    writeReg(holdTmpDir, "BRE-460", { ticket_id: "BRE-460", phase_history: [] });
+    expect(isDependencyHoldSatisfied("BRE-460", "done", holdTmpDir)).toBe(false);
   });
 });

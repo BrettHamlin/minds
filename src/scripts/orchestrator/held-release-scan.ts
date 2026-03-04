@@ -95,6 +95,42 @@ export function checkHeldTicket(
   return { satisfied: true };
 }
 
+/**
+ * Check if a cross-ticket dependency hold is satisfied.
+ *
+ * For release_when="done" (default): the hold is released when the blocker
+ * registry no longer exists (pipeline completed and was cleaned up). External
+ * holds (hold_external=true) are never auto-released.
+ *
+ * For release_when=<phase>: the hold is released when the blocker's
+ * phase_history contains that phase with a _COMPLETE signal.
+ *
+ * @param blockerTicketId   - The ticket ID that is blocking.
+ * @param releaseWhen       - Phase that must be reached. "done" = fully complete.
+ * @param registryDir       - Path to the pipeline-registry directory.
+ * @returns true when the hold should be released.
+ */
+export function isDependencyHoldSatisfied(
+  blockerTicketId: string,
+  releaseWhen: string,
+  registryDir: string
+): boolean {
+  const blockerRegistryPath = getRegistryPath(registryDir, blockerTicketId);
+  const blockerRegistry = readJsonFile(blockerRegistryPath);
+
+  if (releaseWhen === "done") {
+    // Blocker has completed when its registry no longer exists (deleted on completion).
+    return !blockerRegistry;
+  }
+
+  // For a specific phase: check blocker phase_history for a _COMPLETE signal.
+  if (!blockerRegistry) return false;
+  const history: PhaseHistoryEntry[] = blockerRegistry.phase_history || [];
+  return history.some(
+    (entry) => entry.phase === releaseWhen && entry.signal.endsWith("_COMPLETE")
+  );
+}
+
 // ============================================================================
 // CLI Entry Point
 // ============================================================================
@@ -129,6 +165,38 @@ function main(): void {
     heldCount++;
     const heldTicket = registry.ticket_id;
     const heldAt = registry.held_at || "";
+
+    // --- Cross-ticket dependency hold (Linear blockedBy) ---
+    const heldBy = registry.held_by as string | undefined;
+    if (heldBy) {
+      const holdExternal = registry.hold_external === true;
+      if (holdExternal) {
+        console.log(
+          `Still held: ${heldTicket} -- waiting for external blocker ${heldBy} (manual release required)`
+        );
+        continue;
+      }
+
+      const releaseWhen = (registry.hold_release_when as string | undefined) || "done";
+      const satisfied = isDependencyHoldSatisfied(heldBy, releaseWhen, registryDir);
+
+      if (satisfied) {
+        execSync(`bun "${scriptDir}/registry-update.ts" "${heldTicket}" status=running`, { stdio: "inherit" });
+        execSync(`bun "${scriptDir}/registry-update.ts" "${heldTicket}" --delete-field held_by`, { stdio: "inherit" });
+        execSync(`bun "${scriptDir}/registry-update.ts" "${heldTicket}" --delete-field hold_release_when`, { stdio: "inherit" });
+        execSync(`bun "${scriptDir}/registry-update.ts" "${heldTicket}" --delete-field hold_reason`, { stdio: "inherit" });
+        execSync(`bun "${scriptDir}/registry-update.ts" "${heldTicket}" --delete-field hold_external`, { stdio: "inherit" });
+        console.log(`Released ${heldTicket} (dependency hold: ${heldBy} completed)`);
+        releasedCount++;
+      } else {
+        console.log(
+          `Still held: ${heldTicket} -- waiting for ${heldBy} to reach ${releaseWhen}`
+        );
+      }
+      continue;
+    }
+
+    // --- Intra-ticket coordination hold (coordination.json wait_for) ---
 
     // Read coordination.json for this ticket
     const coordPath = path.join(repoRoot, "specs", heldTicket, "coordination.json");

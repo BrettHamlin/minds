@@ -26,6 +26,8 @@ The text the user typed after `/collab.specify` in the triggering message **is**
 2. Extract the ticket title and description
 3. Use the ticket ID and description for all subsequent steps
 4. When calling create-new-feature.ts, prepend the ticket ID to the feature description so the script can extract it
+5. **Pipeline variant detection**: Check the ticket's labels for any matching `pipeline:*` (e.g., `pipeline:backend`, `pipeline:ios`). If found, store the variant name (text after `pipeline:`) for later writing to metadata.json. If multiple `pipeline:*` labels are found, warn and use the first match.
+6. **blockedBy extraction**: From the `get_issue` response (with `includeRelations: true`), extract the `blockedBy` relations. These are the ticket IDs that this ticket is blocked by. Store them for writing to metadata.json.
 
 Given that feature description, do this:
 
@@ -77,6 +79,14 @@ Given that feature description, do this:
       - Example: `.specify/scripts/create-new-feature.ts --json --worktree --number 5 --short-name "user-auth" "Add user authentication"`
       - Example with ticket: `.specify/scripts/create-new-feature.ts --json --worktree --number 5 --short-name "user-auth" "BRE-202 Add user authentication"`
       - Example with source repo: `.specify/scripts/create-new-feature.ts --json --worktree --number 3 --short-name "add-clips" --source-repo ~/Code/projects/paper-clips-backend "BRE-158 Add clips endpoint"`
+
+   e. **Pipeline Variant and Dependency Metadata** (run after create-new-feature.ts completes):
+      After create-new-feature.ts completes and outputs JSON with FEATURE_DIR, update the metadata.json:
+      - Read `FEATURE_DIR/metadata.json`
+      - If ticket has `pipeline:*` labels (from step 5 above): add `"pipeline_variant": "<variant>"` (e.g., `"pipeline_variant": "backend"`). This tells orchestrator-init.ts to load `pipeline-variants/<variant>.json` instead of the default `pipeline.json`.
+      - If ticket has `blockedBy` relations (from step 6 above): add `"blockedBy": ["BRE-XXX", ...]` (array of blocker ticket IDs). This enables orchestrator-init.ts to create dependency holds automatically.
+      - Write the updated metadata.json back (only if at least one of the above fields was added).
+      - If neither pipeline_variant nor blockedBy applies, skip this step.
 
    **IMPORTANT**:
    - Check all three sources (remote branches, local branches, specs directories) to find the highest number
