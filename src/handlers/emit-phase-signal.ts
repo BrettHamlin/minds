@@ -45,7 +45,13 @@ export async function dispatchSignal(
   const busUrl = process.env.BUS_URL ?? "";
 
   if (transport === "bus" && busUrl) {
-    const { publishSafe } = await import("../../transport/bus-agent.ts");
+    // Resolve bus-agent.ts: .collab/transport/ (installed) or transport/ (dev)
+    const root = getRepoRoot();
+    let busAgentPath = `${root}/.collab/transport/bus-agent.ts`;
+    if (!fs.existsSync(busAgentPath)) {
+      busAgentPath = `${root}/transport/bus-agent.ts`;
+    }
+    const { publishSafe } = await import(busAgentPath);
     await publishSafe(busUrl, `pipeline-${ticketId}`, `agent-${phaseName}`, "signal", {
       signal: signalMessage,
       ticket_id: ticketId,
