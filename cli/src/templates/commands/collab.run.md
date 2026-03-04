@@ -50,18 +50,9 @@ RESOLVE_EXIT=$?
 
 On non-zero exit, output the error and stop.
 
-#### Case B — Array output with any item where `source` starts with `"project:"` (project-expanded tickets)
+#### Case B — Array output (resolved ticket list)
 
-Use `AskUserQuestion` with `multiSelect: true` to confirm:
-- Question: `"Found N open tickets from project '<name>'. Select the tickets to run:"`
-- One option per project-sourced item: `label = "<ticket> — <title> (pipeline: <variant>)"`, `description = "<status>"`
-- All options are pre-selected; user deselects any they don't want.
-
-Build the confirmed ticket list: all user-selected project tickets **plus** all items where `source == "explicit"` (explicit tickets are always included without prompting).
-
-#### Case C — Array output, all items have `source == "explicit"` (all direct ticket IDs)
-
-Proceed directly — no confirmation needed.
+Proceed directly — use all tickets in the array. No confirmation prompt needed. The user asked for all open tickets in the project; give them all open tickets.
 
 **After pre-parse**, the result is a list of `{ticket, variant}` pairs. Use these to populate `TICKETS` for the steps below. Pipeline variants are already resolved — the "Parse Arguments" section does not need to call `get_issue` for label lookup on these tickets.
 
