@@ -11,8 +11,9 @@ import {
   injectBusEnv,
   startBusServer,
   teardownBusServer,
+  findDependencyHold,
 } from "./orchestrator-init";
-import type { InitContext } from "./orchestrator-init";
+import type { InitContext, HoldInfo } from "./orchestrator-init";
 
 // Note: Full orchestrator-init integration requires a live tmux session.
 // These tests cover the pure/file-I/O steps without spawning panes.
@@ -288,6 +289,130 @@ describe("orchestrator-init: createRegistry() pipeline variant", () => {
 
     fs.unlinkSync(registryPath);
     fs.unlinkSync(ctx.configPath);
+  });
+});
+
+describe("orchestrator-init: createRegistry() hold fields", () => {
+  test("30. registry includes held_by fields when holdInfo provided", () => {
+    const ctx = makeCtx("TEST-REG-HOLD-001");
+    fs.writeFileSync(
+      ctx.configPath,
+      JSON.stringify({ version: "3.1", phases: { clarify: { terminal: false } } })
+    );
+
+    const holdInfo: HoldInfo = {
+      held_by: "BRE-246",
+      hold_release_when: "done",
+      hold_reason: "Linear blockedBy",
+      hold_external: false,
+    };
+
+    const rb = {};
+    const { registryPath } = createRegistry(
+      ctx, "%test-agent", rb,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      holdInfo
+    );
+
+    const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+    expect(registry.held_by).toBe("BRE-246");
+    expect(registry.hold_release_when).toBe("done");
+    expect(registry.hold_reason).toBe("Linear blockedBy");
+    expect(registry.hold_external).toBeUndefined(); // false doesn't get written
+
+    fs.unlinkSync(registryPath);
+    fs.unlinkSync(ctx.configPath);
+  });
+
+  test("30b. registry includes hold_external=true when blocker is external", () => {
+    const ctx = makeCtx("TEST-REG-HOLD-003");
+    fs.writeFileSync(
+      ctx.configPath,
+      JSON.stringify({ version: "3.1", phases: { clarify: { terminal: false } } })
+    );
+
+    const holdInfo: HoldInfo = {
+      held_by: "BRE-EXTERNAL",
+      hold_release_when: "done",
+      hold_reason: "Linear blockedBy",
+      hold_external: true,
+    };
+
+    const rb = {};
+    const { registryPath } = createRegistry(
+      ctx, "%test-agent", rb,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      holdInfo
+    );
+
+    const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+    expect(registry.held_by).toBe("BRE-EXTERNAL");
+    expect(registry.hold_external).toBe(true);
+
+    fs.unlinkSync(registryPath);
+    fs.unlinkSync(ctx.configPath);
+  });
+
+  test("31. registry omits hold fields when holdInfo not provided", () => {
+    const ctx = makeCtx("TEST-REG-HOLD-002");
+    fs.writeFileSync(
+      ctx.configPath,
+      JSON.stringify({ version: "3.1", phases: { clarify: { terminal: false } } })
+    );
+
+    const rb = {};
+    const { registryPath } = createRegistry(ctx, "%test-agent", rb);
+
+    const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+    expect(registry.held_by).toBeUndefined();
+    expect(registry.hold_release_when).toBeUndefined();
+    expect(registry.hold_reason).toBeUndefined();
+
+    fs.unlinkSync(registryPath);
+    fs.unlinkSync(ctx.configPath);
+  });
+});
+
+describe("orchestrator-init: findDependencyHold()", () => {
+  let holdSpecsTmpDir: string;
+  let holdSpecsDir: string;
+
+  beforeAll(() => {
+    holdSpecsTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-fdh-"));
+    holdSpecsDir = path.join(holdSpecsTmpDir, "specs");
+    fs.mkdirSync(holdSpecsDir, { recursive: true });
+  });
+
+  afterAll(() => {
+    fs.rmSync(holdSpecsTmpDir, { recursive: true, force: true });
+  });
+
+  function writeMetadata(ticketId: string, data: Record<string, unknown>): void {
+    const dir = path.join(holdSpecsDir, ticketId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "metadata.json"), JSON.stringify(data));
+  }
+
+  test("32. returns null when ticket has no blockedBy in metadata", () => {
+    writeMetadata("FDH-100", { ticket_id: "FDH-100" });
+    const hold = findDependencyHold("FDH-100", ["FDH-100"], holdSpecsDir);
+    expect(hold).toBeNull();
+  });
+
+  test("33. returns hold record when ticket has blockedBy", () => {
+    writeMetadata("FDH-200", { ticket_id: "FDH-200", blockedBy: ["FDH-201"] });
+    const hold = findDependencyHold("FDH-200", ["FDH-200", "FDH-201"], holdSpecsDir);
+    expect(hold).not.toBeNull();
+    expect(hold!.held_ticket).toBe("FDH-200");
+    expect(hold!.blocked_by).toBe("FDH-201");
+    expect(hold!.external).toBe(false);
+  });
+
+  test("34. returns external hold when blocker not in session", () => {
+    writeMetadata("FDH-300", { ticket_id: "FDH-300", blockedBy: ["FDH-EXTERNAL"] });
+    const hold = findDependencyHold("FDH-300", ["FDH-300"], holdSpecsDir);
+    expect(hold).not.toBeNull();
+    expect(hold!.external).toBe(true);
   });
 });
 
