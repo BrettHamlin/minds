@@ -8,6 +8,7 @@
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { emitStatusEvent } from "./status-emitter";
 
 export function getRepoRoot(): string {
   try {
@@ -27,9 +28,13 @@ export function readJsonFile(filePath: string): any | null {
 }
 
 export function writeJsonAtomic(filePath: string, data: any): void {
+  const previous = readJsonFile(filePath);
   const tmp = `${filePath}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + "\n");
   fs.renameSync(tmp, filePath);
+  if (data && typeof data === "object" && data.ticket_id) {
+    emitStatusEvent(filePath, previous, data);
+  }
 }
 
 export function getRegistryPath(registryDir: string, ticketId: string): string {
