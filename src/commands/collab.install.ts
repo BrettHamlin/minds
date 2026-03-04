@@ -1,14 +1,36 @@
 #!/usr/bin/env bun
-// collab.install.ts - Install collab workflow system into current repository
-// Description: Install collab workflow system into the current repository from GitHub
+// collab.install.ts - Install collab core runtime into the current git repository
+//
+// Usage:
+//   bun .claude/commands/collab.install.ts
+//
+// Environment variables (testing / local development):
+//   COLLAB_SRC         Skip the git clone and use this local directory as source
+//   COLLAB_SKIP_BUILD  Install a bun-run wrapper instead of a compiled binary
+//
+// What this installs (core only — pipeline commands come from /pipelines install):
+//   .claude/commands/   5 core command files
+//   .collab/bin/collab  CLI binary (or bun-run wrapper when COLLAB_SKIP_BUILD=1)
+//   .collab/handlers/   Signal-handler TypeScript files
+//   .collab/scripts/    Orchestrator + utility scripts
+//   .collab/state/      initialized installed-pipelines.json
 
 import { execSync } from "child_process";
-import { existsSync, readdirSync, mkdirSync, copyFileSync, chmodSync, statSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  copyFileSync,
+  chmodSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 
-// Check if we're in a git repository
+// ── 1. Prerequisites ──────────────────────────────────────────────────────────
+
 if (!existsSync(".git")) {
-  console.log("ERROR: Not in a git repository. Run this command from the root of your project.");
+  console.error(
+    "ERROR: Not in a git repository. Run this command from the root of your project."
+  );
   process.exit(1);
 }
 
@@ -22,25 +44,26 @@ try {
 
 console.log(`Installing collab into: ${repoRoot}`);
 
-// Support --local <path> to install from a local directory instead of cloning
+// ── 2. Resolve source directory (clone or use local) ─────────────────────────
+//
+// Priority: --local <path> flag > COLLAB_SRC env var > GitHub clone
+
 const localIdx = process.argv.indexOf("--local");
-const localPath = localIdx !== -1 ? process.argv[localIdx + 1] : null;
+const localPath = localIdx !== -1
+  ? process.argv[localIdx + 1]
+  : (process.env.COLLAB_SRC ?? null);
 
 let tempDir: string;
 if (localPath) {
-  tempDir = join(process.cwd(), localPath).startsWith("/")
-    ? localPath
-    : join(process.cwd(), localPath);
   // Resolve to absolute path
   try {
     const { execSync: exec2 } = await import("child_process");
     tempDir = exec2(`cd "${localPath}" && pwd`, { encoding: "utf-8" }).trim();
   } catch {
-    // If cd fails, use as-is
     tempDir = localPath;
   }
   if (!existsSync(tempDir)) {
-    console.log(`ERROR: Local path does not exist: ${tempDir}`);
+    console.error(`ERROR: Local path does not exist: ${tempDir}`);
     process.exit(1);
   }
   console.log(`Installing from local path: ${tempDir}`);
@@ -53,23 +76,26 @@ if (localPath) {
       { stdio: "inherit" }
     );
   } catch {
-    console.log("ERROR: Failed to clone collab repository");
+    console.error("ERROR: Failed to clone collab repository");
     process.exit(1);
   }
   console.log("Clone successful");
 }
 
-// Create directory structure
+// ── 3. Directory structure ────────────────────────────────────────────────────
+
 console.log("Creating directory structure...");
 const dirs = [
   ".claude/commands",
   ".claude/skills",
+  ".collab/bin",
+  ".collab/config",
+  ".collab/config/pipeline-variants",
   ".collab/handlers",
   ".collab/memory",
   ".collab/scripts/orchestrator",
   ".collab/scripts/orchestrator/commands",
   ".collab/transport",
-  ".collab/config/pipeline-variants",
   ".collab/state/pipeline-registry",
   ".collab/state/pipeline-groups",
   ".specify/scripts",
@@ -80,161 +106,146 @@ for (const d of dirs) {
 }
 console.log("Directories created");
 
-// Copy collab files
-console.log("Copying collab files...");
+// ── 4. Core commands (5 files only) ──────────────────────────────────────────
+//
+// Pipeline workflow commands (specify, plan, implement, etc.) are NOT installed
+// here — they come from the registry via: /pipelines install <name>
 
-// Copy commands
-console.log("  -> Commands...");
-execSync(
-  `find "${tempDir}/src/commands" -name "*.md" -exec cp {} "${repoRoot}/.claude/commands/" \\;`,
-  { shell: true }
-);
-copyFileSync(
-  join(tempDir, "src/commands/collab.install.ts"),
-  join(repoRoot, ".claude/commands/collab.install.ts")
-);
+const CORE_COMMANDS = [
+  "collab.run.md",
+  "collab.install.md",
+  "collab.cleanup.md",
+  "collab.install.ts",
+  "pipelines.md",
+];
+
+console.log("Installing core commands...");
+for (const cmd of CORE_COMMANDS) {
+  const src = join(tempDir, "src/commands", cmd);
+  if (existsSync(src)) {
+    copyFileSync(src, join(repoRoot, ".claude/commands", cmd));
+  } else {
+    console.log(`  Warning: ${cmd} not found in source — skipping`);
+  }
+}
 chmodSync(join(repoRoot, ".claude/commands/collab.install.ts"), 0o755);
-const commandCount = readdirSync(join(repoRoot, ".claude/commands"))
-  .filter((f) => f.startsWith("collab.") && f.endsWith(".md")).length;
+console.log(`Core commands installed (${CORE_COMMANDS.length} files)`);
 
-// Copy skills
-console.log("  -> Skills...");
-let skillCount = 0;
-const skillsSrc = join(tempDir, "src/skills");
-if (existsSync(skillsSrc)) {
-  execSync(`cp -r "${skillsSrc}"/* "${repoRoot}/.claude/skills/"`, { shell: true });
-  skillCount = readdirSync(join(repoRoot, ".claude/skills"))
-    .filter((f) => {
-      try {
-        return statSync(join(repoRoot, ".claude/skills", f)).isDirectory();
-      } catch { return false; }
-    }).length;
+// ── 5. collab CLI binary ──────────────────────────────────────────────────────
+
+console.log("Building collab CLI binary...");
+const binaryPath = join(repoRoot, ".collab/bin/collab");
+
+if (process.env.COLLAB_SKIP_BUILD) {
+  // Dev/test mode: install a bun-run wrapper so tests don't need a full compile
+  writeFileSync(
+    binaryPath,
+    `#!/usr/bin/env bash\nexec bun run "${join(tempDir, "src/cli/index.ts")}" "$@"\n`
+  );
+  console.log("  (dev mode: bun-run wrapper installed)");
 } else {
-  console.log("  Warning: No skills directory found in source");
+  const cliSrc = join(tempDir, "src/cli/index.ts");
+  if (existsSync(cliSrc)) {
+    try {
+      execSync(
+        `cd "${tempDir}" && bun build src/cli/index.ts --compile --outfile "${binaryPath}"`,
+        { shell: true, stdio: "inherit" }
+      );
+    } catch {
+      console.log("  Warning: CLI binary build failed — skipping");
+    }
+  } else {
+    console.log("  Warning: src/cli/index.ts not found in source — binary not built");
+  }
 }
 
-// Copy handlers
-console.log("  -> Handlers...");
-execSync(
-  `find "${tempDir}/src/handlers" -name "*.ts" -exec cp {} "${repoRoot}/.collab/handlers/" \\;`,
-  { shell: true }
-);
-execSync(
-  `find "${repoRoot}/.collab/handlers" -name "*.ts" -exec chmod +x {} \\;`,
-  { shell: true }
-);
-const handlerCount = readdirSync(join(repoRoot, ".collab/handlers"))
-  .filter((f) => f.endsWith(".ts")).length;
+if (existsSync(binaryPath)) {
+  chmodSync(binaryPath, 0o755);
+  console.log("CLI binary installed: .collab/bin/collab");
+}
 
-// Copy orchestrator scripts (preserve commands/ subdirectory structure)
-console.log("  -> Orchestrator scripts...");
-execSync(
-  `cd "${tempDir}/src/scripts/orchestrator" && find . \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" -exec sh -c 'mkdir -p "${repoRoot}/.collab/scripts/orchestrator/$(dirname "$1")" && cp "$1" "${repoRoot}/.collab/scripts/orchestrator/$1"' _ {} \\;`,
-  { shell: true }
-);
-execSync(
-  `find "${repoRoot}/.collab/scripts/orchestrator" -name "*.ts" -exec chmod +x {} \\;`,
-  { shell: true }
-);
-const orchestratorScriptCount = execSync(
-  `find "${repoRoot}/.collab/scripts/orchestrator" \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" 2>/dev/null | wc -l`,
-  { encoding: "utf-8", shell: true }
-).trim();
+// ── 6. Runtime files ──────────────────────────────────────────────────────────
 
-// Copy transport scripts (bus-server, bridges, etc.)
-console.log("  -> Transport scripts...");
-const transportSrc = join(tempDir, "transport");
-if (existsSync(transportSrc)) {
+console.log("Installing runtime files...");
+
+// Signal handlers
+const handlersSrc = join(tempDir, "src/handlers");
+if (existsSync(handlersSrc)) {
   execSync(
-    `find "${transportSrc}" -maxdepth 1 -name "*.ts" ! -name "*.test.ts" -exec cp {} "${repoRoot}/.collab/transport/" \\;`,
+    `find "${handlersSrc}" -name "*.ts" -exec cp {} "${join(repoRoot, ".collab/handlers/")}" \\;`,
+    { shell: true }
+  );
+  execSync(
+    `find "${join(repoRoot, ".collab/handlers")}" -name "*.ts" -exec chmod +x {} \\;`,
+    { shell: true }
+  );
+}
+
+// Orchestrator scripts (preserve commands/ subdirectory, exclude *.test.ts)
+if (existsSync(join(tempDir, "src/scripts/orchestrator"))) {
+  execSync(
+    `cd "${tempDir}/src/scripts/orchestrator" && find . \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" -exec sh -c 'mkdir -p "${repoRoot}/.collab/scripts/orchestrator/$(dirname "$1")" && cp "$1" "${repoRoot}/.collab/scripts/orchestrator/$1"' _ {} \\;`,
+    { shell: true }
+  );
+  execSync(
+    `find "${repoRoot}/.collab/scripts/orchestrator" \\( -name "*.sh" -o -name "*.ts" \\) -exec chmod +x {} \\;`,
+    { shell: true }
+  );
+}
+
+// Non-orchestrator scripts (top-level of src/scripts/, exclude *.test.ts)
+const scriptsSrc = join(tempDir, "src/scripts");
+if (existsSync(scriptsSrc)) {
+  execSync(
+    `find "${scriptsSrc}" -maxdepth 1 \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" -exec cp {} "${join(repoRoot, ".collab/scripts/")}" \\;`,
+    { shell: true }
+  );
+  execSync(
+    `find "${join(repoRoot, ".collab/scripts")}" -maxdepth 1 \\( -name "*.sh" -o -name "*.ts" \\) -exec chmod +x {} \\;`,
+    { shell: true }
+  );
+}
+
+// Transport scripts
+if (existsSync(join(tempDir, "transport"))) {
+  execSync(
+    `find "${join(tempDir, "transport")}" -maxdepth 1 -name "*.ts" ! -name "*.test.ts" -exec cp {} "${repoRoot}/.collab/transport/" \\;`,
     { shell: true }
   );
   execSync(
     `find "${repoRoot}/.collab/transport" -name "*.ts" -exec chmod +x {} \\;`,
     { shell: true }
   );
-  console.log("  -> Transport scripts copied");
-} else {
-  console.log("  Warning: No transport directory found in source");
 }
 
-// Copy non-orchestrator collab scripts
-console.log("  -> Collab scripts...");
-execSync(
-  `find "${tempDir}/src/scripts" -maxdepth 1 \\( -name "*.sh" -o -name "*.ts" \\) -exec cp {} "${repoRoot}/.collab/scripts/" \\;`,
-  { shell: true }
-);
-execSync(
-  `find "${repoRoot}/.collab/scripts" -maxdepth 1 \\( -name "*.sh" -o -name "*.ts" \\) -exec chmod +x {} \\;`,
-  { shell: true }
-);
-
-// Install .claude/settings.json (create only if not present)
-const settingsPath = join(repoRoot, ".claude/settings.json");
-if (!existsSync(settingsPath)) {
-  console.log("  -> Claude settings (initializing)...");
-  copyFileSync(join(tempDir, "src/claude-settings.json"), settingsPath);
+// Pipeline config (always overwrite to keep runtime in sync with source)
+const pipelineConfigSrc = join(tempDir, "src/config/pipeline.json");
+if (existsSync(pipelineConfigSrc)) {
+  copyFileSync(pipelineConfigSrc, join(repoRoot, ".collab/config/pipeline.json"));
 } else {
-  console.log("  -> Claude settings (already exists, skipping)");
+  console.log("  Warning: src/config/pipeline.json not found in source — skipping");
 }
-
-// Copy workflow scripts
-console.log("  -> Workflow scripts...");
-execSync(`cp -r "${tempDir}/.specify/scripts"/* "${repoRoot}/.specify/scripts/"`, { shell: true });
-execSync(
-  `find "${repoRoot}/.specify/scripts/bash" -name "*.sh" -exec chmod +x {} \\;`,
-  { shell: true }
-);
-const scriptCount = execSync(
-  `find "${repoRoot}/.specify/scripts/bash" -name "*.sh" 2>/dev/null | wc -l`,
-  { encoding: "utf-8", shell: true }
-).trim();
-
-// Copy templates
-console.log("  -> Templates...");
-execSync(`cp -r "${tempDir}/.specify/templates"/* "${repoRoot}/.specify/templates/"`, { shell: true });
-const templateCount = execSync(
-  `find "${repoRoot}/.specify/templates" -name "*.md" 2>/dev/null | wc -l`,
-  { encoding: "utf-8", shell: true }
-).trim();
-
-// Copy constitution if it doesn't exist
-const constitutionPath = join(repoRoot, ".collab/memory/constitution.md");
-if (!existsSync(constitutionPath)) {
-  console.log("  -> Constitution (initializing)...");
-  copyFileSync(
-    join(tempDir, ".specify/templates/constitution-template.md"),
-    constitutionPath
-  );
-} else {
-  console.log("  -> Constitution (already exists, skipping)");
-}
-
-// pipeline.json + v3 schema files
-mkdirSync(join(repoRoot, ".collab/config"), { recursive: true });
-copyFileSync(
-  join(tempDir, "src/config/pipeline.json"),
-  join(repoRoot, ".collab/config/pipeline.json")
-);
-console.log("  -> pipeline.json updated");
 
 // Schema files
-execSync(`cp "${tempDir}/src/config/"*.schema.json "${repoRoot}/.collab/config/"`, { shell: true });
-console.log("  -> schema files updated");
+try {
+  execSync(
+    `find "${join(tempDir, "src/config")}" -maxdepth 1 -name "*.schema.json" -exec cp {} "${join(repoRoot, ".collab/config/")}" \\;`,
+    { shell: true }
+  );
+} catch {
+  // Non-fatal if no schema files
+}
 
-// Pipeline variant configs
-mkdirSync(join(repoRoot, ".collab/config/pipeline-variants"), { recursive: true });
+// Pipeline variant configs (always overwrite to keep runtime in sync with source)
 const variantsDir = join(tempDir, "src/config/pipeline-variants");
 if (existsSync(variantsDir)) {
   execSync(
-    `find "${variantsDir}" -name "*.json" -exec cp {} "${repoRoot}/.collab/config/pipeline-variants/" \\;`,
+    `find "${variantsDir}" -name "*.json" -exec cp {} "${join(repoRoot, ".collab/config/pipeline-variants/")}" \\;`,
     { shell: true }
   );
-  const variantCount = readdirSync(join(repoRoot, ".collab/config/pipeline-variants"))
-    .filter((f) => f.endsWith(".json")).length;
-  console.log(`  -> Pipeline variants: ${variantCount} configs`);
+  console.log("Pipeline variant configs installed");
 } else {
-  console.log("  -> Pipeline variants: none found in source");
+  console.log("  Warning: src/config/pipeline-variants not found in source — skipping");
 }
 
 // Default command configs (scaffold only — skip if user has customized)
@@ -253,135 +264,83 @@ for (const cfg of commandConfigs) {
   }
 }
 if (configScaffoldCount > 0) {
-  console.log(`  -> Command configs: ${configScaffoldCount} defaults scaffolded`);
+  console.log(`Command configs scaffolded: ${configScaffoldCount} defaults installed`);
+}
+
+console.log("Runtime files installed");
+
+// ── 7. Initialize state ───────────────────────────────────────────────────────
+
+const statePath = join(repoRoot, ".collab/state/installed-pipelines.json");
+if (!existsSync(statePath)) {
+  writeFileSync(statePath, "{}");
+  console.log("State initialized: .collab/state/installed-pipelines.json");
 } else {
-  console.log("  -> Command configs: already exist, skipping");
+  console.log("State file exists — preserving");
 }
 
-// Orchestrator contexts
-mkdirSync(join(repoRoot, ".collab/config/orchestrator-contexts"), { recursive: true });
-execSync(
-  `cp -r "${tempDir}/src/config/orchestrator-contexts/"* "${repoRoot}/.collab/config/orchestrator-contexts/"`,
-  { shell: true }
-);
-console.log("  -> orchestrator-contexts updated");
-
-// Display templates
-mkdirSync(join(repoRoot, ".collab/config/displays"), { recursive: true });
-execSync(
-  `cp -r "${tempDir}/src/config/displays/"* "${repoRoot}/.collab/config/displays/"`,
-  { shell: true }
-);
-console.log("  -> displays updated");
-
-// Other config files: skip if present
-const verifyConfigPath = join(repoRoot, ".collab/config/verify-config.json");
-if (!existsSync(verifyConfigPath)) {
-  mkdirSync(join(repoRoot, ".collab/config/gates"), { recursive: true });
-  copyFileSync(
-    join(tempDir, "src/config/verify-config.json"),
-    verifyConfigPath
-  );
-  copyFileSync(
-    join(tempDir, "src/config/verify-patterns.json"),
-    join(repoRoot, ".collab/config/verify-patterns.json")
-  );
-  execSync(
-    `cp "${tempDir}/src/config/gates/"*.md "${repoRoot}/.collab/config/gates/"`,
-    { shell: true }
-  );
-  console.log("  -> Config files scaffolded");
+// Preserve-on-install: .claude/settings.json (only write if absent)
+const settingsPath = join(repoRoot, ".claude/settings.json");
+if (!existsSync(settingsPath)) {
+  const settingsSrc = join(tempDir, "src/claude-settings.json");
+  if (existsSync(settingsSrc)) {
+    copyFileSync(settingsSrc, settingsPath);
+    console.log("Settings initialized: .claude/settings.json");
+  }
 } else {
-  console.log("  -> Config files already exist, skipping");
+  console.log("Settings file exists — preserving");
 }
 
-console.log("Files copied");
-
-// Set permissions
-console.log("Setting permissions...");
-execSync(
-  `find "${repoRoot}/.collab/scripts/orchestrator" -name "*.sh" -exec chmod +x {} \\;`,
-  { shell: true }
-);
-console.log("Permissions set");
-
-// Verify installation
-console.log("Verifying installation...");
-
-if (existsSync(join(repoRoot, ".claude/commands/collab.install.md"))) {
-  console.log("  collab.install.md present (/collab.install command available)");
+// Preserve-on-install: constitution (only write if absent)
+const constitutionPath = join(repoRoot, ".collab/memory/constitution.md");
+if (!existsSync(constitutionPath)) {
+  const constitutionSrcs = [
+    join(tempDir, ".specify/templates/constitution-template.md"),
+    join(tempDir, "src/config/constitution-template.md"),
+  ];
+  const constitutionSrc = constitutionSrcs.find((p) => existsSync(p));
+  if (constitutionSrc) {
+    copyFileSync(constitutionSrc, constitutionPath);
+  } else {
+    writeFileSync(constitutionPath, "# Project Constitution\n\nAdd your project principles here.\n");
+  }
+  console.log("Constitution initialized: .collab/memory/constitution.md");
+} else {
+  console.log("Constitution file exists — preserving");
 }
 
-if (existsSync(join(repoRoot, ".claude/commands/collab.install.ts"))) {
-  console.log("  collab.install.ts present (update via: bun .claude/commands/collab.install.ts)");
-}
+// ── Cleanup ───────────────────────────────────────────────────────────────────
 
-if (existsSync(join(repoRoot, ".claude/commands/collab.specify.md"))) {
-  console.log("  Command files present");
-}
-
-const skillsDir = join(repoRoot, ".claude/skills");
-if (existsSync(skillsDir) && readdirSync(skillsDir).length > 0) {
-  console.log("  Skills present");
-}
-
-if (existsSync(join(repoRoot, ".collab/handlers/emit-question-signal.ts"))) {
-  console.log("  Handlers present");
-}
-
-console.log("Verification complete");
-
-// Clean up (skip when --local was used — don't delete the source directory)
 if (!localPath) {
-  console.log("Cleaning up...");
   try {
     execSync(`rm -rf "${tempDir}"`, { shell: true });
   } catch {
-    console.log("  Temp files in /tmp will be auto-cleaned by system");
+    // Non-fatal — /tmp cleaned by OS
   }
-  console.log("Cleanup complete");
 }
 
-// Report installation summary
+// ── 8. Success message ────────────────────────────────────────────────────────
+
 console.log("");
 console.log("Collab installation complete!");
 console.log("");
-console.log("Installation Summary:");
-console.log(`  Commands:       ${commandCount} files -> .claude/commands/`);
-console.log(`  Skills:         ${skillCount} dirs -> .claude/skills/`);
-console.log(`  Handlers:       ${handlerCount} files -> .collab/handlers/`);
-console.log(`  Orchestrator:   ${orchestratorScriptCount} scripts -> .collab/scripts/orchestrator/`);
-console.log(`  Workflow:       ${scriptCount} scripts -> .specify/scripts/bash/`);
-console.log(`  Templates:      ${templateCount} files -> .specify/templates/`);
-console.log(`  Memory:         .collab/memory/constitution.md`);
-console.log(`  Config:          .collab/config/verify-config.json, pipeline.json, verify-patterns.json`);
-console.log(`  Variants:       pipeline-variants/*.json -> .collab/config/pipeline-variants/`);
-console.log(`  Command Cfgs:   ${configScaffoldCount} defaults -> .collab/config/`);
+console.log("Next steps:");
+console.log("  1. Browse available pipelines:  /pipelines browse");
+console.log("  2. Install a workflow pipeline: /pipelines install specify");
+console.log("  3. Run autonomous workflow:     /collab.run BRE-XXX");
+console.log("");
+console.log("Core Commands (installed):");
+console.log("  /collab.run              - Autonomous full pipeline orchestration");
+console.log("  /collab.cleanup          - Clean up completed feature (branch/worktree)");
+console.log("  /pipelines               - Browse and install workflow pipelines");
+console.log("");
+console.log("Workflow Commands (install via /pipelines install):");
+console.log("  /collab.specify          - Create feature specification");
+console.log("  /collab.plan             - Generate implementation plan");
+console.log("  /collab.run-tests        - Execute test suite");
+console.log("  /collab.visual-verify    - Visual verification");
+console.log("  /collab.verify-execute   - Verification checklist execution");
+console.log("  /collab.pre-deploy-confirm - Pre-deploy human gate");
+console.log("  /collab.deploy-verify    - Post-deploy smoke verification");
 console.log("");
 console.log(`Installed in: ${repoRoot}`);
-console.log("");
-console.log("Available Commands:");
-console.log("  /collab.run        - Autonomous full pipeline orchestration");
-console.log("  /collab.specify    - Create feature specification");
-console.log("  /collab.clarify    - Clarify ambiguities in spec");
-console.log("  /collab.plan       - Generate implementation plan");
-console.log("  /collab.tasks      - Break plan into tasks");
-console.log("  /collab.analyze    - Analyze spec/plan/tasks consistency");
-console.log("  /collab.implement  - Execute implementation");
-console.log("  /collab.checklist  - Generate quality checklist");
-console.log("  /collab.constitution - Manage project principles");
-console.log("  /collab.taskstoissues - Convert tasks to GitHub issues");
-console.log("  /collab.blindqa    - Blind verification testing");
-console.log("  /collab.run-tests      - Execute test suite");
-console.log("  /collab.visual-verify  - Visual verification");
-console.log("  /collab.verify-execute - Verification checklist execution");
-console.log("  /collab.pre-deploy-confirm - Pre-deploy human gate");
-console.log("  /collab.deploy-verify  - Post-deploy smoke verification");
-console.log("  /collab.cleanup    - Clean up completed feature (branch/worktree)");
-console.log("");
-console.log("Next Steps:");
-console.log("  1. Run /collab.run BRE-XXX for fully autonomous workflow");
-console.log("  2. Or run /collab.specify to create feature spec manually");
-console.log("  3. Customize .collab/memory/constitution.md for your project");
-console.log("");
-console.log("To update collab, run: bun .claude/commands/collab.install.ts");
