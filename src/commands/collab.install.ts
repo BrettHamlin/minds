@@ -22,6 +22,7 @@ import {
   copyFileSync,
   chmodSync,
   writeFileSync,
+  readFileSync,
   readdirSync,
   statSync,
 } from "fs";
@@ -292,6 +293,44 @@ if (existsSync(variantsDir)) {
   console.log("Pipeline variant configs installed");
 } else {
   console.log("  Warning: src/config/pipeline-variants not found in source — skipping");
+}
+
+// Scan installed variant configs and install any referenced commands missing from
+// .claude/commands/. Commands listed in pipeline phase "command" fields (e.g.,
+// "/collab.spec-critique") must be present for the pipeline to dispatch correctly.
+// This handles commands that exist in src/commands/ but are not distributed via any
+// pipeline registry package (e.g., collab.spec-critique.md, collab.codeReview.md).
+const installedVariantsDir = join(repoRoot, ".collab/config/pipeline-variants");
+const variantCommandsSrc = join(tempDir, "src/commands");
+if (existsSync(installedVariantsDir) && existsSync(variantCommandsSrc)) {
+  const referencedCommands = new Set<string>();
+  for (const vf of readdirSync(installedVariantsDir).filter((f) => f.endsWith(".json"))) {
+    try {
+      const config = JSON.parse(readFileSync(join(installedVariantsDir, vf), "utf-8"));
+      for (const phase of Object.values(config.phases ?? {})) {
+        const cmd = (phase as Record<string, unknown>).command;
+        if (typeof cmd === "string" && cmd.startsWith("/")) {
+          const cmdName = cmd.slice(1); // strip leading "/"
+          const cmdFile = cmdName.endsWith(".md") ? cmdName : `${cmdName}.md`;
+          referencedCommands.add(cmdFile);
+        }
+      }
+    } catch {
+      // Skip malformed variant configs
+    }
+  }
+  let variantCmdsInstalled = 0;
+  for (const cmdFile of referencedCommands) {
+    const dest = join(repoRoot, ".claude/commands", cmdFile);
+    if (existsSync(dest)) continue; // already installed
+    const src = join(variantCommandsSrc, cmdFile);
+    if (!existsSync(src)) continue; // not available in source
+    copyFileSync(src, dest);
+    variantCmdsInstalled++;
+  }
+  if (variantCmdsInstalled > 0) {
+    console.log(`Variant commands installed: ${variantCmdsInstalled} command(s) from pipeline variant configs`);
+  }
 }
 
 // Test fixture configs (always overwrite to keep runtime in sync with source)

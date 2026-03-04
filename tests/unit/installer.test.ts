@@ -123,11 +123,12 @@ describe("collab.install.ts", () => {
   });
 
   // ── Test 2 ────────────────────────────────────────────────────────────────
-  test("2. fresh install copies only 5 core command files", () => {
+  test("2. fresh install copies 5 core + all pipeline-variant-referenced command files", () => {
     const commandsDir = join(sharedDir, ".claude/commands");
     const files = readdirSync(commandsDir).sort();
 
-    const expectedFiles = [
+    // 5 core commands always installed
+    const coreFiles = [
       "collab.cleanup.md",
       "collab.install.md",
       "collab.install.ts",
@@ -135,35 +136,44 @@ describe("collab.install.ts", () => {
       "pipelines.md",
     ];
 
+    // Commands referenced by pipeline variant configs in src/config/pipeline-variants/
+    // These are auto-installed by scanning variant phase "command" fields
+    const variantFiles = [
+      "collab.analyze.md",
+      "collab.blindqa.md",
+      "collab.clarify.md",
+      "collab.codeReview.md",
+      "collab.deploy-verify.md",
+      "collab.implement.md",
+      "collab.plan.md",
+      "collab.pre-deploy-confirm.md",
+      "collab.run-tests.md",
+      "collab.spec-critique.md",
+      "collab.tasks.md",
+      "collab.test.md",
+      "collab.verify-execute.md",
+      "collab.visual-verify.md",
+    ];
+
+    const expectedFiles = [...coreFiles, ...variantFiles].sort();
     expect(files).toEqual(expectedFiles);
   });
 
   // ── Test 3 ────────────────────────────────────────────────────────────────
-  test("3. no pipeline-specific commands are installed", () => {
+  test("3. non-variant pipeline commands are NOT installed on fresh install", () => {
     const commandsDir = join(sharedDir, ".claude/commands");
 
-    // These are the pipeline commands that should NOT be installed
+    // These commands are NOT referenced by any pipeline variant config and NOT
+    // in CORE_COMMANDS — they must not be present after a fresh install.
+    // (Pipeline-variant-referenced commands like collab.plan.md, collab.spec-critique.md,
+    // and collab.codeReview.md ARE now installed automatically — see test 2.)
     const forbidden = [
-      "collab.specify.md",
-      "collab.plan.md",
-      "collab.tasks.md",
-      "collab.analyze.md",
-      "collab.implement.md",
-      "collab.blindqa.md",
-      "collab.spec-critique.md",
-      "collab.clarify.md",
-      "collab.checklist.md",
-      "collab.codeReview.md",
-      "collab.taskstoissues.md",
-      "collab.iosbuild.md",
-      "collab.iosverify.md",
-      "collab.dependencies.md",
-      // Registry-installable phase commands
-      "collab.run-tests.md",
-      "collab.visual-verify.md",
-      "collab.verify-execute.md",
-      "collab.pre-deploy-confirm.md",
-      "collab.deploy-verify.md",
+      "collab.specify.md",       // install via 'pipelines install specify'
+      "collab.checklist.md",     // not in any variant config
+      "collab.taskstoissues.md", // not in any variant config
+      "collab.iosbuild.md",      // not in any variant config
+      "collab.iosverify.md",     // not in any variant config
+      "collab.dependencies.md",  // not in any variant config
     ];
 
     for (const f of forbidden) {
@@ -305,6 +315,34 @@ describe("collab.install.ts", () => {
       expect(stderr + "").toContain("ERROR");
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // ── Test 10 ───────────────────────────────────────────────────────────────
+  test("10. pipeline-variant-referenced commands are installed on fresh install", () => {
+    const commandsDir = join(sharedDir, ".claude/commands");
+
+    // These commands are referenced in src/config/pipeline-variants/*.json phases
+    // and must be present after install so pipeline dispatch works correctly.
+    const variantCommands = [
+      "collab.spec-critique.md",    // backend, frontend-ui, test variants
+      "collab.codeReview.md",        // backend, frontend-ui variants
+      "collab.pre-deploy-confirm.md",// deploy variant
+      "collab.deploy-verify.md",     // deploy variant
+      "collab.test.md",              // test variant
+      "collab.clarify.md",           // all variants
+      "collab.plan.md",              // backend, frontend-ui, deploy, test variants
+      "collab.tasks.md",             // backend, frontend-ui, deploy, test variants
+      "collab.analyze.md",           // backend, frontend-ui, deploy, test variants
+      "collab.implement.md",         // backend, frontend-ui, deploy, test variants
+      "collab.run-tests.md",         // backend, frontend-ui, deploy, test variants
+      "collab.blindqa.md",           // backend, frontend-ui, deploy, test variants
+      "collab.visual-verify.md",     // frontend-ui variant
+      "collab.verify-execute.md",    // verification variant
+    ];
+
+    for (const f of variantCommands) {
+      expect(existsSync(join(commandsDir, f))).toBe(true);
     }
   });
 });
