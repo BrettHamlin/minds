@@ -9,7 +9,16 @@
 //   agentPrompt → "[SIGNAL] SIGNAL_NAME" instructions
 
 import type { Transport, Message, Unsubscribe } from "./Transport.ts";
-import { tmux, sleepMs, sendToPane } from "../src/lib/pipeline/tmux-client.ts";
+import * as fs from "fs";
+import * as path from "path";
+
+// Resolve tmux-client.ts: .collab/lib/ (installed) or src/lib/ (dev)
+const thisDir = path.dirname(new URL(import.meta.url).pathname);
+let tmuxClientPath = path.resolve(thisDir, "../.collab/lib/pipeline/tmux-client.ts");
+if (!fs.existsSync(tmuxClientPath)) {
+  tmuxClientPath = path.resolve(thisDir, "../src/lib/pipeline/tmux-client.ts");
+}
+const { tmux, sleepMs, sendToPane } = await import(tmuxClientPath);
 
 /** Matches the canonical pipelang signal format: [SIGNAL] SIGNAL_NAME */
 const SIGNAL_RE = /\[SIGNAL\]\s+([A-Z][A-Z0-9_]+)/;
