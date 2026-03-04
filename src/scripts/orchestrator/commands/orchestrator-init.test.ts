@@ -7,6 +7,10 @@ import {
   resolvePaths,
   setupSymlinks,
   createRegistry,
+  resolveTransportFromConfig,
+  injectBusEnv,
+  startBusServer,
+  teardownBusServer,
 } from "./orchestrator-init";
 import type { InitContext } from "./orchestrator-init";
 
@@ -284,5 +288,197 @@ describe("orchestrator-init: createRegistry() pipeline variant", () => {
 
     fs.unlinkSync(registryPath);
     fs.unlinkSync(ctx.configPath);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BRE-378: Bus server lifecycle tests
+// ---------------------------------------------------------------------------
+
+const REAL_REPO_ROOT = path.resolve(__dirname, "../../../../");
+
+describe("orchestrator-init: resolveTransportFromConfig()", () => {
+  test("17. pipeline transport=bus → returns 'bus'", () => {
+    const configPath = path.join(tmpDir, ".collab/config/pipeline-bus.json");
+    fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", transport: "bus", phases: {} }));
+    const saved = process.env.COLLAB_TRANSPORT;
+    delete process.env.COLLAB_TRANSPORT;
+
+    expect(resolveTransportFromConfig(configPath)).toBe("bus");
+
+    process.env.COLLAB_TRANSPORT = saved;
+    fs.unlinkSync(configPath);
+  });
+
+  test("18. pipeline transport=tmux → returns 'tmux'", () => {
+    const configPath = path.join(tmpDir, ".collab/config/pipeline-tmux.json");
+    fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", transport: "tmux", phases: {} }));
+    const saved = process.env.COLLAB_TRANSPORT;
+    delete process.env.COLLAB_TRANSPORT;
+
+    expect(resolveTransportFromConfig(configPath)).toBe("tmux");
+
+    process.env.COLLAB_TRANSPORT = saved;
+    fs.unlinkSync(configPath);
+  });
+
+  test("19. no transport field in pipeline.json → defaults to 'tmux'", () => {
+    const configPath = path.join(tmpDir, ".collab/config/pipeline-notransport.json");
+    fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", phases: {} }));
+    const saved = process.env.COLLAB_TRANSPORT;
+    delete process.env.COLLAB_TRANSPORT;
+
+    expect(resolveTransportFromConfig(configPath)).toBe("tmux");
+
+    process.env.COLLAB_TRANSPORT = saved;
+    fs.unlinkSync(configPath);
+  });
+
+  test("20. COLLAB_TRANSPORT=bus env var overrides pipeline transport=tmux", () => {
+    const configPath = path.join(tmpDir, ".collab/config/pipeline-override-bus.json");
+    fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", transport: "tmux", phases: {} }));
+    const saved = process.env.COLLAB_TRANSPORT;
+    process.env.COLLAB_TRANSPORT = "bus";
+
+    expect(resolveTransportFromConfig(configPath)).toBe("bus");
+
+    if (saved !== undefined) process.env.COLLAB_TRANSPORT = saved;
+    else delete process.env.COLLAB_TRANSPORT;
+    fs.unlinkSync(configPath);
+  });
+
+  test("21. COLLAB_TRANSPORT=tmux env var overrides pipeline transport=bus", () => {
+    const configPath = path.join(tmpDir, ".collab/config/pipeline-override-tmux.json");
+    fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", transport: "bus", phases: {} }));
+    const saved = process.env.COLLAB_TRANSPORT;
+    process.env.COLLAB_TRANSPORT = "tmux";
+
+    expect(resolveTransportFromConfig(configPath)).toBe("tmux");
+
+    if (saved !== undefined) process.env.COLLAB_TRANSPORT = saved;
+    else delete process.env.COLLAB_TRANSPORT;
+    fs.unlinkSync(configPath);
+  });
+});
+
+describe("orchestrator-init: injectBusEnv()", () => {
+  test("22. injects env vars before claude in cd+claude command", () => {
+    const cmd = "cd '/path/to/worktree' && claude --dangerously-skip-permissions";
+    const result = injectBusEnv(cmd, "http://localhost:12345");
+    expect(result).toBe(
+      "cd '/path/to/worktree' && COLLAB_TRANSPORT=bus BUS_URL=http://localhost:12345 claude --dangerously-skip-permissions"
+    );
+  });
+
+  test("23. injects env vars before claude in plain command (no cd)", () => {
+    const cmd = "claude --dangerously-skip-permissions";
+    const result = injectBusEnv(cmd, "http://localhost:54321");
+    expect(result).toBe(
+      "COLLAB_TRANSPORT=bus BUS_URL=http://localhost:54321 claude --dangerously-skip-permissions"
+    );
+  });
+});
+
+describe("orchestrator-init: createRegistry() transport fields", () => {
+  test("24. registry includes transport, bus_server_pid, bus_url when transport=bus", () => {
+    const ctx = makeCtx("TEST-REG-BUS-001");
+    fs.writeFileSync(
+      ctx.configPath,
+      JSON.stringify({ version: "3.1", phases: { clarify: { terminal: false } } })
+    );
+
+    const rb = {};
+    const { registryPath } = createRegistry(
+      ctx, "%test-agent", rb, undefined, undefined, undefined,
+      "bus", 99999, "http://localhost:9876"
+    );
+
+    const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+    expect(registry.transport).toBe("bus");
+    expect(registry.bus_server_pid).toBe(99999);
+    expect(registry.bus_url).toBe("http://localhost:9876");
+
+    fs.unlinkSync(registryPath);
+    fs.unlinkSync(ctx.configPath);
+  });
+
+  test("25. registry has transport=tmux and no bus fields when transport=tmux", () => {
+    const ctx = makeCtx("TEST-REG-BUS-002");
+    fs.writeFileSync(
+      ctx.configPath,
+      JSON.stringify({ version: "3.1", phases: { clarify: { terminal: false } } })
+    );
+
+    const rb = {};
+    const { registryPath } = createRegistry(
+      ctx, "%test-agent", rb, undefined, undefined, undefined, "tmux"
+    );
+
+    const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+    expect(registry.transport).toBe("tmux");
+    expect(registry.bus_server_pid).toBeUndefined();
+    expect(registry.bus_url).toBeUndefined();
+
+    fs.unlinkSync(registryPath);
+    fs.unlinkSync(ctx.configPath);
+  });
+
+  test("26. registry omits transport fields when not provided", () => {
+    const ctx = makeCtx("TEST-REG-BUS-003");
+    fs.writeFileSync(
+      ctx.configPath,
+      JSON.stringify({ version: "3.1", phases: { clarify: { terminal: false } } })
+    );
+
+    const rb = {};
+    const { registryPath } = createRegistry(ctx, "%test-agent", rb);
+
+    const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+    expect(registry.transport).toBeUndefined();
+    expect(registry.bus_server_pid).toBeUndefined();
+    expect(registry.bus_url).toBeUndefined();
+
+    fs.unlinkSync(registryPath);
+    fs.unlinkSync(ctx.configPath);
+  });
+});
+
+describe("orchestrator-init: startBusServer() + teardownBusServer()", () => {
+  test("27. startBusServer() starts server, returns port > 0, process is alive", async () => {
+    const { pid, url } = await startBusServer(REAL_REPO_ROOT);
+
+    expect(pid).toBeGreaterThan(0);
+    expect(url).toMatch(/^http:\/\/localhost:\d+$/);
+
+    // Verify process is alive
+    let alive = false;
+    try { process.kill(pid, 0); alive = true; } catch { /* dead */ }
+    expect(alive).toBe(true);
+
+    // Teardown
+    teardownBusServer(pid);
+  });
+
+  test("28. startBusServer() — GET /status returns { ok: true }", async () => {
+    const { pid, url } = await startBusServer(REAL_REPO_ROOT);
+
+    const resp = await fetch(`${url}/status`);
+    const body = await resp.json() as { ok: boolean };
+    expect(body.ok).toBe(true);
+
+    teardownBusServer(pid);
+  });
+
+  test("29. teardownBusServer() kills the bus server process", async () => {
+    const { pid } = await startBusServer(REAL_REPO_ROOT);
+
+    teardownBusServer(pid);
+
+    // Give process time to die
+    await new Promise((r) => setTimeout(r, 100));
+
+    let alive = false;
+    try { process.kill(pid, 0); alive = true; } catch { /* dead */ }
+    expect(alive).toBe(false);
   });
 });

@@ -138,21 +138,80 @@ export function checkHoldStatus(
 }
 
 // ---------------------------------------------------------------------------
+// Bus dispatch
+// ---------------------------------------------------------------------------
+
+/**
+ * Publish a command to the bus for delivery to the agent pane via the
+ * bus-command-bridge daemon (last-mile tmux delivery on the agent side).
+ */
+export async function publishCommandToBus(
+  busUrl: string,
+  ticketId: string,
+  phase: string,
+  command: string,
+  agentPane: string
+): Promise<{ published: boolean }> {
+  try {
+    const resp = await fetch(`${busUrl}/publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: `pipeline-${ticketId}`,
+        from: "orchestrator",
+        type: "command",
+        payload: { command, phase, agent_pane: agentPane },
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    return { published: resp.ok };
+  } catch {
+    return { published: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
 const RECEIPT_POLL_INTERVAL_MS = 2000;
 const RECEIPT_POLL_ATTEMPTS = 8; // 16s total
 
+export interface TransportOpts {
+  transport?: string;
+  busUrl?: string;
+  ticketId?: string;
+  phase?: string;
+}
+
 /**
- * Send a command to the agent pane and verify receipt by checking
- * that the command text appears in the captured pane output after send.
+ * Send a command to the agent pane and verify receipt.
+ *
+ * When transportOpts.transport is "bus" and busUrl/ticketId are provided,
+ * publishes via the bus (command-bridge handles last-mile tmux delivery).
+ * Falls back to direct tmux send-keys when transport is "tmux" or unset.
  */
 export async function dispatchToAgent(
   paneId: string,
   command: string,
-  delay: number = 1
+  delay: number = 1,
+  transportOpts?: TransportOpts
 ): Promise<DispatchResult> {
+  const transport = transportOpts?.transport ?? "tmux";
+  const busUrl = transportOpts?.busUrl;
+  const ticketId = transportOpts?.ticketId;
+
+  if (transport === "bus" && busUrl && ticketId) {
+    const result = await publishCommandToBus(
+      busUrl,
+      ticketId,
+      transportOpts?.phase ?? "unknown",
+      command,
+      paneId
+    );
+    return { dispatched: true, received: result.published, paneId, command };
+  }
+
   const tmux = new TmuxClient();
 
   // Capture pane before send
@@ -360,10 +419,15 @@ async function main(): Promise<void> {
       process.exit(0);
     }
 
+    // --- Read transport from registry ---
+    const transport = (registry.transport as string | undefined) ?? "tmux";
+    const busUrl = (registry.bus_url as string | undefined) ?? process.env.BUS_URL;
+    const tOpts: TransportOpts = { transport, busUrl, ticketId, phase: phaseId };
+
     // --- Dispatch (append --args if provided) ---
     if (resolved.type === "command") {
       const fullCmd = buildDispatchCommand(getDispatchableCommand(resolved)!, extraArgs);
-      const result = await dispatchToAgent(agentPane, fullCmd, 5);
+      const result = await dispatchToAgent(agentPane, fullCmd, 5, tOpts);
       console.log(`Dispatched ${phaseId} to ${agentPane}: ${fullCmd}`);
     } else {
       // Actions array — dispatch in order, append args to command/prompt actions
@@ -374,7 +438,7 @@ async function main(): Promise<void> {
         } else if (action.prompt || action.command) {
           const baseCmd = (action.prompt || action.command) as string;
           const fullCmd = buildDispatchCommand(baseCmd, extraArgs);
-          await dispatchToAgent(agentPane, fullCmd, 1);
+          await dispatchToAgent(agentPane, fullCmd, 1, tOpts);
           console.log(`Dispatched ${phaseId} action to ${agentPane}: ${fullCmd}`);
           dispatched = true;
         }

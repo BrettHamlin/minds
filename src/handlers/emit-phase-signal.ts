@@ -24,6 +24,45 @@ function getRepoRoot(): string {
 }
 
 /**
+ * Dispatch a signal to the orchestrator via the active transport.
+ *
+ * When COLLAB_TRANSPORT=bus and BUS_URL is set: publishes to the bus server.
+ * The bus-signal-bridge daemon subscribes and delivers last-mile tmux send.
+ *
+ * When COLLAB_TRANSPORT=tmux or unset: sends directly via tmux send-keys.
+ *
+ * Always safe to call: both paths are best-effort (queue file is the durable artifact).
+ */
+export async function dispatchSignal(
+  signalMessage: string,
+  orchestratorTarget: string,
+  phaseName: string,
+  ticketId: string,
+  nonce: string,
+  tmuxPath: string
+): Promise<void> {
+  const transport = process.env.COLLAB_TRANSPORT ?? "";
+  const busUrl = process.env.BUS_URL ?? "";
+
+  if (transport === "bus" && busUrl) {
+    const { publishSafe } = await import("../../transport/bus-agent.ts");
+    await publishSafe(busUrl, `pipeline-${ticketId}`, `agent-${phaseName}`, "signal", {
+      signal: signalMessage,
+      ticket_id: ticketId,
+      nonce,
+    });
+  } else {
+    // Tmux path (default)
+    try {
+      await $`bun ${tmuxPath} send -w ${orchestratorTarget} -t ${signalMessage} -d 1`.quiet();
+    } catch {
+      const tag = `Emit${phaseName.charAt(0).toUpperCase() + phaseName.slice(1)}Signal`;
+      console.error(`[${tag}] Warning: tmux send failed (signal persisted to queue)`);
+    }
+  }
+}
+
+/**
  * Emit a pipeline signal for a given phase.
  *
  * @param phaseName   - Pipeline phase (e.g. "blindqa", "run_tests")
@@ -78,13 +117,9 @@ export async function emitPhaseSignal(
     fs.writeFileSync(queueTmp, JSON.stringify({ signal: signalMessage, emitted_at: new Date().toISOString() }, null, 2) + "\n");
     fs.renameSync(queueTmp, queueFile);
 
-    // Send to orchestrator pane (best-effort — queue file is the durable artifact)
+    // Send to orchestrator (best-effort — queue file is the durable artifact)
     const target = registry.orchestrator_pane_id || registry.orchestrator_window_id;
-    try {
-      await $`bun ${TMUX_PATH} send -w ${target} -t ${signalMessage} -d 1`.quiet();
-    } catch (sendError) {
-      console.error(`[${tag}] Warning: tmux send failed (signal persisted to queue)`);
-    }
+    await dispatchSignal(signalMessage, target, phaseName, registry.ticket_id, registry.nonce, TMUX_PATH);
 
     console.error(`[${tag}] Sent ${status} to ${target}`);
     console.error(`[${tag}] Event: ${event}, Detail: ${detailText}`);

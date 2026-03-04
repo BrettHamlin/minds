@@ -33,7 +33,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import {
   getRepoRoot,
   readJsonFile,
@@ -73,6 +73,165 @@ interface RollbackState {
   collabSymlinkCreated?: string;
   specifySymlinkCreated?: string;
   registryCreated?: string;
+  busServerPid?: number;
+  bridgePid?: number;
+  commandBridgePid?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Transport helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves the absolute path to a transport script file.
+ * Checks installed location (.collab/transport/) first (for production use
+ * after `collab.install.ts` is run), falls back to development location
+ * (transport/ at repo root, used during collab development).
+ */
+export function resolveTransportFile(repoRoot: string, filename: string): string {
+  const installed = path.join(repoRoot, ".collab", "transport", filename);
+  if (fs.existsSync(installed)) return installed;
+  return path.join(repoRoot, "transport", filename);
+}
+
+/**
+ * Reads the transport from the resolved pipeline config file.
+ * COLLAB_TRANSPORT env var acts as an override/fallback for testing.
+ */
+export function resolveTransportFromConfig(configPath: string): "tmux" | "bus" {
+  const envOverride = process.env.COLLAB_TRANSPORT;
+  if (envOverride === "bus") return "bus";
+  if (envOverride === "tmux") return "tmux";
+
+  const config = readJsonFile(configPath) as Record<string, unknown> | null;
+  const configTransport = config?.transport as string | undefined;
+  if (configTransport === "bus") return "bus";
+  return "tmux";
+}
+
+/**
+ * Injects COLLAB_TRANSPORT and BUS_URL env vars into a spawn command string,
+ * positioned immediately before the `claude` invocation.
+ */
+export function injectBusEnv(spawnCmd: string, busUrl: string): string {
+  return spawnCmd.replace(
+    "claude --dangerously-skip-permissions",
+    `COLLAB_TRANSPORT=bus BUS_URL=${busUrl} claude --dangerously-skip-permissions`
+  );
+}
+
+/**
+ * Starts bus-server.ts as a detached background process.
+ * Resolves with { pid, url } once BUS_READY is printed to stdout.
+ * Also writes the port to .collab/bus-port (done by bus-server.ts itself).
+ */
+export function startBusServer(repoRoot: string): Promise<{ pid: number; url: string }> {
+  const serverPath = resolveTransportFile(repoRoot, "bus-server.ts");
+  if (!fs.existsSync(serverPath)) {
+    return Promise.reject(
+      new OrchestratorError("FILE_NOT_FOUND", `Bus server not found: ${serverPath}`)
+    );
+  }
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn("bun", [serverPath], {
+      cwd: repoRoot,
+      stdio: ["ignore", "pipe", "inherit"],
+      detached: true,
+    });
+
+    proc.unref();
+
+    const timeout = setTimeout(() => {
+      try { process.kill(proc.pid!, "SIGTERM"); } catch { /* ignore */ }
+      reject(new OrchestratorError("RUNTIME", "Bus server startup timeout (5s)"));
+    }, 5000);
+
+    proc.stdout!.on("data", (data: Buffer) => {
+      const match = data.toString().match(/BUS_READY port=(\d+)/);
+      if (match) {
+        clearTimeout(timeout);
+        const port = parseInt(match[1], 10);
+        resolve({ pid: proc.pid!, url: `http://localhost:${port}` });
+      }
+    });
+
+    proc.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(new OrchestratorError("RUNTIME", `Bus server spawn error: ${err.message}`));
+    });
+
+    proc.on("exit", (code) => {
+      clearTimeout(timeout);
+      reject(new OrchestratorError("RUNTIME", `Bus server exited unexpectedly (code ${code})`));
+    });
+  });
+}
+
+/**
+ * Kills the bus server process and removes .collab/bus-port.
+ */
+export function teardownBusServer(pid: number, portFile?: string): void {
+  try {
+    process.kill(pid, "SIGTERM");
+    console.error(`Killed bus server (pid ${pid})`);
+  } catch {
+    // Already dead — ignore
+  }
+
+  if (portFile && fs.existsSync(portFile)) {
+    try {
+      fs.unlinkSync(portFile);
+      console.error(`Removed bus port file: ${portFile}`);
+    } catch (err) {
+      console.error(`Failed to remove bus port file: ${err}`);
+    }
+  }
+}
+
+/**
+ * Starts the bus-signal-bridge daemon as a detached background process.
+ * The bridge subscribes to the bus SSE stream and delivers signals to the
+ * orchestrator pane via tmux send-keys (last-mile delivery).
+ */
+export function startBusSignalBridge(
+  repoRoot: string,
+  busUrl: string,
+  channel: string,
+  orchestratorPane: string
+): { pid: number } {
+  const bridgePath = resolveTransportFile(repoRoot, "bus-signal-bridge.ts");
+  const proc = spawn("bun", [bridgePath, busUrl, channel, orchestratorPane], {
+    cwd: repoRoot,
+    stdio: "ignore",
+    detached: true,
+  });
+  proc.unref();
+  console.error(`Bus signal bridge started: pid=${proc.pid} channel=${channel}`);
+  return { pid: proc.pid! };
+}
+
+/**
+ * Starts the bus-command-bridge daemon as a detached background process.
+ * The bridge subscribes to the bus SSE stream and delivers commands to the
+ * agent pane via tmux send-keys (last-mile delivery).
+ * Started after the agent pane is spawned (requires agentPane ID).
+ */
+export function startBusCommandBridge(
+  repoRoot: string,
+  busUrl: string,
+  channel: string,
+  agentPane: string
+): { pid: number } {
+  const bridgePath = resolveTransportFile(repoRoot, "bus-command-bridge.ts");
+  const proc = spawn("bun", [bridgePath, busUrl, channel, agentPane], {
+    cwd: repoRoot,
+    stdio: "ignore",
+    detached: true,
+  });
+  proc.unref();
+  console.error(`Bus command bridge started: pid=${proc.pid} channel=${channel} pane=${agentPane}`);
+  return { pid: proc.pid! };
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +490,12 @@ export function createRegistry(
   rb: RollbackState,
   repoId?: string,
   repoPath?: string,
-  pipelineVariant?: string
+  pipelineVariant?: string,
+  transport?: string,
+  busServerPid?: number,
+  busUrl?: string,
+  bridgePid?: number,
+  commandBridgePid?: number
 ): { nonce: string; registryPath: string } {
   const nonce = crypto.randomBytes(4).toString("hex").substring(0, 8);
 
@@ -354,6 +518,11 @@ export function createRegistry(
   if (repoId) registry.repo_id = repoId;
   if (repoPath) registry.repo_path = repoPath;
   if (pipelineVariant) registry.pipeline_variant = pipelineVariant;
+  if (transport) registry.transport = transport;
+  if (busServerPid !== undefined) registry.bus_server_pid = busServerPid;
+  if (busUrl) registry.bus_url = busUrl;
+  if (bridgePid !== undefined) registry.bridge_pid = bridgePid;
+  if (commandBridgePid !== undefined) registry.command_bridge_pid = commandBridgePid;
 
   writeJsonAtomic(registryPath, registry);
   rb.registryCreated = registryPath;
@@ -365,8 +534,23 @@ export function createRegistry(
 // Rollback
 // ---------------------------------------------------------------------------
 
-function rollback(rb: RollbackState): void {
+function rollback(rb: RollbackState, repoRoot?: string): void {
   console.error("Rolling back partial initialization...");
+
+  if (rb.commandBridgePid !== undefined) {
+    try { process.kill(rb.commandBridgePid, "SIGTERM"); } catch { /* already dead */ }
+    console.error(`Killed command bridge (pid ${rb.commandBridgePid})`);
+  }
+
+  if (rb.bridgePid !== undefined) {
+    try { process.kill(rb.bridgePid, "SIGTERM"); } catch { /* already dead */ }
+    console.error(`Killed signal bridge (pid ${rb.bridgePid})`);
+  }
+
+  if (rb.busServerPid !== undefined) {
+    const portFile = repoRoot ? path.join(repoRoot, ".collab", "bus-port") : undefined;
+    teardownBusServer(rb.busServerPid, portFile);
+  }
 
   if (rb.registryCreated && fs.existsSync(rb.registryCreated)) {
     try {
@@ -407,7 +591,7 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
 
   try {
     // Step 1: Resolve paths (determines variant before validation)
-    const { repoRoot, worktreePath, spawnCmd, repoId, repoPath, pipelineVariant } = resolvePaths(ctx);
+    const { repoRoot, worktreePath, spawnCmd: baseSpawnCmd, repoId, repoPath, pipelineVariant } = resolvePaths(ctx);
 
     // Step 2: Variant config override
     if (pipelineVariant) {
@@ -422,6 +606,39 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
 
     // Step 3: Schema validation
     validateSchema(ctx);
+
+    // Step 2.5: Resolve transport and start bus server if needed
+    const transport = resolveTransportFromConfig(ctx.configPath);
+    let busServerPid: number | undefined;
+    let busUrl: string | undefined;
+
+    let bridgePid: number | undefined;
+    let commandBridgePid: number | undefined;
+
+    if (transport === "bus") {
+      console.error("Transport: bus — starting bus server and signal bridge...");
+      const bus = await startBusServer(ctx.repoRoot);
+      busServerPid = bus.pid;
+      busUrl = bus.url;
+      rb.busServerPid = busServerPid;
+      console.error(`Bus server started: pid=${busServerPid} url=${busUrl}`);
+
+      const bridge = startBusSignalBridge(
+        ctx.repoRoot,
+        busUrl,
+        `pipeline-${ctx.ticketId}`,
+        ctx.orchestratorPane
+      );
+      bridgePid = bridge.pid;
+      rb.bridgePid = bridgePid;
+    } else {
+      console.error("Transport: tmux");
+    }
+
+    // Build final spawn command, injecting bus env vars if needed
+    const spawnCmd = transport === "bus" && busUrl
+      ? injectBusEnv(baseSpawnCmd, busUrl)
+      : baseSpawnCmd;
 
     // Step 4: Coordination check
     runCoordinationCheck(ctx);
@@ -450,13 +667,28 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     const splitPct = horizontal ? 70 : 50;
     const agentPane = spawnAgentPane(splitTarget, spawnCmd, ctx.ticketId, rb, horizontal, splitPct);
 
+    // Start command bridge after agent pane is known (requires agentPane ID for last-mile delivery)
+    if (transport === "bus" && busUrl) {
+      const cmdBridge = startBusCommandBridge(
+        ctx.repoRoot,
+        busUrl,
+        `pipeline-${ctx.ticketId}`,
+        agentPane
+      );
+      commandBridgePid = cmdBridge.pid;
+      rb.commandBridgePid = commandBridgePid;
+    }
+
     // Step 7: Create registry
-    const { nonce, registryPath } = createRegistry(ctx, agentPane, rb, repoId, repoPath, pipelineVariant);
+    const { nonce, registryPath } = createRegistry(
+      ctx, agentPane, rb, repoId, repoPath, pipelineVariant,
+      transport, busServerPid, busUrl, bridgePid, commandBridgePid
+    );
 
     return { agentPane, nonce, registryPath, repoPath };
   } catch (err) {
     // Any step failure triggers rollback of completed steps
-    rollback(rb);
+    rollback(rb, ctx.repoRoot);
     throw err;
   }
 }

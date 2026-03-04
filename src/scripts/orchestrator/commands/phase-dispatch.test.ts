@@ -6,7 +6,10 @@ import {
   getDispatchableCommand,
   resolvePhaseHooks,
   waitForPhaseCompletion,
+  publishCommandToBus,
+  dispatchToAgent,
 } from "./phase-dispatch";
+import { startBusServer, teardownBusServer } from "./orchestrator-init";
 import type { CompiledPipeline } from "../../../lib/pipeline";
 import { writeJsonAtomic, resolvePipelineConfigPath } from "../../../lib/pipeline";
 import * as fs from "fs";
@@ -333,5 +336,66 @@ describe("phase-dispatch: variant config loading", () => {
       registryDir,
     });
     expect(configPath).toBe(path.join(tmpDir, ".collab", "config", "pipeline.json"));
+  });
+});
+
+// ============================================================================
+// Bus transport — publishCommandToBus() and dispatchToAgent() transport routing
+// ============================================================================
+
+const REAL_REPO_ROOT = path.resolve(__dirname, "../../../../");
+
+describe("phase-dispatch: bus transport", () => {
+  let busServerPid: number;
+  let busUrl: string;
+
+  beforeAll(async () => {
+    const bus = await startBusServer(REAL_REPO_ROOT);
+    busServerPid = bus.pid;
+    busUrl = bus.url;
+  });
+
+  afterAll(() => {
+    if (busServerPid) teardownBusServer(busServerPid);
+  });
+
+  test("21. publishCommandToBus → publishes command message to bus", async () => {
+    const result = await publishCommandToBus(
+      busUrl,
+      "TEST-BRE380",
+      "clarify",
+      "/collab.clarify",
+      "%nonexistent-pane"
+    );
+    expect(result.published).toBe(true);
+
+    const resp = await fetch(`${busUrl}/status`);
+    const body = await resp.json() as { ok: boolean; messageCount: number };
+    expect(body.ok).toBe(true);
+    expect(body.messageCount).toBeGreaterThan(0);
+  });
+
+  test("22. dispatchToAgent with transport=bus publishes to bus (no tmux call)", async () => {
+    const result = await dispatchToAgent(
+      "%nonexistent-pane",
+      "/collab.plan",
+      1,
+      { transport: "bus", busUrl, ticketId: "TEST-BRE380-2", phase: "plan" }
+    );
+    expect(result.dispatched).toBe(true);
+    expect(result.received).toBe(true);
+    expect(result.command).toBe("/collab.plan");
+  });
+
+  test("23. publishCommandToBus with unreachable bus URL → returns { published: false } (no throw)", async () => {
+    // ECONNREFUSED (port 1 is not bound) triggers immediately — tests graceful failure
+    const result = await publishCommandToBus(
+      "http://127.0.0.1:1",
+      "TEST-BRE380-3",
+      "tasks",
+      "/collab.tasks",
+      "%nonexistent-pane"
+    );
+    expect(result.published).toBe(false);
   });
 });

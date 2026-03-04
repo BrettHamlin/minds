@@ -31,6 +31,12 @@
     },
     "codeReview": {
       "$ref": "#/$defs/codeReview"
+    },
+    "transport": {
+      "type": "string",
+      "enum": ["tmux", "bus"],
+      "default": "tmux",
+      "description": "Agent communication transport. Default: tmux."
     }
   },
   "$defs": {
