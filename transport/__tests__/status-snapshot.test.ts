@@ -4,32 +4,26 @@
 // Uses temp directories with mock registry JSON files.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "fs";
+import { writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { buildSnapshot, formatSnapshotEvent } from "../status-snapshot";
 import type { StatusSnapshot } from "../status-snapshot";
-import { tmpdir } from "os";
+import { createMockRegistry, createTempRegistryDir, cleanupTempDir } from "./helpers";
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
 
 let tempDir: string;
-
-function createTempDir(): string {
-  const dir = join(tmpdir(), `snapshot-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 function writeRegistry(dir: string, filename: string, data: Record<string, unknown>): void {
   writeFileSync(join(dir, filename), JSON.stringify(data), "utf8");
 }
 
 beforeEach(() => {
-  tempDir = createTempDir();
+  tempDir = createTempRegistryDir([]);
 });
 
 afterEach(() => {
-  rmSync(tempDir, { recursive: true, force: true });
+  cleanupTempDir(tempDir);
 });
 
 // ── buildSnapshot() ──────────────────────────────────────────────────────────
@@ -51,7 +45,7 @@ describe("buildSnapshot()", () => {
   });
 
   test("returns correct PipelineSnapshot for single registry file", () => {
-    writeRegistry(tempDir, "BRE-100.json", {
+    writeRegistry(tempDir, "BRE-100.json", createMockRegistry({
       ticket_id: "BRE-100",
       current_step: "implement",
       bus_url: "http://localhost:9999",
@@ -60,7 +54,7 @@ describe("buildSnapshot()", () => {
       phase_history: [
         { phase: "clarify", signal: "CLARIFY_COMPLETE", ts: "2026-03-04T10:30:00Z" },
       ],
-    });
+    }));
 
     const snapshot = buildSnapshot(tempDir);
     expect(snapshot.pipelines).toHaveLength(1);
@@ -79,21 +73,21 @@ describe("buildSnapshot()", () => {
   });
 
   test("returns multiple pipelines for multiple registry files", () => {
-    writeRegistry(tempDir, "BRE-101.json", {
+    writeRegistry(tempDir, "BRE-101.json", createMockRegistry({
       ticket_id: "BRE-101",
       current_step: "clarify",
-    });
-    writeRegistry(tempDir, "BRE-102.json", {
+    }));
+    writeRegistry(tempDir, "BRE-102.json", createMockRegistry({
       ticket_id: "BRE-102",
       current_step: "implement",
       implement_phase_plan: { current_impl_phase: 2, total_phases: 5 },
-    });
-    writeRegistry(tempDir, "BRE-103.json", {
+    }));
+    writeRegistry(tempDir, "BRE-103.json", createMockRegistry({
       ticket_id: "BRE-103",
       current_step: "done",
       last_signal: "IMPLEMENT_COMPLETE",
       last_signal_at: "2026-03-04T12:00:00Z",
-    });
+    }));
 
     const snapshot = buildSnapshot(tempDir);
     expect(snapshot.pipelines).toHaveLength(3);
@@ -111,10 +105,10 @@ describe("buildSnapshot()", () => {
   });
 
   test("skips corrupt JSON files gracefully", () => {
-    writeRegistry(tempDir, "BRE-200.json", {
+    writeRegistry(tempDir, "BRE-200.json", createMockRegistry({
       ticket_id: "BRE-200",
       current_step: "plan",
-    });
+    }));
     // Write corrupt file
     writeFileSync(join(tempDir, "BRE-201.json"), "{ invalid json !!!", "utf8");
 
@@ -137,15 +131,63 @@ describe("buildSnapshot()", () => {
   });
 
   test("ignores non-JSON files in registry directory", () => {
-    writeRegistry(tempDir, "BRE-400.json", {
+    writeRegistry(tempDir, "BRE-400.json", createMockRegistry({
       ticket_id: "BRE-400",
       current_step: "clarify",
-    });
+    }));
     writeFileSync(join(tempDir, "README.md"), "# Not a registry", "utf8");
     writeFileSync(join(tempDir, ".gitkeep"), "", "utf8");
 
     const snapshot = buildSnapshot(tempDir);
     expect(snapshot.pipelines).toHaveLength(1);
+  });
+
+  test("derives status=held and detail includes waiting_for for held pipeline", () => {
+    writeRegistry(tempDir, "BRE-450.json", createMockRegistry({
+      ticket_id: "BRE-450",
+      current_step: "implement",
+      status: "held",
+      waiting_for: "BRE-449",
+      held_at: "implement",
+    }));
+
+    const snapshot = buildSnapshot(tempDir);
+    expect(snapshot.pipelines).toHaveLength(1);
+
+    const p = snapshot.pipelines[0];
+    expect(p.ticketId).toBe("BRE-450");
+    expect(p.phase).toBe("implement");
+    expect(p.status).toBe("held");
+    expect(p.detail).toContain("waiting for BRE-449");
+  });
+
+  test("handles 5 concurrent registries returning correct count and data", () => {
+    for (let i = 1; i <= 5; i++) {
+      writeRegistry(tempDir, `BRE-50${i}.json`, createMockRegistry({
+        ticket_id: `BRE-50${i}`,
+        current_step: i <= 2 ? "clarify" : i <= 4 ? "implement" : "done",
+        last_signal: i === 5 ? "IMPLEMENT_COMPLETE" : undefined,
+      }));
+    }
+
+    const snapshot = buildSnapshot(tempDir);
+    expect(snapshot.pipelines).toHaveLength(5);
+
+    const ids = snapshot.pipelines.map((p) => p.ticketId).sort();
+    expect(ids).toEqual(["BRE-501", "BRE-502", "BRE-503", "BRE-504", "BRE-505"]);
+
+    // Verify phase distribution
+    const phases = snapshot.pipelines.reduce<Record<string, number>>((acc, p) => {
+      acc[p.phase] = (acc[p.phase] || 0) + 1;
+      return acc;
+    }, {});
+    expect(phases["clarify"]).toBe(2);
+    expect(phases["implement"]).toBe(2);
+    expect(phases["done"]).toBe(1);
+
+    // Verify the done pipeline has completed status
+    const donePipeline = snapshot.pipelines.find((p) => p.ticketId === "BRE-505")!;
+    expect(donePipeline.status).toBe("completed");
   });
 });
 
