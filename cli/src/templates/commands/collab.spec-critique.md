@@ -25,13 +25,18 @@ If no ticket ID provided, error and exit.
 
 ### 2. Verify Registry State (Optional - for orchestrated mode)
 
-Check if orchestrated mode is active:
-```bash
-if [ -f .collab/state/pipeline-registry/${ticket_id}.json ]; then
-  # Verify current_step if in orchestrated mode
-  cat .collab/state/pipeline-registry/${ticket_id}.json | grep '"current_step".*"spec-critique"' || { echo "Warning: not in spec-critique phase"; }
-fi
+Check if orchestrated mode is active by reading the registry file directly:
+
+Use the **Read** tool on the absolute path:
 ```
+Read: {repo_root}/.collab/state/pipeline-registry/{ticket_id}.json
+```
+
+Where `{repo_root}` is the git repository root (use `git rev-parse --show-toplevel` via Bash if needed).
+
+**IMPORTANT**: Do NOT use shell `[ -f ... ]` tests or `grep` to inspect the registry. In pipeline worktrees, `.collab` is a symlink — shell file tests may not traverse it. Use the **Read** tool directly on the known path.
+
+If the file exists and `current_step` contains `spec_critique` (or `spec-critique`), autonomous (orchestrated) mode is active — **DO NOT use AskUserQuestion**. Otherwise, interactive mode is active and AskUserQuestion is available.
 
 ### 3. Emit SPEC_CRITIQUE_START Signal
 

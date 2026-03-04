@@ -25,22 +25,18 @@ If no ticket ID provided, error and exit.
 
 ### 2. Detect Execution Mode
 
-Check if autonomous (orchestrated) mode is active:
+Check if autonomous (orchestrated) mode is active by reading the registry file directly:
 
-```bash
-REGISTRY_FILE=".collab/state/pipeline-registry/${ticket_id}.json"
-AUTONOMOUS_MODE=false
-
-if [ -f "$REGISTRY_FILE" ]; then
-  current_step=$(jq -r '.current_step // ""' "$REGISTRY_FILE")
-  if echo "$current_step" | grep -qi "spec.critique\|spec_critique"; then
-    AUTONOMOUS_MODE=true
-    echo "[spec-critique] Autonomous mode detected (registry step: $current_step)"
-  fi
-fi
+Use the **Read** tool on the absolute path:
+```
+Read: {repo_root}/.collab/state/pipeline-registry/{ticket_id}.json
 ```
 
-Use Glob to find the registry file if the path is uncertain (e.g., `Glob(".collab/state/pipeline-registry/${ticket_id}.json")`).
+Where `{repo_root}` is the git repository root (use `git rev-parse --show-toplevel` via Bash if needed).
+
+**IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the known path.
+
+If the file exists and `current_step` contains `spec_critique` (or `spec.critique`), set `AUTONOMOUS_MODE=true`. Otherwise `AUTONOMOUS_MODE=false`.
 
 **`AUTONOMOUS_MODE=true`** → pipeline orchestrator launched this skill; nobody is watching; **DO NOT use AskUserQuestion**. Proceed to Step 4a.
 

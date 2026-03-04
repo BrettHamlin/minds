@@ -9,10 +9,10 @@
     },
     "spec_critique": {
       "command": "/collab.spec-critique",
-      "signals": ["SPEC_CRITIQUE_COMPLETE", "SPEC_CRITIQUE_BLOCKED"],
+      "signals": ["SPEC_CRITIQUE_COMPLETE", "SPEC_CRITIQUE_FAILED", "SPEC_CRITIQUE_QUESTION"],
       "transitions": {
         "SPEC_CRITIQUE_COMPLETE": { "to": "plan" },
-        "SPEC_CRITIQUE_BLOCKED": { "to": "clarify" }
+        "SPEC_CRITIQUE_FAILED": { "to": "clarify" }
       }
     },
     "plan": {
