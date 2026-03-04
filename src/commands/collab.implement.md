@@ -33,7 +33,7 @@ You do not need to wait for step 10. Any time your response represents "this pha
 
 ## Outline
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. Run `bun .collab/scripts/resolve-feature.ts --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list.
 
 1b. **Parse Phase Scope** (if `$ARGUMENTS` contains `phase:N` or `phase:N-M`):
    - `phase:3` → execute only Phase 3 from tasks.md

@@ -30,7 +30,7 @@ Detect and reduce ambiguity in the active feature specification using AskUserQue
 
 1. **Prerequisites Check**
    ```bash
-   .specify/scripts/bash/check-prerequisites.sh --json --paths-only
+   bun .collab/scripts/resolve-feature.ts
    ```
    Parse JSON to get `FEATURE_DIR` and `FEATURE_SPEC`.
 
