@@ -242,6 +242,193 @@ describe("validateSignal", () => {
 });
 
 // ============================================================================
+// Variant pipeline config resolution
+// ============================================================================
+
+describe("variant pipeline config resolution", () => {
+  const VARIANT_PIPELINE = {
+    version: "3.0",
+    phases: [
+      { id: "clarify", signals: ["CLARIFY_COMPLETE", "CLARIFY_ERROR"] },
+      { id: "verify_execute", signals: ["VERIFY_EXECUTE_COMPLETE", "VERIFY_EXECUTE_ERROR"] },
+      { id: "done", terminal: true, signals: [] },
+    ],
+    transitions: [],
+  };
+
+  test("unit: VERIFY_EXECUTE_COMPLETE is valid when variant pipeline has verify_execute phase", () => {
+    const parsed: ParsedSignal = {
+      ticketId: "BRE-393",
+      nonce: "abc12",
+      signalType: "VERIFY_EXECUTE_COMPLETE",
+      detail: "Verification passed",
+    };
+    const variantRegistry = {
+      ticket_id: "BRE-393",
+      nonce: "abc12",
+      current_step: "verify_execute",
+      status: "running",
+      pipeline_variant: "verify",
+    };
+    const result = validateSignal(parsed, variantRegistry, VARIANT_PIPELINE);
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      expect(result.current_step).toBe("verify_execute");
+    }
+  });
+
+  test("unit: VERIFY_EXECUTE_COMPLETE fails against default pipeline (no verify_execute phase)", () => {
+    const parsed: ParsedSignal = {
+      ticketId: "BRE-393",
+      nonce: "abc12",
+      signalType: "VERIFY_EXECUTE_COMPLETE",
+      detail: "Verification passed",
+    };
+    const defaultRegistry = {
+      ticket_id: "BRE-393",
+      nonce: "abc12",
+      current_step: "verify_execute",
+      status: "running",
+    };
+    // PIPELINE fixture has no verify_execute phase → unknown current_step
+    const result = validateSignal(parsed, defaultRegistry, PIPELINE);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toBe("Unknown current_step in registry");
+    }
+  });
+});
+
+describe("signal-validate integration (variant pipeline config)", () => {
+  let tmpDir: string;
+
+  const DEFAULT_PIPELINE = {
+    version: "3.0",
+    phases: [
+      { id: "clarify", signals: ["CLARIFY_COMPLETE", "CLARIFY_ERROR"] },
+      { id: "done", terminal: true, signals: [] },
+    ],
+    transitions: [],
+  };
+
+  const VARIANT_PIPELINE = {
+    version: "3.0",
+    phases: [
+      { id: "clarify", signals: ["CLARIFY_COMPLETE", "CLARIFY_ERROR"] },
+      { id: "verify_execute", signals: ["VERIFY_EXECUTE_COMPLETE", "VERIFY_EXECUTE_ERROR"] },
+      { id: "done", terminal: true, signals: [] },
+    ],
+    transitions: [],
+  };
+
+  function setupVariantRepo(opts: {
+    ticketId: string;
+    nonce: string;
+    currentStep: string;
+    pipelineVariant?: string;
+  }): void {
+    tmpDir = join(tmpdir(), `sig-variant-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
+    const configDir = join(tmpDir, ".collab", "config");
+    const variantsDir = join(configDir, "pipeline-variants");
+
+    mkdirSync(registryDir, { recursive: true });
+    mkdirSync(variantsDir, { recursive: true });
+
+    const registry: Record<string, unknown> = {
+      ticket_id: opts.ticketId,
+      nonce: opts.nonce,
+      current_step: opts.currentStep,
+      status: "running",
+    };
+    if (opts.pipelineVariant) {
+      registry.pipeline_variant = opts.pipelineVariant;
+    }
+
+    writeFileSync(
+      join(registryDir, `${opts.ticketId}.json`),
+      JSON.stringify(registry, null, 2) + "\n"
+    );
+    writeFileSync(join(configDir, "pipeline.json"), JSON.stringify(DEFAULT_PIPELINE, null, 2) + "\n");
+    writeFileSync(join(variantsDir, "verify.json"), JSON.stringify(VARIANT_PIPELINE, null, 2) + "\n");
+  }
+
+  afterEach(() => {
+    if (tmpDir && existsSync(tmpDir)) rmSync(tmpDir, { recursive: true });
+  });
+
+  test("variant signal valid: VERIFY_EXECUTE_COMPLETE accepted when registry has pipeline_variant=verify", async () => {
+    setupVariantRepo({
+      ticketId: "BRE-501",
+      nonce: "abc123",
+      currentStep: "verify_execute",
+      pipelineVariant: "verify",
+    });
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"),
+        "[SIGNAL:BRE-501:abc123] VERIFY_EXECUTE_COMPLETE | All checks passed"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    expect(result.exitCode).toBe(0);
+    const out = await new Response(result.stdout).text();
+    const parsed = JSON.parse(out);
+    expect(parsed.valid).toBe(true);
+    expect(parsed.current_step).toBe("verify_execute");
+  });
+
+  test("variant signal invalid: VERIFY_EXECUTE_COMPLETE rejected when no pipeline_variant set (uses default pipeline)", async () => {
+    setupVariantRepo({
+      ticketId: "BRE-502",
+      nonce: "abc123",
+      currentStep: "verify_execute",
+      // no pipelineVariant → uses default pipeline.json which has no verify_execute
+    });
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"),
+        "[SIGNAL:BRE-502:abc123] VERIFY_EXECUTE_COMPLETE | All checks passed"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    expect(result.exitCode).toBe(2);
+    // stderr may include git "fatal" line; parse last JSON line
+    const err = await new Response(result.stderr).text();
+    const jsonLine = err.trim().split("\n").find((l) => l.startsWith("{"));
+    expect(jsonLine).toBeDefined();
+    const parsed = JSON.parse(jsonLine!);
+    expect(parsed.valid).toBe(false);
+    expect(parsed.error).toBe("Unknown current_step in registry");
+  });
+
+  test("variant fallback: missing variant file falls back to default pipeline.json", async () => {
+    setupVariantRepo({
+      ticketId: "BRE-503",
+      nonce: "abc123",
+      currentStep: "clarify",
+      pipelineVariant: "nonexistent-variant",
+    });
+
+    const result = await Bun.spawn(
+      ["bun", join(import.meta.dir, "signal-validate.ts"),
+        "[SIGNAL:BRE-503:abc123] CLARIFY_COMPLETE | Done"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await result.exited;
+
+    // Should succeed using default pipeline.json (which has clarify phase)
+    expect(result.exitCode).toBe(0);
+    const out = await new Response(result.stdout).text();
+    const parsed = JSON.parse(out);
+    expect(parsed.valid).toBe(true);
+    expect(parsed.current_step).toBe("clarify");
+  });
+});
+
+// ============================================================================
 // Integration: signal logging written to SQLite signals table
 // ============================================================================
 

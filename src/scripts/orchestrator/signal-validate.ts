@@ -19,7 +19,7 @@
  *   3 = file error (registry not found)
  */
 
-import { getRepoRoot, readJsonFile, getRegistryPath } from "./orchestrator-utils";
+import { getRepoRoot, readJsonFile, getRegistryPath, resolvePipelineConfigPath } from "./orchestrator-utils";
 import { parseSignal, getAllowedSignals, type ParsedSignal } from "../../lib/pipeline/signal";
 import { openMetricsDb, ensureRun, insertSignal, insertIntervention } from "../../lib/pipeline/metrics";
 
@@ -198,12 +198,12 @@ function main(): void {
     process.exit(3);
   }
 
-  // Resolve pipeline.json: use repo_path from registry if present (multi-repo),
-  // fall back to current repo
-  const repoPath = registry.repo_path as string | undefined;
-  const configPath = repoPath
-    ? `${repoPath}/.collab/config/pipeline.json`
-    : `${repoRoot}/.collab/config/pipeline.json`;
+  // Resolve pipeline config: support multi-repo (repo_path) and pipeline variants
+  // (pipeline_variant). Falls back to default pipeline.json if variant file missing.
+  const effectiveRepoRoot = (registry.repo_path as string | undefined) ?? repoRoot;
+  const configPath = resolvePipelineConfigPath(effectiveRepoRoot, {
+    variant: registry.pipeline_variant as string | undefined,
+  });
 
   // Read pipeline config
   const pipeline = readJsonFile(configPath);
