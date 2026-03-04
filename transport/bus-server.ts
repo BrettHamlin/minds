@@ -4,6 +4,7 @@
 //   POST /publish              — route a message to a named channel
 //   GET  /subscribe/:channel   — stream messages via SSE
 //   GET  /status               — health check + stats
+//   GET  /dashboard            — minimal HTML pipeline status page (BRE-399)
 //
 // Constraints:
 //   - In-memory only; no disk writes except .collab/bus-port (port discovery)
@@ -172,6 +173,7 @@ function handleSubscribe(channel: string, req: Request): Response {
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
+      "Access-Control-Allow-Origin": "*",
     },
   });
 }
@@ -213,7 +215,7 @@ export function createServer(opts: ServerConfig = {}) {
   const server = Bun.serve({
     port,
     idleTimeout: 0,
-    fetch(req) {
+    async fetch(req) {
       const url = new URL(req.url);
       const path = url.pathname;
 
@@ -223,6 +225,14 @@ export function createServer(opts: ServerConfig = {}) {
 
       if (req.method === "GET" && path === "/status") {
         return handleStatus();
+      }
+
+      // Dashboard — serve self-contained HTML page (BRE-399)
+      if (req.method === "GET" && path === "/dashboard") {
+        const html = await Bun.file(join(import.meta.dir, "dashboard.html")).text();
+        return new Response(html, {
+          headers: { "Content-Type": "text/html" },
+        });
       }
 
       const subMatch = path.match(SUBSCRIBE_RE);

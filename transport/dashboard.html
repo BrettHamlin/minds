@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Collab Pipeline Status</title>
+  <style>
+    /* Minimal dark theme matching terminal aesthetic */
+    body { background: #1a1a2e; color: #e0e0e0; font-family: monospace; padding: 2rem; }
+    .pipeline { border: 1px solid #333; padding: 1rem; margin: 0.5rem 0; border-radius: 4px; }
+    .pipeline .ticket { font-weight: bold; color: #93c5fd; }
+    .pipeline .phase { color: #86efac; }
+    .pipeline .status { color: #fbbf24; }
+    .connected { color: #22c55e; }
+    .disconnected { color: #ef4444; }
+    #empty { color: #666; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>Collab Pipeline Status</h1>
+  <div id="connection-status" class="disconnected">Connecting...</div>
+  <div id="pipelines"><div id="empty">No active pipelines</div></div>
+
+  <script>
+    const pipelinesEl = document.getElementById("pipelines");
+    const connEl = document.getElementById("connection-status");
+    let state = {};
+
+    const source = new EventSource("/subscribe/status");
+
+    source.addEventListener("snapshot", (e) => {
+      const data = JSON.parse(e.data);
+      state = {};
+      for (const p of data.pipelines) {
+        state[p.ticketId] = p;
+      }
+      render();
+    });
+
+    source.addEventListener("message", (e) => {
+      const data = JSON.parse(e.data);
+      if (data.payload?.snapshot) {
+        state[data.payload.ticketId] = data.payload.snapshot;
+      }
+      render();
+    });
+
+    source.addEventListener("open", () => {
+      connEl.textContent = "Connected";
+      connEl.className = "connected";
+    });
+
+    source.addEventListener("error", () => {
+      connEl.textContent = "Disconnected — reconnecting...";
+      connEl.className = "disconnected";
+    });
+
+    function render() {
+      const entries = Object.values(state);
+      if (entries.length === 0) {
+        pipelinesEl.innerHTML = '<div id="empty">No active pipelines</div>';
+        return;
+      }
+      pipelinesEl.innerHTML = entries.map(p => `
+        <div class="pipeline">
+          <span class="ticket">${esc(p.ticketId)}</span>
+          <span class="phase">${esc(p.phase)}</span>
+          <span class="status">${esc(p.status)}</span>
+          <div>${esc(p.detail || "")}</div>
+          ${p.implProgress ? `<div>Implementation: ${esc(String(p.implProgress.current))}/${esc(String(p.implProgress.total))}</div>` : ""}
+          ${p.phaseHistory ? `<details><summary>History (${p.phaseHistory.length})</summary><pre>${esc(JSON.stringify(p.phaseHistory, null, 2))}</pre></details>` : ""}
+        </div>
+      `).join("");
+    }
+
+    function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+  </script>
+</body>
+</html>

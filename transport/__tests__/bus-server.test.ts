@@ -922,3 +922,42 @@ describe("Snapshot-on-connect for /subscribe/status", () => {
     expect(msgData.type).toBe("CLARIFY_COMPLETE");
   });
 });
+
+// ── Dashboard endpoint (BRE-399) ─────────────────────────────────────────────
+
+describe("GET /dashboard", () => {
+  test("returns 200 with text/html Content-Type", async () => {
+    const res = await fetch(`${busUrl}/dashboard`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("text/html");
+  });
+
+  test("response contains required HTML markers", async () => {
+    const res = await fetch(`${busUrl}/dashboard`);
+    const html = await res.text();
+    expect(html).toContain("<!DOCTYPE html>");
+    expect(html).toContain("EventSource");
+    expect(html).toContain("connection-status");
+    expect(html).toContain("pipelines");
+    expect(html).toContain("function esc(");
+  });
+});
+
+// ── CORS headers (BRE-399) ──────────────────────────────────────────────────
+
+describe("CORS headers on SSE endpoints", () => {
+  test("SSE endpoint includes Access-Control-Allow-Origin: * header", async () => {
+    const ac = new AbortController();
+    const res = await fetch(`${busUrl}/subscribe/status`, { signal: ac.signal });
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    ac.abort();
+  });
+
+  test("non-SSE endpoints do not include CORS header", async () => {
+    const statusRes = await fetch(`${busUrl}/status`);
+    expect(statusRes.headers.get("Access-Control-Allow-Origin")).toBeNull();
+
+    const dashRes = await fetch(`${busUrl}/dashboard`);
+    expect(dashRes.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+});
