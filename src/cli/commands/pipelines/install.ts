@@ -30,6 +30,8 @@ export interface InstallOptions {
   lockPath?: string;
   installDir?: string;
   commandsDir?: string;
+  handlersDir?: string;
+  executorsDir?: string;
   force?: boolean;
 }
 
@@ -37,6 +39,8 @@ const DEFAULT_INSTALL_DIR = ".collab/pipelines";
 const DEFAULT_STATE_PATH = ".collab/state/installed-pipelines.json";
 const DEFAULT_LOCK_PATH = "pipeline-lock.json";
 const DEFAULT_COMMANDS_DIR = ".claude/commands";
+const DEFAULT_HANDLERS_DIR = ".collab/handlers";
+const DEFAULT_EXECUTORS_DIR = ".collab/scripts";
 
 export async function install(names: string[], options: InstallOptions = {}): Promise<void> {
   if (names.length === 0) {
@@ -48,6 +52,8 @@ export async function install(names: string[], options: InstallOptions = {}): Pr
   const lockPath = options.lockPath ?? DEFAULT_LOCK_PATH;
   const installDir = options.installDir ?? DEFAULT_INSTALL_DIR;
   const commandsDir = options.commandsDir ?? DEFAULT_COMMANDS_DIR;
+  const handlersDir = options.handlersDir ?? DEFAULT_HANDLERS_DIR;
+  const executorsDir = options.executorsDir ?? DEFAULT_EXECUTORS_DIR;
 
   console.log(`Fetching registry...`);
   let registry;
@@ -217,6 +223,20 @@ export async function install(names: string[], options: InstallOptions = {}): Pr
     if (existsSync(extractedCommandsDir)) {
       mkdirSync(commandsDir, { recursive: true });
       cpSync(extractedCommandsDir, commandsDir, { recursive: true });
+    }
+
+    // Copy handler .ts files into .collab/handlers/
+    const extractedHandlersDir = join(pipelineDir, "handlers");
+    if (existsSync(extractedHandlersDir)) {
+      mkdirSync(handlersDir, { recursive: true });
+      cpSync(extractedHandlersDir, handlersDir, { recursive: true });
+    }
+
+    // Copy executor .ts files into .collab/scripts/
+    const extractedExecutorsDir = join(pipelineDir, "executors");
+    if (existsSync(extractedExecutorsDir)) {
+      mkdirSync(executorsDir, { recursive: true });
+      cpSync(extractedExecutorsDir, executorsDir, { recursive: true });
     }
 
     // Update state

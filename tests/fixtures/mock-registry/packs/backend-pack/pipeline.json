@@ -1,0 +1,20 @@
+{
+  "name": "backend-pack",
+  "type": "pack",
+  "version": "1.0.0",
+  "description": "Backend workflow pack — spec, implementation, and test execution",
+  "author": "Brett Hamlin",
+  "repository": "https://github.com/BrettHamlin/collab-registry",
+  "pipelines": ["specify", "plan", "run-tests"],
+  "dependencies": [
+    { "name": "specify", "version": ">=1.0.0" },
+    { "name": "plan", "version": ">=1.0.0" },
+    { "name": "run-tests", "version": ">=1.0.0" }
+  ],
+  "cliDependencies": [
+    { "name": "bun", "version": ">=1.0.0", "required": true, "installHint": "curl -fsSL https://bun.sh/install | bash" },
+    { "name": "jq", "version": ">=1.6.0", "required": true, "installHint": "brew install jq" }
+  ],
+  "commands": [],
+  "checksum": "backend-pack-checksum"
+}

@@ -1,0 +1,16 @@
+{
+  "name": "verify-execute",
+  "type": "pipeline",
+  "version": "1.0.0",
+  "description": "Verification checklist executor — reads ticket spec, executes checks, emits pass/fail signal",
+  "author": "Brett Hamlin",
+  "repository": "https://github.com/BrettHamlin/collab-registry",
+  "dependencies": [],
+  "cliDependencies": [
+    { "name": "bun", "version": ">=1.0.0", "required": true, "installHint": "curl -fsSL https://bun.sh/install | bash" }
+  ],
+  "commands": ["commands/collab.verify-execute.md"],
+  "handlers": ["handlers/emit-verify-execute-signal.ts"],
+  "executors": ["executors/verify-execute-executor.ts"],
+  "checksum": "verify-execute-checksum"
+}

@@ -158,6 +158,12 @@ describe("collab.install.ts", () => {
       "collab.iosbuild.md",
       "collab.iosverify.md",
       "collab.dependencies.md",
+      // Registry-installable phase commands
+      "collab.run-tests.md",
+      "collab.visual-verify.md",
+      "collab.verify-execute.md",
+      "collab.pre-deploy-confirm.md",
+      "collab.deploy-verify.md",
     ];
 
     for (const f of forbidden) {

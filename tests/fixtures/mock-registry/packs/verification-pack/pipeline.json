@@ -1,0 +1,19 @@
+{
+  "name": "verification-pack",
+  "type": "pack",
+  "version": "1.0.0",
+  "description": "Verification workflow pack — spec creation and checklist-based verification execution",
+  "author": "Brett Hamlin",
+  "repository": "https://github.com/BrettHamlin/collab-registry",
+  "pipelines": ["specify", "verify-execute"],
+  "dependencies": [
+    { "name": "specify", "version": ">=1.0.0" },
+    { "name": "verify-execute", "version": ">=1.0.0" }
+  ],
+  "cliDependencies": [
+    { "name": "bun", "version": ">=1.0.0", "required": true, "installHint": "curl -fsSL https://bun.sh/install | bash" },
+    { "name": "jq", "version": ">=1.6.0", "required": true, "installHint": "brew install jq" }
+  ],
+  "commands": [],
+  "checksum": "verification-pack-checksum"
+}

@@ -27,8 +27,8 @@ describe("parseRegistryIndex", () => {
     const registry = parseRegistryIndex(raw, "test://registry.json");
 
     expect(registry.version).toBe("1");
-    expect(registry.packs).toHaveLength(1);
-    expect(registry.pipelines).toHaveLength(2);
+    expect(registry.packs).toHaveLength(5);
+    expect(registry.pipelines).toHaveLength(7);
     expect(registry.packs[0].name).toBe("specfactory");
     expect(registry.pipelines[0].name).toBe("specify");
   });

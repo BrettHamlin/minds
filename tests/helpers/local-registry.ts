@@ -32,6 +32,14 @@ export interface PipelineSpec {
   commands?: string[];
   /** Command file contents: filename → content (written to commands/ subdir) */
   commandFiles?: Record<string, string>;
+  /** Handler .ts paths listed in pipeline.json handlers[] */
+  handlers?: string[];
+  /** Handler file contents: filename → content (written to handlers/ subdir) */
+  handlerFiles?: Record<string, string>;
+  /** Executor .ts paths listed in pipeline.json executors[] */
+  executors?: string[];
+  /** Executor file contents: filename → content (written to executors/ subdir) */
+  executorFiles?: Record<string, string>;
   /** Pack: list of component pipeline names */
   pipelines?: string[];
   /**
@@ -176,6 +184,8 @@ function buildManifestObj(spec: PipelineSpec): Record<string, unknown> {
     cliDependencies: spec.cliDependencies ?? [],
     commands: spec.commands ?? [],
   };
+  if (spec.handlers) obj.handlers = spec.handlers;
+  if (spec.executors) obj.executors = spec.executors;
   if (spec.pipelines) obj.pipelines = spec.pipelines;
   if (spec.checksumOverride !== undefined) obj.checksum = spec.checksumOverride;
   return obj;
@@ -191,6 +201,18 @@ function buildTarball(buildDir: string, spec: PipelineSpec): Buffer {
   );
   for (const [filename, content] of Object.entries(spec.commandFiles ?? {})) {
     writeFileSync(join(pipelineDir, "commands", filename), content);
+  }
+  if (spec.handlerFiles && Object.keys(spec.handlerFiles).length > 0) {
+    mkdirSync(join(pipelineDir, "handlers"), { recursive: true });
+    for (const [filename, content] of Object.entries(spec.handlerFiles)) {
+      writeFileSync(join(pipelineDir, "handlers", filename), content);
+    }
+  }
+  if (spec.executorFiles && Object.keys(spec.executorFiles).length > 0) {
+    mkdirSync(join(pipelineDir, "executors"), { recursive: true });
+    for (const [filename, content] of Object.entries(spec.executorFiles)) {
+      writeFileSync(join(pipelineDir, "executors", filename), content);
+    }
   }
   const tarPath = join(buildDir, `${rootName}.tar.gz`);
   execSync(`tar -czf "${tarPath}" -C "${buildDir}" "${rootName}"`);

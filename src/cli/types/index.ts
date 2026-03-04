@@ -23,6 +23,10 @@ export interface PipelineManifest {
   cliDependencies?: CliDependency[];
   /** List of command file paths included in the package (relative to package root) */
   commands?: string[];
+  /** Handler .ts file paths to install to .collab/handlers/ (relative to package root) */
+  handlers?: string[];
+  /** Executor .ts file paths to install to .collab/scripts/ (relative to package root) */
+  executors?: string[];
   /** SHA-256 checksum of the package tarball */
   checksum?: string;
 }

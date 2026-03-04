@@ -22,6 +22,10 @@ export interface TestEnv {
   installDir: string;
   /** Absolute path to .claude/commands/ (command files destination) */
   commandsDir: string;
+  /** Absolute path to .collab/handlers/ (handler files destination) */
+  handlersDir: string;
+  /** Absolute path to .collab/scripts/ (executor files destination) */
+  executorsDir: string;
   /** Remove the temp directory — call in afterEach */
   cleanup: () => Promise<void>;
 }
@@ -36,10 +40,14 @@ export async function createTestEnv(): Promise<TestEnv> {
   const lockPath = join(projectRoot, "pipeline-lock.json");
   const installDir = join(projectRoot, ".collab", "pipelines");
   const commandsDir = join(projectRoot, ".claude", "commands");
+  const handlersDir = join(projectRoot, ".collab", "handlers");
+  const executorsDir = join(projectRoot, ".collab", "scripts");
 
   mkdirSync(join(projectRoot, ".collab", "state"), { recursive: true });
   mkdirSync(installDir, { recursive: true });
   mkdirSync(commandsDir, { recursive: true });
+  mkdirSync(handlersDir, { recursive: true });
+  mkdirSync(executorsDir, { recursive: true });
 
   return {
     projectRoot,
@@ -47,6 +55,8 @@ export async function createTestEnv(): Promise<TestEnv> {
     lockPath,
     installDir,
     commandsDir,
+    handlersDir,
+    executorsDir,
     cleanup: async () => {
       try {
         rmSync(projectRoot, { recursive: true, force: true });

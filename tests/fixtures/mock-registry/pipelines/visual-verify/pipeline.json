@@ -1,0 +1,16 @@
+{
+  "name": "visual-verify",
+  "type": "pipeline",
+  "version": "1.0.0",
+  "description": "Browser visual verification — checks DOM structure and visual diff, emits pass/fail signal",
+  "author": "Brett Hamlin",
+  "repository": "https://github.com/BrettHamlin/collab-registry",
+  "dependencies": [],
+  "cliDependencies": [
+    { "name": "bun", "version": ">=1.0.0", "required": true, "installHint": "curl -fsSL https://bun.sh/install | bash" }
+  ],
+  "commands": ["commands/collab.visual-verify.md"],
+  "handlers": ["handlers/emit-visual-verify-signal.ts"],
+  "executors": ["executors/visual-verify-executor.ts"],
+  "checksum": "visual-verify-checksum"
+}

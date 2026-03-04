@@ -7,6 +7,10 @@
  *  1. Install pack — both component pipelines installed, lockfile has resolved map
  *  2. Remove pack — state pack entry removed (component pipelines remain)
  *  3. Install pack then install overlapping component — no duplicate, state consistent
+ *  4. Install pipeline with handlers — handler files placed in .collab/handlers/
+ *  5. Install pipeline with executors — executor files placed in .collab/scripts/
+ *  6. Install pipeline with both handlers + executors — both directories populated
+ *  7. Install pack with handler/executor pipelines — all files placed correctly
  */
 
 import { describe, test, expect, afterEach } from "bun:test";
@@ -153,5 +157,180 @@ describe("pack-install: overlapping component install", () => {
     const specifyKeys = Object.keys(state.pipelines).filter((k) => k === "specify");
     expect(specifyKeys).toHaveLength(1);
     expect(state.pipelines.specify.version).toBe("1.2.0");
+  });
+});
+
+// ─── Test 4: handler files placed correctly ───────────────────────────────────
+
+describe("pack-install: pipeline with handlers", () => {
+  test("handler .ts files placed in .collab/handlers/", async () => {
+    env = await createTestEnv();
+    registry = await startLocalRegistry([
+      {
+        name: "run-tests",
+        version: "1.0.0",
+        commands: ["commands/collab.run-tests.md"],
+        commandFiles: { "collab.run-tests.md": "# run-tests\n" },
+        handlers: ["handlers/emit-run-tests-signal.ts"],
+        handlerFiles: { "emit-run-tests-signal.ts": "// emit-run-tests-signal\n" },
+      },
+    ]);
+
+    await install(["run-tests"], {
+      registryUrl: registry.registryUrl,
+      statePath: env.statePath,
+      lockPath: env.lockPath,
+      installDir: env.installDir,
+      commandsDir: env.commandsDir,
+      handlersDir: env.handlersDir,
+      executorsDir: env.executorsDir,
+    });
+
+    // Command file placed
+    expect(existsSync(join(env.commandsDir, "collab.run-tests.md"))).toBe(true);
+    // Handler placed in .collab/handlers/
+    expect(existsSync(join(env.handlersDir, "emit-run-tests-signal.ts"))).toBe(true);
+    // State updated
+    const state = readState(env.statePath);
+    expect(state.pipelines["run-tests"]).toBeDefined();
+  });
+});
+
+// ─── Test 5: executor files placed correctly ──────────────────────────────────
+
+describe("pack-install: pipeline with executors", () => {
+  test("executor .ts files placed in .collab/scripts/", async () => {
+    env = await createTestEnv();
+    registry = await startLocalRegistry([
+      {
+        name: "visual-verify",
+        version: "1.0.0",
+        commands: ["commands/collab.visual-verify.md"],
+        commandFiles: { "collab.visual-verify.md": "# visual-verify\n" },
+        executors: ["executors/visual-verify-executor.ts"],
+        executorFiles: { "visual-verify-executor.ts": "// visual-verify-executor\n" },
+      },
+    ]);
+
+    await install(["visual-verify"], {
+      registryUrl: registry.registryUrl,
+      statePath: env.statePath,
+      lockPath: env.lockPath,
+      installDir: env.installDir,
+      commandsDir: env.commandsDir,
+      handlersDir: env.handlersDir,
+      executorsDir: env.executorsDir,
+    });
+
+    // Command file placed
+    expect(existsSync(join(env.commandsDir, "collab.visual-verify.md"))).toBe(true);
+    // Executor placed in .collab/scripts/
+    expect(existsSync(join(env.executorsDir, "visual-verify-executor.ts"))).toBe(true);
+    // State updated
+    const state = readState(env.statePath);
+    expect(state.pipelines["visual-verify"]).toBeDefined();
+  });
+});
+
+// ─── Test 6: pipeline with both handlers + executors ─────────────────────────
+
+describe("pack-install: pipeline with handlers and executors", () => {
+  test("both handler and executor files placed correctly", async () => {
+    env = await createTestEnv();
+    registry = await startLocalRegistry([
+      {
+        name: "deploy-verify",
+        version: "1.0.0",
+        commands: ["commands/collab.deploy-verify.md"],
+        commandFiles: { "collab.deploy-verify.md": "# deploy-verify\n" },
+        handlers: ["handlers/emit-deploy-verify-signal.ts"],
+        handlerFiles: { "emit-deploy-verify-signal.ts": "// emit-deploy-verify-signal\n" },
+        executors: ["executors/deploy-verify-executor.ts"],
+        executorFiles: { "deploy-verify-executor.ts": "// deploy-verify-executor\n" },
+      },
+    ]);
+
+    await install(["deploy-verify"], {
+      registryUrl: registry.registryUrl,
+      statePath: env.statePath,
+      lockPath: env.lockPath,
+      installDir: env.installDir,
+      commandsDir: env.commandsDir,
+      handlersDir: env.handlersDir,
+      executorsDir: env.executorsDir,
+    });
+
+    // All three file types placed
+    expect(existsSync(join(env.commandsDir, "collab.deploy-verify.md"))).toBe(true);
+    expect(existsSync(join(env.handlersDir, "emit-deploy-verify-signal.ts"))).toBe(true);
+    expect(existsSync(join(env.executorsDir, "deploy-verify-executor.ts"))).toBe(true);
+    // State updated
+    const state = readState(env.statePath);
+    expect(state.pipelines["deploy-verify"]).toBeDefined();
+  });
+});
+
+// ─── Test 7: pack install — all handler/executor files placed ─────────────────
+
+describe("pack-install: pack with handler/executor pipelines", () => {
+  test("backend-pack install places commands, handlers, and executors for all components", async () => {
+    env = await createTestEnv();
+
+    const SPECIFY_WITH_FILES = {
+      name: "specify",
+      version: "1.2.0",
+      commands: ["commands/collab.specify.md"],
+      commandFiles: { "collab.specify.md": "# specify\n" },
+    };
+    const RUN_TESTS_WITH_FILES = {
+      name: "run-tests",
+      version: "1.0.0",
+      commands: ["commands/collab.run-tests.md"],
+      commandFiles: { "collab.run-tests.md": "# run-tests\n" },
+      handlers: ["handlers/emit-run-tests-signal.ts"],
+      handlerFiles: { "emit-run-tests-signal.ts": "// emit-run-tests-signal\n" },
+      executors: ["executors/run-tests-executor.ts"],
+      executorFiles: { "run-tests-executor.ts": "// run-tests-executor\n" },
+    };
+    const BACKEND_PACK_SPEC = {
+      name: "backend-pack",
+      version: "1.0.0",
+      type: "pack" as const,
+      description: "Backend workflow pack",
+      dependencies: [
+        { name: "specify", version: ">=1.0.0" },
+        { name: "run-tests", version: ">=1.0.0" },
+      ],
+      pipelines: ["specify", "run-tests"],
+      commands: [],
+    };
+
+    registry = await startLocalRegistry(
+      [SPECIFY_WITH_FILES, RUN_TESTS_WITH_FILES],
+      [BACKEND_PACK_SPEC]
+    );
+
+    await install(["backend-pack"], {
+      registryUrl: registry.registryUrl,
+      statePath: env.statePath,
+      lockPath: env.lockPath,
+      installDir: env.installDir,
+      commandsDir: env.commandsDir,
+      handlersDir: env.handlersDir,
+      executorsDir: env.executorsDir,
+    });
+
+    // Both pipelines in state
+    const state = readState(env.statePath);
+    expect(state.pipelines.specify).toBeDefined();
+    expect(state.pipelines["run-tests"]).toBeDefined();
+
+    // Command files placed for both
+    expect(existsSync(join(env.commandsDir, "collab.specify.md"))).toBe(true);
+    expect(existsSync(join(env.commandsDir, "collab.run-tests.md"))).toBe(true);
+
+    // Handler and executor for run-tests placed
+    expect(existsSync(join(env.handlersDir, "emit-run-tests-signal.ts"))).toBe(true);
+    expect(existsSync(join(env.executorsDir, "run-tests-executor.ts"))).toBe(true);
   });
 });
