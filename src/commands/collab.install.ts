@@ -318,7 +318,12 @@ console.log("Runtime files installed");
 
 const statePath = join(repoRoot, ".collab/state/installed-pipelines.json");
 if (!existsSync(statePath)) {
-  writeFileSync(statePath, "{}");
+  const initialState = JSON.stringify(
+    { version: "1", installedAt: new Date().toISOString(), pipelines: {}, clis: {} },
+    null,
+    2
+  ) + "\n";
+  writeFileSync(statePath, initialState);
   console.log("State initialized: .collab/state/installed-pipelines.json");
 } else {
   console.log("State file exists — preserving");
