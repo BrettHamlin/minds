@@ -743,5 +743,5 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-  main();
+  main().then(() => process.exit(0));
 }
