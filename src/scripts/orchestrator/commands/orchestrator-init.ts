@@ -83,6 +83,18 @@ interface RollbackState {
 // ---------------------------------------------------------------------------
 
 /**
+ * Resolves the absolute path to a transport script file.
+ * Checks installed location (.collab/transport/) first (for production use
+ * after `collab.install.ts` is run), falls back to development location
+ * (transport/ at repo root, used during collab development).
+ */
+export function resolveTransportFile(repoRoot: string, filename: string): string {
+  const installed = path.join(repoRoot, ".collab", "transport", filename);
+  if (fs.existsSync(installed)) return installed;
+  return path.join(repoRoot, "transport", filename);
+}
+
+/**
  * Reads the transport from the resolved pipeline config file.
  * COLLAB_TRANSPORT env var acts as an override/fallback for testing.
  */
@@ -114,7 +126,7 @@ export function injectBusEnv(spawnCmd: string, busUrl: string): string {
  * Also writes the port to .collab/bus-port (done by bus-server.ts itself).
  */
 export function startBusServer(repoRoot: string): Promise<{ pid: number; url: string }> {
-  const serverPath = path.join(repoRoot, "transport", "bus-server.ts");
+  const serverPath = resolveTransportFile(repoRoot, "bus-server.ts");
   if (!fs.existsSync(serverPath)) {
     return Promise.reject(
       new OrchestratorError("FILE_NOT_FOUND", `Bus server not found: ${serverPath}`)
@@ -188,7 +200,7 @@ export function startBusSignalBridge(
   channel: string,
   orchestratorPane: string
 ): { pid: number } {
-  const bridgePath = path.join(repoRoot, "transport", "bus-signal-bridge.ts");
+  const bridgePath = resolveTransportFile(repoRoot, "bus-signal-bridge.ts");
   const proc = spawn("bun", [bridgePath, busUrl, channel, orchestratorPane], {
     cwd: repoRoot,
     stdio: "ignore",
@@ -211,7 +223,7 @@ export function startBusCommandBridge(
   channel: string,
   agentPane: string
 ): { pid: number } {
-  const bridgePath = path.join(repoRoot, "transport", "bus-command-bridge.ts");
+  const bridgePath = resolveTransportFile(repoRoot, "bus-command-bridge.ts");
   const proc = spawn("bun", [bridgePath, busUrl, channel, agentPane], {
     cwd: repoRoot,
     stdio: "ignore",

@@ -499,6 +499,9 @@ System nodes — all are non-fatal (exit 2 or 3 = log warning and continue):
 4. Gate accuracy (evaluates gate decisions — runs after complete-run, which sets `runs.outcome`):
    `bun .collab/scripts/orchestrator/gate-accuracy-check.ts {ticket_id}`
 
+4b. Bus teardown (if transport=bus — kills bus server + bridges, removes .collab/bus-port):
+   `bun .collab/scripts/orchestrator/commands/teardown-bus.ts {ticket_id}`
+
 Cleanup:
 5. `rm .collab/state/pipeline-registry/{ticket_id}.json`
 6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"

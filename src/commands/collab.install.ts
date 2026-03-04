@@ -22,20 +22,42 @@ try {
 
 console.log(`Installing collab into: ${repoRoot}`);
 
-// Create temp directory for cloning
-const tempDir = `/tmp/collab-install-${process.pid}`;
+// Support --local <path> to install from a local directory instead of cloning
+const localIdx = process.argv.indexOf("--local");
+const localPath = localIdx !== -1 ? process.argv[localIdx + 1] : null;
 
-console.log("Cloning collab from GitHub (dev branch)...");
-try {
-  execSync(
-    `git clone --depth 1 --branch dev https://github.com/BrettHamlin/collab "${tempDir}"`,
-    { stdio: "inherit" }
-  );
-} catch {
-  console.log("ERROR: Failed to clone collab repository");
-  process.exit(1);
+let tempDir: string;
+if (localPath) {
+  tempDir = join(process.cwd(), localPath).startsWith("/")
+    ? localPath
+    : join(process.cwd(), localPath);
+  // Resolve to absolute path
+  try {
+    const { execSync: exec2 } = await import("child_process");
+    tempDir = exec2(`cd "${localPath}" && pwd`, { encoding: "utf-8" }).trim();
+  } catch {
+    // If cd fails, use as-is
+    tempDir = localPath;
+  }
+  if (!existsSync(tempDir)) {
+    console.log(`ERROR: Local path does not exist: ${tempDir}`);
+    process.exit(1);
+  }
+  console.log(`Installing from local path: ${tempDir}`);
+} else {
+  tempDir = `/tmp/collab-install-${process.pid}`;
+  console.log("Cloning collab from GitHub (dev branch)...");
+  try {
+    execSync(
+      `git clone --depth 1 --branch dev https://github.com/BrettHamlin/collab "${tempDir}"`,
+      { stdio: "inherit" }
+    );
+  } catch {
+    console.log("ERROR: Failed to clone collab repository");
+    process.exit(1);
+  }
+  console.log("Clone successful");
 }
-console.log("Clone successful");
 
 // Create directory structure
 console.log("Creating directory structure...");
@@ -45,6 +67,8 @@ const dirs = [
   ".collab/handlers",
   ".collab/memory",
   ".collab/scripts/orchestrator",
+  ".collab/scripts/orchestrator/commands",
+  ".collab/transport",
   ".collab/config/pipeline-variants",
   ".collab/state/pipeline-registry",
   ".collab/state/pipeline-groups",
@@ -102,10 +126,10 @@ execSync(
 const handlerCount = readdirSync(join(repoRoot, ".collab/handlers"))
   .filter((f) => f.endsWith(".ts")).length;
 
-// Copy orchestrator scripts
+// Copy orchestrator scripts (preserve commands/ subdirectory structure)
 console.log("  -> Orchestrator scripts...");
 execSync(
-  `find "${tempDir}/src/scripts/orchestrator" \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" -exec cp {} "${repoRoot}/.collab/scripts/orchestrator/" \\;`,
+  `cd "${tempDir}/src/scripts/orchestrator" && find . \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" -exec sh -c 'mkdir -p "${repoRoot}/.collab/scripts/orchestrator/$(dirname "$1")" && cp "$1" "${repoRoot}/.collab/scripts/orchestrator/$1"' _ {} \\;`,
   { shell: true }
 );
 execSync(
@@ -116,6 +140,23 @@ const orchestratorScriptCount = execSync(
   `find "${repoRoot}/.collab/scripts/orchestrator" \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" 2>/dev/null | wc -l`,
   { encoding: "utf-8", shell: true }
 ).trim();
+
+// Copy transport scripts (bus-server, bridges, etc.)
+console.log("  -> Transport scripts...");
+const transportSrc = join(tempDir, "transport");
+if (existsSync(transportSrc)) {
+  execSync(
+    `find "${transportSrc}" -maxdepth 1 -name "*.ts" ! -name "*.test.ts" -exec cp {} "${repoRoot}/.collab/transport/" \\;`,
+    { shell: true }
+  );
+  execSync(
+    `find "${repoRoot}/.collab/transport" -name "*.ts" -exec chmod +x {} \\;`,
+    { shell: true }
+  );
+  console.log("  -> Transport scripts copied");
+} else {
+  console.log("  Warning: No transport directory found in source");
+}
 
 // Copy non-orchestrator collab scripts
 console.log("  -> Collab scripts...");
@@ -290,14 +331,16 @@ if (existsSync(join(repoRoot, ".collab/handlers/emit-question-signal.ts"))) {
 
 console.log("Verification complete");
 
-// Clean up
-console.log("Cleaning up...");
-try {
-  execSync(`rm -rf "${tempDir}"`, { shell: true });
-} catch {
-  console.log("  Temp files in /tmp will be auto-cleaned by system");
+// Clean up (skip when --local was used — don't delete the source directory)
+if (!localPath) {
+  console.log("Cleaning up...");
+  try {
+    execSync(`rm -rf "${tempDir}"`, { shell: true });
+  } catch {
+    console.log("  Temp files in /tmp will be auto-cleaned by system");
+  }
+  console.log("Cleanup complete");
 }
-console.log("Cleanup complete");
 
 // Report installation summary
 console.log("");
