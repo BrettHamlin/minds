@@ -14,58 +14,40 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 
 `$ARGUMENTS` = one or more `ticket:pipeline` pairs (e.g., `BRE-342:default BRE-341:mobile`). The `:pipeline` suffix is optional; when omitted, the ticket's Linear labels are checked for a `pipeline:*` label (e.g., `pipeline:backend`). If found, that variant is used; otherwise defaults to `"default"`.
 
-### Pre-parse: Resolve tickets via `resolve-tickets.ts`
+### Pre-parse: Classify arguments via `resolve-tickets.ts`
 
-Before parsing ticket tokens, run the resolve-tickets CLI. It classifies each argument as a ticket ID (with or without variant) or a project name, queries Linear for project tickets, and resolves pipeline variants from `pipeline:*` labels.
-
-Pass each space-separated token from `$ARGUMENTS` as a separate quoted argument:
+Run the CLI to classify each argument as a ticket ID or project name. The CLI does **no API calls** — it only classifies arguments deterministically.
 
 ```bash
-RESOLVED=$(bun .collab/scripts/orchestrator/commands/resolve-tickets.ts {TOKEN_1} {TOKEN_2} ... 2>/tmp/resolve-tickets-err)
-RESOLVE_EXIT=$?
+CLASSIFIED=$(bun .collab/scripts/orchestrator/commands/resolve-tickets.ts {TOKEN_1} {TOKEN_2} ... 2>/tmp/resolve-tickets-err)
 ```
 
-**On non-zero exit (exit 1 or 2)** — output the contents of `/tmp/resolve-tickets-err` and stop.
+On non-zero exit, output the error from `/tmp/resolve-tickets-err` and stop.
 
-**On exit 3** (project found, zero open tickets) — output the error message and stop.
-
-**Parse the JSON on stdout:**
-
-#### Case A — `"ambiguous": true` in output (project name matched multiple Linear projects)
-
+The CLI outputs JSON:
 ```json
-{"ambiguous": true, "query": "Collab", "projects": [{"id": "...", "name": "Collab Core"}, ...]}
+{
+  "ticketsWithVariant": [{"ticket": "BRE-342", "variant": "backend"}],
+  "ticketsNoVariant": ["BRE-339"],
+  "projectNames": ["Collab Install"]
+}
 ```
 
-Use `AskUserQuestion` (single-select) to disambiguate:
-- Question: `"Multiple Linear projects match '<query>'. Which one did you mean?"`
-- One option per project: `label = project name`
+### Resolve via MCP tools
 
-Then re-run with the chosen project ID, passing any explicit ticket tokens through unchanged:
+Use the Linear MCP tools (already authenticated) to resolve any items that need API access:
 
-```bash
-RESOLVED=$(bun .collab/scripts/orchestrator/commands/resolve-tickets.ts --project-id {chosen_id} {EXPLICIT_TICKET_TOKENS} 2>/tmp/resolve-tickets-err)
-RESOLVE_EXIT=$?
-```
+1. **`projectNames`** — For each project name, call `list_issues` MCP with `project: "<name>"` and `state: "started"`, then also with `state: "unstarted"`, to get all non-done tickets. For each returned issue, check its labels for `pipeline:*` to determine the variant (default to `"default"`).
 
-On non-zero exit, output the error and stop.
+2. **`ticketsNoVariant`** — For each bare ticket ID, call `get_issue` MCP to fetch the ticket and scan its labels for `pipeline:*`. If found, use that variant; otherwise default to `"default"`.
 
-#### Case B — Array output (resolved ticket list)
-
-Proceed directly — use all tickets in the array. No confirmation prompt needed. The user asked for all open tickets in the project; give them all open tickets.
-
-**After pre-parse**, the result is a list of `{ticket, variant}` pairs. Use these to populate `TICKETS` for the steps below. Pipeline variants are already resolved — the "Parse Arguments" section does not need to call `get_issue` for label lookup on these tickets.
-
----
+3. **`ticketsWithVariant`** — Use directly as-is. No API call needed.
 
 ### Parse Arguments
 
-Extract from the pre-parse result (the confirmed `{ticket, variant}` list from `resolve-tickets.ts`):
-- **TICKETS**: array of `{ticket_id, pipeline}` objects. Each item maps directly:
-  - `ticket` → `ticket_id`
-  - `variant` → `pipeline`
-- Pipeline variants are already resolved by `resolve-tickets.ts` — no additional `get_issue` label lookup is needed here. For reference, `resolve-tickets.ts` uses the same label logic as the original inline parse: a `pipeline:*` label (e.g. `pipeline:verification`) sets the variant; when absent the ticket defaults to `{ticket_id: "BRE-339", pipeline: "default"}`.
-- At least one ticket is required (enforced by resolve-tickets.ts; pre-parse stops with an error if no tickets are confirmed).
+Combine all resolved tickets into the **TICKETS** array:
+- **TICKETS**: array of `{ticket_id, pipeline}` objects.
+- At least one ticket is required. If the combined result is empty, report the error and stop.
 
 Use `{TICKET_ID}` and `{PIPELINE[TICKET_ID]}` (the per-ticket pipeline name) in all bun script calls. Never use a single shared pipeline name across all tickets.
 

@@ -1,167 +1,98 @@
 /**
  * Unit tests for src/scripts/orchestrator/commands/resolve-tickets.ts
  *
- * Tests cover the exported pure functions only — no Linear API calls made.
- * Subprocess / E2E tests are in tests/e2e/resolve-tickets.test.ts.
+ * Tests cover the exported pure functions — no API calls, no subprocess needed.
  */
 
 import { describe, test, expect } from "bun:test";
 
-// Import the exports directly (no subprocess needed for pure functions)
 import {
   resolvePipelineVariant,
+  classifyArgs,
 } from "../../src/scripts/orchestrator/commands/resolve-tickets.ts";
 
-// Re-export the regex from the module for testing. Since TICKET_RE is a
-// module-level const (not exported), we replicate it here. If it ever changes,
-// this test will catch the divergence.
-const TICKET_RE = /^([A-Z]+-\d+)(?::(\w+))?$/;
-
 // ---------------------------------------------------------------------------
-// TICKET_RE — argument classification
+// classifyArgs — argument classification
 // ---------------------------------------------------------------------------
 
-describe("TICKET_RE regex", () => {
-  describe("valid ticket IDs (should match)", () => {
+describe("classifyArgs", () => {
+  describe("ticket ID detection", () => {
     test("bare ticket ID: BRE-123", () => {
-      const m = "BRE-123".match(TICKET_RE);
-      expect(m).not.toBeNull();
-      expect(m![1]).toBe("BRE-123");
-      expect(m![2]).toBeUndefined();
+      const result = classifyArgs(["BRE-123"]);
+      expect(result.ticketsNoVariant).toEqual(["BRE-123"]);
+      expect(result.ticketsWithVariant).toEqual([]);
+      expect(result.projectNames).toEqual([]);
     });
 
     test("ticket with variant: BRE-123:backend", () => {
-      const m = "BRE-123:backend".match(TICKET_RE);
-      expect(m).not.toBeNull();
-      expect(m![1]).toBe("BRE-123");
-      expect(m![2]).toBe("backend");
+      const result = classifyArgs(["BRE-123:backend"]);
+      expect(result.ticketsWithVariant).toEqual([{ ticket: "BRE-123", variant: "backend" }]);
+      expect(result.ticketsNoVariant).toEqual([]);
+      expect(result.projectNames).toEqual([]);
     });
 
-    test("ticket with variant: BRE-999:custom", () => {
-      const m = "BRE-999:custom".match(TICKET_RE);
-      expect(m).not.toBeNull();
-      expect(m![1]).toBe("BRE-999");
-      expect(m![2]).toBe("custom");
-    });
-
-    test("ticket with multi-char prefix: PROJ-42", () => {
-      const m = "PROJ-42".match(TICKET_RE);
-      expect(m).not.toBeNull();
-      expect(m![1]).toBe("PROJ-42");
-    });
-
-    test("ticket with variant: PROJ-42:mobile", () => {
-      const m = "PROJ-42:mobile".match(TICKET_RE);
-      expect(m).not.toBeNull();
-      expect(m![1]).toBe("PROJ-42");
-      expect(m![2]).toBe("mobile");
+    test("multi-char prefix: PROJ-42:mobile", () => {
+      const result = classifyArgs(["PROJ-42:mobile"]);
+      expect(result.ticketsWithVariant).toEqual([{ ticket: "PROJ-42", variant: "mobile" }]);
     });
   });
 
-  describe("project names (should NOT match)", () => {
+  describe("project name detection", () => {
     test("project name: 'Collab Install'", () => {
-      expect("Collab Install".match(TICKET_RE)).toBeNull();
+      const result = classifyArgs(["Collab Install"]);
+      expect(result.projectNames).toEqual(["Collab Install"]);
+      expect(result.ticketsWithVariant).toEqual([]);
+      expect(result.ticketsNoVariant).toEqual([]);
     });
 
-    test("project name: 'Collab'", () => {
-      expect("Collab".match(TICKET_RE)).toBeNull();
+    test("single word project: 'Collab'", () => {
+      const result = classifyArgs(["Collab"]);
+      expect(result.projectNames).toEqual(["Collab"]);
     });
 
-    test("project name with spaces: 'My Feature Project'", () => {
-      expect("My Feature Project".match(TICKET_RE)).toBeNull();
+    test("lowercase ticket-like string: bre-123 (not a ticket)", () => {
+      const result = classifyArgs(["bre-123"]);
+      expect(result.projectNames).toEqual(["bre-123"]);
+      expect(result.ticketsNoVariant).toEqual([]);
     });
 
-    test("lowercase ticket ID: bre-123 (must be uppercase)", () => {
-      expect("bre-123".match(TICKET_RE)).toBeNull();
-    });
-
-    test("mixed case: Bre-123", () => {
-      expect("Bre-123".match(TICKET_RE)).toBeNull();
-    });
-
-    test("no digits: BRE-abc", () => {
-      expect("BRE-abc".match(TICKET_RE)).toBeNull();
+    test("no digits: BRE-abc (not a ticket)", () => {
+      const result = classifyArgs(["BRE-abc"]);
+      expect(result.projectNames).toEqual(["BRE-abc"]);
     });
   });
-});
 
-// ---------------------------------------------------------------------------
-// Argument classification buckets
-// ---------------------------------------------------------------------------
+  describe("mixed arguments", () => {
+    test("pure explicit with variants", () => {
+      const result = classifyArgs(["BRE-342:default", "BRE-341:mobile"]);
+      expect(result.ticketsWithVariant).toEqual([
+        { ticket: "BRE-342", variant: "default" },
+        { ticket: "BRE-341", variant: "mobile" },
+      ]);
+      expect(result.ticketsNoVariant).toEqual([]);
+      expect(result.projectNames).toEqual([]);
+    });
 
-describe("argument classification into buckets", () => {
-  function classify(args: string[]) {
-    const explicitWithVariant: { ticket: string; variant: string }[] = [];
-    const explicitNoVariant: string[] = [];
-    const projectNames: string[] = [];
+    test("pure bare tickets", () => {
+      const result = classifyArgs(["BRE-339", "BRE-340"]);
+      expect(result.ticketsWithVariant).toEqual([]);
+      expect(result.ticketsNoVariant).toEqual(["BRE-339", "BRE-340"]);
+      expect(result.projectNames).toEqual([]);
+    });
 
-    for (const arg of args) {
-      const m = arg.match(TICKET_RE);
-      if (m) {
-        if (m[2]) {
-          explicitWithVariant.push({ ticket: m[1], variant: m[2] });
-        } else {
-          explicitNoVariant.push(m[1]);
-        }
-      } else {
-        projectNames.push(arg);
-      }
-    }
+    test("project name + ticket:variant", () => {
+      const result = classifyArgs(["Collab Install", "BRE-999:custom"]);
+      expect(result.ticketsWithVariant).toEqual([{ ticket: "BRE-999", variant: "custom" }]);
+      expect(result.ticketsNoVariant).toEqual([]);
+      expect(result.projectNames).toEqual(["Collab Install"]);
+    });
 
-    return { explicitWithVariant, explicitNoVariant, projectNames };
-  }
-
-  test("pure explicit with variants", () => {
-    const { explicitWithVariant, explicitNoVariant, projectNames } = classify([
-      "BRE-342:default",
-      "BRE-341:mobile",
-    ]);
-    expect(explicitWithVariant).toEqual([
-      { ticket: "BRE-342", variant: "default" },
-      { ticket: "BRE-341", variant: "mobile" },
-    ]);
-    expect(explicitNoVariant).toEqual([]);
-    expect(projectNames).toEqual([]);
-  });
-
-  test("pure explicit without variants", () => {
-    const { explicitWithVariant, explicitNoVariant, projectNames } = classify([
-      "BRE-339",
-      "BRE-340",
-    ]);
-    expect(explicitWithVariant).toEqual([]);
-    expect(explicitNoVariant).toEqual(["BRE-339", "BRE-340"]);
-    expect(projectNames).toEqual([]);
-  });
-
-  test("pure project name", () => {
-    const { explicitWithVariant, explicitNoVariant, projectNames } = classify([
-      "Collab Install",
-    ]);
-    expect(explicitWithVariant).toEqual([]);
-    expect(explicitNoVariant).toEqual([]);
-    expect(projectNames).toEqual(["Collab Install"]);
-  });
-
-  test("mixed: project name + explicit with variant (AC9)", () => {
-    const { explicitWithVariant, explicitNoVariant, projectNames } = classify([
-      "Collab Install",
-      "BRE-999:custom",
-    ]);
-    expect(explicitWithVariant).toEqual([{ ticket: "BRE-999", variant: "custom" }]);
-    expect(explicitNoVariant).toEqual([]);
-    expect(projectNames).toEqual(["Collab Install"]);
-  });
-
-  test("mixed: project name + bare ticket + variant ticket", () => {
-    const { explicitWithVariant, explicitNoVariant, projectNames } = classify([
-      "Collab",
-      "BRE-100",
-      "BRE-200:backend",
-    ]);
-    expect(explicitWithVariant).toEqual([{ ticket: "BRE-200", variant: "backend" }]);
-    expect(explicitNoVariant).toEqual(["BRE-100"]);
-    expect(projectNames).toEqual(["Collab"]);
+    test("project name + bare ticket + variant ticket", () => {
+      const result = classifyArgs(["Collab", "BRE-100", "BRE-200:backend"]);
+      expect(result.ticketsWithVariant).toEqual([{ ticket: "BRE-200", variant: "backend" }]);
+      expect(result.ticketsNoVariant).toEqual(["BRE-100"]);
+      expect(result.projectNames).toEqual(["Collab"]);
+    });
   });
 });
 
