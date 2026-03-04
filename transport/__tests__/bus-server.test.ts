@@ -7,6 +7,9 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createServer } from "../bus-server.ts";
 import { BusTransport } from "../BusTransport.ts";
 import type { BusMessage } from "../bus-server.ts";
+import { mkdirSync, writeFileSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 
 // ── Test harness ─────────────────────────────────────────────────────────────
 
@@ -14,7 +17,7 @@ let server: ReturnType<typeof createServer>;
 let busUrl: string;
 
 beforeEach(() => {
-  server = createServer(0); // port 0 = OS-assigned
+  server = createServer({ port: 0 }); // port 0 = OS-assigned
   busUrl = `http://localhost:${server.port}`;
 });
 
@@ -361,5 +364,265 @@ describe("404 for unknown routes", () => {
   test("returns 404 for unknown path", async () => {
     const res = await fetch(`${busUrl}/unknown`);
     expect(res.status).toBe(404);
+  });
+});
+
+// ── Snapshot-on-connect (BRE-397) ────────────────────────────────────────────
+
+// Helper to parse SSE frames from a ReadableStream
+async function collectSseFrames(
+  url: string,
+  opts: { maxFrames: number; timeoutMs?: number; headers?: Record<string, string> },
+): Promise<Array<{ event?: string; id?: string; data?: string }>> {
+  const frames: Array<{ event?: string; id?: string; data?: string }> = [];
+  const ac = new AbortController();
+  const timeout = opts.timeoutMs ?? 2000;
+
+  const done = (async () => {
+    const res = await fetch(url, {
+      signal: ac.signal,
+      headers: opts.headers,
+    });
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const rawFrames = buf.split("\n\n");
+      buf = rawFrames.pop() ?? "";
+      for (const raw of rawFrames) {
+        const frame: { event?: string; id?: string; data?: string } = {};
+        for (const line of raw.split("\n")) {
+          if (line.startsWith("event: ")) frame.event = line.slice(7);
+          else if (line.startsWith("id: ")) frame.id = line.slice(4);
+          else if (line.startsWith("data: ")) frame.data = line.slice(6);
+        }
+        frames.push(frame);
+        if (frames.length >= opts.maxFrames) {
+          ac.abort();
+          return;
+        }
+      }
+    }
+  })().catch(() => {});
+
+  await Promise.race([done, Bun.sleep(timeout).then(() => ac.abort())]);
+  return frames;
+}
+
+function createRegistryDir(): string {
+  const dir = join(tmpdir(), `bus-snapshot-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+describe("Snapshot-on-connect for /subscribe/status", () => {
+  let regDir: string;
+  let snapshotServer: ReturnType<typeof createServer>;
+  let snapshotUrl: string;
+
+  beforeEach(() => {
+    regDir = createRegistryDir();
+  });
+
+  afterEach(() => {
+    snapshotServer?.stop(true);
+    rmSync(regDir, { recursive: true, force: true });
+  });
+
+  test("new status subscriber receives snapshot event as first message", async () => {
+    // Write a mock registry file
+    writeFileSync(
+      join(regDir, "BRE-500.json"),
+      JSON.stringify({
+        ticket_id: "BRE-500",
+        current_step: "implement",
+        bus_url: "http://localhost:9999",
+        started_at: "2026-03-04T10:00:00Z",
+      }),
+      "utf8",
+    );
+
+    snapshotServer = createServer({ port: 0, registryDir: regDir });
+    snapshotUrl = `http://localhost:${snapshotServer.port}`;
+
+    const frames = await collectSseFrames(`${snapshotUrl}/subscribe/status`, {
+      maxFrames: 1,
+      timeoutMs: 2000,
+    });
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0].event).toBe("snapshot");
+    expect(frames[0].id).toBeDefined();
+
+    const data = JSON.parse(frames[0].data!);
+    expect(data.type).toBe("snapshot");
+    expect(data.pipelines).toHaveLength(1);
+    expect(data.pipelines[0].ticketId).toBe("BRE-500");
+    expect(data.pipelines[0].phase).toBe("implement");
+    expect(data.pipelines[0].status).toBe("running");
+    expect(data.pipelines[0].busUrl).toBe("http://localhost:9999");
+  });
+
+  test("empty registry returns snapshot with empty pipelines array", async () => {
+    // regDir is empty — no registry files
+    snapshotServer = createServer({ port: 0, registryDir: regDir });
+    snapshotUrl = `http://localhost:${snapshotServer.port}`;
+
+    const frames = await collectSseFrames(`${snapshotUrl}/subscribe/status`, {
+      maxFrames: 1,
+      timeoutMs: 2000,
+    });
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0].event).toBe("snapshot");
+
+    const data = JSON.parse(frames[0].data!);
+    expect(data.type).toBe("snapshot");
+    expect(data.pipelines).toEqual([]);
+  });
+
+  test("snapshot contains all active pipelines with accurate data", async () => {
+    // Write 3 mock registry files with different phases/statuses
+    writeFileSync(
+      join(regDir, "BRE-601.json"),
+      JSON.stringify({
+        ticket_id: "BRE-601",
+        current_step: "clarify",
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      join(regDir, "BRE-602.json"),
+      JSON.stringify({
+        ticket_id: "BRE-602",
+        current_step: "implement",
+        implement_phase_plan: { current_impl_phase: 3, total_phases: 7 },
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      join(regDir, "BRE-603.json"),
+      JSON.stringify({
+        ticket_id: "BRE-603",
+        current_step: "done",
+        last_signal: "IMPLEMENT_COMPLETE",
+        last_signal_at: "2026-03-04T12:00:00Z",
+      }),
+      "utf8",
+    );
+
+    snapshotServer = createServer({ port: 0, registryDir: regDir });
+    snapshotUrl = `http://localhost:${snapshotServer.port}`;
+
+    const frames = await collectSseFrames(`${snapshotUrl}/subscribe/status`, {
+      maxFrames: 1,
+      timeoutMs: 2000,
+    });
+
+    expect(frames).toHaveLength(1);
+    const data = JSON.parse(frames[0].data!);
+    expect(data.pipelines).toHaveLength(3);
+
+    const ids = data.pipelines.map((p: { ticketId: string }) => p.ticketId).sort();
+    expect(ids).toEqual(["BRE-601", "BRE-602", "BRE-603"]);
+
+    // Verify derived statuses
+    const p602 = data.pipelines.find((p: { ticketId: string }) => p.ticketId === "BRE-602");
+    expect(p602.implProgress).toEqual({ current: 3, total: 7 });
+
+    const p603 = data.pipelines.find((p: { ticketId: string }) => p.ticketId === "BRE-603");
+    expect(p603.status).toBe("completed");
+  });
+
+  test("reconnecting client with Last-Event-ID receives replay only, no snapshot", async () => {
+    // Write mock registry so snapshot would have data if sent
+    writeFileSync(
+      join(regDir, "BRE-700.json"),
+      JSON.stringify({ ticket_id: "BRE-700", current_step: "plan" }),
+      "utf8",
+    );
+
+    snapshotServer = createServer({ port: 0, registryDir: regDir });
+    snapshotUrl = `http://localhost:${snapshotServer.port}`;
+
+    // 1. First connection — receives snapshot as first frame
+    const firstFrames = await collectSseFrames(`${snapshotUrl}/subscribe/status`, {
+      maxFrames: 1,
+      timeoutMs: 2000,
+    });
+    expect(firstFrames).toHaveLength(1);
+    expect(firstFrames[0].event).toBe("snapshot");
+    const snapshotSeq = firstFrames[0].id!;
+
+    // 2. Publish a status message so ring buffer has something to replay
+    await fetch(`${snapshotUrl}/publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "status",
+        from: "test",
+        type: "status_update",
+        payload: { ticketId: "BRE-700", phase: "implement" },
+      }),
+    });
+
+    // 3. Reconnect with Last-Event-ID = snapshot's seq (simulating reconnect)
+    const reconnectFrames = await collectSseFrames(`${snapshotUrl}/subscribe/status`, {
+      maxFrames: 2,
+      timeoutMs: 1000,
+      headers: { "Last-Event-ID": snapshotSeq },
+    });
+
+    // Should receive only the published message (ring buffer replay), NOT a snapshot
+    expect(reconnectFrames.length).toBeGreaterThanOrEqual(1);
+    for (const frame of reconnectFrames) {
+      expect(frame.event).not.toBe("snapshot");
+    }
+    // Verify the replayed message is the published one
+    const replayData = JSON.parse(reconnectFrames[0].data!);
+    expect(replayData.channel).toBe("status");
+    expect(replayData.type).toBe("status_update");
+  });
+
+  test("non-status channel receives no snapshot event", async () => {
+    // Write mock registry so snapshot would have data if incorrectly sent
+    writeFileSync(
+      join(regDir, "BRE-800.json"),
+      JSON.stringify({ ticket_id: "BRE-800", current_step: "implement" }),
+      "utf8",
+    );
+
+    snapshotServer = createServer({ port: 0, registryDir: regDir });
+    snapshotUrl = `http://localhost:${snapshotServer.port}`;
+
+    // Publish a message on "signals" channel first so subscriber has something to receive
+    await fetch(`${snapshotUrl}/publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "signals",
+        from: "test",
+        type: "CLARIFY_COMPLETE",
+        payload: { ticketId: "BRE-800" },
+      }),
+    });
+
+    // Subscribe to "signals" (non-status channel) — should NOT get snapshot
+    const frames = await collectSseFrames(`${snapshotUrl}/subscribe/signals`, {
+      maxFrames: 2,
+      timeoutMs: 1000,
+    });
+
+    // Should receive the published message via ring buffer replay, no snapshot
+    expect(frames.length).toBeGreaterThanOrEqual(1);
+    for (const frame of frames) {
+      expect(frame.event).not.toBe("snapshot");
+    }
+    const msgData = JSON.parse(frames[0].data!);
+    expect(msgData.channel).toBe("signals");
+    expect(msgData.type).toBe("CLARIFY_COMPLETE");
   });
 });

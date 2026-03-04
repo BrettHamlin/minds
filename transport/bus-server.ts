@@ -13,8 +13,14 @@
 
 import { join } from "path";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { buildSnapshot, formatSnapshotEvent } from "./status-snapshot";
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+export interface ServerConfig {
+  port?: number;
+  registryDir?: string;
+}
 
 export interface BusMessage {
   id: string;
@@ -41,6 +47,10 @@ const subscribers = new Map<string, Set<SseController>>();
 
 let messageCount = 0;
 let startTime = Date.now();
+
+// Registry directory for snapshot-on-connect (BRE-397)
+// Set by createServer(); used by handleSubscribe() for snapshot injection
+let registryDir: string | undefined;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -130,9 +140,20 @@ function handleSubscribe(channel: string, req: Request): Response {
 
   let controller!: SseController;
 
+  const isNewConnection = lastSeq === -1;
+
   const stream = new ReadableStream<Uint8Array>({
     start(ctrl) {
       controller = ctrl;
+
+      // Snapshot-on-connect for status channel — new connections only (BRE-397)
+      // Injected BEFORE channelSubs.add() so live events cannot interleave
+      if (channel === "status" && isNewConnection) {
+        const dir = registryDir ?? join(process.cwd(), ".collab/state/pipeline-registry");
+        const snapshot = buildSnapshot(dir);
+        ctrl.enqueue(formatSnapshotEvent(snapshot, ++seqCounter));
+      }
+
       channelSubs.add(ctrl);
 
       // Replay ring buffer to new subscriber
@@ -178,13 +199,16 @@ function handleStatus(): Response {
 
 const SUBSCRIBE_RE = /^\/subscribe\/(.+)$/;
 
-export function createServer(port = 0) {
+export function createServer(opts: ServerConfig = {}) {
+  const port = opts.port ?? 0;
+
   // Reset all state for clean test isolation
   buffers.clear();
   subscribers.clear();
   messageCount = 0;
   seqCounter = 0;
   startTime = Date.now();
+  registryDir = opts.registryDir;
 
   const server = Bun.serve({
     port,
@@ -220,7 +244,15 @@ export function createServer(port = 0) {
 // writes the chosen port to .collab/bus-port.
 
 if (import.meta.main) {
-  const server = createServer(0);
+  // Parse --registry-dir CLI flag for snapshot-on-connect (FR-010)
+  const args = process.argv.slice(2);
+  const regDirIdx = args.indexOf("--registry-dir");
+  const cliRegistryDir =
+    regDirIdx !== -1 && args[regDirIdx + 1]
+      ? args[regDirIdx + 1]
+      : undefined;
+
+  const server = createServer({ registryDir: cliRegistryDir });
   const port = server.port;
 
   // Persist port for client discovery
