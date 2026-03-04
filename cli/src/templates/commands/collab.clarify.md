@@ -52,7 +52,76 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
 3. **Load Spec**
    Read the spec file from `FEATURE_SPEC`.
 
-4. **Ambiguity Scan**
+4. **Ticket Type Classification**
+
+   Read the spec description and classify the ticket type. Look for signal words:
+
+   | Type | Signals | Scan Strategy |
+   |------|---------|---------------|
+   | **Refactor** | "refactor", "restructure", "migrate", "consolidate", "extract", "decouple" | Deep-scan the specific code being refactored — its patterns, dependencies, callers. **Existing code is truth.** Preserve patterns unless the ticket explicitly changes them. |
+   | **New Feature** | "add", "implement", "create", "new", "support" | Find analogous existing features — how does this repo already handle similar things? **Extend existing patterns.** |
+   | **Bug Fix** | "fix", "broken", "regression", "error", "incorrect" | Scan the broken code path and surrounding module patterns. **Match surrounding code.** |
+   | **Enhancement** | "improve", "optimize", "update", "enhance", "upgrade" | Scan current implementation, its tests, and performance characteristics. **Evolve existing patterns.** |
+
+   If ambiguous, default to **New Feature** (broadest scan).
+
+   Record: `TICKET_TYPE = <type>` and `SCAN_STRATEGY = <strategy summary>`.
+
+5. **Codebase Pattern Scan**
+
+   Using `TICKET_TYPE` and the spec's domain areas, perform a targeted codebase scan.
+
+   a) **Detect primary language** from the repo (check `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, file extensions, etc.)
+
+   b) **Probe for LSP server availability.** Run the appropriate check for the detected language:
+
+   | Language | LSP Probe Command | What It Gives You |
+   |----------|-------------------|-------------------|
+   | TypeScript/JS | `npx --yes typescript-language-server --version 2>/dev/null` or check `node_modules/.bin/tsc` | Symbols, references, type hierarchy |
+   | Go | `which gopls 2>/dev/null` | Call graph, interface implementations |
+   | Rust | `which rust-analyzer 2>/dev/null` | Traits, impls, dependency tree |
+   | Python | `which pyright 2>/dev/null \|\| which pylsp 2>/dev/null` | Type stubs, import graph |
+
+   If the probe succeeds, set `LSP_AVAILABLE=true` and record the server binary path.
+   If no LSP is available, set `LSP_AVAILABLE=false` — fall back to Grep/Glob (step 5d).
+
+   c) **LSP-powered scan** (when `LSP_AVAILABLE=true`):
+
+   Use the LSP server to get richer code intelligence than text search alone. Run LSP queries via CLI where possible:
+
+   - **TypeScript:** Use `tsc --noEmit --listFiles` for dependency graph, or run a quick `ts-morph` script to extract exports/imports/types from relevant modules.
+   - **Go:** Use `gopls references`, `gopls symbols`, or `gopls call_hierarchy` on key identifiers from the ticket.
+   - **Rust:** Use `rust-analyzer` CLI commands for symbol lookup and trait implementations.
+   - **Python:** Use `pyright --outputjson` for type analysis of relevant modules.
+
+   **What to extract via LSP (when available):**
+   - Symbol definitions and their callers/references (especially for Refactor tickets — who depends on this code?)
+   - Type hierarchies and interface implementations (what contracts must be preserved?)
+   - Import/export graphs (what's the module boundary?)
+   - Unused exports or dead code (relevant for Enhancement tickets)
+
+   **LSP queries should target the specific files/symbols relevant to the ticket**, not scan the entire repo. Use the ticket description to identify the entry points.
+
+   d) **Grep/Glob scan** (fallback when `LSP_AVAILABLE=false`, or to supplement LSP results):
+
+   - **Extract domains** from the ticket (e.g., "authentication", "API routes", "database models", "validation")
+   - **Refactor:** Read the specific files/modules referenced in the ticket. Note current patterns: naming, error handling, test structure, module boundaries. These are constraints, not suggestions.
+   - **New Feature:** Grep/Glob for analogous existing implementations (e.g., if adding a new API endpoint, find existing endpoints). Note: libraries used, file organization, naming conventions, test patterns, error handling approach.
+   - **Bug Fix:** Read the code path mentioned in the ticket and its immediate dependencies. Note the module's local conventions.
+   - **Enhancement:** Read the current implementation being enhanced. Note its patterns plus its test coverage approach.
+
+   e) **Produce a `CODEBASE_CONTEXT` summary** (carry forward to Step 6):
+      - Tech stack observed (frameworks, libraries, versions)
+      - Naming conventions (files, functions, variables, tests)
+      - Architectural patterns (e.g., repository pattern, middleware chain, event-driven)
+      - Error handling approach (e.g., Result types, try/catch, error codes)
+      - Test patterns (e.g., co-located tests, test directory, fixtures, mocks)
+      - Any project-specific conventions (e.g., custom decorators, shared utilities)
+      - **If LSP was used:** Type relationships, caller/callee graph, interface contracts discovered
+
+   **Time-box:** Spend no more than 3-5 targeted queries (LSP or Grep/Glob). This is reconnaissance, not exhaustive analysis.
+
+6. **Ambiguity Scan**
    Analyze spec across taxonomy categories:
    - Functional Scope (out-of-scope, user roles)
    - Data Model (primary keys, relationships, scale)
@@ -64,30 +133,33 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
 
    Mark each: Clear / Partial / Missing
 
-5. **Generate Questions** (max 3 for orchestrated mode)
+7. **Generate Questions** (max 3 for orchestrated mode)
 
    For each critical ambiguity:
    - Create 2-4 distinct options
-   - Identify recommended option using best practices
+   - **Ground the recommended option in `CODEBASE_CONTEXT`:** If the repo already has a convention for this decision, the recommendation MUST follow it. Cite the evidence (e.g., "This repo uses Zod for validation — see `src/middleware/validate.ts`").
+   - Only fall back to generic best practices when no project convention exists for the decision.
+   - For **Refactor** tickets: recommendations should preserve existing patterns unless the ticket explicitly calls for changing them.
+   - For **New Feature** tickets: recommendations should extend the patterns found in analogous features.
    - Make recommendation the first option
    - Add "(Recommended)" to its description
 
-6. **Ask Questions / Auto-Resolve**
+8. **Ask Questions / Auto-Resolve**
 
-   ### 6a. AUTONOMOUS MODE (when `AUTONOMOUS_MODE=true`)
+   ### 8a. AUTONOMOUS MODE (when `AUTONOMOUS_MODE=true`)
 
-   > **Only enter this path when `AUTONOMOUS_MODE=true`. Skip to Step 6b otherwise.**
+   > **Only enter this path when `AUTONOMOUS_MODE=true`. Skip to Step 8b otherwise.**
 
    In autonomous mode, DO NOT call AskUserQuestion. Instead, auto-resolve each question:
 
    For each generated question:
    - Select the **recommended option** (the first option, marked with "(Recommended)")
    - Record the decision: `[AUTONOMOUS] Selected recommended: <option label>`
-   - Proceed directly to integration (Step 7)
+   - Proceed directly to integration (Step 9)
 
    This ensures the pipeline does not stall waiting for interactive input.
 
-   ### 6b. INTERACTIVE MODE (when `AUTONOMOUS_MODE=false`)
+   ### 8b. INTERACTIVE MODE (when `AUTONOMOUS_MODE=false`)
 
    For EACH question:
 
@@ -136,7 +208,7 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
 
    **IMPORTANT**: Always include "Custom answer" option so user can provide their own response if predefined options don't fit.
 
-7. **Integrate Each Answer**
+9. **Integrate Each Answer**
 
    After EACH answer:
    - Create/update `## Clarifications` section
@@ -145,19 +217,19 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
    - Update relevant sections (e.g., add enum to Database Schema)
    - **Save spec file immediately** (atomic write)
 
-8. **Validation**
+10. **Validation**
    - One bullet per answer in Clarifications section
    - Max 3 questions asked total
    - No contradictory statements remain
    - Terminology consistent across sections
 
-9. **Emit Completion Signal**
+11. **Emit Completion Signal**
    ```bash
    bun .collab/handlers/emit-question-signal.ts complete "Clarification phase finished"
    ```
    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 
-10. **Report Completion**
+12. **Report Completion**
    - Number of questions answered
    - Sections updated
    - Path to updated spec
@@ -165,7 +237,7 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
 
 ## Signal Flow
 
-**Autonomous mode:** Steps 1-4 are skipped entirely. Agent auto-selects recommended options and proceeds directly to integration.
+**Autonomous mode:** Steps 4-5 (classification + scan) still run. Steps 8a auto-selects recommended options (grounded in codebase context) and proceeds directly to integration.
 
 **Interactive mode:**
 1. Agent emits `CLARIFY_QUESTION` via `bun .collab/handlers/emit-question-signal.ts question "question§option1§option2§..."`
