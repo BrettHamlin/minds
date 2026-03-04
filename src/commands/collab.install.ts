@@ -22,6 +22,8 @@ import {
   copyFileSync,
   chmodSync,
   writeFileSync,
+  readdirSync,
+  statSync,
 } from "fs";
 import { join } from "path";
 
@@ -207,13 +209,25 @@ if (existsSync(scriptsSrc)) {
   );
 }
 
-// Shared library files (src/lib/, excluding tests)
+// Shared library files (src/lib/, excluding tests, including subdirectories)
 const libSrc = join(tempDir, "src/lib");
 if (existsSync(libSrc)) {
+  // Copy top-level .ts files
   execSync(
     `find "${libSrc}" -maxdepth 1 -name "*.ts" ! -name "*.test.ts" -exec cp {} "${join(repoRoot, ".collab/lib/")}" \\;`,
     { shell: true }
   );
+  // Copy subdirectories (e.g. pipeline/) recursively — one level deep
+  for (const entry of readdirSync(libSrc)) {
+    const entryPath = join(libSrc, entry);
+    if (!statSync(entryPath).isDirectory()) continue;
+    const destDir = join(repoRoot, ".collab/lib", entry);
+    mkdirSync(destDir, { recursive: true });
+    for (const file of readdirSync(entryPath)) {
+      if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
+      copyFileSync(join(entryPath, file), join(destDir, file));
+    }
+  }
   execSync(
     `find "${join(repoRoot, ".collab/lib")}" -name "*.ts" -exec chmod +x {} \\;`,
     { shell: true }
