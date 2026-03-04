@@ -189,6 +189,11 @@ function validateState(parsed: unknown, path: string): InstalledState {
 
   const obj = parsed as Record<string, unknown>;
 
+  // Treat missing version as uninitialized (e.g. installer wrote "{}") — return empty state.
+  if (obj.version === undefined) {
+    return { ...EMPTY_STATE, installedAt: new Date().toISOString() };
+  }
+
   if (obj.version !== "1") {
     throw makeError("STATE_CORRUPT", `Unknown state version "${obj.version}": ${path}`, {
       path,
