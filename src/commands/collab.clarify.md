@@ -1,5 +1,5 @@
 ---
-description: Orchestrator-compatible spec clarification using AskUserQuestion for signal emission
+description: Orchestrator-compatible spec clarification using shared question/answer protocol (interactive or batch)
 ---
 
 ## User Input
@@ -24,7 +24,12 @@ This applies in every scenario: normal completion, after follow-up messages from
 
 ## Goal
 
-Detect and reduce ambiguity in the active feature specification. In autonomous pipeline mode, auto-resolve using recommended options. In interactive mode, use AskUserQuestion tool for orchestrator compatibility.
+Detect and reduce ambiguity in the active feature specification. Uses the shared batch question/answer protocol from `src/lib/pipeline/questions.ts`:
+
+- **Interactive mode** (`@interactive` enabled, default): Uses AskUserQuestion for each finding.
+- **Non-interactive mode** (`@interactive(off)`): Collects ALL questions upfront into a `FindingsBatch`, writes to `findings/clarify-round-N.json`, emits `CLARIFY_QUESTIONS` signal, then polls for `resolutions/clarify-round-N.json`.
+
+Both modes share the same analysis and resolution-application code.
 
 ## Execution Steps
 
@@ -48,6 +53,8 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
    **IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the known path.
 
    If the file exists and `current_step` contains `clarify`, set `AUTONOMOUS_MODE=true`. Otherwise `AUTONOMOUS_MODE=false`.
+
+   **Interactive mode** is resolved automatically by `resolveAndApply()` in the shared library (`.collab/lib/pipeline/questions.ts`), which reads the pipeline config internally. No separate `pipeline-config-read.ts` call is needed — just pass the `QuestionCollector` to `resolveAndApply()` and it handles mode selection.
 
 3. **Load Spec**
    Read the spec file from `FEATURE_SPEC`.
@@ -144,40 +151,32 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
    - Make recommendation the first option
    - Add "(Recommended)" to its description
 
-8. **Ask Questions / Auto-Resolve**
+8. **Ask Questions / Resolve**
 
-   ### 8a. AUTONOMOUS MODE (when `AUTONOMOUS_MODE=true`)
+   Use a `QuestionCollector` (from `.collab/lib/pipeline/questions.ts`) to collect ALL findings first, then call `resolveAndApply()`.
 
-   > **Only enter this path when `AUTONOMOUS_MODE=true`. Skip to Step 8b otherwise.**
+   ### 8a. NON-INTERACTIVE MODE (when `INTERACTIVE_MODE=false`)
 
-   In autonomous mode, DO NOT call AskUserQuestion. Instead, auto-resolve each question:
+   > **Only enter this path when `INTERACTIVE_MODE=false`.**
 
-   For each generated question:
-   - Select the **recommended option** (the first option, marked with "(Recommended)")
-   - Record the decision: `[AUTONOMOUS] Selected recommended: <option label>`
-   - Proceed directly to integration (Step 9)
+   Collect ALL questions into the `QuestionCollector` first, then:
 
-   This ensures the pipeline does not stall waiting for interactive input.
-
-   ### 8b. INTERACTIVE MODE (when `AUTONOMOUS_MODE=false`)
-
-   For EACH question:
-
-   a) **FIRST: Emit CLARIFY_QUESTION signal to orchestrator**
-
-   Run this Bash command BEFORE calling AskUserQuestion:
-   ```bash
-   bun .collab/handlers/emit-question-signal.ts question "<question text>§<label1> (Recommended)§<label2>§<label3>"
+   ```typescript
+   const { mode, resolutions } = await resolveAndApply(collector, {
+     featureDir,
+     round: 1,
+     forceMode: "non-interactive",
+   });
    ```
 
-   Encode the question text and all option labels separated by `§`. Always put the recommended option first (matching the AskUserQuestion order). Labels only — no descriptions. Example:
-   ```bash
-   bun .collab/handlers/emit-question-signal.ts question "What step size?§2px§4px§Custom"
-   ```
+   This writes `findings/clarify-round-1.json`, emits `CLARIFY_QUESTIONS` signal, and polls for `resolutions/clarify-round-1.json`. Apply all resolutions at once after the batch returns.
 
-   This is MANDATORY in orchestrated mode. The orchestrator reads the question and options directly from the signal detail — no screen capture needed. Without this signal, the orchestrator waits indefinitely.
+   **Do NOT use AskUserQuestion in non-interactive mode.** The orchestrator reasons about answers using its full context stack (spec > constitution > prior resolutions > codebase patterns > agent context > coordination).
 
-   b) **THEN: Call AskUserQuestion tool**
+   ### 8b. INTERACTIVE MODE (when `INTERACTIVE_MODE=true`, default)
+
+   Collect ALL questions first, then for each question call AskUserQuestion:
+
    ```
    {
      questions: [{
@@ -194,19 +193,28 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
            description: "<trade-offs of this option>"
          },
          {
-           label: "<option C>",
-           description: "<trade-offs of this option>"
-         },
-         {
            label: "Custom answer",
-           description: "Provide your own answer (will prompt for short text)"
+           description: "Provide your own answer"
          }
        ]
      }]
    }
    ```
 
-   **IMPORTANT**: Always include "Custom answer" option so user can provide their own response if predefined options don't fit.
+   Wrap each user answer into a `Resolution` object and apply after all questions answered.
+
+   **IMPORTANT**: Always include "Custom answer" option so user can provide their own response.
+
+   ### 8c. AUTONOMOUS MODE fallback (when `AUTONOMOUS_MODE=true` and `INTERACTIVE_MODE=true`)
+
+   In autonomous mode with interactive enabled, DO NOT call AskUserQuestion. Instead, auto-resolve each question:
+
+   For each generated question:
+   - Select the **recommended option** (the first option, marked with "(Recommended)")
+   - Record the decision: `[AUTONOMOUS] Selected recommended: <option label>`
+   - Proceed directly to integration (Step 9)
+
+   This ensures the pipeline does not stall waiting for interactive input.
 
 9. **Integrate Each Answer**
 

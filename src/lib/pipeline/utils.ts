@@ -42,6 +42,24 @@ export function getRegistryPath(registryDir: string, ticketId: string): string {
 }
 
 /**
+ * Scan specs/ for a directory whose name contains ticketId (case-insensitive).
+ * Returns the full path, or null if not found.
+ */
+export function findFeatureDir(repoRoot: string, ticketId: string): string | null {
+  const specsDir = path.join(repoRoot, "specs");
+  if (!fs.existsSync(specsDir)) return null;
+  try {
+    const entries = fs.readdirSync(specsDir);
+    for (const entry of entries) {
+      if (entry.toLowerCase().includes(ticketId.toLowerCase())) {
+        return path.join(specsDir, entry);
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Resolve the pipeline config file path, supporting pipeline variants.
  *
  * Resolution order:

@@ -14,6 +14,7 @@ import type {
   CompiledPipeline,
   CompiledCodeReview,
   CompiledMetrics,
+  CompiledInteractive,
 } from "../../src/lib/pipeline/types";
 export type {
   CompiledTransition,
@@ -26,6 +27,7 @@ export type {
   CompiledPipeline,
   CompiledCodeReview,
   CompiledMetrics,
+  CompiledInteractive,
 };
 
 // Model name → Claude model ID
@@ -193,6 +195,8 @@ export function compile(ast: PipelineAST): CompiledPipeline {
         compiled.codeReview = { enabled: false };
       } else if (mod.kind === "metrics") {
         compiled.metrics = { enabled: false };
+      } else if (mod.kind === "interactive") {
+        compiled.interactive = { enabled: mod.enabled };
       }
     }
 
@@ -248,6 +252,11 @@ export function compile(ast: PipelineAST): CompiledPipeline {
   // Compile @metrics directive
   if (ast.metrics !== undefined) {
     result.metrics = { enabled: ast.metrics.enabled };
+  }
+
+  // Compile @interactive directive
+  if (ast.interactive !== undefined) {
+    result.interactive = { enabled: ast.interactive.enabled };
   }
 
   return result;

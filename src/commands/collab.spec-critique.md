@@ -1,5 +1,5 @@
 ---
-description: Orchestrator-compatible spec validation with deterministic signal emission and iterative loop
+description: Orchestrator-compatible spec validation using shared question/answer protocol (interactive or batch)
 ---
 
 ## User Input
@@ -23,7 +23,7 @@ Parse arguments to extract:
 
 If no ticket ID provided, error and exit.
 
-### 2. Detect Execution Mode
+### 2. Detect Execution Mode and Interactive Mode
 
 Check if autonomous (orchestrated) mode is active by reading the registry file directly:
 
@@ -41,6 +41,14 @@ If the file exists and `current_step` contains `spec_critique` (or `spec.critiqu
 **`AUTONOMOUS_MODE=true`** → pipeline orchestrator launched this skill; nobody is watching; **DO NOT use AskUserQuestion**. Proceed to Step 4a.
 
 **`AUTONOMOUS_MODE=false`** → interactive (standalone) invocation; user is present. Proceed to Step 4b.
+
+**Interactive mode** is resolved automatically by `resolveAndApply()` in the shared library — no separate `pipeline-config-read.ts` call is needed. If non-interactive mode is active (resolved internally from pipeline config), use non-interactive batch protocol (emit `SPEC_CRITIQUE_QUESTIONS` signal) instead of AskUserQuestion calls.
+
+**Non-interactive batch protocol** (when `INTERACTIVE_MODE=false`):
+1. Collect HIGH/unresolved issues into a `QuestionCollector` (from `.collab/lib/pipeline/questions.ts`)
+2. Call `resolveAndApply()` — writes `findings/spec_critique-round-1.json`, emits `SPEC_CRITIQUE_QUESTIONS`, polls for `resolutions/spec_critique-round-1.json`
+3. Apply resolutions from the orchestrator; re-evaluate verdict
+4. Proceed to Step 5 with final verdict
 
 ### 3. Emit SPEC_CRITIQUE_START Signal
 

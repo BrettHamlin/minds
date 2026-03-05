@@ -39,6 +39,10 @@ export interface CompiledMetrics {
   enabled: boolean;
 }
 
+export interface CompiledInteractive {
+  enabled: boolean;
+}
+
 export interface CompiledPhase {
   command?: string;
   signals?: string[];
@@ -57,6 +61,8 @@ export interface CompiledPhase {
   codeReview?: Pick<CompiledCodeReview, "enabled">;
   /** Per-phase metrics override (only enabled:false is supported from .metrics(off)) */
   metrics?: Pick<CompiledMetrics, "enabled">;
+  /** Per-phase interactive override (on or off) */
+  interactive?: CompiledInteractive;
 }
 
 export interface CompiledGateResponse {
@@ -77,6 +83,7 @@ export interface CompiledPipeline {
   defaultModel?: string;
   codeReview?: CompiledCodeReview;
   metrics?: CompiledMetrics;
+  interactive?: CompiledInteractive;
   phases: Record<string, CompiledPhase>;
   gates?: Record<string, CompiledGate>;
 }

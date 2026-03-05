@@ -68,9 +68,9 @@ describe("golden: phase compilation (AC3)", () => {
     expect(compiled!.phases["clarify"].command).toBe("/collab.clarify");
   });
 
-  test("clarify signals include CLARIFY_COMPLETE, CLARIFY_QUESTION, CLARIFY_ERROR", () => {
+  test("clarify signals include CLARIFY_COMPLETE, CLARIFY_QUESTION, CLARIFY_ERROR, CLARIFY_QUESTIONS", () => {
     expect(compiled!.phases["clarify"].signals).toEqual([
-      "CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR",
+      "CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR", "CLARIFY_QUESTIONS",
     ]);
   });
 

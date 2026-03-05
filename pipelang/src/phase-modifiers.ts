@@ -23,6 +23,7 @@ import type {
   AfterModifier,
   CodeReviewModifier,
   MetricsModifier,
+  InteractiveModifier,
   SourceLocation,
 } from "./types";
 import { VALID_MODEL_NAMES } from "./types";
@@ -465,6 +466,23 @@ export function parsePhaseModifier(ctx: ParserContext): Modifier | null {
       ctx.advance(); // consume "off"
       if (!ctx.expect("RPAREN")) return null;
       return { kind: "metrics", enabled: false, loc } satisfies MetricsModifier;
+    }
+
+    case "interactive": {
+      const t = ctx.peek();
+      if (t.kind !== "IDENT" || (t.value !== "on" && t.value !== "off")) {
+        ctx.addError(
+          `.interactive() requires .interactive(on) or .interactive(off). Use @interactive() directive for global configuration.`,
+          { line: t.line, col: t.col }
+        );
+        while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+        if (ctx.check("RPAREN")) ctx.advance();
+        return null;
+      }
+      const enabled = t.value === "on";
+      ctx.advance(); // consume "on" or "off"
+      if (!ctx.expect("RPAREN")) return null;
+      return { kind: "interactive", enabled, loc } satisfies InteractiveModifier;
     }
 
     default:
