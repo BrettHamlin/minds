@@ -20,13 +20,14 @@
  *   3 = skipped (@metrics disabled)
  */
 
-import { getRepoRoot, exitIfMetricsDisabled } from "./orchestrator-utils";
+import { getRepoRoot, exitIfMetricsDisabled, validateTicketIdArg } from "./orchestrator-utils";
 import { openMetricsDb } from "../../lib/pipeline/metrics";
 import { classifyRun } from "../../lib/pipeline/classify-run";
 import { getAllAutonomyRates } from "../../lib/pipeline/autonomy-rate";
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "classify-run.ts");
   const ticketId = args[0];
 
   if (!ticketId) {

@@ -30,6 +30,7 @@ import {
   readJsonFile,
   writeJsonAtomic,
   getRegistryPath,
+  validateTicketIdArg,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
@@ -234,6 +235,7 @@ export function cmdList(
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "group-manage.ts");
 
   if (args.length < 1) {
     console.error("Usage: group-manage.ts <subcommand> [args...]");

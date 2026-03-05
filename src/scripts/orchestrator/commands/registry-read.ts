@@ -20,6 +20,7 @@ import {
   getRepoRoot,
   readJsonFile,
   getRegistryPath,
+  validateTicketIdArg,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
@@ -35,6 +36,7 @@ export function readRegistry(ticketId: string, registryDir: string): Record<stri
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "registry-read.ts");
   if (args.length < 1) {
     console.error("Usage: registry-read.ts <TICKET_ID> [--field <name>] [--default <value>]");
     process.exit(1);

@@ -26,6 +26,7 @@ import {
   readJsonFile,
   writeJsonAtomic,
   getRegistryPath,
+  validateTicketIdArg,
 } from "./orchestrator-utils";
 
 import { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory, advanceImplPhase, deleteField } from "../../lib/pipeline/registry";
@@ -61,6 +62,7 @@ function findTerminalPhase(pipeline: any): string | null {
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "registry-update.ts");
 
   if (args.length < 2) {
     console.error(

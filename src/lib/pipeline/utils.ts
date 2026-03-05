@@ -37,6 +37,22 @@ export function writeJsonAtomic(filePath: string, data: any): void {
   }
 }
 
+/**
+ * Validate that the first CLI argument is a ticket ID, not a flag.
+ * Call this at the top of main() in any orchestrator script that expects
+ * a ticket ID as its first positional argument.
+ */
+export function validateTicketIdArg(args: string[], scriptName: string): void {
+  if (args.length >= 1 && args[0].startsWith("--")) {
+    console.error(
+      `Error: First argument must be a ticket ID, not a flag.\n` +
+      `Got: "${args[0]}"\n\n` +
+      `Usage: ${scriptName} <TICKET_ID> ...`
+    );
+    process.exit(1);
+  }
+}
+
 export function getRegistryPath(registryDir: string, ticketId: string): string {
   return path.join(registryDir, `${ticketId}.json`);
 }

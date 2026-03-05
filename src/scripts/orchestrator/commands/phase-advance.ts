@@ -24,6 +24,7 @@
 import {
   getRepoRoot,
   loadPipelineForTicket,
+  validateTicketIdArg,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
@@ -78,16 +79,7 @@ export function isTerminalPhase(pipeline: CompiledPipeline, phaseId: string): bo
 
 function main(): void {
   const args = process.argv.slice(2);
-  if (args.length >= 1 && args[0].startsWith("--")) {
-    console.error(
-      `Error: First argument must be a ticket ID, not a flag.\n` +
-      `Got: "${args[0]}"\n\n` +
-      `Usage: phase-advance.ts <TICKET_ID> <CURRENT_PHASE>\n` +
-      `       phase-advance.ts <TICKET_ID> --first\n` +
-      `       phase-advance.ts <TICKET_ID> --is-terminal <PHASE>`
-    );
-    process.exit(1);
-  }
+  validateTicketIdArg(args, "phase-advance.ts");
 
   if (args.length < 2) {
     console.error(

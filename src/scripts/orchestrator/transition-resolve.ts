@@ -20,7 +20,7 @@
  *   3 = file error (pipeline config missing/malformed)
  */
 
-import { getRepoRoot, loadPipelineForTicket } from "../../lib/pipeline";
+import { getRepoRoot, loadPipelineForTicket, validateTicketIdArg } from "../../lib/pipeline";
 import { resolveTransition } from "../../lib/pipeline/transitions";
 
 // Re-export for test backward compatibility
@@ -47,6 +47,7 @@ export function resolveGateResponse(
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "transition-resolve.ts");
 
   if (args.length < 2) {
     console.error(

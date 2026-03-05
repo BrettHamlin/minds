@@ -41,6 +41,7 @@ import {
   writeJsonAtomic,
   getRegistryPath,
   readFeatureMetadata,
+  validateTicketIdArg,
   TmuxClient,
   OrchestratorError,
   handleError,
@@ -835,6 +836,7 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "orchestrator-init.ts");
 
   if (args.length < 1) {
     console.error("Usage: orchestrator-init.ts <TICKET_ID>");

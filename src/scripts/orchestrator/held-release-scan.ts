@@ -34,6 +34,7 @@ import {
   getRepoRoot,
   readJsonFile,
   getRegistryPath,
+  validateTicketIdArg,
 } from "./orchestrator-utils";
 
 // ============================================================================
@@ -137,6 +138,7 @@ export function isDependencyHoldSatisfied(
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "held-release-scan.ts");
   const completedTicket = args[0] || "";
 
   const repoRoot = getRepoRoot();

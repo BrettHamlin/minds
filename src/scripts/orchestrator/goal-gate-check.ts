@@ -28,7 +28,7 @@
  *   3 = file error (registry or pipeline.json missing)
  */
 
-import { getRepoRoot, readJsonFile, getRegistryPath } from "./orchestrator-utils";
+import { getRepoRoot, readJsonFile, getRegistryPath, validateTicketIdArg } from "./orchestrator-utils";
 import type { PhaseHistoryEntry } from "../../lib/pipeline/registry";
 
 // Re-export types for test backward compatibility
@@ -91,6 +91,7 @@ export function checkGoalGates(
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "goal-gate-check.ts");
 
   if (args.length < 2) {
     console.error("Usage: goal-gate-check.ts <TICKET_ID> <NEXT_PHASE>");

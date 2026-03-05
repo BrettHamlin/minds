@@ -27,7 +27,7 @@ import { execSync } from "child_process";
 
 import type { FindingsBatch, ResolutionBatch } from "../../../lib/pipeline/questions";
 import { getResolutionsPath, getFindingsPath } from "../../../lib/pipeline/questions";
-import { getRepoRoot, findFeatureDir } from "../../../lib/pipeline/utils";
+import { getRepoRoot, findFeatureDir, validateTicketIdArg } from "../../../lib/pipeline/utils";
 
 // ── Context bundle types ──────────────────────────────────────────────────────
 
@@ -132,6 +132,7 @@ function gatherCodePatterns(findings: FindingsBatch, repoRoot?: string): string[
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "resolve-questions.ts");
 
   if (args.length < 1) {
     console.error("Usage: resolve-questions.ts <findings-file> [--output <path>]");

@@ -21,11 +21,12 @@
  *   3 = skipped (@metrics disabled)
  */
 
-import { getRepoRoot, exitIfMetricsDisabled } from "./orchestrator-utils";
+import { getRepoRoot, exitIfMetricsDisabled, validateTicketIdArg } from "./orchestrator-utils";
 import { openMetricsDb, completeRun } from "../../lib/pipeline/metrics";
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "complete-run.ts");
   const ticketId = args[0];
 
   if (!ticketId) {

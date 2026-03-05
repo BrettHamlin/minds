@@ -35,7 +35,7 @@ import { join, dirname } from "path";
 
 import type { Resolution, ResolutionBatch } from "../../../lib/pipeline/questions";
 import { getResolutionsPath } from "../../../lib/pipeline/questions";
-import { getRepoRoot, findFeatureDir } from "../../../lib/pipeline/utils";
+import { getRepoRoot, findFeatureDir, validateTicketIdArg } from "../../../lib/pipeline/utils";
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -131,6 +131,7 @@ function resolveFeatureDir(ticketId?: string, featureDirEnv?: string): string {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "write-resolutions.ts");
 
   if (args.length < 3) {
     console.error(

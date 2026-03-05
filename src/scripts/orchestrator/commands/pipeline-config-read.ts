@@ -27,21 +27,11 @@
  *   3 = pipeline config not found or malformed
  */
 
-import { getRepoRoot, loadPipelineForTicket } from "../orchestrator-utils";
+import { getRepoRoot, loadPipelineForTicket, validateTicketIdArg } from "../orchestrator-utils";
 
 function main(): void {
   const args = process.argv.slice(2);
-
-  if (args.length >= 1 && args[0].startsWith("--")) {
-    console.error(
-      `Error: First argument must be a ticket ID, not a flag.\n` +
-      `Got: "${args[0]}"\n\n` +
-      `Usage: pipeline-config-read.ts <TICKET_ID> <command> [options]\n` +
-      `  <TICKET_ID> codereview [--phase <phase-name>]\n` +
-      `  <TICKET_ID> interactive [--phase <phase-name>]`
-    );
-    process.exit(1);
-  }
+  validateTicketIdArg(args, "pipeline-config-read.ts");
 
   if (args.length < 2) {
     console.error("Usage: pipeline-config-read.ts <TICKET_ID> <command> [options]");

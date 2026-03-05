@@ -21,7 +21,7 @@
  */
 
 import { execSync } from "child_process";
-import { getRepoRoot, exitIfMetricsDisabled } from "./orchestrator-utils";
+import { getRepoRoot, exitIfMetricsDisabled, validateTicketIdArg } from "./orchestrator-utils";
 import {
   openMetricsDb,
   ensureRun,
@@ -31,6 +31,7 @@ import { createDraftPr } from "../../lib/pipeline/draft-pr";
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "create-draft-pr.ts");
   const ticketId = args[0];
 
   if (!ticketId) {

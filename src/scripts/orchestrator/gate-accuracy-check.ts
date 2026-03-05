@@ -20,12 +20,13 @@
  *   3 = skipped (@metrics disabled)
  */
 
-import { getRepoRoot, exitIfMetricsDisabled } from "./orchestrator-utils";
+import { getRepoRoot, exitIfMetricsDisabled, validateTicketIdArg } from "./orchestrator-utils";
 import { openMetricsDb } from "../../lib/pipeline/metrics";
 import { updateGateAccuracy, getGateAccuracyReport } from "../../lib/pipeline/gate-accuracy";
 
 function main(): void {
   const args = process.argv.slice(2);
+  validateTicketIdArg(args, "gate-accuracy-check.ts");
   const ticketId = args[0];
 
   if (!ticketId) {

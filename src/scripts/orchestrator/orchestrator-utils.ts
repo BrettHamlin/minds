@@ -7,8 +7,8 @@
  * All orchestrator scripts import from here; tests import from here.
  */
 
-import { getRepoRoot, readJsonFile, writeJsonAtomic, getRegistryPath, resolvePipelineConfigPath, parsePipelineArgs, loadPipelineForTicket } from "../../lib/pipeline/utils";
-export { getRepoRoot, readJsonFile, writeJsonAtomic, getRegistryPath, resolvePipelineConfigPath, parsePipelineArgs, loadPipelineForTicket };
+import { getRepoRoot, readJsonFile, writeJsonAtomic, getRegistryPath, resolvePipelineConfigPath, parsePipelineArgs, loadPipelineForTicket, validateTicketIdArg } from "../../lib/pipeline/utils";
+export { getRepoRoot, readJsonFile, writeJsonAtomic, getRegistryPath, resolvePipelineConfigPath, parsePipelineArgs, loadPipelineForTicket, validateTicketIdArg };
 
 /**
  * Check @metrics directive and exit 3 if metrics are disabled.
