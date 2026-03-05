@@ -13,12 +13,12 @@ Expected format: `<ticket-id>` (e.g., BRE-245)
 ## Orchestrator Signal Contract (ALWAYS ACTIVE)
 
 > Before this command completes, it MUST emit exactly one signal:
-> - `VERIFY_EXECUTE_COMPLETE` — all verification checks pass
-> - `VERIFY_EXECUTE_FAILED` — one or more checks failed
-> - `VERIFY_EXECUTE_ERROR` — ticket spec missing, config error, or unrecoverable failure
+> - completion signal — all verification checks pass
+> - failure signal — one or more checks failed
+> - error signal — ticket spec missing, config error, or unrecoverable failure
 >
-> Signal is emitted via `bun .collab/handlers/emit-verify-execute-signal.ts <pass|fail|error> "detail"`.
-> Signal format: `[SIGNAL:TICKET_ID:NONCE] VERIFY_EXECUTE_COMPLETE | detail text`
+> Signal is emitted via `bun .collab/handlers/emit-signal.ts <pass|fail|error> "detail"`.
+> Signal format: `[SIGNAL:TICKET_ID:NONCE] {PHASE}_COMPLETE | detail text`
 >
 > Signal MUST be written to signal-queue file BEFORE tmux send-keys (pipeline persistence contract).
 
@@ -35,7 +35,7 @@ Parse arguments to extract:
 
 If no ticket ID provided, emit error signal and exit:
 ```bash
-bun .collab/handlers/emit-verify-execute-signal.ts error "No ticket ID provided"
+bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
 ```
 
 ### Step 0: Extract Checklist (Agent-Driven)
@@ -62,12 +62,12 @@ Do NOT duplicate executor logic inline — config reading, file checks, HTTP cal
 
 **Exit 2 — Emit `VERIFY_EXECUTE_ERROR` and STOP:**
 ```bash
-bun .collab/handlers/emit-verify-execute-signal.ts error "${verdict_detail}"
+bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
 **Exit 1 — Emit `VERIFY_EXECUTE_FAILED` and STOP:**
 ```bash
-bun .collab/handlers/emit-verify-execute-signal.ts fail "${verdict_detail}"
+bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
 
 **Exit 0 — All deterministic checks passed. Proceed to Step 2.**
@@ -80,7 +80,7 @@ Only reached when Step 1 passes (exit 0). Read `agentChecks` from the config —
 3. If all pass → emit `VERIFY_EXECUTE_COMPLETE`
 
 ```bash
-bun .collab/handlers/emit-verify-execute-signal.ts pass "All checks passed"
+bun .collab/handlers/emit-signal.ts pass "All checks passed"
 ```
 
 ### On VERIFY_EXECUTE_FAILED — Remediation

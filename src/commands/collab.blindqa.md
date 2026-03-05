@@ -47,7 +47,7 @@ Set retry count: `attempt = 1`, `max_attempts = 3`
 
 On first attempt only, run:
 ```bash
-bun .collab/handlers/emit-blindqa-signal.ts start "Starting blind verification (attempt ${attempt}/${max_attempts})"
+bun .collab/handlers/emit-signal.ts start "Starting blind verification (attempt ${attempt}/${max_attempts})"
 ```
 
 This is MANDATORY before invoking BlindQA skill. The signal must be sent before verification begins so orchestrator can track progress.
@@ -156,7 +156,7 @@ Combine evidence from **both** Playwright (step 5a) and BlindQA (step 5b):
 - Both must agree: Playwright shows each AC green, BlindQA reports no issues
 - Emit success signal:
   ```bash
-  bun .collab/handlers/emit-blindqa-signal.ts pass "All ${check_count} checks passed with evidence"
+  bun .collab/handlers/emit-signal.ts pass "All ${check_count} checks passed with evidence"
   ```
 - Exit successfully (pipeline advances to done/next phase)
 
@@ -169,36 +169,36 @@ Combine evidence from **both** Playwright (step 5a) and BlindQA (step 5b):
 - If `attempt >= max_attempts`:
   - Emit failure signal:
     ```bash
-    bun .collab/handlers/emit-blindqa-signal.ts fail "${issue_count} issues remain after ${max_attempts} attempts"
+    bun .collab/handlers/emit-signal.ts fail "${issue_count} issues remain after ${max_attempts} attempts"
     ```
   - Report issues and exit (pipeline halts for manual intervention)
 
 ### 7. Exit Strategy
 
 **Success Path:**
-- Emit BLINDQA_PASS signal
+- Emit a pass signal
 - Output: "✅ Blind verification PASSED - all checks confirmed with evidence"
 - Exit code 0
 
 **Failure Path (max retries exceeded):**
-- Emit BLINDQA_FAIL signal
+- Emit a failure signal
 - Output: "❌ Blind verification FAILED after ${max_attempts} attempts - ${issue_count} issues remaining"
 - List unresolved issues
 - Exit code 1
 
 **Error Path:**
-- Emit BLINDQA_ERROR signal if unexpected error occurs
+- Emit an error signal if unexpected error occurs
 - Output error details
 - Exit code 1
 
 ## Signal Protocol Summary
 
-1. **BLINDQA_START** - Sent once at beginning of first attempt
-2. **BLINDQA_PASS** - Sent when all checks pass with evidence
-3. **BLINDQA_FAIL** - Sent when max retries exceeded with unresolved issues
+1. **Start signal** - Sent once at beginning of first attempt
+2. **Pass signal** - Sent when all checks pass with evidence
+3. **Failure signal** - Sent when max retries exceeded with unresolved issues
 
 **Orchestrator Integration:**
-- Orchestrator waits for BLINDQA_PASS or BLINDQA_FAIL signal
+- Orchestrator waits for the terminal signal (pass or fail)
 - On PASS: Advance to done (pipeline complete)
 - On FAIL: Halt pipeline, require manual intervention
 

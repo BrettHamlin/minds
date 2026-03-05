@@ -54,7 +54,7 @@ If the file exists and `current_step` contains `spec_critique` (or `spec.critiqu
 
 Run:
 ```bash
-bun .collab/handlers/emit-spec-critique-signal.ts start "Starting spec analysis for ${ticket_id}"
+bun .collab/handlers/emit-signal.ts start "Starting spec analysis for ${ticket_id}"
 ```
 
 This is MANDATORY before analysis begins so orchestrator can track progress.
@@ -226,14 +226,14 @@ Parse the analysis output for verdict:
 Emit the terminal signal using the verdict determined in Step 5:
 
 ```bash
-bun .collab/handlers/emit-spec-critique-signal.ts ${result_signal} "${result_message}"
+bun .collab/handlers/emit-signal.ts ${result_signal} "${result_message}"
 ```
 
 Where `${result_signal}` is one of: `pass`, `warn`, `fail`.
 
 If Step 5 was never reached due to an unexpected error, emit an error signal:
 ```bash
-bun .collab/handlers/emit-spec-critique-signal.ts fail "Unexpected error during spec analysis - manual review required"
+bun .collab/handlers/emit-signal.ts fail "Unexpected error during spec analysis - manual review required"
 ```
 
 Then report the error details.
@@ -270,13 +270,13 @@ Unresolved issues: [list]
 
 ## Signal Protocol Summary
 
-1. **SPEC_CRITIQUE_START** - Sent at beginning of analysis
-2. **SPEC_CRITIQUE_PASS** - Sent when all HIGH issues resolved (or none found)
-3. **SPEC_CRITIQUE_WARN** - Sent when only MEDIUM/LOW issues remain
-4. **SPEC_CRITIQUE_FAIL** - Sent when HIGH issues remain unresolved
+1. **Start signal** - Sent at beginning of analysis
+2. **Pass signal** - Sent when all HIGH issues resolved (or none found)
+3. **Warn signal** - Sent when only MEDIUM/LOW issues remain
+4. **Failure signal** - Sent when HIGH issues remain unresolved
 
 **Orchestrator Integration:**
-- Orchestrator waits for SPEC_CRITIQUE_PASS or SPEC_CRITIQUE_WARN or SPEC_CRITIQUE_FAIL signal
+- Orchestrator waits for the terminal signal (pass, warn, or fail)
 - On PASS/WARN: Advance to next phase (planning)
 - On FAIL: Halt pipeline, require manual intervention
 

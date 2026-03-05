@@ -15,7 +15,7 @@ $ARGUMENTS
 Whenever you have **finished all clarification work for this phase**, emit:
 
 ```bash
-bun .collab/handlers/emit-question-signal.ts complete "Clarification phase finished"
+bun .collab/handlers/emit-signal.ts complete "Clarification phase finished"
 ```
 
 This applies in every scenario: normal completion, after follow-up messages from the orchestrator, after any retry. Any response that represents "this phase is done" must end with this signal.
@@ -275,7 +275,7 @@ Both modes share the same analysis and resolution-application code.
 
 11. **Emit Completion Signal**
    ```bash
-   bun .collab/handlers/emit-question-signal.ts complete "Clarification phase finished"
+   bun .collab/handlers/emit-signal.ts complete "Clarification phase finished"
    ```
    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 
@@ -290,13 +290,13 @@ Both modes share the same analysis and resolution-application code.
 **Autonomous mode:** Steps 4-5 (classification + scan) still run. Steps 8a auto-selects recommended options (grounded in codebase context) and proceeds directly to integration.
 
 **Interactive mode:**
-1. Agent emits `CLARIFY_QUESTION` via `bun .collab/handlers/emit-question-signal.ts question "question§option1§option2§..."`
+1. Agent emits a question signal via `bun .collab/handlers/emit-signal.ts question "question§option1§option2§..."`
 2. Orchestrator receives signal → reads question + options directly from signal `detail` field (no screen capture)
 3. Agent calls AskUserQuestion
 4. Orchestrator reasons with ticket context, navigates tmux to select best option
 5. Agent receives answer, integrates into spec
 6. Repeat for remaining questions
-7. After all questions: Agent explicitly calls `emit-question-signal.ts complete` to emit `CLARIFY_COMPLETE`
+7. After all questions: Agent explicitly calls `emit-signal.ts complete` to emit a completion signal
 
 ## Key Differences from Standard Clarify
 

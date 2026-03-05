@@ -13,12 +13,12 @@ Expected format: `<ticket-id>` (e.g., BRE-350)
 ## Orchestrator Signal Contract (ALWAYS ACTIVE)
 
 > Before this command completes, it MUST emit exactly one signal:
-> - `RUN_TESTS_COMPLETE` — all tests pass (exit code 0)
-> - `RUN_TESTS_FAILED` — tests fail (exit code non-zero), includes test output
-> - `RUN_TESTS_ERROR` — command failed to execute (missing binary, config error)
+> - completion signal — all tests pass (exit code 0)
+> - failure signal — tests fail (exit code non-zero), includes test output
+> - error signal — command failed to execute (missing binary, config error)
 >
-> Signal is emitted via `bun .collab/handlers/emit-run-tests-signal.ts <pass|fail|error> "detail"`.
-> Signal format: `[SIGNAL:TICKET_ID:NONCE] RUN_TESTS_COMPLETE | detail text`
+> Signal is emitted via `bun .collab/handlers/emit-signal.ts <pass|fail|error> "detail"`.
+> Signal format: `[SIGNAL:TICKET_ID:NONCE] {PHASE}_COMPLETE | detail text`
 >
 > Signal MUST be written to signal-queue file BEFORE tmux send-keys (pipeline persistence contract).
 
@@ -35,7 +35,7 @@ Parse arguments to extract:
 
 If no ticket ID provided, emit error signal and exit:
 ```bash
-bun .collab/handlers/emit-run-tests-signal.ts error "No ticket ID provided"
+bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
 ```
 
 ### 2. Run Test Executor
@@ -58,19 +58,19 @@ Based on the executor exit code, emit the corresponding pipeline signal:
 
 **Exit 0 — Tests Pass:**
 ```bash
-bun .collab/handlers/emit-run-tests-signal.ts pass "All tests passed"
+bun .collab/handlers/emit-signal.ts pass "All tests passed"
 ```
 
 **Exit 1 — Tests Fail:**
 ```bash
-bun .collab/handlers/emit-run-tests-signal.ts fail "${verdict_detail}"
+bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
 
 Include the verdict detail from the executor's last stdout line in the signal.
 
 **Exit 2 — Execution Error:**
 ```bash
-bun .collab/handlers/emit-run-tests-signal.ts error "${verdict_detail}"
+bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
 ### 4. On RUN_TESTS_FAILED — Remediation

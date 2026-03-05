@@ -178,7 +178,7 @@ console.log("[VerifyComplete] Emitting completion signal...");
 // Guard: if the signal handler is not installed, skip emission gracefully.
 // This allows verify-and-complete.ts to work in environments where collab
 // has not been fully installed (e.g. fresh checkouts, test environments).
-const handlerPath = join(COLLAB_DIR, "handlers/emit-question-signal.ts");
+const handlerPath = join(COLLAB_DIR, "handlers/emit-signal.ts");
 if (!existsSync(handlerPath)) {
   console.log("[VerifyComplete] ✓ Signal handler not installed — skipping emission");
   process.exit(0);

@@ -26,7 +26,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 Whenever you have **finished generating tasks for this phase**, emit:
 
 ```bash
-bun .collab/handlers/emit-question-signal.ts complete "Task generation phase finished"
+bun .collab/handlers/emit-signal.ts complete "Task generation phase finished"
 ```
 
 This applies in every scenario: normal completion, after follow-up messages from the orchestrator, after any retry. Any response that represents "this phase is done" must end with this signal.
@@ -66,7 +66,7 @@ This applies in every scenario: normal completion, after follow-up messages from
 
 5. **Emit Completion Signal**
    ```bash
-   bun .collab/handlers/emit-question-signal.ts complete "Task generation phase finished"
+   bun .collab/handlers/emit-signal.ts complete "Task generation phase finished"
    ```
    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 

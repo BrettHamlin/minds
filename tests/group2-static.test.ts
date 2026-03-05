@@ -71,9 +71,9 @@ describe("section delimiter in signal pipeline", () => {
     const content = readSourceFile("src/commands/collab.clarify.md");
 
     // The file must contain the section delimiter character in the context
-    // of the emit-question-signal.ts command usage
+    // of the emit-signal.ts command usage
     expect(content).toContain("\u00A7");
-    expect(content).toContain("emit-question-signal.ts");
+    expect(content).toContain("emit-signal.ts");
   });
 
   test("2. collab.run.md has section delimiter parsing instruction", () => {
@@ -862,9 +862,9 @@ describe("emit-code-review-signal.ts handler", () => {
     expect(fs.existsSync(fullPath)).toBe(true);
   });
 
-  test("84. collab.codeReview.md references emit-code-review-signal.ts", () => {
+  test("84. collab.codeReview.md references emit-signal.ts", () => {
     const content = readSourceFile("src/commands/collab.codeReview.md");
-    expect(content).toContain("emit-code-review-signal.ts");
+    expect(content).toContain("emit-signal.ts");
   });
 });
 

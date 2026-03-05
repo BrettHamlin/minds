@@ -13,12 +13,12 @@ Expected format: `<ticket-id>` (e.g., BRE-349)
 ## Orchestrator Signal Contract (ALWAYS ACTIVE)
 
 > Before this command completes, it MUST emit exactly one signal:
-> - `VISUAL_VERIFY_COMPLETE` — all structural and visual checks pass
-> - `VISUAL_VERIFY_FAILED` — structural failure or visual diff exceeds threshold
-> - `VISUAL_VERIFY_ERROR` — config missing, dev server failed, Playwright missing
+> - completion signal — all structural and visual checks pass
+> - failure signal — structural failure or visual diff exceeds threshold
+> - error signal — config missing, dev server failed, Playwright missing
 >
-> Signal is emitted via `bun .collab/handlers/emit-visual-verify-signal.ts <pass|fail|error> "detail"`.
-> Signal format: `[SIGNAL:TICKET_ID:NONCE] VISUAL_VERIFY_COMPLETE | detail text`
+> Signal is emitted via `bun .collab/handlers/emit-signal.ts <pass|fail|error> "detail"`.
+> Signal format: `[SIGNAL:TICKET_ID:NONCE] {PHASE}_COMPLETE | detail text`
 >
 > Signal MUST be written to signal-queue file BEFORE tmux send-keys (pipeline persistence contract).
 
@@ -35,7 +35,7 @@ Parse arguments to extract:
 
 If no ticket ID provided, emit error signal and exit:
 ```bash
-bun .collab/handlers/emit-visual-verify-signal.ts error "No ticket ID provided"
+bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
 ```
 
 ### 2. Start Dev Server (if configured)
@@ -44,7 +44,7 @@ Read `.collab/config/visual-verify.json`. If `startCommand` is configured, start
 
 If the server fails to start or times out, emit error:
 ```bash
-bun .collab/handlers/emit-visual-verify-signal.ts error "Dev server failed to start within 30s"
+bun .collab/handlers/emit-signal.ts error "Dev server failed to start within 30s"
 ```
 
 ### 3. Layer 1 — Deterministic Structural Checks (Executor)
@@ -63,12 +63,12 @@ Do NOT duplicate executor logic inline — config validation, route fetching, an
 
 **Exit 2 — Emit `VISUAL_VERIFY_ERROR` and STOP:**
 ```bash
-bun .collab/handlers/emit-visual-verify-signal.ts error "${verdict_detail}"
+bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
 **Exit 1 — Emit `VISUAL_VERIFY_FAILED` and STOP:**
 ```bash
-bun .collab/handlers/emit-visual-verify-signal.ts fail "${verdict_detail}"
+bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
 
 **Exit 0 — Structural checks passed. Proceed to Layer 2.**
@@ -82,14 +82,14 @@ Only reached when Layer 1 passes (exit 0). For routes with reference screenshots
 
 If any visual diff exceeds threshold, emit failure:
 ```bash
-bun .collab/handlers/emit-visual-verify-signal.ts fail "Visual diff: ${details}"
+bun .collab/handlers/emit-signal.ts fail "Visual diff: ${details}"
 ```
 
 ### 5. Emit Success Signal
 
 If both Layer 1 and Layer 2 pass:
 ```bash
-bun .collab/handlers/emit-visual-verify-signal.ts pass "All structural and visual checks passed"
+bun .collab/handlers/emit-signal.ts pass "All structural and visual checks passed"
 ```
 
 ### 6. On VISUAL_VERIFY_FAILED — Remediation

@@ -13,12 +13,12 @@ Expected format: `<ticket-id>` (e.g., BRE-245)
 ## Orchestrator Signal Contract (ALWAYS ACTIVE)
 
 > Before this command completes, it MUST emit exactly one signal:
-> - `PRE_DEPLOY_CONFIRM_COMPLETE` — user approved the deployment
-> - `PRE_DEPLOY_CONFIRM_FAILED` — user aborted the deployment
-> - `PRE_DEPLOY_CONFIRM_ERROR` — spec missing, config error, or unrecoverable failure
+> - completion signal — user approved the deployment
+> - failure signal — user aborted the deployment
+> - error signal — spec missing, config error, or unrecoverable failure
 >
-> Signal is emitted via `bun .collab/handlers/emit-pre-deploy-confirm-signal.ts <pass|fail|error> "detail"`.
-> Signal format: `[SIGNAL:TICKET_ID:NONCE] PRE_DEPLOY_CONFIRM_COMPLETE | detail text`
+> Signal is emitted via `bun .collab/handlers/emit-signal.ts <pass|fail|error> "detail"`.
+> Signal format: `[SIGNAL:TICKET_ID:NONCE] {PHASE}_COMPLETE | detail text`
 >
 > Signal MUST be written to signal-queue file BEFORE tmux send-keys (pipeline persistence contract).
 
@@ -33,7 +33,7 @@ Present a structured pre-deploy confirmation gate. This is a human gate that run
 1. Run: `bun .collab/scripts/pre-deploy-summary.ts --cwd <worktree-path>`
 2. If exit 2 → emit PRE_DEPLOY_CONFIRM_ERROR. STOP.
    ```bash
-   bun .collab/handlers/emit-pre-deploy-confirm-signal.ts error "Failed to gather deploy context"
+   bun .collab/handlers/emit-signal.ts error "Failed to gather deploy context"
    ```
 3. Parse JSON from stdout.
 
@@ -44,7 +44,7 @@ Parse arguments to extract:
 
 If no ticket ID provided, emit error signal and exit:
 ```bash
-bun .collab/handlers/emit-pre-deploy-confirm-signal.ts error "No ticket ID provided"
+bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
 ```
 
 ### Step 3: Present Human Gate (Agent-Driven)
@@ -57,11 +57,11 @@ bun .collab/handlers/emit-pre-deploy-confirm-signal.ts error "No ticket ID provi
    - **Options:** "Approve — proceed with deploy" / "Abort — stop and investigate"
 2. If user approves → emit PRE_DEPLOY_CONFIRM_COMPLETE:
    ```bash
-   bun .collab/handlers/emit-pre-deploy-confirm-signal.ts pass "Deploy approved for {TICKET_ID}"
+   bun .collab/handlers/emit-signal.ts pass "Deploy approved for {TICKET_ID}"
    ```
 3. If user aborts → emit PRE_DEPLOY_CONFIRM_FAILED:
    ```bash
-   bun .collab/handlers/emit-pre-deploy-confirm-signal.ts fail "Deploy aborted by user"
+   bun .collab/handlers/emit-signal.ts fail "Deploy aborted by user"
    ```
 
 ### Step 4: On PRE_DEPLOY_CONFIRM_FAILED — Pipeline Halts

@@ -131,12 +131,12 @@ After outputting the structured REVIEW block, emit the pipeline signal:
 
 **On PASS:**
 ```bash
-bun .collab/handlers/emit-code-review-signal.ts pass "Review passed"
+bun .collab/handlers/emit-signal.ts pass "Review passed"
 ```
 
 **On FAIL:**
 ```bash
-bun .collab/handlers/emit-code-review-signal.ts fail "Blocking findings: {brief summary}"
+bun .collab/handlers/emit-signal.ts fail "Blocking findings: {brief summary}"
 ```
 
 This writes a signal to the queue and notifies the orchestrator. Do not skip this step.
