@@ -25,6 +25,7 @@ import * as path from "path";
 import {
   getRepoRoot,
   readJsonFile,
+  readFeatureMetadata,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
@@ -182,12 +183,12 @@ export function buildDependencyHolds(
   const holds: DependencyHold[] = [];
 
   for (const ticketId of ticketIds) {
-    let metadata: Record<string, unknown> | null = null;
+    let metadata = null;
 
     for (const dir of specsDirs) {
-      const candidate = path.join(dir, ticketId, "metadata.json");
-      if (fs.existsSync(candidate)) {
-        metadata = readJsonFile(candidate) as Record<string, unknown> | null;
+      const meta = readFeatureMetadata(dir, ticketId);
+      if (meta) {
+        metadata = meta;
         break;
       }
     }

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { resolvePipelineConfigPath, parsePipelineArgs, loadPipelineForTicket, writeJsonAtomic } from "./utils";
+import { resolvePipelineConfigPath, parsePipelineArgs, loadPipelineForTicket, writeJsonAtomic, readFeatureMetadata, findFeatureDir } from "./utils";
 
 // ============================================================================
 // resolvePipelineConfigPath
@@ -243,5 +243,149 @@ describe("parsePipelineArgs", () => {
   test("4. ignores other args", () => {
     const result = parsePipelineArgs(["clarify", "CLARIFY_COMPLETE", "--pipeline", "frontend-ui", "--plain"]);
     expect(result).toEqual({ variant: "frontend-ui", ticketId: undefined });
+  });
+});
+
+// ============================================================================
+// readFeatureMetadata
+// ============================================================================
+
+describe("readFeatureMetadata", () => {
+  let tmpDir: string;
+  let specsDir: string;
+
+  beforeAll(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-metadata-"));
+    specsDir = path.join(tmpDir, "specs");
+    fs.mkdirSync(specsDir, { recursive: true });
+
+    // Feature dir named after ticket ID (Pass 1 match)
+    const dir1 = path.join(specsDir, "BRE-100-my-feature");
+    fs.mkdirSync(dir1);
+    fs.writeFileSync(
+      path.join(dir1, "metadata.json"),
+      JSON.stringify({ ticket_id: "BRE-100", branch_name: "bre-100-my-feature" })
+    );
+
+    // Feature dir named differently (Pass 2 match by ticket_id field)
+    const dir2 = path.join(specsDir, "001-another-feature");
+    fs.mkdirSync(dir2);
+    fs.writeFileSync(
+      path.join(dir2, "metadata.json"),
+      JSON.stringify({ ticket_id: "BRE-200", branch_name: "001-another-feature" })
+    );
+
+    // Feature dir with legacy "pipeline" key (normalization test)
+    const dir3 = path.join(specsDir, "BRE-300-pipeline-key");
+    fs.mkdirSync(dir3);
+    fs.writeFileSync(
+      path.join(dir3, "metadata.json"),
+      JSON.stringify({ ticket_id: "BRE-300", pipeline: "backend" })
+    );
+
+    // Feature dir with both "pipeline" and "pipeline_variant" (pipeline_variant wins)
+    const dir4 = path.join(specsDir, "BRE-400-both-keys");
+    fs.mkdirSync(dir4);
+    fs.writeFileSync(
+      path.join(dir4, "metadata.json"),
+      JSON.stringify({ ticket_id: "BRE-400", pipeline: "frontend", pipeline_variant: "backend" })
+    );
+
+    // Feature dir with no metadata.json
+    const dir5 = path.join(specsDir, "BRE-500-no-metadata");
+    fs.mkdirSync(dir5);
+  });
+
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("1. found by dir name (Pass 1)", () => {
+    const result = readFeatureMetadata(specsDir, "BRE-100");
+    expect(result).not.toBeNull();
+    expect(result!.ticket_id).toBe("BRE-100");
+    expect(result!.branch_name).toBe("bre-100-my-feature");
+  });
+
+  test("2. found by metadata.json ticket_id (Pass 2)", () => {
+    const result = readFeatureMetadata(specsDir, "BRE-200");
+    expect(result).not.toBeNull();
+    expect(result!.ticket_id).toBe("BRE-200");
+    expect(result!.branch_name).toBe("001-another-feature");
+  });
+
+  test("3. pipeline key normalized to pipeline_variant", () => {
+    const result = readFeatureMetadata(specsDir, "BRE-300");
+    expect(result).not.toBeNull();
+    expect(result!.pipeline_variant).toBe("backend");
+  });
+
+  test("4. pipeline_variant wins over pipeline when both present", () => {
+    const result = readFeatureMetadata(specsDir, "BRE-400");
+    expect(result).not.toBeNull();
+    expect(result!.pipeline_variant).toBe("backend");
+  });
+
+  test("5. missing metadata.json returns null", () => {
+    const result = readFeatureMetadata(specsDir, "BRE-500");
+    expect(result).toBeNull();
+  });
+
+  test("6. missing specs dir returns null", () => {
+    const result = readFeatureMetadata(path.join(tmpDir, "nonexistent"), "BRE-100");
+    expect(result).toBeNull();
+  });
+
+  test("7. unknown ticket ID returns null", () => {
+    const result = readFeatureMetadata(specsDir, "BRE-UNKNOWN");
+    expect(result).toBeNull();
+  });
+});
+
+// ============================================================================
+// findFeatureDir (branch option)
+// ============================================================================
+
+describe("findFeatureDir with branch option", () => {
+  let tmpDir: string;
+  let specsDir: string;
+
+  beforeAll(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-findfeaturedir-"));
+    specsDir = path.join(tmpDir, "specs");
+    fs.mkdirSync(specsDir, { recursive: true });
+
+    // Exact branch name match: specs/001-exact-branch
+    fs.mkdirSync(path.join(specsDir, "001-exact-branch"));
+
+    // Prefix match: specs/002-other-name (dir doesn't start with branch name)
+    fs.mkdirSync(path.join(specsDir, "002-other-name"));
+
+    // TicketId match: specs/BRE-300-ticket-feature
+    fs.mkdirSync(path.join(specsDir, "BRE-300-ticket-feature"));
+  });
+
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("1. exact branch match (Pass 0a)", () => {
+    const result = findFeatureDir(tmpDir, "BRE-100", { branch: "001-exact-branch" });
+    expect(result).toBe(path.join(specsDir, "001-exact-branch"));
+  });
+
+  test("2. branch numeric prefix match (Pass 0b)", () => {
+    const result = findFeatureDir(tmpDir, "BRE-200", { branch: "002-something-else" });
+    expect(result).toBe(path.join(specsDir, "002-other-name"));
+  });
+
+  test("3. falls through to ticketId match when branch doesn't match (Pass 1)", () => {
+    const result = findFeatureDir(tmpDir, "BRE-300", { branch: "999-nonexistent" });
+    expect(result).toBe(path.join(specsDir, "BRE-300-ticket-feature"));
+  });
+
+  test("4. returns null when nothing matches", () => {
+    const result = findFeatureDir(tmpDir, "BRE-MISSING", { branch: "999-also-missing" });
+    expect(result).toBeNull();
   });
 });

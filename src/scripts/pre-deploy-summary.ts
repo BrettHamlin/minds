@@ -19,6 +19,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+import { readMetadataJson } from "../lib/pipeline/utils";
 
 function getRepoRoot(cwd?: string): string {
   try {
@@ -168,18 +169,15 @@ function main(): void {
       summary.warnings.push("spec.md found but unreadable");
     }
 
-    // Read metadata.json
-    const metadataPath = path.join(specDir, "metadata.json");
-    if (fs.existsSync(metadataPath)) {
-      try {
-        const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8"));
-        summary.ticketId = metadata.ticket_id || undefined;
-        summary.branch = metadata.branch_name || undefined;
-        summary.pipelineVariant = metadata.pipeline_variant || undefined;
-        summary.service = metadata.project_name || metadata.service || undefined;
-      } catch {
-        summary.warnings.push("metadata.json found but malformed");
-      }
+    // Read metadata.json via shared utility (handles key normalization)
+    const metadata = readMetadataJson(specDir);
+    if (metadata) {
+      summary.ticketId = metadata.ticket_id || undefined;
+      summary.branch = metadata.branch_name || undefined;
+      summary.pipelineVariant = metadata.pipeline_variant || undefined;
+      summary.service = (metadata.project_name as string | undefined) || (metadata.service as string | undefined) || undefined;
+    } else if (fs.existsSync(path.join(specDir, "metadata.json"))) {
+      summary.warnings.push("metadata.json found but malformed");
     } else {
       summary.warnings.push("metadata.json not found in spec directory");
     }

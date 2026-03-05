@@ -1,31 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { join, dirname } from "path";
-import { homedir } from "os";
-
-interface ReposMap {
-  [repoId: string]: { path: string };
-}
-
-function getReposFile(): string {
-  return process.env.COLLAB_REPOS_FILE ?? join(homedir(), ".collab", "repos.json");
-}
-
-function readRepos(): ReposMap {
-  const file = getReposFile();
-  if (!existsSync(file)) return {};
-  try {
-    return JSON.parse(readFileSync(file, "utf-8"));
-  } catch {
-    return {};
-  }
-}
-
-function writeRepos(repos: ReposMap): void {
-  const file = getReposFile();
-  const dir = dirname(file);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(file, JSON.stringify(repos, null, 2) + "\n");
-}
+import { existsSync } from "fs";
+import { readRepos, writeRepos, getReposFilePath } from "../../../lib/pipeline/repo-registry";
 
 export async function repo(
   positional: string[],
@@ -47,7 +21,7 @@ export async function repo(
     const repos = readRepos();
     const entry = repos[repoId];
     if (!entry) {
-      console.error(`Repo '${repoId}' not found in ${getReposFile()}`);
+      console.error(`Repo '${repoId}' not found in ${getReposFilePath()}`);
       process.exit(1);
     }
     if (!existsSync(entry.path)) {

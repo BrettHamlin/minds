@@ -13,6 +13,7 @@
 import { existsSync, readdirSync, statSync, mkdirSync, copyFileSync, readFileSync } from "fs";
 import { join, basename } from "path";
 import { execSync } from "child_process";
+import { findFeatureDir } from "../lib/pipeline/utils";
 
 // --- Argument parsing ---
 const args = new Set(process.argv.slice(2));
@@ -80,56 +81,10 @@ if (!prefixMatch && !ticketMatch) {
 // --- 4. Find FEATURE_DIR ---
 let featureDir: string;
 
-if (prefixMatch) {
-  const prefix = prefixMatch[1];
-  // Exact match first
-  if (existsSync(join(specsDir, branch))) {
-    featureDir = join(specsDir, branch);
-  } else {
-    // Prefix match
-    const matches: string[] = [];
-    if (existsSync(specsDir)) {
-      for (const entry of readdirSync(specsDir)) {
-        if (entry.startsWith(`${prefix}-`) && statSync(join(specsDir, entry)).isDirectory()) {
-          matches.push(entry);
-        }
-      }
-    }
-
-    if (matches.length === 1) {
-      featureDir = join(specsDir, matches[0]);
-    } else if (matches.length > 1) {
-      fail(`Multiple spec directories found with prefix '${prefix}': ${matches.join(", ")}\nPlease ensure only one spec directory exists per numeric prefix.`);
-    } else {
-      featureDir = join(specsDir, branch);
-    }
-  }
-} else {
-  // Ticket ID branch (e.g., BRE-418-fix-frontend-mapping)
-  const ticketId = ticketMatch![1];
-
-  // Try exact dir name match first (e.g., specs/BRE-418)
-  if (existsSync(join(specsDir, ticketId))) {
-    featureDir = join(specsDir, ticketId);
-  } else {
-    // Search metadata.json for matching ticket_id
-    let found: string | null = null;
-    if (existsSync(specsDir)) {
-      for (const entry of readdirSync(specsDir)) {
-        const metaPath = join(specsDir, entry, "metadata.json");
-        if (!existsSync(metaPath)) continue;
-        try {
-          const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-          if (meta.ticket_id === ticketId) {
-            found = join(specsDir, entry);
-            break;
-          }
-        } catch { /* skip malformed */ }
-      }
-    }
-    featureDir = found ?? join(specsDir, ticketId);
-  }
-}
+// Use findFeatureDir for consolidated resolution (supports branch prefix + ticket ID)
+const lookupId = prefixMatch ? prefixMatch[1] : ticketMatch![1];
+const resolved = findFeatureDir(repoRoot, lookupId, { branch });
+featureDir = resolved ?? join(specsDir, branch);
 
 // --- 5. Derive paths ---
 const featureSpec = join(featureDir, "spec.md");
