@@ -32,6 +32,17 @@ import { getRepoRoot, loadPipelineForTicket } from "../orchestrator-utils";
 function main(): void {
   const args = process.argv.slice(2);
 
+  if (args.length >= 1 && args[0].startsWith("--")) {
+    console.error(
+      `Error: First argument must be a ticket ID, not a flag.\n` +
+      `Got: "${args[0]}"\n\n` +
+      `Usage: pipeline-config-read.ts <TICKET_ID> <command> [options]\n` +
+      `  <TICKET_ID> codereview [--phase <phase-name>]\n` +
+      `  <TICKET_ID> interactive [--phase <phase-name>]`
+    );
+    process.exit(1);
+  }
+
   if (args.length < 2) {
     console.error("Usage: pipeline-config-read.ts <TICKET_ID> <command> [options]");
     console.error("  <TICKET_ID> codereview [--phase <phase-name>]");

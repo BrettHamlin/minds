@@ -117,4 +117,18 @@ describe("pipeline-config-read: codereview command", () => {
     }
     expect(threw).toBe(true);
   });
+
+  test("9. flag as first arg prints clear error and exits 1", async () => {
+    const proc = Bun.spawn(
+      ["bun", SCRIPT, "--codereview"],
+      { cwd: tmpDir, stderr: "pipe", stdout: "pipe" }
+    );
+    const [stderr, exitCode] = await Promise.all([
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Error: First argument must be a ticket ID, not a flag.");
+    expect(stderr).toContain('Got: "--codereview"');
+  });
 });
