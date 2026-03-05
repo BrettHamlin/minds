@@ -8,7 +8,7 @@
  *
  * Usage (from a thin wrapper):
  *   import { emitPhaseSignal } from "./emit-phase-signal";
- *   emitPhaseSignal("blindqa", { start: "awaitingInput", pass: "completed", fail: "failed" });
+ *   emitPhaseSignal("blindqa", { start: "processing", pass: "completed", fail: "failed" });
  */
 
 import { execSync } from "child_process";
