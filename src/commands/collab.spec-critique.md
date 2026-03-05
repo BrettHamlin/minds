@@ -42,11 +42,11 @@ If the file exists and `current_step` contains `spec_critique` (or `spec.critiqu
 
 **`AUTONOMOUS_MODE=false`** → interactive (standalone) invocation; user is present. Proceed to Step 4b.
 
-**Interactive mode** is resolved automatically by `resolveAndApply()` in the shared library — no separate `pipeline-config-read.ts` call is needed. If non-interactive mode is active (resolved internally from pipeline config), use non-interactive batch protocol (emit `SPEC_CRITIQUE_QUESTIONS` signal) instead of AskUserQuestion calls.
+**Interactive mode** is resolved automatically by `resolveAndApply()` in the shared library — no separate `pipeline-config-read.ts` call is needed. If non-interactive mode is active (resolved internally from pipeline config), use non-interactive batch protocol (emit a questions signal) instead of AskUserQuestion calls.
 
 **Non-interactive batch protocol** (when `INTERACTIVE_MODE=false`):
 1. Collect HIGH/unresolved issues into a `QuestionCollector` (from `.collab/lib/pipeline/questions.ts`)
-2. Call `resolveAndApply()` — writes `findings/spec_critique-round-1.json`, emits `SPEC_CRITIQUE_QUESTIONS`, polls for `resolutions/spec_critique-round-1.json`
+2. Call `resolveAndApply()` — writes `findings/spec_critique-round-1.json`, emits a questions signal, polls for `resolutions/spec_critique-round-1.json`
 3. Apply resolutions from the orchestrator; re-evaluate verdict
 4. Proceed to Step 5 with final verdict
 
@@ -255,7 +255,7 @@ Signal emitted: pass
 ```
 ⚠️ Spec analysis PASSED with warnings - MEDIUM/LOW issues remain
 Mode: ${AUTONOMOUS_MODE ? "autonomous" : "interactive"}
-Signal emitted: SPEC_CRITIQUE_WARN
+Signal emitted: warn
 ```
 
 **Failure (fail):**
