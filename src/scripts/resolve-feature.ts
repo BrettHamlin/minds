@@ -13,6 +13,7 @@
 import { existsSync, readdirSync, statSync, mkdirSync, copyFileSync } from "fs";
 import { join, basename } from "path";
 import { execSync } from "child_process";
+import { findFeatureDir } from "../lib/pipeline/utils";
 
 // --- Argument parsing ---
 const args = new Set(process.argv.slice(2));
@@ -78,29 +79,8 @@ const prefix = prefixMatch[1];
 const specsDir = join(repoRoot, "specs");
 let featureDir: string;
 
-// Exact match first
-if (existsSync(join(specsDir, branch))) {
-  featureDir = join(specsDir, branch);
-} else {
-  // Prefix match
-  const matches: string[] = [];
-  if (existsSync(specsDir)) {
-    for (const entry of readdirSync(specsDir)) {
-      if (entry.startsWith(`${prefix}-`) && statSync(join(specsDir, entry)).isDirectory()) {
-        matches.push(entry);
-      }
-    }
-  }
-
-  if (matches.length === 1) {
-    featureDir = join(specsDir, matches[0]);
-  } else if (matches.length > 1) {
-    fail(`Multiple spec directories found with prefix '${prefix}': ${matches.join(", ")}\nPlease ensure only one spec directory exists per numeric prefix.`);
-  } else {
-    // No matches — use branch name as default path (will fail existence check below)
-    featureDir = join(specsDir, branch);
-  }
-}
+const resolved = findFeatureDir(repoRoot, prefix, { branch });
+featureDir = resolved ?? join(specsDir, branch);
 
 // --- 5. Derive paths ---
 const featureSpec = join(featureDir, "spec.md");

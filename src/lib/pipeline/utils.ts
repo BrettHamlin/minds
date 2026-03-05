@@ -132,11 +132,24 @@ export function scanFeaturesMetadata(specsDir: string): FeatureMetadata[] {
 }
 
 /**
- * Scan specs/ for a directory whose name contains ticketId (case-insensitive).
- * Falls back to scanning metadata.json files for ticket_id match (Pass 2).
- * Returns the full path, or null if not found.
+ * Scan specs/ for a feature directory, using a 4-pass resolution strategy.
+ *
+ * Resolution order:
+ *   Pass 0a: exact branch match — specs/{branch}
+ *   Pass 0b: branch numeric prefix match — specs/{NNN}-*
+ *   Pass 1:  dir name contains ticketId (case-insensitive)
+ *   Pass 2:  metadata.json ticket_id field match
+ *
+ * @param repoRoot  - Repository root directory.
+ * @param ticketId  - Ticket ID or numeric prefix (e.g. "BRE-423" or "001").
+ * @param options.branch - Git branch name; enables Passes 0a and 0b.
+ * @returns Full path to the feature directory, or null if not found.
  */
-export function findFeatureDir(repoRoot: string, ticketId: string): string | null {
+export function findFeatureDir(
+  repoRoot: string,
+  ticketId: string,
+  options?: { branch?: string }
+): string | null {
   const specsDir = path.join(repoRoot, "specs");
   if (!fs.existsSync(specsDir)) return null;
   let entries: string[];
@@ -144,6 +157,27 @@ export function findFeatureDir(repoRoot: string, ticketId: string): string | nul
     entries = fs.readdirSync(specsDir);
   } catch {
     return null;
+  }
+
+  const branch = options?.branch;
+
+  // Pass 0a: exact branch match — specs/{branch}
+  if (branch) {
+    const exactPath = path.join(specsDir, branch);
+    if (fs.existsSync(exactPath)) return exactPath;
+  }
+
+  // Pass 0b: branch numeric prefix match — first entry starting with NNN-
+  if (branch) {
+    const prefixMatch = branch.match(/^(\d{3})-/);
+    if (prefixMatch) {
+      const prefix = prefixMatch[1];
+      for (const entry of entries) {
+        if (entry.startsWith(`${prefix}-`)) {
+          return path.join(specsDir, entry);
+        }
+      }
+    }
   }
 
   // Pass 1: dir name contains ticketId (case-insensitive)

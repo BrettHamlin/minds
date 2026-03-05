@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { resolvePipelineConfigPath, writeJsonAtomic, readFeatureMetadata } from "./utils";
+import { resolvePipelineConfigPath, writeJsonAtomic, readFeatureMetadata, findFeatureDir } from "./utils";
 
 // ============================================================================
 // resolvePipelineConfigPath
@@ -217,6 +217,54 @@ describe("readFeatureMetadata", () => {
 
   test("7. unknown ticket ID returns null", () => {
     const result = readFeatureMetadata(specsDir, "BRE-UNKNOWN");
+    expect(result).toBeNull();
+  });
+});
+
+// ============================================================================
+// findFeatureDir (branch option)
+// ============================================================================
+
+describe("findFeatureDir with branch option", () => {
+  let tmpDir: string;
+  let specsDir: string;
+
+  beforeAll(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-findfeaturedir-"));
+    specsDir = path.join(tmpDir, "specs");
+    fs.mkdirSync(specsDir, { recursive: true });
+
+    // Exact branch name match: specs/001-exact-branch
+    fs.mkdirSync(path.join(specsDir, "001-exact-branch"));
+
+    // Prefix match: specs/002-other-name (dir doesn't start with branch name)
+    fs.mkdirSync(path.join(specsDir, "002-other-name"));
+
+    // TicketId match: specs/BRE-300-ticket-feature
+    fs.mkdirSync(path.join(specsDir, "BRE-300-ticket-feature"));
+  });
+
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("1. exact branch match (Pass 0a)", () => {
+    const result = findFeatureDir(tmpDir, "BRE-100", { branch: "001-exact-branch" });
+    expect(result).toBe(path.join(specsDir, "001-exact-branch"));
+  });
+
+  test("2. branch numeric prefix match (Pass 0b)", () => {
+    const result = findFeatureDir(tmpDir, "BRE-200", { branch: "002-something-else" });
+    expect(result).toBe(path.join(specsDir, "002-other-name"));
+  });
+
+  test("3. falls through to ticketId match when branch doesn't match (Pass 1)", () => {
+    const result = findFeatureDir(tmpDir, "BRE-300", { branch: "999-nonexistent" });
+    expect(result).toBe(path.join(specsDir, "BRE-300-ticket-feature"));
+  });
+
+  test("4. returns null when nothing matches", () => {
+    const result = findFeatureDir(tmpDir, "BRE-MISSING", { branch: "999-also-missing" });
     expect(result).toBeNull();
   });
 });
