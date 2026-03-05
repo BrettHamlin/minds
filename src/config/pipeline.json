@@ -276,8 +276,5 @@
     "enabled": true,
     "model": "claude-opus-4-6",
     "maxAttempts": 3
-  },
-  "interactive": {
-    "enabled": true
   }
 }

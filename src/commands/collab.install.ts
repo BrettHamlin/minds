@@ -316,8 +316,6 @@ if (existsSync(variantsDir)) {
 // Scan installed variant configs and install any referenced commands missing from
 // .claude/commands/. Commands listed in pipeline phase "command" fields (e.g.,
 // "/collab.spec-critique") must be present for the pipeline to dispatch correctly.
-// This handles commands that exist in src/commands/ but are not distributed via any
-// pipeline registry package (e.g., collab.spec-critique.md, collab.codeReview.md).
 const installedVariantsDir = join(repoRoot, ".collab/config/pipeline-variants");
 const variantCommandsSrc = join(tempDir, "src/commands");
 if (existsSync(installedVariantsDir) && existsSync(variantCommandsSrc)) {
@@ -340,7 +338,7 @@ if (existsSync(installedVariantsDir) && existsSync(variantCommandsSrc)) {
   let variantCmdsInstalled = 0;
   for (const cmdFile of referencedCommands) {
     const dest = join(repoRoot, ".claude/commands", cmdFile);
-    if (existsSync(dest)) continue; // already installed
+    if (existsSync(dest)) continue; // already installed (e.g. from a pack)
     const src = join(variantCommandsSrc, cmdFile);
     if (!existsSync(src)) continue; // not available in source
     copyFileSync(src, dest);
@@ -394,16 +392,47 @@ if (!existsSync(statePath)) {
   console.log("State file exists — preserving");
 }
 
-// Preserve-on-install: .claude/settings.json (only write if absent)
+// Merge-on-install: .claude/settings.json (merge collab keys, preserve user keys)
 const settingsPath = join(repoRoot, ".claude/settings.json");
-if (!existsSync(settingsPath)) {
-  const settingsSrc = join(tempDir, "src/claude-settings.json");
-  if (existsSync(settingsSrc)) {
-    copyFileSync(settingsSrc, settingsPath);
-    console.log("Settings initialized: .claude/settings.json");
+const settingsSrc = join(tempDir, "src/claude-settings.json");
+if (existsSync(settingsSrc)) {
+  const collabSettings = JSON.parse(readFileSync(settingsSrc, "utf8"));
+  const existing = existsSync(settingsPath)
+    ? JSON.parse(readFileSync(settingsPath, "utf8"))
+    : {};
+  // Deep-merge: collab keys win, but preserve user keys not in collab template
+  const merged = { ...existing, ...collabSettings };
+  // Deep-merge hooks: combine arrays rather than replace
+  if (existing.hooks && collabSettings.hooks) {
+    merged.hooks = { ...existing.hooks };
+    for (const [event, hooks] of Object.entries(collabSettings.hooks as Record<string, unknown[]>)) {
+      merged.hooks[event] = hooks; // collab hooks replace per-event (they're canonical)
+    }
   }
-} else {
-  console.log("Settings file exists — preserving");
+  writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + "\n");
+  console.log("Settings merged: .claude/settings.json");
+}
+
+// Auto-update installed packs so reinstalls pull latest versions from the registry
+const installedPipelinesPath = join(repoRoot, ".collab/state/installed-pipelines.json");
+if (existsSync(installedPipelinesPath)) {
+  try {
+    const pipelinesState = JSON.parse(readFileSync(installedPipelinesPath, "utf-8"));
+    const hasPipelines = Object.keys(pipelinesState.pipelines ?? {}).length > 0;
+    if (hasPipelines) {
+      const collabBin = join(repoRoot, ".collab/bin/collab");
+      if (existsSync(collabBin)) {
+        execSync(`"${collabBin}" pipelines update --yes`, {
+          cwd: repoRoot,
+          stdio: "inherit",
+          shell: true,
+        });
+      }
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.log(`  Warning: pack update check failed: ${msg}`);
+  }
 }
 
 // Preserve-on-install: constitution (only write if absent)

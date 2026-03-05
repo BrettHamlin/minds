@@ -146,13 +146,16 @@ export class StatusDaemon {
         }
         this.connected = true;
       } else {
-        // Incremental event (StatusEvent from bus)
-        const ticketId = parsed.ticketId as string;
-        const snapshot = parsed.snapshot as Record<string, unknown> | undefined;
+        // Incremental event — may arrive as raw StatusEvent or wrapped in BusMessage
+        // BusMessage format: { id, seq, channel, from, type, payload: StatusEvent, timestamp }
+        // StatusEvent format: { ticketId, eventType, changedFields, snapshot, timestamp }
+        const event = parsed.payload && parsed.payload.ticketId ? parsed.payload : parsed;
+        const ticketId = event.ticketId as string;
+        const snapshot = event.snapshot as Record<string, unknown> | undefined;
         const currentStep = snapshot?.current_step as string | undefined;
 
         if (
-          parsed.eventType === "registry_updated" &&
+          event.eventType === "registry_updated" &&
           currentStep === "done"
         ) {
           // Pipeline completed — remove entry
