@@ -266,6 +266,39 @@ if (existsSync(join(tempDir, "transport"))) {
   );
 }
 
+// Specify scripts (create-new-feature.ts and related)
+const specifySrc = join(tempDir, "src/.specify/scripts");
+if (existsSync(specifySrc)) {
+  for (const f of readdirSync(specifySrc)) {
+    if (!f.endsWith(".ts") || f.endsWith(".test.ts")) continue;
+    copyFileSync(join(specifySrc, f), join(repoRoot, ".specify/scripts", f));
+  }
+  execSync(
+    `find "${join(repoRoot, ".specify/scripts")}" -name "*.ts" -exec chmod +x {} \\;`,
+    { shell: true }
+  );
+  console.log("Specify scripts installed");
+}
+
+// Specify templates (spec-template.md, etc.)
+// Check both src/.specify/templates/ and cli/src/templates/specify-templates/
+const specifyTplSources = [
+  join(tempDir, "src/.specify/templates"),
+  join(tempDir, "cli/src/templates/specify-templates"),
+];
+for (const tplSrc of specifyTplSources) {
+  if (!existsSync(tplSrc)) continue;
+  for (const f of readdirSync(tplSrc)) {
+    const dest = join(repoRoot, ".specify/templates", f);
+    if (!existsSync(dest)) {
+      copyFileSync(join(tplSrc, f), dest);
+    }
+  }
+}
+if (readdirSync(join(repoRoot, ".specify/templates")).length > 0) {
+  console.log("Specify templates installed");
+}
+
 // Hooks (Claude Code settings.json references these)
 const hooksSrc = join(tempDir, "src/hooks");
 if (existsSync(hooksSrc)) {

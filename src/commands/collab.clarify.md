@@ -54,7 +54,18 @@ Both modes share the same analysis and resolution-application code.
 
    If the file exists and `current_step` contains `clarify`, set `AUTONOMOUS_MODE=true`. Otherwise `AUTONOMOUS_MODE=false`.
 
-   **Interactive mode** is resolved automatically by `resolveAndApply()` in the shared library (`.collab/lib/pipeline/questions.ts`), which reads the pipeline config internally. No separate `pipeline-config-read.ts` call is needed — just pass the `QuestionCollector` to `resolveAndApply()` and it handles mode selection.
+   **Interactive mode detection:**
+
+   When `AUTONOMOUS_MODE=true`: read the pipeline config to check for an `interactive` field:
+   ```bash
+   INTERACTIVE_RAW=$(bun .collab/scripts/orchestrator/commands/pipeline-config-read.ts interactive 2>/dev/null || echo "")
+   ```
+   - If `interactive.enabled` is explicitly `true` → `INTERACTIVE_MODE=true`
+   - If `interactive.enabled` is `false` OR the `interactive` field is absent → `INTERACTIVE_MODE=false` (default non-interactive)
+
+   When `AUTONOMOUS_MODE=false` (manual run): `INTERACTIVE_MODE=true` (default — user expects AskUserQuestion prompts).
+
+   **IMPORTANT:** The absence of `interactive` in pipeline.json means non-interactive. This is the standard for orchestrated pipelines — the orchestrator handles all questions via the batch protocol.
 
 3. **Load Spec**
    Read the spec file from `FEATURE_SPEC`.
@@ -155,25 +166,54 @@ Both modes share the same analysis and resolution-application code.
 
    Use a `QuestionCollector` (from `.collab/lib/pipeline/questions.ts`) to collect ALL findings first, then call `resolveAndApply()`.
 
+   **Decision tree (check in this order):**
+   1. `AUTONOMOUS_MODE=true` AND `INTERACTIVE_MODE=false` → **8a** (non-interactive batch — orchestrator resolves)
+   2. `AUTONOMOUS_MODE=false` AND `INTERACTIVE_MODE=true` → **8b** (interactive — human resolves via AskUserQuestion)
+   3. `AUTONOMOUS_MODE=true` AND `INTERACTIVE_MODE=true` → **8c** (auto-resolve fallback — only when pipeline config explicitly sets `interactive.enabled: true`)
+
+   **The common orchestrated case is 8a.** When pipeline.json has no `interactive` field, `INTERACTIVE_MODE=false`, so autonomous pipelines always use the batch protocol.
+
    ### 8a. NON-INTERACTIVE MODE (when `INTERACTIVE_MODE=false`)
 
-   > **Only enter this path when `INTERACTIVE_MODE=false`.**
+   > **This is the DEFAULT for orchestrated pipelines (AUTONOMOUS_MODE=true).** Enter this path when `INTERACTIVE_MODE=false`.
 
-   Collect ALL questions into the `QuestionCollector` first, then:
+   **Re-entry detection:** Before collecting questions, check if resolutions already exist from a previous round:
 
-   ```typescript
-   const { mode, resolutions } = await resolveAndApply(collector, {
-     featureDir,
-     round: 1,
-     forceMode: "non-interactive",
-   });
+   ```bash
+   ls {FEATURE_DIR}/specs/{FEATURE_SLUG}/resolutions/clarify-round-*.json 2>/dev/null
    ```
 
-   This writes `findings/clarify-round-1.json`, emits `CLARIFY_QUESTIONS` signal, and polls for `resolutions/clarify-round-1.json`. Apply all resolutions at once after the batch returns.
+   If resolutions files exist, this is a **re-dispatch** from the orchestrator. Read the resolutions, apply them to the spec (update sections, add clarifications), then skip to emitting `CLARIFY_COMPLETE`. Do NOT re-collect questions or re-emit `CLARIFY_QUESTIONS`.
+
+   **First entry (no resolutions):** Collect ALL questions, write them using the CLI, and **end your response**. Do NOT poll or wait for resolutions — the orchestrator will:
+   1. Receive `CLARIFY_QUESTIONS`
+   2. Gather context, synthesize answers, write resolutions
+   3. Re-dispatch `/collab.clarify` to this agent pane
+
+   **Write findings using the CLI** (this writes the correct schema and emits the signal automatically):
+
+   ```bash
+   cat <<'EOF' | bun .collab/scripts/emit-findings.ts --phase clarify --round 1 --stdin
+   [
+     {
+       "question": "Your question text here",
+       "why": "Why this matters for implementation",
+       "specReferences": ["Section X mentions Y"],
+       "codePatterns": ["src/foo.ts uses pattern Z"],
+       "constraints": ["Must not break existing API"],
+       "implications": ["Determines migration strategy"]
+     }
+   ]
+   EOF
+   ```
+
+   All context fields (`why`, `specReferences`, `codePatterns`, `constraints`, `implications`) are optional.
+
+   After the CLI runs, output: "Emitted CLARIFY_QUESTIONS with {N} questions. Waiting for orchestrator to resolve." then **END RESPONSE** — do not wait, do not poll.
 
    **Do NOT use AskUserQuestion in non-interactive mode.** The orchestrator reasons about answers using its full context stack (spec > constitution > prior resolutions > codebase patterns > agent context > coordination).
 
-   ### 8b. INTERACTIVE MODE (when `INTERACTIVE_MODE=true`, default)
+   ### 8b. INTERACTIVE MODE (when `AUTONOMOUS_MODE=false` and `INTERACTIVE_MODE=true`)
 
    Collect ALL questions first, then for each question call AskUserQuestion:
 
@@ -207,7 +247,9 @@ Both modes share the same analysis and resolution-application code.
 
    ### 8c. AUTONOMOUS MODE fallback (when `AUTONOMOUS_MODE=true` and `INTERACTIVE_MODE=true`)
 
-   In autonomous mode with interactive enabled, DO NOT call AskUserQuestion. Instead, auto-resolve each question:
+   > **This path is ONLY reached when pipeline.json explicitly sets `interactive.enabled: true`.** If the `interactive` field is absent, `INTERACTIVE_MODE=false` and you use 8a instead.
+
+   In autonomous mode with interactive explicitly enabled, DO NOT call AskUserQuestion. Instead, auto-resolve each question:
 
    For each generated question:
    - Select the **recommended option** (the first option, marked with "(Recommended)")

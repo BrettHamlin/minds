@@ -6,16 +6,12 @@
 //
 // Dependencies:
 //   - PipelineSnapshot, StatusSnapshot from ./status-snapshot
-//   - deriveStatus, deriveDetail from src/scripts/orchestrator/commands/status-table
-//     (intentional cross-directory import — reuse existing derivation logic)
+//   - deriveStatus, deriveDetail from ./status-derive (local transport module)
 
 import * as fs from "fs";
 import * as path from "path";
 import type { PipelineSnapshot, StatusSnapshot } from "./status-snapshot";
-import {
-  deriveStatus,
-  deriveDetail,
-} from "../src/scripts/orchestrator/commands/status-table";
+import { deriveStatus, deriveDetail } from "./status-derive";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

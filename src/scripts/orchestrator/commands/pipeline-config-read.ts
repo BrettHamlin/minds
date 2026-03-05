@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 
 /**
- * pipeline-config-read.ts - Read pipeline config from pipeline.json
+ * pipeline-config-read.ts - Read pipeline config settings
  *
- * Outputs KEY=VALUE lines for settings, with sensible defaults
- * when fields are absent. Replaces fragile jq one-liners in collab.run.md.
+ * Ticket ID is REQUIRED — the script reads the registry to resolve the
+ * correct pipeline variant config automatically.
  *
  * Usage:
- *   bun commands/pipeline-config-read.ts codereview [--phase <phase-name>]
- *   bun commands/pipeline-config-read.ts interactive [--phase <phase-name>]
+ *   bun pipeline-config-read.ts <TICKET_ID> codereview [--phase <phase-name>]
+ *   bun pipeline-config-read.ts <TICKET_ID> interactive [--phase <phase-name>]
  *
  * codereview output (stdout, one per line):
  *   CR_ENABLED=true
@@ -24,22 +24,23 @@
  * Exit codes:
  *   0 = success
  *   1 = usage error
- *   3 = pipeline.json not found or malformed
+ *   3 = pipeline config not found or malformed
  */
 
-import { getRepoRoot, readJsonFile } from "../orchestrator-utils";
+import { getRepoRoot, loadPipelineForTicket } from "../orchestrator-utils";
 
 function main(): void {
   const args = process.argv.slice(2);
 
-  if (args.length < 1) {
-    console.error("Usage: pipeline-config-read.ts <command> [options]");
-    console.error("  codereview [--phase <phase-name>]");
-    console.error("  interactive [--phase <phase-name>]");
+  if (args.length < 2) {
+    console.error("Usage: pipeline-config-read.ts <TICKET_ID> <command> [options]");
+    console.error("  <TICKET_ID> codereview [--phase <phase-name>]");
+    console.error("  <TICKET_ID> interactive [--phase <phase-name>]");
     process.exit(1);
   }
 
-  const command = args[0];
+  const ticketId = args[0];
+  const command = args[1];
 
   if (command !== "codereview" && command !== "interactive") {
     console.error(`Unknown command: ${command}. Supported: codereview, interactive`);
@@ -48,18 +49,18 @@ function main(): void {
 
   // Parse --phase flag
   let phaseName: string | undefined;
-  for (let i = 1; i < args.length; i++) {
+  for (let i = 2; i < args.length; i++) {
     if (args[i] === "--phase" && args[i + 1]) {
       phaseName = args[++i];
     }
   }
 
   const repoRoot = getRepoRoot();
-  const configPath = `${repoRoot}/.collab/config/pipeline.json`;
-  const pipeline = readJsonFile(configPath);
-
-  if (pipeline === null) {
-    console.error(`Error: pipeline.json not found: ${configPath}`);
+  let pipeline: any;
+  try {
+    ({ pipeline } = loadPipelineForTicket(repoRoot, ticketId));
+  } catch {
+    console.error(`Error: pipeline config not found for ticket ${ticketId}`);
     process.exit(3);
   }
 
@@ -94,8 +95,10 @@ function main(): void {
   } else if (command === "interactive") {
     const ia = (pipeline.interactive as Record<string, any>) ?? {};
 
-    // Global interactive setting with default (true — interactive by default)
-    const interactiveEnabled = ia.enabled !== false ? "true" : "false";
+    // Global interactive setting with default (false — non-interactive by default).
+    // When the `interactive` field is absent from pipeline.json, orchestrated
+    // pipelines use the non-interactive batch protocol (step 8a in clarify).
+    const interactiveEnabled = ia.enabled === true ? "true" : "false";
 
     // Per-phase override (if --phase supplied)
     let phaseInteractive = "inherit";

@@ -238,6 +238,73 @@ describe("create-new-feature E2E", () => {
   });
 });
 
+// ─── Integration Tests: branch-exists handling ────────────────────────────────
+
+describe("create-new-feature handles existing branches", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `cnf-branch-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmpDir, { recursive: true });
+    Bun.spawnSync(["git", "init"], { cwd: tmpDir });
+    Bun.spawnSync(["git", "commit", "--allow-empty", "-m", "init"], { cwd: tmpDir });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("succeeds when branch already exists from a previous run", async () => {
+    // Create the branch first (simulates a previous run)
+    Bun.spawnSync(["git", "branch", "001-existing-feat"], { cwd: tmpDir });
+
+    const worktreePath = join(tmpDir, "worktrees");
+    const proc = Bun.spawn(
+      [
+        "bun", SCRIPT_PATH,
+        "--json", "--worktree",
+        "--worktree-path", worktreePath,
+        "--number", "1",
+        "--short-name", "existing-feat",
+        "Test existing branch",
+      ],
+      { stdout: "pipe", stderr: "pipe", cwd: tmpDir }
+    );
+    const exitCode = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+
+    expect(exitCode).toBe(0);
+    const json = JSON.parse(stdout.trim());
+    expect(json.BRANCH_NAME).toBe("001-existing-feat");
+    expect(json.WORKTREE_DIR).toBeTruthy();
+    expect(existsSync(json.WORKTREE_DIR)).toBe(true);
+  });
+
+  test("reuses existing worktree when both branch and worktree exist", async () => {
+    // Create branch and worktree (simulates complete previous run)
+    const worktreePath = join(tmpDir, "worktrees");
+    mkdirSync(worktreePath, { recursive: true });
+    Bun.spawnSync(["git", "worktree", "add", join(worktreePath, "001-reuse-test"), "-b", "001-reuse-test"], { cwd: tmpDir });
+
+    const proc = Bun.spawn(
+      [
+        "bun", SCRIPT_PATH,
+        "--json", "--worktree",
+        "--worktree-path", worktreePath,
+        "--number", "1",
+        "--short-name", "reuse-test",
+        "Test reuse worktree",
+      ],
+      { stdout: "pipe", stderr: "pipe", cwd: tmpDir }
+    );
+    const exitCode = await proc.exited;
+    const stderr = await new Response(proc.stderr).text();
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toContain("Worktree already exists");
+  });
+});
+
 // ─── Integration Tests: --source-repo writes repo_id to metadata.json ────────
 
 describe("--source-repo writes repo_id to metadata.json", () => {

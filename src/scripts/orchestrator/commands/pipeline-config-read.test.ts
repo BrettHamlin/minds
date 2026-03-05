@@ -1,43 +1,48 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { execSync } from "child_process";
+import { writeJsonAtomic } from "../../../lib/pipeline";
 
-const REPO_ROOT = execSync("git rev-parse --show-toplevel", {
-  encoding: "utf-8",
-  cwd: import.meta.dir,
-}).trim();
-
-const CONFIG_DIR = path.join(REPO_ROOT, ".collab/config");
 const SCRIPT = path.join(import.meta.dir, "pipeline-config-read.ts");
+const TICKET_ID = "TEST-PCR";
 
-// Backup + restore the real pipeline.json
-let originalConfig: string | null = null;
-const configPath = path.join(CONFIG_DIR, "pipeline.json");
+let tmpDir: string;
+let configDir: string;
+let registryDir: string;
+let configPath: string;
 
 function writeTestConfig(obj: object): void {
-  fs.mkdirSync(CONFIG_DIR, { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(obj, null, 2));
 }
 
 beforeAll(() => {
-  if (fs.existsSync(configPath)) {
-    originalConfig = fs.readFileSync(configPath, "utf-8");
-  }
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-pcr-"));
+  configDir = path.join(tmpDir, ".collab", "config");
+  registryDir = path.join(tmpDir, ".collab", "state", "pipeline-registry");
+  configPath = path.join(configDir, "pipeline.json");
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.mkdirSync(registryDir, { recursive: true });
+
+  // Create registry entry (no variant — uses default pipeline.json)
+  writeJsonAtomic(path.join(registryDir, `${TICKET_ID}.json`), {
+    ticket_id: TICKET_ID,
+    current_step: "clarify",
+  });
+
+  // Initialize git so getRepoRoot() works
+  execSync("git init", { cwd: tmpDir, stdio: "pipe" });
 });
 
 afterAll(() => {
-  if (originalConfig !== null) {
-    fs.writeFileSync(configPath, originalConfig);
-  } else if (fs.existsSync(configPath)) {
-    fs.unlinkSync(configPath);
-  }
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 function runScript(args: string): string {
-  return execSync(`bun ${SCRIPT} ${args}`, {
+  return execSync(`bun ${SCRIPT} ${TICKET_ID} ${args}`, {
     encoding: "utf-8",
-    cwd: REPO_ROOT,
+    cwd: tmpDir,
   }).trim();
 }
 
@@ -54,6 +59,7 @@ describe("pipeline-config-read: codereview command", () => {
 
   test("2. reflects explicit codeReview config", () => {
     writeTestConfig({
+      phases: {},
       codeReview: { enabled: true, model: "claude-haiku-4-5", maxAttempts: 5, file: "arch.md" },
     });
     const out = runScript("codereview");
@@ -64,15 +70,15 @@ describe("pipeline-config-read: codereview command", () => {
   });
 
   test("3. CR_ENABLED=false when codeReview.enabled is false", () => {
-    writeTestConfig({ codeReview: { enabled: false } });
+    writeTestConfig({ phases: {}, codeReview: { enabled: false } });
     const out = runScript("codereview");
     expect(out).toContain("CR_ENABLED=false");
   });
 
   test("4. PHASE_CR=false when phase overrides to false", () => {
     writeTestConfig({
-      codeReview: { enabled: true },
       phases: { implement: { codeReview: { enabled: false } } },
+      codeReview: { enabled: true },
     });
     const out = runScript("codereview --phase implement");
     expect(out).toContain("PHASE_CR=false");
@@ -80,8 +86,8 @@ describe("pipeline-config-read: codereview command", () => {
 
   test("5. PHASE_CR=true when phase overrides to true", () => {
     writeTestConfig({
-      codeReview: { enabled: false },
       phases: { implement: { codeReview: { enabled: true } } },
+      codeReview: { enabled: false },
     });
     const out = runScript("codereview --phase implement");
     expect(out).toContain("PHASE_CR=true");
@@ -89,15 +95,15 @@ describe("pipeline-config-read: codereview command", () => {
 
   test("6. PHASE_CR=inherit when phase has no codeReview override", () => {
     writeTestConfig({
-      codeReview: { enabled: true },
       phases: { implement: {} },
+      codeReview: { enabled: true },
     });
     const out = runScript("codereview --phase implement");
     expect(out).toContain("PHASE_CR=inherit");
   });
 
   test("7. PHASE_CR=inherit when --phase not specified", () => {
-    writeTestConfig({ codeReview: { enabled: true } });
+    writeTestConfig({ phases: {}, codeReview: { enabled: true } });
     const out = runScript("codereview");
     expect(out).toContain("PHASE_CR=inherit");
   });
@@ -105,7 +111,7 @@ describe("pipeline-config-read: codereview command", () => {
   test("8. exits 1 for unknown command", () => {
     let threw = false;
     try {
-      execSync(`bun ${SCRIPT} unknown-command`, { encoding: "utf-8", cwd: REPO_ROOT });
+      execSync(`bun ${SCRIPT} ${TICKET_ID} unknown-command`, { encoding: "utf-8", cwd: tmpDir });
     } catch {
       threw = true;
     }

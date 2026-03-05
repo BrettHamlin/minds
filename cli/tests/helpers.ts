@@ -19,7 +19,7 @@ export function cleanupTempDir(dir: string): void {
   rmSync(dir, { recursive: true, force: true });
 }
 
-export const CLI_PATH = join(import.meta.dir, "..", "bin", "cli.ts");
+export const CLI_PATH = join(import.meta.dir, "..", "bin", "collab.ts");
 
 export function runCLI(
   args: string,

@@ -50,13 +50,39 @@ export function findFeatureDir(repoRoot: string, ticketId: string): string | nul
   if (!fs.existsSync(specsDir)) return null;
   try {
     const entries = fs.readdirSync(specsDir);
+    // Pass 1: check directory name for ticket ID (fast path)
     for (const entry of entries) {
       if (entry.toLowerCase().includes(ticketId.toLowerCase())) {
         return path.join(specsDir, entry);
       }
     }
+    // Pass 2: check metadata.json ticket_id in each subdir (handles 001-feature-name dirs)
+    for (const entry of entries) {
+      const metaPath = path.join(specsDir, entry, "metadata.json");
+      if (!fs.existsSync(metaPath)) continue;
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+        if (meta.ticket_id === ticketId) {
+          return path.join(specsDir, entry);
+        }
+      } catch {
+        // malformed metadata — skip
+      }
+    }
   } catch {}
   return null;
+}
+
+/**
+ * Parse --pipeline and --ticket flags from CLI args.
+ * Single source of truth for pipeline variant arg parsing across all orchestrator scripts.
+ */
+export function parsePipelineArgs(args: string[]): { variant: string | undefined; ticketId: string | undefined } {
+  const pipelineIdx = args.indexOf("--pipeline");
+  const variant = pipelineIdx !== -1 && args[pipelineIdx + 1] ? args[pipelineIdx + 1] : undefined;
+  const ticketIdx = args.indexOf("--ticket");
+  const ticketId = ticketIdx !== -1 && args[ticketIdx + 1] ? args[ticketIdx + 1] : undefined;
+  return { variant, ticketId };
 }
 
 /**
@@ -80,7 +106,6 @@ export function resolvePipelineConfigPath(
 ): string {
   const defaultPath = path.join(repoRoot, ".collab", "config", "pipeline.json");
 
-  // Determine variant: explicit option takes precedence over registry lookup
   let variant = options.variant;
   if (!variant && options.ticketId && options.registryDir) {
     const regPath = getRegistryPath(options.registryDir, options.ticketId);
@@ -99,8 +124,43 @@ export function resolvePipelineConfigPath(
     if (fs.existsSync(variantPath)) {
       return variantPath;
     }
-    // Variant file missing — fall back to default (same behavior as orchestrator-init.ts)
   }
 
   return defaultPath;
+}
+
+// ---------------------------------------------------------------------------
+// loadPipelineForTicket — SINGLE SOURCE OF TRUTH for loading pipeline config
+//
+// Every orchestrator script that needs the pipeline config calls this ONE
+// function with the ticket ID. It reads the registry, resolves the variant,
+// loads and returns the config. No flags, no env vars, no guessing.
+// ---------------------------------------------------------------------------
+
+export interface LoadedPipeline {
+  configPath: string;
+  pipeline: Record<string, any>;
+  variant: string | undefined;
+}
+
+export function loadPipelineForTicket(repoRoot: string, ticketId: string): LoadedPipeline {
+  const registryDir = path.join(repoRoot, ".collab", "state", "pipeline-registry");
+  const regPath = getRegistryPath(registryDir, ticketId);
+  const registry = readJsonFile(regPath);
+  const variant = registry?.pipeline_variant as string | undefined;
+
+  // Multi-repo: use repo_path from registry if available (agent may work in a different repo)
+  const effectiveRoot = (registry?.repo_path as string | undefined) ?? repoRoot;
+  const configPath = resolvePipelineConfigPath(effectiveRoot, { variant });
+  const pipeline = readJsonFile(configPath);
+
+  if (!pipeline || !pipeline.phases || typeof pipeline.phases !== "object") {
+    throw new Error(
+      `Pipeline config not found or malformed: ${configPath}` +
+      (variant ? ` (variant: ${variant})` : "") +
+      ` for ticket ${ticketId}`
+    );
+  }
+
+  return { configPath, pipeline, variant };
 }

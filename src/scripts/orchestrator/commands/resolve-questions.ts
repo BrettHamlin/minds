@@ -80,10 +80,12 @@ function loadPriorResolutions(featureDir: string, phase: string, currentRound: n
 }
 
 function gatherCodePatterns(findings: FindingsBatch, repoRoot?: string): string[] {
-  // 1. Collect patterns already discovered by the agent (from finding.context.codePatterns)
+  // 1. Collect patterns already discovered by the agent (from context.codePatterns when present)
   const patterns: string[] = [];
   for (const finding of findings.findings) {
-    patterns.push(...finding.context.codePatterns);
+    if (finding.context?.codePatterns) {
+      patterns.push(...finding.context.codePatterns);
+    }
   }
 
   // 2. Grep the codebase for key terms from finding questions and constraints
@@ -99,7 +101,7 @@ function gatherCodePatterns(findings: FindingsBatch, repoRoot?: string): string[
         }
       }
       // Constraints tend to have precise technical terms
-      for (const constraint of finding.context.constraints) {
+      for (const constraint of finding.context?.constraints ?? []) {
         for (const word of constraint.split(/\W+/)) {
           if (word.length >= 4) searchTerms.add(word);
         }

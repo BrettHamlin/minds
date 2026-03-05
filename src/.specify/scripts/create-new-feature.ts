@@ -416,7 +416,23 @@ function main(): void {
           `[specify] Worktree already exists at ${worktreeDir}, reusing\n`
         );
       } else {
-        execSync(`git worktree add "${worktreeDir}" -b "${branchName}" 1>&2`, {
+        // Check if branch already exists (from a previous run)
+        let branchExists = false;
+        try {
+          execSync(`git rev-parse --verify "${branchName}" 2>/dev/null`, {
+            stdio: "pipe",
+            shell: true,
+          });
+          branchExists = true;
+        } catch {
+          // Branch doesn't exist — will create with -b
+        }
+
+        const worktreeCmd = branchExists
+          ? `git worktree add "${worktreeDir}" "${branchName}" 1>&2`
+          : `git worktree add "${worktreeDir}" -b "${branchName}" 1>&2`;
+
+        execSync(worktreeCmd, {
           stdio: "inherit",
           shell: true,
         });

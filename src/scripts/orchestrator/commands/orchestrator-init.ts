@@ -46,6 +46,7 @@ import {
 } from "../../../lib/pipeline";
 import type { CompiledPipeline } from "../../../lib/pipeline";
 import { resolveTransportPath } from "../../../lib/resolve-transport";
+import { resolveRepoPath } from "../../../lib/pipeline/repo-registry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,6 +67,8 @@ export interface InitContext {
   groupsDir: string;
   configPath: string;
   schemaPath: string;
+  /** Pipeline variant passed via --pipeline CLI flag; takes precedence over metadata */
+  pipelineVariant?: string;
 }
 
 // Tracks what was done so we can rollback
@@ -461,34 +464,23 @@ export function resolvePaths(ctx: InitContext): PathResolution {
       }
 
       metadataRepoId = metadata.repo_id as string | undefined;
-      pipelineVariant = metadata.pipeline_variant as string | undefined;
+      pipelineVariant = (metadata.pipeline_variant ?? metadata.pipeline) as string | undefined;
       break;
     }
   }
 
-  // Multi-repo: check for .collab/config/multi-repo.json + metadata repo_id
+  // Multi-repo: resolve repo path from ~/.collab/repos.json
   let repoId: string | undefined;
   let repoPath: string | undefined;
-  const multiRepoConfigPath = path.join(repoRoot, ".collab", "config", "multi-repo.json");
 
-  if (metadataRepoId && fs.existsSync(multiRepoConfigPath)) {
-    const multiRepoConfig = readJsonFile(multiRepoConfigPath);
-    const repos = multiRepoConfig?.repos as Record<string, { path: string }> | undefined;
-    if (repos && repos[metadataRepoId]) {
-      repoPath = repos[metadataRepoId].path;
-      if (!fs.existsSync(repoPath)) {
-        throw new OrchestratorError(
-          "FILE_NOT_FOUND",
-          `Multi-repo path for '${metadataRepoId}' does not exist: ${repoPath}`
-        );
-      }
+  if (metadataRepoId) {
+    const resolved = resolveRepoPath(metadataRepoId);
+    if (resolved) {
       repoId = metadataRepoId;
+      repoPath = resolved;
       console.error(`Multi-repo: using repo '${repoId}' at ${repoPath}`);
-    } else if (repos) {
-      throw new OrchestratorError(
-        "VALIDATION",
-        `repo_id '${metadataRepoId}' not found in multi-repo.json. Available: ${Object.keys(repos).join(", ")}`
-      );
+    } else {
+      console.error(`Multi-repo: repo '${metadataRepoId}' not registered. Run: collab repo add ${metadataRepoId} /path/to/repo`);
     }
   }
 
@@ -697,7 +689,10 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
 
   try {
     // Step 1: Resolve paths (determines variant before validation)
-    const { repoRoot, worktreePath, spawnCmd: baseSpawnCmd, repoId, repoPath, pipelineVariant } = resolvePaths(ctx);
+    const resolved = resolvePaths(ctx);
+    const { repoRoot, worktreePath, spawnCmd: baseSpawnCmd, repoId, repoPath } = resolved;
+    // CLI --pipeline flag takes precedence over metadata
+    const pipelineVariant = ctx.pipelineVariant ?? resolved.pipelineVariant;
 
     // Step 2: Variant config override
     if (pipelineVariant) {
@@ -854,6 +849,8 @@ async function main(): Promise<void> {
   }
 
   const ticketId = args[0];
+  const pipelineIdx = args.indexOf("--pipeline");
+  const cliVariant = pipelineIdx !== -1 && args[pipelineIdx + 1] ? args[pipelineIdx + 1] : undefined;
   const orchestratorPane = process.env.TMUX_PANE || "";
 
   if (!orchestratorPane) {
@@ -871,10 +868,27 @@ async function main(): Promise<void> {
       groupsDir: `${repoRoot}/.collab/state/pipeline-groups`,
       configPath: `${repoRoot}/.collab/config/pipeline.json`,
       schemaPath: `${repoRoot}/.collab/config/pipeline.compiled.schema.json`,
+      pipelineVariant: cliVariant,
     };
 
     fs.mkdirSync(ctx.registryDir, { recursive: true });
     fs.mkdirSync(ctx.groupsDir, { recursive: true });
+
+    // Idempotency guard: if a registry already exists for this ticket, reuse it
+    // instead of creating a duplicate pane. This prevents ghost panes when the
+    // orchestrator retries a call it thought failed (e.g., stdout not captured).
+    const existingRegistry = getRegistryPath(ctx.registryDir, ticketId);
+    if (fs.existsSync(existingRegistry)) {
+      const existing = readJsonFile(existingRegistry);
+      if (existing?.agent_pane_id && existing?.nonce) {
+        console.error(`Registry already exists for ${ticketId}, reusing existing pane ${existing.agent_pane_id}`);
+        console.log(`AGENT_PANE=${existing.agent_pane_id}`);
+        console.log(`NONCE=${existing.nonce}`);
+        console.log(`REGISTRY=${existingRegistry}`);
+        if (existing.repo_path) console.log(`SOURCE_REPO=${existing.repo_path}`);
+        process.exit(0);
+      }
+    }
 
     const result = await initPipeline(ctx);
 

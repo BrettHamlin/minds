@@ -34,7 +34,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { execSync, spawn } from "child_process";
-import { buildAdjacency, detectCycles, buildDependencyHolds, type DependencyHold } from "./coordination-check";
+import { buildAdjacency, detectCycles, buildDependencyHolds, detectImplicitDependencies, type DependencyHold } from "./coordination-check";
 import {
   getRepoRoot,
   readJsonFile,
@@ -45,6 +45,8 @@ import {
   handleError,
 } from "../../../lib/pipeline";
 import type { CompiledPipeline } from "../../../lib/pipeline";
+import { resolveTransportPath } from "../../../lib/resolve-transport";
+import { resolveRepoPath } from "../../../lib/pipeline/repo-registry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -213,6 +215,61 @@ export function startBusSignalBridge(
 }
 
 /**
+ * Starts the status daemon as a detached background process.
+ * Best-effort: failure to start should NOT fail pipeline init.
+ * Returns { pid } on success, or null on failure.
+ */
+export function startStatusDaemon(repoRoot: string): Promise<{ pid: number } | null> {
+  const daemonPath = resolveTransportFile(repoRoot, "status-daemon.ts");
+  if (!fs.existsSync(daemonPath)) {
+    console.error("[StatusDaemon] Script not found, skipping: " + daemonPath);
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const proc = spawn("bun", [daemonPath], {
+      cwd: repoRoot,
+      stdio: ["ignore", "pipe", "inherit"],
+      detached: true,
+    });
+
+    proc.unref();
+
+    const timeout = setTimeout(() => {
+      console.error("[StatusDaemon] Startup timeout (5s), continuing without status daemon");
+      resolve(null);
+    }, 5000);
+
+    proc.stdout!.on("data", (data: Buffer) => {
+      const output = data.toString();
+      const readyMatch = output.match(/STATUS_DAEMON_READY port=(\d+)/);
+      const existingMatch = output.match(/STATUS_DAEMON_EXISTING port=(\d+)/);
+      if (readyMatch || existingMatch) {
+        clearTimeout(timeout);
+        resolve({ pid: proc.pid! });
+      }
+    });
+
+    proc.on("error", (err) => {
+      clearTimeout(timeout);
+      console.error(`[StatusDaemon] Spawn error: ${err.message}, continuing without status daemon`);
+      resolve(null);
+    });
+
+    proc.on("exit", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        // Exited cleanly (STATUS_DAEMON_EXISTING case)
+        resolve(null);
+      } else {
+        console.error(`[StatusDaemon] Exited with code ${code}, continuing without status daemon`);
+        resolve(null);
+      }
+    });
+  });
+}
+
+/**
  * Starts the bus-command-bridge daemon as a detached background process.
  * The bridge subscribes to the bus SSE stream and delivers commands to the
  * agent pane via tmux send-keys (last-mile delivery).
@@ -318,15 +375,37 @@ export function runCoordinationCheck(ctx: InitContext): void {
 
 /**
  * Find the dependency hold for a specific ticket from the current session.
- * Returns the hold record if the ticket has a Linear blockedBy dependency,
- * or null if the ticket has no dependencies.
+ * Returns the hold record if the ticket has a Linear blockedBy dependency or
+ * an implicit variant dependency, or null if the ticket has no dependencies.
+ *
+ * @param implicitBlockedBy - Optional ticket IDs inferred from variant relationships
+ *   (e.g., verification blocked by backend). These are merged with any explicit
+ *   blockedBy entries from metadata.json. Duplicates are skipped.
  */
 export function findDependencyHold(
   ticketId: string,
   sessionTickets: string[],
-  specsDir: string
+  specsDir: string,
+  implicitBlockedBy?: string[]
 ): DependencyHold | null {
   const holds = buildDependencyHolds(sessionTickets, specsDir);
+
+  // Inject implicit holds (variant-inferred deps not present in metadata.json).
+  if (implicitBlockedBy && implicitBlockedBy.length > 0) {
+    const pipelineSet = new Set(sessionTickets);
+    for (const blocker of implicitBlockedBy) {
+      // Skip if already covered by an explicit hold for this ticket+blocker pair.
+      if (holds.some((h) => h.held_ticket === ticketId && h.blocked_by === blocker)) continue;
+      holds.push({
+        held_ticket: ticketId,
+        blocked_by: blocker,
+        release_when: "done",
+        reason: "implicit variant dependency",
+        external: !pipelineSet.has(blocker),
+      });
+    }
+  }
+
   return holds.find((h) => h.held_ticket === ticketId) ?? null;
 }
 
@@ -388,29 +467,18 @@ export function resolvePaths(ctx: InitContext): PathResolution {
     }
   }
 
-  // Multi-repo: check for .collab/config/multi-repo.json + metadata repo_id
+  // Multi-repo: resolve repo path from ~/.collab/repos.json
   let repoId: string | undefined;
   let repoPath: string | undefined;
-  const multiRepoConfigPath = path.join(repoRoot, ".collab", "config", "multi-repo.json");
 
-  if (metadataRepoId && fs.existsSync(multiRepoConfigPath)) {
-    const multiRepoConfig = readJsonFile(multiRepoConfigPath);
-    const repos = multiRepoConfig?.repos as Record<string, { path: string }> | undefined;
-    if (repos && repos[metadataRepoId]) {
-      repoPath = repos[metadataRepoId].path;
-      if (!fs.existsSync(repoPath)) {
-        throw new OrchestratorError(
-          "FILE_NOT_FOUND",
-          `Multi-repo path for '${metadataRepoId}' does not exist: ${repoPath}`
-        );
-      }
+  if (metadataRepoId) {
+    const resolved = resolveRepoPath(metadataRepoId);
+    if (resolved) {
       repoId = metadataRepoId;
+      repoPath = resolved;
       console.error(`Multi-repo: using repo '${repoId}' at ${repoPath}`);
-    } else if (repos) {
-      throw new OrchestratorError(
-        "VALIDATION",
-        `repo_id '${metadataRepoId}' not found in multi-repo.json. Available: ${Object.keys(repos).join(", ")}`
-      );
+    } else {
+      console.error(`Multi-repo: repo '${metadataRepoId}' not registered. Run: collab repo add ${metadataRepoId} /path/to/repo`);
     }
   }
 
@@ -635,43 +703,40 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     // Step 3: Schema validation
     validateSchema(ctx);
 
-    // Step 2.5: Resolve transport and start bus server if needed
-    const transport = resolveTransportFromConfig(ctx.configPath);
-    let busServerPid: number | undefined;
-    let busUrl: string | undefined;
+    // Step 2.5: Resolve transport and start bus lifecycle if needed
+    const transportType = resolveTransportFromConfig(ctx.configPath);
+    let busTransport: { start: Function; getLifecycleInfo: Function; injectAgentEnv: Function; startCommandBridge: Function } | undefined;
 
-    let bridgePid: number | undefined;
-    let commandBridgePid: number | undefined;
-
-    if (transport === "bus") {
+    if (transportType === "bus") {
       console.error("Transport: bus — starting bus server and signal bridge...");
-      const bus = await startBusServer(ctx.repoRoot);
-      busServerPid = bus.pid;
-      busUrl = bus.url;
-      rb.busServerPid = busServerPid;
-      console.error(`Bus server started: pid=${busServerPid} url=${busUrl}`);
-
-      const bridge = startBusSignalBridge(
-        ctx.repoRoot,
-        busUrl,
-        `pipeline-${ctx.ticketId}`,
-        ctx.orchestratorPane
-      );
-      bridgePid = bridge.pid;
-      rb.bridgePid = bridgePid;
+      const { BusTransport } = await import(resolveTransportPath("BusTransport.ts"));
+      busTransport = new BusTransport("");
+      await busTransport.start(ctx.repoRoot, ctx.orchestratorPane, ctx.ticketId);
+      const info = busTransport.getLifecycleInfo();
+      console.error(`Bus server started: pid=${info.busServerPid} url=${info.busUrl}`);
+      if (info.busServerPid !== undefined) rb.busServerPid = info.busServerPid;
+      if (info.bridgePid !== undefined) rb.bridgePid = info.bridgePid;
     } else {
       console.error("Transport: tmux");
     }
 
+    // Start status daemon (best-effort, non-blocking for pipeline)
+    if (transportType === "bus") {
+      const statusDaemonResult = await startStatusDaemon(ctx.repoRoot);
+      if (statusDaemonResult) {
+        console.error(`Status daemon started: pid=${statusDaemonResult.pid}`);
+      }
+    }
+
     // Build final spawn command, injecting bus env vars if needed
-    const spawnCmd = transport === "bus" && busUrl
-      ? injectBusEnv(baseSpawnCmd, busUrl)
+    const spawnCmd = busTransport
+      ? busTransport.injectAgentEnv(baseSpawnCmd)
       : baseSpawnCmd;
 
     // Step 4: Coordination check
     runCoordinationCheck(ctx);
 
-    // Step 4.5: Dependency hold detection (Linear blockedBy)
+    // Step 4.5: Dependency hold detection (Linear blockedBy + implicit variant deps)
     const specsDir = path.join(repoRoot, "specs");
     const sessionTickets: string[] = [];
     if (fs.existsSync(ctx.registryDir)) {
@@ -682,7 +747,27 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
       }
     }
     sessionTickets.push(ctx.ticketId);
-    const depHold = findDependencyHold(ctx.ticketId, sessionTickets, specsDir);
+
+    // Auto-detect implicit blockers from variant relationships (e.g., verification blocked by backend).
+    const implicitBlockers = detectImplicitDependencies(
+      ctx.ticketId,
+      pipelineVariant,
+      ctx.registryDir,
+      specsDir
+    );
+    if (implicitBlockers.length > 0) {
+      console.error(
+        `Implicit variant dependency: ${ctx.ticketId} (${pipelineVariant ?? "no variant"}) ` +
+        `blocked by backend ticket(s): ${implicitBlockers.join(", ")}`
+      );
+    } else if (pipelineVariant && pipelineVariant !== "backend") {
+      console.error(
+        `Warning: ${ctx.ticketId} is a '${pipelineVariant}' variant but no backend ticket found ` +
+        `in registry or specs/ — no implicit hold applied`
+      );
+    }
+
+    const depHold = findDependencyHold(ctx.ticketId, sessionTickets, specsDir, implicitBlockers);
     if (depHold) {
       const blockerType = depHold.external ? "external" : "internal";
       console.error(
@@ -716,18 +801,14 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     const agentPane = spawnAgentPane(splitTarget, spawnCmd, ctx.ticketId, rb, horizontal, splitPct);
 
     // Start command bridge after agent pane is known (requires agentPane ID for last-mile delivery)
-    if (transport === "bus" && busUrl) {
-      const cmdBridge = startBusCommandBridge(
-        ctx.repoRoot,
-        busUrl,
-        `pipeline-${ctx.ticketId}`,
-        agentPane
-      );
-      commandBridgePid = cmdBridge.pid;
-      rb.commandBridgePid = commandBridgePid;
+    if (busTransport) {
+      busTransport.startCommandBridge(ctx.repoRoot, agentPane, ctx.ticketId);
+      const info = busTransport.getLifecycleInfo();
+      if (info.commandBridgePid !== undefined) rb.commandBridgePid = info.commandBridgePid;
     }
 
     // Step 7: Create registry
+    const lifecycleInfo = busTransport?.getLifecycleInfo();
     const holdInfo: HoldInfo | undefined = depHold
       ? {
           held_by: depHold.blocked_by,
@@ -738,7 +819,8 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
       : undefined;
     const { nonce, registryPath } = createRegistry(
       ctx, agentPane, rb, repoId, repoPath, pipelineVariant,
-      transport, busServerPid, busUrl, bridgePid, commandBridgePid, holdInfo
+      transportType, lifecycleInfo?.busServerPid, lifecycleInfo?.busUrl,
+      lifecycleInfo?.bridgePid, lifecycleInfo?.commandBridgePid, holdInfo
     );
 
     return { agentPane, nonce, registryPath, repoPath };
@@ -783,6 +865,22 @@ async function main(): Promise<void> {
 
     fs.mkdirSync(ctx.registryDir, { recursive: true });
     fs.mkdirSync(ctx.groupsDir, { recursive: true });
+
+    // Idempotency guard: if a registry already exists for this ticket, reuse it
+    // instead of creating a duplicate pane. This prevents ghost panes when the
+    // orchestrator retries a call it thought failed (e.g., stdout not captured).
+    const existingRegistry = getRegistryPath(ctx.registryDir, ticketId);
+    if (fs.existsSync(existingRegistry)) {
+      const existing = readJsonFile(existingRegistry);
+      if (existing?.agent_pane_id && existing?.nonce) {
+        console.error(`Registry already exists for ${ticketId}, reusing existing pane ${existing.agent_pane_id}`);
+        console.log(`AGENT_PANE=${existing.agent_pane_id}`);
+        console.log(`NONCE=${existing.nonce}`);
+        console.log(`REGISTRY=${existingRegistry}`);
+        if (existing.repo_path) console.log(`SOURCE_REPO=${existing.repo_path}`);
+        process.exit(0);
+      }
+    }
 
     const result = await initPipeline(ctx);
 

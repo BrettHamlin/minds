@@ -4,8 +4,7 @@
 // pipeline state using deriveStatus/deriveDetail from status-table.ts (FR-005).
 //
 // Dependencies:
-//   - deriveStatus, deriveDetail from src/scripts/orchestrator/commands/status-table
-//     (intentional cross-directory import per FR-005 — reuse existing derivation logic)
+//   - deriveStatus, deriveDetail from ./status-derive (local transport module)
 //
 // The snapshot event is ephemeral: it is sent once to a connecting client via
 // ctrl.enqueue() and is NOT stored in the bus server's ring buffer. Snapshots
@@ -13,10 +12,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import {
-  deriveStatus,
-  deriveDetail,
-} from "../src/scripts/orchestrator/commands/status-table";
+import { deriveStatus, deriveDetail } from "./status-derive";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

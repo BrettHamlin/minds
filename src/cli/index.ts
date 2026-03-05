@@ -24,6 +24,7 @@ import { update } from "./commands/pipelines/update.js";
 import { remove } from "./commands/pipelines/remove.js";
 import { init } from "./commands/pipeline/init.js";
 import { validate } from "./commands/pipeline/validate.js";
+import { repo } from "./commands/repo/index.js";
 
 const VERSION = "0.1.0";
 
@@ -40,6 +41,10 @@ Usage:
   collab pipelines remove <name...>        Uninstall pipeline(s)
   collab pipeline init [--name <n>] [--type pipeline|pack]  Scaffold pipeline.json
   collab pipeline validate [--path <f>]    Validate a pipeline.json
+  collab repo resolve <repo-id>            Print local path for a repo ID
+  collab repo add <repo-id> <path>         Register a repo ID with its local path
+  collab repo list                         List all registered repos
+  collab repo remove <repo-id>             Remove a registered repo
 
 Global flags:
   --registry <url>    Override registry URL (default: COLLAB_REGISTRY env var)
@@ -199,6 +204,12 @@ async function main(): Promise<void> {
     console.error(`Unknown pipeline subcommand: "${action}"`);
     console.error("Run: collab pipeline --help");
     process.exit(1);
+    return;
+  }
+
+  // ─── collab repo ─────────────────────────────────────────────────────────
+  if (subcommand === "repo") {
+    await repo(positional, flags);
     return;
   }
 

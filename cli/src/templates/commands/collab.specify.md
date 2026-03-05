@@ -61,14 +61,14 @@ Given that feature description, do this:
       - Find the highest number N
       - Use N+1 for the new branch number
 
-   c.5. **Source Repo Detection** (only when $ARGUMENTS is a ticket ID):
-      - Get the current repo name: run `basename $(git rev-parse --show-toplevel)`
-      - Compare against the ticket's team key or project name from the Linear response
-      - If they differ (e.g. ticket is in "paper-clips-backend" but current repo is "collab"):
-        - Use **AskUserQuestion** to ask: "This ticket belongs to [team/project]. Where is that repo on disk?"
-        - Suggest a likely path: e.g. `~/Code/projects/[project-name-lowercase]`
-        - If the user provides a path, store it as `SOURCE_REPO`
-      - If they match, skip this step (no `--source-repo` needed)
+   c.5. **Source Repo Detection**:
+      - If `--source-repo` was passed, use it directly as `SOURCE_REPO`. Done.
+      - Otherwise, if `--repo` was passed:
+        ```bash
+        SOURCE_REPO=$(collab repo resolve {repo_id})
+        ```
+        If exit 0, use the result. If exit 1, skip.
+      - If no `--repo` was provided, skip.
 
    d. Run the script `.specify/scripts/create-new-feature.ts --json --worktree "$ARGUMENTS"` with the calculated number and short-name:
       - Pass `--number N+1` and `--short-name "your-short-name"` along with the feature description
@@ -83,10 +83,11 @@ Given that feature description, do this:
    e. **Pipeline Variant and Dependency Metadata** (run after create-new-feature.ts completes):
       After create-new-feature.ts completes and outputs JSON with FEATURE_DIR, update the metadata.json:
       - Read `FEATURE_DIR/metadata.json`
+      - If `--repo` was passed: add `"repo_id": "<repo>"` (e.g., `"repo_id": "paper-clips-backend"`). This tells orchestrator-init.ts which repo to use from multi-repo.json.
       - If ticket has `pipeline:*` labels (from step 5 above): add `"pipeline_variant": "<variant>"` (e.g., `"pipeline_variant": "backend"`). This tells orchestrator-init.ts to load `pipeline-variants/<variant>.json` instead of the default `pipeline.json`.
       - If ticket has `blockedBy` relations (from step 6 above): add `"blockedBy": ["BRE-XXX", ...]` (array of blocker ticket IDs). This enables orchestrator-init.ts to create dependency holds automatically.
       - Write the updated metadata.json back (only if at least one of the above fields was added).
-      - If neither pipeline_variant nor blockedBy applies, skip this step.
+      - If none of repo_id, pipeline_variant, or blockedBy applies, skip this step.
 
    **IMPORTANT**:
    - Check all three sources (remote branches, local branches, specs directories) to find the highest number

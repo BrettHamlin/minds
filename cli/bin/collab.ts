@@ -3,6 +3,7 @@ import { program } from "commander";
 import { initCommand } from "../src/commands/init";
 import { updateCommand } from "../src/commands/update";
 import { statusCommand } from "../src/commands/status";
+import { repoResolve, repoAdd, repoList, repoRemove } from "../src/commands/repo";
 
 program
   .name("collab")
@@ -28,5 +29,29 @@ program
   .command("status")
   .description("Show installed collab version and check for updates")
   .action(statusCommand);
+
+const repo = program
+  .command("repo")
+  .description("Manage registered repo paths (~/.collab/repos.json)");
+
+repo
+  .command("resolve <repo-id>")
+  .description("Print the local path for a repo ID (exit 1 if not found)")
+  .action(repoResolve);
+
+repo
+  .command("add <repo-id> <path>")
+  .description("Register a repo ID with its local path")
+  .action(repoAdd);
+
+repo
+  .command("list")
+  .description("List all registered repos")
+  .action(repoList);
+
+repo
+  .command("remove <repo-id>")
+  .description("Remove a registered repo")
+  .action(repoRemove);
 
 program.parse();

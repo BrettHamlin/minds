@@ -37,19 +37,32 @@ The CLI outputs JSON:
 
 Use the Linear MCP tools (already authenticated) to resolve any items that need API access:
 
-1. **`projectNames`** — For each project name, call `list_issues` MCP with `project: "<name>"` and `state: "started"`, then also with `state: "unstarted"`, to get all non-done tickets. For each returned issue, check its labels for `pipeline:*` to determine the variant (default to `"default"`).
+1. **`projectNames`** — For each project name, call `list_issues` MCP with `project: "<name>"` and `state: "started"`, then also with `state: "unstarted"`, to get all non-done tickets. For each returned issue, check its labels for `pipeline:*` to determine the variant (default to `"default"`) and `repo:*` to determine the target repo (default to unset).
 
-2. **`ticketsNoVariant`** — For each bare ticket ID, call `get_issue` MCP to fetch the ticket and scan its labels for `pipeline:*`. If found, use that variant; otherwise default to `"default"`.
+2. **`ticketsNoVariant`** — For each bare ticket ID, call `get_issue` MCP to fetch the ticket and scan its labels for `pipeline:*`. If found, use that variant; otherwise default to `"default"`. Also scan for `repo:*` label to determine the target repo.
 
-3. **`ticketsWithVariant`** — Use directly as-is. No API call needed.
+3. **`ticketsWithVariant`** — Use directly as-is. No API call needed. Still fetch the ticket via `get_issue` MCP to check for a `repo:*` label.
+
+### Validate repo labels
+
+For each ticket that has no `repo:*` label:
+
+1. Read `.collab/config/multi-repo.json`. If it exists and has repos, present the options:
+   - Use AskUserQuestion: "Ticket {TICKET_ID} has no `repo:*` label. Which repo should it target?"
+   - Options: each key from `multi-repo.json` repos (e.g., "paper-clips-backend", "paper-clips.net") plus "current repo (no label needed)"
+2. If the user selects a repo:
+   - Save the `repo:{selected}` label to the ticket via `save_issue` MCP (so it persists for future runs)
+   - Set `REPO[TICKET_ID]` to the selected value
+3. If the user selects "current repo": leave `REPO[TICKET_ID]` unset, continue without a label.
+4. If `multi-repo.json` doesn't exist: skip — single-repo setup, no label needed.
 
 ### Parse Arguments
 
 Combine all resolved tickets into the **TICKETS** array:
-- **TICKETS**: array of `{ticket_id, pipeline}` objects.
+- **TICKETS**: array of `{ticket_id, pipeline, repo}` objects. `repo` is the value from the `repo:*` label (e.g., `"paper-clips-backend"`), or unset if no label found.
 - At least one ticket is required. If the combined result is empty, report the error and stop.
 
-Use `{TICKET_ID}` and `{PIPELINE[TICKET_ID]}` (the per-ticket pipeline name) in all bun script calls. Never use a single shared pipeline name across all tickets.
+Use `{TICKET_ID}`, `{PIPELINE[TICKET_ID]}` (the per-ticket pipeline name), and `{REPO[TICKET_ID]}` (the per-ticket repo ID from the `repo:*` label) in all bun script calls. Never use a single shared pipeline name across all tickets.
 
 ---
 
@@ -85,16 +98,28 @@ If `.collab/bin/collab` does not exist (older install), log a warning and contin
 
 **For EACH ticket ID in TICKET_IDS**, run steps 3a–3d in order before moving to the next ticket.
 
-#### 3a. Resolve SOURCE_REPO (AI)
+#### 3a. Resolve SOURCE_REPO (deterministic)
 
-*AI LOGIC: Read two JSON files to resolve the source repo path before spawning anything.*
+If `REPO[TICKET_ID]` is set (from the `repo:*` Linear label):
 
-If `.collab/config/multi-repo.json` exists:
-1. Read `specs/{TICKET_ID}/metadata.json` and extract `repo_id` (if present).
-2. If `repo_id` found, read `.collab/config/multi-repo.json` and look up `repos[repo_id].path`.
-3. Store as `SOURCE_REPO[TICKET_ID]` for use in step 3b.
+```bash
+SOURCE_REPO=$(collab repo resolve {REPO[TICKET_ID]})
+```
 
-If either file is missing or `repo_id` is absent, `SOURCE_REPO[TICKET_ID]` is unset.
+- Exit 0: store result as `SOURCE_REPO[TICKET_ID]`.
+- Exit 1 (not registered): use AskUserQuestion to get the local path for this repo. Then register it:
+  ```bash
+  collab repo add {REPO[TICKET_ID]} {user_provided_path}
+  SOURCE_REPO=$(collab repo resolve {REPO[TICKET_ID]})
+  ```
+
+If `REPO[TICKET_ID]` is unset, read `specs/{TICKET_ID}/metadata.json` and try `repo_id`:
+
+```bash
+SOURCE_REPO=$(collab repo resolve {repo_id})
+```
+
+If that also fails or no `repo_id` exists, `SOURCE_REPO[TICKET_ID]` is unset.
 
 #### 3b. Execute Specification
 
@@ -102,10 +127,10 @@ Run specify to create the specification (and worktree, if needed) before the age
 
 ```
 If SOURCE_REPO[TICKET_ID] is set:
-  Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]} --source-repo {SOURCE_REPO[TICKET_ID]}` as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
+  Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]} --source-repo {SOURCE_REPO[TICKET_ID]} --repo {REPO[TICKET_ID]}` as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
 
-Otherwise:
-  Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]}` as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
+Otherwise (REPO[TICKET_ID] may still be set even without SOURCE_REPO):
+  Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]}` (and `--repo {REPO[TICKET_ID]}` if REPO is set) as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
 ```
 
 This reads the specify instructions and executes them inline — do NOT use the Skill tool.
@@ -123,6 +148,25 @@ If found:
 3. Write the updated JSON back to `specs/{TICKET_ID}/metadata.json`.
 
 If no such line was found (worktree already existed or specify skipped creation), do nothing — the existing `worktree_path` value (if any) is correct.
+
+#### 3b.2 Copy specs to worktree (deterministic)
+
+*The worktree has its own working tree and may not contain the spec dir created by specify. Copy it so agents can find their spec.*
+
+Read `specs/{TICKET_ID}/metadata.json` to get `worktree_path`. If set:
+
+```bash
+# Find the spec dir name (the directory in specs/ containing this ticket's metadata.json)
+SPEC_DIR_NAME=$(basename $(dirname specs/{TICKET_ID}/metadata.json))
+WORKTREE_SPEC_DIR={WORKTREE_PATH}/specs/$SPEC_DIR_NAME
+
+# Copy if worktree doesn't already have it
+if [ ! -d "$WORKTREE_SPEC_DIR" ]; then
+  cp -r specs/$SPEC_DIR_NAME $WORKTREE_SPEC_DIR
+fi
+```
+
+This ensures the agent in the worktree can find `specs/{branch-name}/spec.md` via `resolve-feature.ts`.
 
 #### 3c. Continuation checkpoint
 
@@ -152,7 +196,7 @@ For EACH ticket ID in TICKET_IDS: call `get_issue` MCP with `includeRelations: t
 
 For EACH ticket ID in TICKET_IDS:
 ```bash
-FIRST_PHASE=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts --first)
+FIRST_PHASE=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts {TICKET_ID} --first)
 bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {TICKET_ID} "$FIRST_PHASE"
 ```
 
@@ -261,7 +305,13 @@ This signal is emitted when `@interactive(off)` is set and a phase has collected
    Where `{phase}` is the phase from the findings batch and `{round}` is the round number.
 
 4. Update registry: `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=processing`
-5. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Resolutions written for {ticket_id} ({N} answers)." Run **Signal Drain** before ending.
+5. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Resolutions written for {ticket_id} ({N} answers)."
+6. **Re-dispatch the phase to the agent** so it can pick up the resolutions:
+   ```bash
+   bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {phase}
+   ```
+   This uses the same dispatch mechanism as normal phase transitions. The agent receives the phase command again, detects the existing resolutions file, applies them, and continues (or emits `_COMPLETE` if no more questions).
+7. Run **Signal Drain** before ending.
 
 #### `_QUESTION` or `_WAITING` -- Agent needs input (interactive mode)
 
@@ -352,7 +402,7 @@ Procedure:
 
 1. Read global and per-phase code review config:
    ```bash
-   eval "$(bun .collab/scripts/orchestrator/commands/pipeline-config-read.ts codereview --phase {current_step})"
+   eval "$(bun .collab/scripts/orchestrator/commands/pipeline-config-read.ts {ticket_id} codereview --phase {current_step})"
    ```
    This sets `CR_ENABLED`, `CR_MODEL`, `CR_MAX`, `CR_FILE`, and `PHASE_CR` from `.collab/config/pipeline.json`.
    If `CR_ENABLED == "false"`: skip to step b.
@@ -404,7 +454,7 @@ Fix all blocking findings above and re-run the verification script to re-emit IM
 
 ##### b. Load orchestrator context (AI)
 
-Read `phases[current_step].orchestrator_context` from `.collab/config/pipeline.json`:
+Read `phases[current_step].orchestrator_context` from the pipeline config (use variant: `.collab/config/pipeline-variants/{PIPELINE[TICKET_ID]}.json` if it exists, otherwise `.collab/config/pipeline.json`):
 - If value ends in `.md`: read the file. If missing, log warning and continue.
 - If inline string: use directly.
 - **Apply as framing for your entire signal-handling response.** All judgments flow through this context.
@@ -412,7 +462,7 @@ Read `phases[current_step].orchestrator_context` from `.collab/config/pipeline.j
 ##### c. Resolve transition (deterministic + conditional)
 
 ```bash
-TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {current_step} {signal_type})
+TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {ticket_id} {current_step} {signal_type})
 ```
 
 Parse `to`, `gate`, `if`, and `conditional` from output. Exit 2 means no match: log "No transition found for {current_step} → {signal_type}", **END RESPONSE.**
@@ -430,7 +480,7 @@ Supported conditions:
   - If `current_impl_phase < total_phases`: condition is **TRUE** → use the conditional `to`.
   - If `current_impl_phase >= total_phases` OR `implement_phase_plan` is absent/empty: condition is **FALSE** → re-resolve with `--plain`:
     ```bash
-    TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {current_step} {signal_type} --plain)
+    TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {ticket_id} {current_step} {signal_type} --plain)
     ```
     Re-parse `to` and `gate` from the new result.
 
@@ -441,15 +491,15 @@ If `to != null`: skip to step **e. Goal Gate Check**.
 
 *AI LOGIC: Requires full judgment to evaluate gate prompt.*
 
-1. Load `gates[gate_name]` from pipeline.json.
-2. Read the gate prompt file at `gates[gate_name].prompt`. Resolve `${TOKEN}` expressions for context variables in the prompt's YAML front matter.
+1. Load `gates[gate_name]` from the pipeline config (variant first: `.collab/config/pipeline-variants/{PIPELINE[TICKET_ID]}.json`, fallback: `.collab/config/pipeline.json`).
+2. Read the gate prompt file at `gates[gate_name].prompt`. Resolve `${TOKEN}` expressions for context variables in the prompt's YAML front matter. If the gate or prompt file is missing, evaluate the phase artifacts directly against the ticket acceptance criteria (ad-hoc review).
 3. Evaluate using: Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, analysis.md if present, etc.).
 4. Your response must contain exactly one keyword from `gates[gate_name].on`. Match it.
 5. Record gate decision (non-fatal — if exit 2/3, log and continue):
    ```bash
    bun .collab/scripts/orchestrator/record-gate.ts {ticket_id} {gate_name} {keyword}
    ```
-6. Look up the matched response: `bun .collab/scripts/orchestrator/transition-resolve.ts --gate {gate_name} {keyword}`
+6. Look up the matched response: `bun .collab/scripts/orchestrator/transition-resolve.ts {ticket_id} --gate {gate_name} {keyword}`
 7. **Feedback**: If matched response has `"feedback": true`, relay your full evaluation to the agent before routing.
 8. **Route**:
    - Response has `to`: set `NEXT={to}`, proceed to **e. Goal Gate Check**.
@@ -475,7 +525,7 @@ If output starts with `REDIRECT:`: extract phase id, dispatch it, status table, 
 
 Check if `NEXT` is terminal:
 ```bash
-IS_TERMINAL=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts --is-terminal {NEXT})
+IS_TERMINAL=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts {ticket_id} --is-terminal {NEXT})
 ```
 If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
 

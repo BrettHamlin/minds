@@ -1,16 +1,14 @@
 #!/usr/bin/env bun
 
 /**
- * transition-resolve.ts - Look up matching transition in pipeline.json
+ * transition-resolve.ts - Look up matching transition in pipeline config
  *
- * Given a current phase and incoming signal type, find the matching
- * transition row in pipeline.json and output its target and gate info.
- *
- * This is a generic interpreter: changing transitions in pipeline.json
- * requires NO changes to this script.
+ * Ticket ID is REQUIRED — the script reads the registry to resolve the
+ * correct pipeline variant config automatically. No --pipeline flag needed.
  *
  * Usage:
- *   bun transition-resolve.ts <CURRENT_PHASE> <SIGNAL_TYPE> [--plain]
+ *   bun transition-resolve.ts <TICKET_ID> <CURRENT_PHASE> <SIGNAL_TYPE> [--plain]
+ *   bun transition-resolve.ts <TICKET_ID> --gate <GATE_NAME> <KEYWORD>
  *
  * Output (stdout, JSON):
  *   {"to": "tasks", "gate": null, "if": null, "conditional": false}
@@ -19,11 +17,10 @@
  *   0 = match found
  *   1 = usage error
  *   2 = no matching transition found
- *   3 = file error (pipeline.json missing/malformed)
+ *   3 = file error (pipeline config missing/malformed)
  */
 
-import { getRepoRoot, readJsonFile, resolvePipelineConfigPath, getRegistryPath } from "../../lib/pipeline";
-import * as path from "path";
+import { getRepoRoot, loadPipelineForTicket } from "../../lib/pipeline";
 import { resolveTransition } from "../../lib/pipeline/transitions";
 
 // Re-export for test backward compatibility
@@ -48,41 +45,34 @@ export function resolveGateResponse(
 // CLI Entry Point
 // ============================================================================
 
-function parseVariantArgs(args: string[]): { variant: string | undefined; ticketId: string | undefined } {
-  const pipelineIdx = args.indexOf("--pipeline");
-  const variant = pipelineIdx !== -1 && args[pipelineIdx + 1] ? args[pipelineIdx + 1] : undefined;
-  const ticketIdx = args.indexOf("--ticket");
-  const ticketId = ticketIdx !== -1 && args[ticketIdx + 1] ? args[ticketIdx + 1] : undefined;
-  return { variant, ticketId };
-}
-
 function main(): void {
   const args = process.argv.slice(2);
+
+  if (args.length < 2) {
+    console.error(
+      "Usage: transition-resolve.ts <TICKET_ID> <CURRENT_PHASE> <SIGNAL_TYPE> [--plain]\n" +
+      "       transition-resolve.ts <TICKET_ID> --gate <GATE_NAME> <KEYWORD>"
+    );
+    process.exit(1);
+  }
+
   const repoRoot = getRepoRoot();
-  const registryDir = path.join(repoRoot, ".collab", "state", "pipeline-registry");
+  const ticketId = args[0];
+  const { pipeline } = loadPipelineForTicket(repoRoot, ticketId);
 
   // --gate GATE_NAME KEYWORD: look up a gate response object
-  if (args[0] === "--gate") {
-    if (args.length < 3) {
-      console.error("Usage: transition-resolve.ts --gate <GATE_NAME> <KEYWORD> [--pipeline <variant>] [--ticket <id>]");
+  if (args[1] === "--gate") {
+    if (args.length < 4) {
+      console.error("Usage: transition-resolve.ts <TICKET_ID> --gate <GATE_NAME> <KEYWORD>");
       process.exit(1);
     }
-    const gateName = args[1];
-    const keyword = args[2];
-
-    const { variant, ticketId } = parseVariantArgs(args.slice(3));
-    const configPath = resolvePipelineConfigPath(repoRoot, { variant, ticketId, registryDir });
-    const pipeline = readJsonFile(configPath);
-
-    if (pipeline === null) {
-      console.error(`Error: pipeline.json not found or malformed: ${configPath}`);
-      process.exit(3);
-    }
+    const gateName = args[2];
+    const keyword = args[3];
 
     const response = resolveGateResponse(pipeline, gateName, keyword);
     if (response === null) {
       console.error(
-        `Error: gate '${gateName}' or keyword '${keyword}' not found in pipeline.json`
+        `Error: gate '${gateName}' or keyword '${keyword}' not found in pipeline config`
       );
       process.exit(2);
     }
@@ -91,33 +81,16 @@ function main(): void {
     return;
   }
 
-  // Filter out --pipeline, --ticket, and --plain flags before checking positional args
-  const positional = args.filter(
-    (a, i) =>
-      a !== "--plain" &&
-      a !== "--pipeline" && args[i - 1] !== "--pipeline" &&
-      a !== "--ticket" && args[i - 1] !== "--ticket"
-  );
-
-  if (positional.length < 2) {
+  if (args.length < 3) {
     console.error(
-      "Usage: transition-resolve.ts <CURRENT_PHASE> <SIGNAL_TYPE> [--plain] [--pipeline <variant>] [--ticket <id>]"
+      "Usage: transition-resolve.ts <TICKET_ID> <CURRENT_PHASE> <SIGNAL_TYPE> [--plain]"
     );
     process.exit(1);
   }
 
-  const currentPhase = positional[0];
-  const signalType = positional[1];
+  const currentPhase = args[1];
+  const signalType = args[2];
   const plainOnly = args.includes("--plain");
-
-  const { variant, ticketId } = parseVariantArgs(args);
-  const configPath = resolvePipelineConfigPath(repoRoot, { variant, ticketId, registryDir });
-  const pipeline = readJsonFile(configPath);
-
-  if (pipeline === null) {
-    console.error(`Error: pipeline.json not found or malformed: ${configPath}`);
-    process.exit(3);
-  }
 
   const result = resolveTransition(currentPhase, signalType, pipeline, plainOnly);
 

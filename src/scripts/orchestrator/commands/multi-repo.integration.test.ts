@@ -26,7 +26,18 @@ beforeAll(() => {
   fs.mkdirSync(path.join(tmpDir, "repos/backend"), { recursive: true });
   fs.mkdirSync(path.join(tmpDir, "repos/frontend"), { recursive: true });
 
-  // Write multi-repo.json
+  // Write repos.json via env var (replaces multi-repo.json for repo path resolution)
+  const reposFile = path.join(tmpDir, "test-repos.json");
+  fs.writeFileSync(
+    reposFile,
+    JSON.stringify({
+      backend: { path: path.join(tmpDir, "repos/backend") },
+      frontend: { path: path.join(tmpDir, "repos/frontend") },
+    })
+  );
+  process.env.COLLAB_REPOS_FILE = reposFile;
+
+  // Write multi-repo.json (still needed for status-table Repo column)
   fs.writeFileSync(
     path.join(tmpDir, ".collab/config/multi-repo.json"),
     JSON.stringify({
@@ -55,6 +66,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  delete process.env.COLLAB_REPOS_FILE;
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 

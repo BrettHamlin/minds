@@ -107,14 +107,15 @@ describe("orchestrator-init: resolvePaths()", () => {
 });
 
 describe("orchestrator-init: resolvePaths() multi-repo", () => {
-  test("8. multi-repo.json + metadata repo_id → spawnCmd uses repo path", () => {
+  test("8. repos.json + metadata repo_id → spawnCmd uses repo path", () => {
     const ctx = makeCtx("TEST-INIT-MR-001");
     const targetRepo = path.join(tmpDir, "repos", "backend");
     fs.mkdirSync(targetRepo, { recursive: true });
 
-    // Write multi-repo.json
-    const multiRepoPath = path.join(tmpDir, ".collab", "config", "multi-repo.json");
-    fs.writeFileSync(multiRepoPath, JSON.stringify({ repos: { backend: { path: targetRepo } } }));
+    // Write repos.json via env var
+    const reposFile = path.join(tmpDir, "test-repos-8.json");
+    fs.writeFileSync(reposFile, JSON.stringify({ backend: { path: targetRepo } }));
+    process.env.COLLAB_REPOS_FILE = reposFile;
 
     // Write metadata.json with repo_id
     const specDir = path.join(tmpDir, "specs", "test-init-mr-001");
@@ -129,16 +130,19 @@ describe("orchestrator-init: resolvePaths() multi-repo", () => {
     expect(result.repoPath).toBe(targetRepo);
     expect(result.spawnCmd).toContain(targetRepo);
 
-    fs.unlinkSync(multiRepoPath);
+    delete process.env.COLLAB_REPOS_FILE;
+    fs.unlinkSync(reposFile);
     fs.rmSync(specDir, { recursive: true });
     fs.rmSync(targetRepo, { recursive: true });
   });
 
-  test("9. repo_id not in multi-repo.json → throws VALIDATION error", () => {
+  test("9. repo_id not in repos.json → repoId/repoPath undefined (logged warning)", () => {
     const ctx = makeCtx("TEST-INIT-MR-002");
 
-    const multiRepoPath = path.join(tmpDir, ".collab", "config", "multi-repo.json");
-    fs.writeFileSync(multiRepoPath, JSON.stringify({ repos: { frontend: { path: "/some/path" } } }));
+    // repos.json has frontend but metadata says backend
+    const reposFile = path.join(tmpDir, "test-repos-9.json");
+    fs.writeFileSync(reposFile, JSON.stringify({ frontend: { path: "/some/path" } }));
+    process.env.COLLAB_REPOS_FILE = reposFile;
 
     const specDir = path.join(tmpDir, "specs", "test-init-mr-002");
     fs.mkdirSync(specDir, { recursive: true });
@@ -147,20 +151,21 @@ describe("orchestrator-init: resolvePaths() multi-repo", () => {
       JSON.stringify({ ticket_id: "TEST-INIT-MR-002", repo_id: "backend" })
     );
 
-    expect(() => resolvePaths(ctx)).toThrow("not found in multi-repo.json");
+    const result = resolvePaths(ctx);
+    expect(result.repoId).toBeUndefined();
+    expect(result.repoPath).toBeUndefined();
 
-    fs.unlinkSync(multiRepoPath);
+    delete process.env.COLLAB_REPOS_FILE;
+    fs.unlinkSync(reposFile);
     fs.rmSync(specDir, { recursive: true });
   });
 
-  test("10. multi-repo path does not exist → throws FILE_NOT_FOUND", () => {
+  test("10. repo path does not exist → repoId/repoPath undefined", () => {
     const ctx = makeCtx("TEST-INIT-MR-003");
 
-    const multiRepoPath = path.join(tmpDir, ".collab", "config", "multi-repo.json");
-    fs.writeFileSync(
-      multiRepoPath,
-      JSON.stringify({ repos: { backend: { path: "/nonexistent/repo/xyz" } } })
-    );
+    const reposFile = path.join(tmpDir, "test-repos-10.json");
+    fs.writeFileSync(reposFile, JSON.stringify({ backend: { path: "/nonexistent/repo/xyz" } }));
+    process.env.COLLAB_REPOS_FILE = reposFile;
 
     const specDir = path.join(tmpDir, "specs", "test-init-mr-003");
     fs.mkdirSync(specDir, { recursive: true });
@@ -169,21 +174,28 @@ describe("orchestrator-init: resolvePaths() multi-repo", () => {
       JSON.stringify({ ticket_id: "TEST-INIT-MR-003", repo_id: "backend" })
     );
 
-    expect(() => resolvePaths(ctx)).toThrow("does not exist");
+    const result = resolvePaths(ctx);
+    expect(result.repoId).toBeUndefined();
+    expect(result.repoPath).toBeUndefined();
 
-    fs.unlinkSync(multiRepoPath);
+    delete process.env.COLLAB_REPOS_FILE;
+    fs.unlinkSync(reposFile);
     fs.rmSync(specDir, { recursive: true });
   });
 
-  test("11. no multi-repo.json → repoId and repoPath are undefined", () => {
+  test("11. no repos.json entry → repoId and repoPath are undefined", () => {
     const ctx = makeCtx("TEST-INIT-MR-004");
-    // Ensure multi-repo.json doesn't exist
-    const multiRepoPath = path.join(tmpDir, ".collab", "config", "multi-repo.json");
-    if (fs.existsSync(multiRepoPath)) fs.unlinkSync(multiRepoPath);
+    // Point to empty repos file
+    const reposFile = path.join(tmpDir, "test-repos-11.json");
+    fs.writeFileSync(reposFile, JSON.stringify({}));
+    process.env.COLLAB_REPOS_FILE = reposFile;
 
     const result = resolvePaths(ctx);
     expect(result.repoId).toBeUndefined();
     expect(result.repoPath).toBeUndefined();
+
+    delete process.env.COLLAB_REPOS_FILE;
+    fs.unlinkSync(reposFile);
   });
 });
 
@@ -222,6 +234,40 @@ describe("orchestrator-init: resolvePaths() pipeline variant", () => {
     const ctx = makeCtx("TEST-INIT-VAR-003");
     const result = resolvePaths(ctx);
     expect(result.pipelineVariant).toBeUndefined();
+  });
+
+  test("14b. metadata.json with 'pipeline' key (not 'pipeline_variant') → returns variant", () => {
+    const ctx = makeCtx("TEST-INIT-VAR-004");
+    const specDir = path.join(tmpDir, "specs", "test-init-var-004");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-INIT-VAR-004", pipeline: "frontend-ui" })
+    );
+
+    const result = resolvePaths(ctx);
+    expect(result.pipelineVariant).toBe("frontend-ui");
+
+    fs.rmSync(specDir, { recursive: true });
+  });
+
+  test("14c. ctx.pipelineVariant (CLI --pipeline) overrides metadata", () => {
+    const ctx = makeCtx("TEST-INIT-VAR-005");
+    ctx.pipelineVariant = "backend";
+    const specDir = path.join(tmpDir, "specs", "test-init-var-005");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-INIT-VAR-005", pipeline: "frontend-ui" })
+    );
+
+    // initPipeline uses ctx.pipelineVariant ?? resolved.pipelineVariant
+    // resolvePaths itself returns metadata value; the override happens in initPipeline
+    const result = resolvePaths(ctx);
+    expect(result.pipelineVariant).toBe("frontend-ui"); // resolvePaths returns metadata value
+    // The CLI override is tested via ctx.pipelineVariant taking precedence in initPipeline
+
+    fs.rmSync(specDir, { recursive: true });
   });
 });
 

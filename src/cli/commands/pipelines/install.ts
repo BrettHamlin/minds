@@ -4,7 +4,7 @@
  */
 
 import { join } from "node:path";
-import { mkdirSync, writeFileSync, renameSync, existsSync, cpSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, renameSync, existsSync, cpSync, rmSync, readdirSync, copyFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { fetchRegistry, fetchManifest, findEntry } from "../../lib/registry.js";
 import { resolve, collectCliDeps } from "../../lib/resolver.js";
@@ -196,7 +196,7 @@ export async function install(names: string[], options: InstallOptions = {}): Pr
     writeFileSync(tmpPath, tarballData);
     renameSync(tmpPath, tarPath);
 
-    // Extract tarball into pipeline dir (strip top-level dir from archive)
+    // Extract tarball into pipeline dir (strip root wrapper dir from archive)
     try {
       execSync(`tar -xzf "${tarPath}" -C "${pipelineDir}" --strip-components=1`, {
         stdio: "pipe",
@@ -220,9 +220,16 @@ export async function install(names: string[], options: InstallOptions = {}): Pr
 
     // Copy pipeline commands into .claude/commands/
     const extractedCommandsDir = join(pipelineDir, "commands");
+    mkdirSync(commandsDir, { recursive: true });
     if (existsSync(extractedCommandsDir)) {
-      mkdirSync(commandsDir, { recursive: true });
       cpSync(extractedCommandsDir, commandsDir, { recursive: true });
+    } else {
+      // Flat tarball (no root wrapper): .md files extracted directly into pipelineDir
+      for (const f of readdirSync(pipelineDir)) {
+        if (f.endsWith(".md")) {
+          copyFileSync(join(pipelineDir, f), join(commandsDir, f));
+        }
+      }
     }
 
     // Copy handler .ts files into .collab/handlers/

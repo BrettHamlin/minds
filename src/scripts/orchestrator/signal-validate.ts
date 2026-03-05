@@ -19,7 +19,7 @@
  *   3 = file error (registry not found)
  */
 
-import { getRepoRoot, readJsonFile, getRegistryPath, resolvePipelineConfigPath } from "./orchestrator-utils";
+import { getRepoRoot, readJsonFile, getRegistryPath, loadPipelineForTicket } from "./orchestrator-utils";
 import { parseSignal, getAllowedSignals, type ParsedSignal } from "../../lib/pipeline/signal";
 import { openMetricsDb, ensureRun, insertSignal, insertIntervention } from "../../lib/pipeline/metrics";
 
@@ -198,20 +198,15 @@ function main(): void {
     process.exit(3);
   }
 
-  // Resolve pipeline config: support multi-repo (repo_path) and pipeline variants
-  // (pipeline_variant). Falls back to default pipeline.json if variant file missing.
-  const effectiveRepoRoot = (registry.repo_path as string | undefined) ?? repoRoot;
-  const configPath = resolvePipelineConfigPath(effectiveRepoRoot, {
-    variant: registry.pipeline_variant as string | undefined,
-  });
-
-  // Read pipeline config
-  const pipeline = readJsonFile(configPath);
-  if (pipeline === null) {
+  // Load pipeline config via single source of truth
+  let pipeline: any;
+  try {
+    ({ pipeline } = loadPipelineForTicket(repoRoot, parsed.ticketId));
+  } catch {
     console.error(
       JSON.stringify({
         valid: false,
-        error: "pipeline.json not found or malformed",
+        error: "pipeline config not found or malformed",
       })
     );
     process.exit(3);

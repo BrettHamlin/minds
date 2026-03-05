@@ -211,29 +211,50 @@ export async function emitQuestionBatch(
 }
 
 /**
- * Poll for the resolutions file written by the orchestrator.
- * Returns the ResolutionBatch when available.
- * Polls every 2 seconds, times out after timeoutMs (default 5 minutes).
+ * Check for existing resolutions written by the orchestrator.
+ * Returns the ResolutionBatch if already available, or null if not yet resolved.
+ *
+ * The agent should NOT poll or wait. The orchestrator will:
+ * 1. Receive the _QUESTIONS signal
+ * 2. Resolve questions and write the resolutions file
+ * 3. Re-dispatch the phase to the agent via tmux
+ *
+ * On re-dispatch, the agent calls this again and finds the resolutions.
+ */
+export function checkForResolutions(
+  featureDir: string,
+  phase: string,
+  round: number,
+): ResolutionBatch | null {
+  const resolutionsPath = getResolutionsPath(featureDir, phase, round);
+
+  if (existsSync(resolutionsPath)) {
+    const raw = readFileSync(resolutionsPath, "utf-8");
+    return JSON.parse(raw) as ResolutionBatch;
+  }
+
+  return null;
+}
+
+/**
+ * @deprecated Use checkForResolutions instead. The agent should not poll —
+ * the orchestrator re-dispatches the phase after writing resolutions.
+ * Kept for backwards compatibility; immediately checks and returns or throws.
  */
 export async function awaitAnswers(
   featureDir: string,
   phase: string,
   round: number,
-  timeoutMs = 5 * 60 * 1000,
 ): Promise<ResolutionBatch> {
-  const resolutionsPath = getResolutionsPath(featureDir, phase, round);
-  const start = Date.now();
+  const resolutions = checkForResolutions(featureDir, phase, round);
+  if (resolutions) return resolutions;
 
-  while (Date.now() - start < timeoutMs) {
-    if (existsSync(resolutionsPath)) {
-      const raw = readFileSync(resolutionsPath, "utf-8");
-      return JSON.parse(raw) as ResolutionBatch;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-  }
-
+  // Instead of polling, inform the caller that resolutions aren't ready yet.
+  // The agent should emit the _QUESTIONS signal and end its response.
+  // The orchestrator will re-dispatch after writing resolutions.
   throw new Error(
-    `[questions] Timeout waiting for resolutions at ${resolutionsPath} after ${timeoutMs}ms`,
+    `[questions] Resolutions not yet available for ${phase} round ${round}. ` +
+    `The orchestrator will re-dispatch this phase after resolving questions.`,
   );
 }
 

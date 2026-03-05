@@ -11,7 +11,7 @@
     "src/templates/"
   ],
   "scripts": {
-    "build": "bun build ./bin/cli.ts --outdir dist --target node --format esm",
+    "build": "bun build ./bin/collab.ts --outdir dist --target node --format esm",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "bundle-templates": "bun run scripts/bundle-templates.ts"

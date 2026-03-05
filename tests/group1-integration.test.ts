@@ -170,8 +170,10 @@ describe("signal-validate.ts", () => {
 // ===========================================================================
 
 describe("transition-resolve.ts", () => {
+  const TICKET = "TEST-001";
+
   test("8. clarify CLARIFY_COMPLETE resolves to plan", () => {
-    const result = runScript("transition-resolve.ts", ["clarify", "CLARIFY_COMPLETE"]);
+    const result = runScript("transition-resolve.ts", [TICKET, "clarify", "CLARIFY_COMPLETE"]);
 
     expect(result.exitCode).toBe(0);
     const json = parseJson(result.stdout);
@@ -180,7 +182,7 @@ describe("transition-resolve.ts", () => {
   });
 
   test("9. plan PLAN_COMPLETE resolves to gate", () => {
-    const result = runScript("transition-resolve.ts", ["plan", "PLAN_COMPLETE"]);
+    const result = runScript("transition-resolve.ts", [TICKET, "plan", "PLAN_COMPLETE"]);
 
     expect(result.exitCode).toBe(0);
     const json = parseJson(result.stdout);
@@ -190,7 +192,7 @@ describe("transition-resolve.ts", () => {
   });
 
   test("10. analyze ANALYZE_COMPLETE resolves to gate", () => {
-    const result = runScript("transition-resolve.ts", ["analyze", "ANALYZE_COMPLETE"]);
+    const result = runScript("transition-resolve.ts", [TICKET, "analyze", "ANALYZE_COMPLETE"]);
 
     expect(result.exitCode).toBe(0);
     const json = parseJson(result.stdout);
@@ -198,7 +200,7 @@ describe("transition-resolve.ts", () => {
   });
 
   test("11. implement IMPLEMENT_COMPLETE resolves conditionally (hasGroup → tasks, otherwise → run_tests)", () => {
-    const result = runScript("transition-resolve.ts", ["implement", "IMPLEMENT_COMPLETE"]);
+    const result = runScript("transition-resolve.ts", [TICKET, "implement", "IMPLEMENT_COMPLETE"]);
 
     expect(result.exitCode).toBe(0);
     const json = parseJson(result.stdout);
@@ -209,7 +211,7 @@ describe("transition-resolve.ts", () => {
   });
 
   test("12. blindqa BLINDQA_COMPLETE resolves to done", () => {
-    const result = runScript("transition-resolve.ts", ["blindqa", "BLINDQA_COMPLETE"]);
+    const result = runScript("transition-resolve.ts", [TICKET, "blindqa", "BLINDQA_COMPLETE"]);
 
     expect(result.exitCode).toBe(0);
     const json = parseJson(result.stdout);
@@ -217,7 +219,7 @@ describe("transition-resolve.ts", () => {
   });
 
   test("13. unknown phase exits 2", () => {
-    const result = runScript("transition-resolve.ts", ["nonexistent", "SOME_COMPLETE"]);
+    const result = runScript("transition-resolve.ts", [TICKET, "nonexistent", "SOME_COMPLETE"]);
 
     expect(result.exitCode).toBe(2);
   });

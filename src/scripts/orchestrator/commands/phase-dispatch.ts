@@ -31,7 +31,7 @@ import {
   readJsonFile,
   writeJsonAtomic,
   getRegistryPath,
-  resolvePipelineConfigPath,
+  loadPipelineForTicket,
   TmuxClient,
   OrchestratorError,
   handleError,
@@ -363,23 +363,12 @@ async function main(): Promise<void> {
   const [ticketId, phaseId] = args;
   const argsIdx = args.indexOf("--args");
   const extraArgs = argsIdx !== -1 && args[argsIdx + 1] ? args[argsIdx + 1] : null;
-  const pipelineIdx = args.indexOf("--pipeline");
-  const pipelineVariantFlag = pipelineIdx !== -1 && args[pipelineIdx + 1] ? args[pipelineIdx + 1] : undefined;
 
   try {
     const repoRoot = getRepoRoot();
     const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-    // Resolve config: explicit --pipeline flag > registry pipeline_variant > default pipeline.json
-    const configPath = resolvePipelineConfigPath(repoRoot, {
-      variant: pipelineVariantFlag,
-      ticketId,
-      registryDir,
-    });
-
-    const pipeline = readJsonFile(configPath) as CompiledPipeline | null;
-    if (!pipeline) {
-      throw new OrchestratorError("FILE_NOT_FOUND", `pipeline.json not found: ${configPath}`);
-    }
+    const { pipeline: pipelineRaw } = loadPipelineForTicket(repoRoot, ticketId);
+    const pipeline = pipelineRaw as CompiledPipeline;
 
     const regPath = getRegistryPath(registryDir, ticketId);
     const registry = readJsonFile(regPath);
@@ -428,9 +417,11 @@ async function main(): Promise<void> {
     const busUrl = (registry.bus_url as string | undefined) ?? process.env.BUS_URL;
     const tOpts: TransportOpts = { transport, busUrl, ticketId, phase: phaseId };
 
-    // --- Dispatch (append --args if provided) ---
+    // --- Dispatch (always append ticket ID, then --args if provided) ---
     if (resolved.type === "command") {
-      const fullCmd = buildDispatchCommand(getDispatchableCommand(resolved)!, extraArgs);
+      const baseCmd = getDispatchableCommand(resolved)!;
+      const cmdWithTicket = `${baseCmd} ${ticketId}`;
+      const fullCmd = buildDispatchCommand(cmdWithTicket, extraArgs);
       const result = await dispatchToAgent(agentPane, fullCmd, 5, tOpts);
       console.log(`Dispatched ${phaseId} to ${agentPane}: ${fullCmd}`);
     } else {

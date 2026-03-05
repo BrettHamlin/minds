@@ -10,7 +10,7 @@
  * Output: JSON to stdout
  */
 
-import { existsSync, readdirSync, statSync, mkdirSync, copyFileSync } from "fs";
+import { existsSync, readdirSync, statSync, mkdirSync, copyFileSync, readFileSync } from "fs";
 import { join, basename } from "path";
 import { execSync } from "child_process";
 
@@ -67,38 +67,67 @@ if (!branch) {
   }
 }
 
-// --- 3. Extract numeric prefix ---
+// --- 3. Extract numeric prefix or ticket ID ---
+const specsDir = join(repoRoot, "specs");
 const prefixMatch = branch.match(/^(\d{3})-/);
-if (!prefixMatch) {
-  fail(`Not on a feature branch. Current branch: ${branch}\nFeature branches should be named like: 001-feature-name`);
+// Match ticket ID patterns: ABC-123, BRE-418, PROJ-1234 (at start of branch name)
+const ticketMatch = !prefixMatch ? branch.match(/^([A-Z]+-\d+)/) : null;
+
+if (!prefixMatch && !ticketMatch) {
+  fail(`Not on a feature branch. Current branch: ${branch}\nFeature branches should be named like: 001-feature-name or BRE-123-description`);
 }
-const prefix = prefixMatch[1];
 
 // --- 4. Find FEATURE_DIR ---
-const specsDir = join(repoRoot, "specs");
 let featureDir: string;
 
-// Exact match first
-if (existsSync(join(specsDir, branch))) {
-  featureDir = join(specsDir, branch);
-} else {
-  // Prefix match
-  const matches: string[] = [];
-  if (existsSync(specsDir)) {
-    for (const entry of readdirSync(specsDir)) {
-      if (entry.startsWith(`${prefix}-`) && statSync(join(specsDir, entry)).isDirectory()) {
-        matches.push(entry);
+if (prefixMatch) {
+  const prefix = prefixMatch[1];
+  // Exact match first
+  if (existsSync(join(specsDir, branch))) {
+    featureDir = join(specsDir, branch);
+  } else {
+    // Prefix match
+    const matches: string[] = [];
+    if (existsSync(specsDir)) {
+      for (const entry of readdirSync(specsDir)) {
+        if (entry.startsWith(`${prefix}-`) && statSync(join(specsDir, entry)).isDirectory()) {
+          matches.push(entry);
+        }
       }
     }
-  }
 
-  if (matches.length === 1) {
-    featureDir = join(specsDir, matches[0]);
-  } else if (matches.length > 1) {
-    fail(`Multiple spec directories found with prefix '${prefix}': ${matches.join(", ")}\nPlease ensure only one spec directory exists per numeric prefix.`);
+    if (matches.length === 1) {
+      featureDir = join(specsDir, matches[0]);
+    } else if (matches.length > 1) {
+      fail(`Multiple spec directories found with prefix '${prefix}': ${matches.join(", ")}\nPlease ensure only one spec directory exists per numeric prefix.`);
+    } else {
+      featureDir = join(specsDir, branch);
+    }
+  }
+} else {
+  // Ticket ID branch (e.g., BRE-418-fix-frontend-mapping)
+  const ticketId = ticketMatch![1];
+
+  // Try exact dir name match first (e.g., specs/BRE-418)
+  if (existsSync(join(specsDir, ticketId))) {
+    featureDir = join(specsDir, ticketId);
   } else {
-    // No matches — use branch name as default path (will fail existence check below)
-    featureDir = join(specsDir, branch);
+    // Search metadata.json for matching ticket_id
+    let found: string | null = null;
+    if (existsSync(specsDir)) {
+      for (const entry of readdirSync(specsDir)) {
+        const metaPath = join(specsDir, entry, "metadata.json");
+        if (!existsSync(metaPath)) continue;
+        try {
+          const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+          if (meta.ticket_id === ticketId) {
+            found = join(specsDir, entry);
+            break;
+          }
+        } catch { /* skip malformed */ }
+      }
+    }
+    featureDir = found ?? join(specsDir, ticketId);
   }
 }
 
@@ -158,7 +187,19 @@ if (includeTasks && existsSync(tasks)) {
   availableDocs.push("tasks.md");
 }
 
-// --- 9. Output JSON ---
+// --- 9. Resolve TICKET_ID from metadata.json ---
+let ticketId = "";
+const metadataPath = join(featureDir, "metadata.json");
+if (existsSync(metadataPath)) {
+  try {
+    const meta = JSON.parse(readFileSync(metadataPath, "utf-8"));
+    ticketId = meta.ticket_id ?? "";
+  } catch {
+    // non-fatal — ticketId stays empty
+  }
+}
+
+// --- 10. Output JSON ---
 const output = {
   REPO_ROOT: repoRoot,
   BRANCH: branch,
@@ -167,6 +208,7 @@ const output = {
   IMPL_PLAN: implPlan,
   TASKS: tasks,
   AVAILABLE_DOCS: availableDocs,
+  TICKET_ID: ticketId,
 };
 
 console.log(JSON.stringify(output));

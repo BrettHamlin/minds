@@ -10,19 +10,19 @@ describe("CLI scaffold", () => {
     expect(existsSync(join(CLI_ROOT, "package.json"))).toBe(true);
   });
 
-  test("bin/cli.ts exists", () => {
-    expect(existsSync(join(CLI_ROOT, "bin/cli.ts"))).toBe(true);
+  test("bin/collab.ts exists", () => {
+    expect(existsSync(join(CLI_ROOT, "bin/collab.ts"))).toBe(true);
   });
 
   test("CLI shows help", () => {
-    const output = execSync("bun run bin/cli.ts --help", { cwd: CLI_ROOT, encoding: "utf-8" });
+    const output = execSync("bun run bin/collab.ts --help", { cwd: CLI_ROOT, encoding: "utf-8" });
     expect(output).toContain("init");
     expect(output).toContain("update");
     expect(output).toContain("status");
   });
 
   test("CLI shows version", () => {
-    const output = execSync("bun run bin/cli.ts --version", { cwd: CLI_ROOT, encoding: "utf-8" });
+    const output = execSync("bun run bin/collab.ts --version", { cwd: CLI_ROOT, encoding: "utf-8" });
     expect(output.trim()).toBe("0.1.0");
   });
 

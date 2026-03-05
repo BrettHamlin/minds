@@ -170,6 +170,53 @@ describe("e2e/variant-routing: resolvePaths extracts pipeline_variant", () => {
     rmSync(specDir, { recursive: true });
   });
 
+  test("11b. metadata with repo_id + repos.json → resolves repoPath", () => {
+    const ctx = makeCtx("TEST-L01-VREPO");
+    const specDir = join(tmpDir, "specs", "test-l01-vrepo");
+    mkdirSync(specDir, { recursive: true });
+    writeFileSync(
+      join(specDir, "metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-L01-VREPO", pipeline_variant: "backend", repo_id: "paper-clips-backend" })
+    );
+
+    // Create a fake target repo
+    const fakeRepoDir = join(tmpDir, "fake-backend-repo");
+    mkdirSync(fakeRepoDir, { recursive: true });
+
+    // Write repos.json via COLLAB_REPOS_FILE env var
+    const reposFile = join(tmpDir, "test-repos.json");
+    writeFileSync(reposFile, JSON.stringify({ "paper-clips-backend": { path: fakeRepoDir } }));
+    process.env.COLLAB_REPOS_FILE = reposFile;
+
+    const result = resolvePaths(ctx);
+    expect(result.pipelineVariant).toBe("backend");
+    expect(result.repoId).toBe("paper-clips-backend");
+    expect(result.repoPath).toBe(fakeRepoDir);
+
+    // Cleanup
+    delete process.env.COLLAB_REPOS_FILE;
+    rmSync(specDir, { recursive: true });
+    rmSync(fakeRepoDir, { recursive: true });
+    rmSync(reposFile);
+  });
+
+  test("11c. metadata without repo_id → no repo resolution", () => {
+    const ctx = makeCtx("TEST-L01-NOVR");
+    const specDir = join(tmpDir, "specs", "test-l01-novr");
+    mkdirSync(specDir, { recursive: true });
+    writeFileSync(
+      join(specDir, "metadata.json"),
+      JSON.stringify({ ticket_id: "TEST-L01-NOVR", pipeline_variant: "frontend-ui" })
+    );
+
+    const result = resolvePaths(ctx);
+    expect(result.pipelineVariant).toBe("frontend-ui");
+    expect(result.repoId).toBeUndefined();
+    expect(result.repoPath).toBeUndefined();
+
+    rmSync(specDir, { recursive: true });
+  });
+
   test("12. metadata without pipeline_variant → variant undefined", () => {
     const ctx = makeCtx("TEST-L01-NOVAL");
     const specDir = join(tmpDir, "specs", "test-l01-noval");
