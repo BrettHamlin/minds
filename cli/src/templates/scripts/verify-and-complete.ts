@@ -54,18 +54,20 @@ console.log("[VerifyComplete] Checking completion conditions...");
 
 // Phase-specific verification
 if (PHASE === "implement") {
-  // Resolve active feature's tasks.md via check-prerequisites first (avoids picking the
+  // Resolve active feature's tasks.md via resolve-feature.ts first (avoids picking the
   // wrong file when multiple features have a specs/*/tasks.md in the same repo).
   let tasksFile = "";
 
-  const prereqScript = join(REPO_ROOT, ".specify/scripts/bash/check-prerequisites.sh");
-  if (existsSync(prereqScript)) {
+  const resolveScriptInstalled = join(COLLAB_DIR, "scripts/resolve-feature.ts");
+  const resolveScriptSrc = join(REPO_ROOT, "src/scripts/resolve-feature.ts");
+  const resolveScript = existsSync(resolveScriptInstalled) ? resolveScriptInstalled : resolveScriptSrc;
+  if (existsSync(resolveScript)) {
     try {
-      const prereqOutput = execSync(
-        `cd "${REPO_ROOT}" && bash "${prereqScript}" --json 2>/dev/null`,
+      const resolveOutput = execSync(
+        `bun "${resolveScript}" --include-tasks 2>/dev/null`,
         { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
       );
-      const match = prereqOutput.match(/"FEATURE_DIR":"([^"]*)"/);
+      const match = resolveOutput.match(/"FEATURE_DIR":"([^"]*)"/);
       if (match && match[1]) {
         const candidate = join(match[1], "tasks.md");
         if (existsSync(candidate)) {
@@ -172,9 +174,17 @@ if (process.env.CHECK_ONLY === "1") {
 
 // Emit the completion signal
 console.log("[VerifyComplete] Emitting completion signal...");
+
+// Guard: if the signal handler is not installed, skip emission gracefully.
+const handlerPath = join(COLLAB_DIR, "handlers/emit-question-signal.ts");
+if (!existsSync(handlerPath)) {
+  console.log("[VerifyComplete] ✓ Signal handler not installed — skipping emission");
+  process.exit(0);
+}
+
 const result = spawnSync(
   "bun",
-  [join(COLLAB_DIR, "handlers/emit-question-signal.ts"), "complete", MESSAGE],
+  [handlerPath, "complete", MESSAGE],
   { stdio: "inherit" }
 );
 

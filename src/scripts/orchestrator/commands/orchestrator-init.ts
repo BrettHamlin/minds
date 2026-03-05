@@ -40,6 +40,7 @@ import {
   readJsonFile,
   writeJsonAtomic,
   getRegistryPath,
+  readFeatureMetadata,
   TmuxClient,
   OrchestratorError,
   handleError,
@@ -434,36 +435,28 @@ export function resolvePaths(ctx: InitContext): PathResolution {
     repoRoot = ctx.repoRoot;
   }
 
-  // Scan for metadata.json matching ticket ID
+  // Read metadata.json for this ticket via shared utility
   let worktreePath: string | null = null;
   let metadataRepoId: string | undefined;
   let pipelineVariant: string | undefined;
-  const specsGlob = path.join(repoRoot, "specs");
+  const specsDir = path.join(repoRoot, "specs");
 
-  if (fs.existsSync(specsGlob)) {
-    for (const entry of fs.readdirSync(specsGlob)) {
-      const metadataPath = path.join(specsGlob, entry, "metadata.json");
-      if (!fs.existsSync(metadataPath)) continue;
-
-      const metadata = readJsonFile(metadataPath);
-      if (!metadata || metadata.ticket_id !== ctx.ticketId) continue;
-
-      const wt = metadata.worktree_path as string | undefined;
-      if (wt) {
-        if (!fs.existsSync(wt)) {
-          throw new OrchestratorError(
-            "FILE_NOT_FOUND",
-            `Worktree path does not exist: ${wt}`
-          );
-        }
-        worktreePath = wt;
-        console.error(`Using worktree: ${worktreePath}`);
+  const featureMetadata = readFeatureMetadata(specsDir, ctx.ticketId);
+  if (featureMetadata) {
+    const wt = featureMetadata.worktree_path;
+    if (typeof wt === "string" && wt) {
+      if (!fs.existsSync(wt)) {
+        throw new OrchestratorError(
+          "FILE_NOT_FOUND",
+          `Worktree path does not exist: ${wt}`
+        );
       }
-
-      metadataRepoId = metadata.repo_id as string | undefined;
-      pipelineVariant = metadata.pipeline_variant as string | undefined;
-      break;
+      worktreePath = wt;
+      console.error(`Using worktree: ${worktreePath}`);
     }
+
+    metadataRepoId = featureMetadata.repo_id;
+    pipelineVariant = featureMetadata.pipeline_variant;
   }
 
   // Multi-repo: check for .collab/config/multi-repo.json + metadata repo_id

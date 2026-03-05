@@ -25,6 +25,8 @@ import * as path from "path";
 import {
   getRepoRoot,
   readJsonFile,
+  readFeatureMetadata,
+  scanFeaturesMetadata,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
@@ -182,12 +184,12 @@ export function buildDependencyHolds(
   const holds: DependencyHold[] = [];
 
   for (const ticketId of ticketIds) {
-    let metadata: Record<string, unknown> | null = null;
+    let metadata = null;
 
     for (const dir of specsDirs) {
-      const candidate = path.join(dir, ticketId, "metadata.json");
-      if (fs.existsSync(candidate)) {
-        metadata = readJsonFile(candidate) as Record<string, unknown> | null;
+      const meta = readFeatureMetadata(dir, ticketId);
+      if (meta) {
+        metadata = meta;
         break;
       }
     }
@@ -255,15 +257,11 @@ export function detectImplicitDependencies(
 
   // Fallback: scan specs/ metadata.json when registry has no backend entries yet.
   // Covers the case where the backend ticket exists but hasn't been initialized.
-  if (implicit.length === 0 && specsDir && fs.existsSync(specsDir)) {
-    for (const entry of fs.readdirSync(specsDir)) {
-      const metadataPath = path.join(specsDir, entry, "metadata.json");
-      if (!fs.existsSync(metadataPath)) continue;
-      const metadata = readJsonFile(metadataPath) as Record<string, unknown> | null;
-      if (!metadata) continue;
-      if (metadata.ticket_id === ticketId) continue;
-      if (metadata.pipeline_variant === "backend") {
-        implicit.push(metadata.ticket_id as string);
+  if (implicit.length === 0 && specsDir) {
+    for (const meta of scanFeaturesMetadata(specsDir)) {
+      if (meta.ticket_id === ticketId) continue;
+      if (meta.pipeline_variant === "backend") {
+        implicit.push(meta.ticket_id);
       }
     }
   }
