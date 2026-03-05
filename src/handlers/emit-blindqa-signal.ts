@@ -11,7 +11,7 @@
 import { emitPhaseSignal } from "./emit-phase-signal";
 
 emitPhaseSignal("blindqa", {
-  start: "awaitingInput",
+  start: "processing",
   pass: "completed",
   fail: "failed",
 });

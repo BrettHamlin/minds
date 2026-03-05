@@ -15,7 +15,7 @@
 import { emitPhaseSignal } from "./emit-phase-signal";
 
 emitPhaseSignal("spec_critique", {
-  start: "awaitingInput",
+  start: "processing",
   pass: "completed",
   warn: "completed",
   fail: "failed",

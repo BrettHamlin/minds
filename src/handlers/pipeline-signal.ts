@@ -37,6 +37,7 @@ export function mapResponseState(state: string, currentStep: string): string {
   const stateMap: Record<string, string> = {
     "completed": "COMPLETE",
     "awaitingInput": "QUESTION",
+    "processing": "PROCESSING",
     "waiting": "WAITING",
     "failed": "FAILED",
     "error": "ERROR",

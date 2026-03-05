@@ -69,6 +69,26 @@ describe("phase-advance: isTerminalPhase()", () => {
 });
 
 // ============================================================================
+// CLI arg validation (subprocess tests)
+// ============================================================================
+
+describe("phase-advance: CLI arg validation", () => {
+  test("14. flag as first arg prints clear error and exits 1", async () => {
+    const proc = Bun.spawn(
+      ["bun", "src/scripts/orchestrator/commands/phase-advance.ts", "--first"],
+      { cwd: path.join(__dirname, "../../../../"), stderr: "pipe", stdout: "pipe" }
+    );
+    const [stderr, exitCode] = await Promise.all([
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Error: First argument must be a ticket ID, not a flag.");
+    expect(stderr).toContain('Got: "--first"');
+  });
+});
+
+// ============================================================================
 // Variant config loading (resolvePipelineConfigPath integration)
 // ============================================================================
 

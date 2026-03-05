@@ -256,6 +256,8 @@ if (existsSync(libSrc)) {
 
 // Transport scripts
 if (existsSync(join(tempDir, "transport"))) {
+  // Clear stale transport files before copying fresh ones
+  execSync(`rm -f "${repoRoot}/.collab/transport/"*.ts`, { stdio: "ignore" });
   execSync(
     `find "${join(tempDir, "transport")}" -maxdepth 1 -name "*.ts" ! -name "*.test.ts" -exec cp {} "${repoRoot}/.collab/transport/" \\;`,
     { shell: true }
