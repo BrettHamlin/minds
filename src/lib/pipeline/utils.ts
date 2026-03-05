@@ -8,6 +8,7 @@
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { emitStatusEvent } from "./status-emitter";
 
 export function getRepoRoot(): string {
   try {
@@ -27,13 +28,35 @@ export function readJsonFile(filePath: string): any | null {
 }
 
 export function writeJsonAtomic(filePath: string, data: any): void {
+  const previous = readJsonFile(filePath);
   const tmp = `${filePath}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + "\n");
   fs.renameSync(tmp, filePath);
+  if (data && typeof data === "object" && data.ticket_id) {
+    emitStatusEvent(filePath, previous, data);
+  }
 }
 
 export function getRegistryPath(registryDir: string, ticketId: string): string {
   return path.join(registryDir, `${ticketId}.json`);
+}
+
+/**
+ * Scan specs/ for a directory whose name contains ticketId (case-insensitive).
+ * Returns the full path, or null if not found.
+ */
+export function findFeatureDir(repoRoot: string, ticketId: string): string | null {
+  const specsDir = path.join(repoRoot, "specs");
+  if (!fs.existsSync(specsDir)) return null;
+  try {
+    const entries = fs.readdirSync(specsDir);
+    for (const entry of entries) {
+      if (entry.toLowerCase().includes(ticketId.toLowerCase())) {
+        return path.join(specsDir, entry);
+      }
+    }
+  } catch {}
+  return null;
 }
 
 /**

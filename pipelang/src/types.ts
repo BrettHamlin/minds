@@ -29,12 +29,17 @@ export interface MetricsDirective {
   enabled: boolean;
 }
 
+export interface InteractiveDirective {
+  enabled: boolean;
+}
+
 export interface PipelineAST {
   phases: PhaseDecl[];
   gates: GateDecl[];
   defaultModel?: string; // "haiku" | "sonnet" | "opus"
   codeReview?: CodeReviewDirective;
   metrics?: MetricsDirective;
+  interactive?: InteractiveDirective;
 }
 
 export interface PhaseDecl {
@@ -59,6 +64,13 @@ export interface MetricsModifier {
   loc: SourceLocation;
 }
 
+export interface InteractiveModifier {
+  kind: "interactive";
+  /** Per-phase: on or off */
+  enabled: boolean;
+  loc: SourceLocation;
+}
+
 export type Modifier =
   | TerminalModifier
   | CommandModifier
@@ -71,7 +83,8 @@ export type Modifier =
   | BeforeModifier
   | AfterModifier
   | CodeReviewModifier
-  | MetricsModifier;
+  | MetricsModifier
+  | InteractiveModifier;
 
 export interface ModelModifier {
   kind: "model";

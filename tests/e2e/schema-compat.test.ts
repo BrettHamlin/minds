@@ -155,8 +155,8 @@ describe("e2e/schema-compat: schema drift guard (category 7)", () => {
       ]);
       // Every signal must have at least one transition (direct or conditional)
       for (const signal of allSignals) {
-        // _WAITING/_QUESTION signals are lifecycle notifications, not routable
-        if (signal.endsWith("_WAITING") || signal.endsWith("_QUESTION")) continue;
+        // _WAITING/_QUESTION/_QUESTIONS signals are lifecycle notifications, not routable
+        if (signal.endsWith("_WAITING") || signal.endsWith("_QUESTION") || signal.endsWith("_QUESTIONS")) continue;
         expect(
           routedSignals.has(signal),
           `Phase '${name}' signal '${signal}' has no transition`

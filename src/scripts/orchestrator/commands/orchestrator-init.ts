@@ -214,6 +214,61 @@ export function startBusSignalBridge(
 }
 
 /**
+ * Starts the status daemon as a detached background process.
+ * Best-effort: failure to start should NOT fail pipeline init.
+ * Returns { pid } on success, or null on failure.
+ */
+export function startStatusDaemon(repoRoot: string): Promise<{ pid: number } | null> {
+  const daemonPath = resolveTransportFile(repoRoot, "status-daemon.ts");
+  if (!fs.existsSync(daemonPath)) {
+    console.error("[StatusDaemon] Script not found, skipping: " + daemonPath);
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const proc = spawn("bun", [daemonPath], {
+      cwd: repoRoot,
+      stdio: ["ignore", "pipe", "inherit"],
+      detached: true,
+    });
+
+    proc.unref();
+
+    const timeout = setTimeout(() => {
+      console.error("[StatusDaemon] Startup timeout (5s), continuing without status daemon");
+      resolve(null);
+    }, 5000);
+
+    proc.stdout!.on("data", (data: Buffer) => {
+      const output = data.toString();
+      const readyMatch = output.match(/STATUS_DAEMON_READY port=(\d+)/);
+      const existingMatch = output.match(/STATUS_DAEMON_EXISTING port=(\d+)/);
+      if (readyMatch || existingMatch) {
+        clearTimeout(timeout);
+        resolve({ pid: proc.pid! });
+      }
+    });
+
+    proc.on("error", (err) => {
+      clearTimeout(timeout);
+      console.error(`[StatusDaemon] Spawn error: ${err.message}, continuing without status daemon`);
+      resolve(null);
+    });
+
+    proc.on("exit", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        // Exited cleanly (STATUS_DAEMON_EXISTING case)
+        resolve(null);
+      } else {
+        console.error(`[StatusDaemon] Exited with code ${code}, continuing without status daemon`);
+        resolve(null);
+      }
+    });
+  });
+}
+
+/**
  * Starts the bus-command-bridge daemon as a detached background process.
  * The bridge subscribes to the bus SSE stream and delivers commands to the
  * agent pane via tmux send-keys (last-mile delivery).
@@ -673,6 +728,14 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
       if (info.bridgePid !== undefined) rb.bridgePid = info.bridgePid;
     } else {
       console.error("Transport: tmux");
+    }
+
+    // Start status daemon (best-effort, non-blocking for pipeline)
+    if (transportType === "bus") {
+      const statusDaemonResult = await startStatusDaemon(ctx.repoRoot);
+      if (statusDaemonResult) {
+        console.error(`Status daemon started: pid=${statusDaemonResult.pid}`);
+      }
     }
 
     // Build final spawn command, injecting bus env vars if needed

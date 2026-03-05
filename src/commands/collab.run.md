@@ -218,7 +218,52 @@ Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-
 
 ### 3. Route by signal suffix
 
-#### `_QUESTION` or `_WAITING` -- Agent needs input
+#### `_QUESTIONS` -- Batch question/answer protocol (non-interactive mode)
+
+*AI LOGIC + DETERMINISTIC: Gather context, run inference, write resolutions.*
+
+This signal is emitted when `@interactive(off)` is set and a phase has collected findings. The signal `detail` field contains the path to the findings file.
+
+**Orchestrator reasoning priority (highest to lowest):**
+1. Spec + ticket description (stated requirements, acceptance criteria)
+2. Constitution / architecture doc (project-level principles and constraints)
+3. Previous phase resolutions (decisions already made in this pipeline run)
+4. Codebase patterns (how the project already does things)
+5. Agent-provided context (what the agent discovered during its analysis)
+6. Coordination / dependency context (coordination.json, related tickets)
+
+**Steps:**
+
+1. **Gather context bundle (deterministic):**
+   ```bash
+   bun .collab/scripts/orchestrator/commands/resolve-questions.ts {detail}
+   # Writes context-bundle.json alongside the findings file
+   ```
+
+2. **Synthesize answers (model inference):**
+   Read `context-bundle.json`. For each finding, reason about the answer using the priority stack above. Produce a JSON array of Resolution objects:
+   ```json
+   [
+     {
+       "findingId": "f1",
+       "answer": "Use the existing Zod validation pattern from src/middleware/validate.ts",
+       "reasoning": "Spec requires validation; constitution mandates type safety; existing codebase uses Zod throughout",
+       "sources": ["src/middleware/validate.ts", "spec.md:AC3", ".collab/memory/constitution.md"]
+     }
+   ]
+   ```
+
+3. **Write resolutions (deterministic):**
+   ```bash
+   TICKET_ID={ticket_id} bun .collab/scripts/orchestrator/commands/write-resolutions.ts \
+     {phase} {round} --stdin <<< '{resolutions_json}'
+   ```
+   Where `{phase}` is the phase from the findings batch and `{round}` is the round number.
+
+4. Update registry: `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=processing`
+5. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Resolutions written for {ticket_id} ({N} answers)." Run **Signal Drain** before ending.
+
+#### `_QUESTION` or `_WAITING` -- Agent needs input (interactive mode)
 
 *AI LOGIC: Requires judgment to answer domain questions.*
 

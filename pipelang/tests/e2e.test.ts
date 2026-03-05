@@ -106,7 +106,7 @@ describe("e2e: signal-validate.sh jq queries", () => {
   test(".phases[id].signals returns space-joined list for clarify", () => {
     const { stdout, ok } = jq('.phases[$id].signals // [] | join(" ")', { id: "clarify" });
     expect(ok).toBe(true);
-    expect(stdout).toBe("CLARIFY_COMPLETE CLARIFY_QUESTION CLARIFY_ERROR");
+    expect(stdout).toBe("CLARIFY_COMPLETE CLARIFY_QUESTION CLARIFY_ERROR CLARIFY_QUESTIONS");
   });
 
   test(".phases[id].signals returns all blindqa signals", () => {

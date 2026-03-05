@@ -7,7 +7,8 @@
       "signals": [
         "CLARIFY_COMPLETE",
         "CLARIFY_QUESTION",
-        "CLARIFY_ERROR"
+        "CLARIFY_ERROR",
+        "CLARIFY_QUESTIONS"
       ],
       "transitions": {
         "CLARIFY_COMPLETE": {
@@ -78,7 +79,8 @@
       "command": "/collab.analyze",
       "signals": [
         "ANALYZE_COMPLETE",
-        "ANALYZE_ERROR"
+        "ANALYZE_ERROR",
+        "ANALYZE_QUESTIONS"
       ],
       "transitions": {
         "ANALYZE_COMPLETE": {
@@ -274,5 +276,8 @@
     "enabled": true,
     "model": "claude-opus-4-6",
     "maxAttempts": 3
+  },
+  "interactive": {
+    "enabled": true
   }
 }

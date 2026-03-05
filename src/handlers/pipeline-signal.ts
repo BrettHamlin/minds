@@ -40,6 +40,7 @@ export function mapResponseState(state: string, currentStep: string): string {
     "waiting": "WAITING",
     "failed": "FAILED",
     "error": "ERROR",
+    "questions": "QUESTIONS",
   };
 
   const suffix = stateMap[state] || "COMPLETE";

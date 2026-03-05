@@ -1,5 +1,5 @@
 ---
-description: Perform a non-destructive cross-artifact consistency and quality analysis across spec.md, plan.md, and tasks.md after task generation.
+description: Cross-artifact consistency analysis using shared question/answer protocol (interactive or batch)
 ---
 
 ## User Input
@@ -165,6 +165,30 @@ Generate the report below and **write it to `$FEATURE_DIR/analysis.md`** (overwr
 - Ambiguity Count
 - Duplication Count
 - Critical Issues Count
+
+### 6b. Structured Findings (Batch Q&A Protocol)
+
+If there are CRITICAL or HIGH findings that require clarification (not just remediation), collect them using the shared question/answer protocol from `.collab/lib/pipeline/questions.ts`:
+
+**Interactive mode** is resolved automatically by `resolveAndApply()` — no separate `pipeline-config-read.ts` call is needed. If non-interactive mode is active (resolved internally from pipeline config):
+
+1. Collect each finding that requires an answer into a `QuestionCollector`:
+   ```typescript
+   const collector = new QuestionCollector("analyze", ticketId, specExcerpt);
+   collector.add("How should we resolve the conflicting X requirement?", {
+     why: "Implementation cannot proceed without resolving this conflict",
+     specReferences: ["spec.md:L45", "plan.md:L12"],
+     codePatterns: ["src/foo.ts uses pattern X"],
+     constraints: ["Must be backward compatible"],
+     implications: ["Task T-3 and T-7 depend on this decision"],
+   });
+   ```
+
+2. Call `resolveAndApply()` — this writes `findings/analyze-round-1.json` and emits `ANALYZE_QUESTIONS` signal, then polls for resolutions.
+
+3. Apply resolutions to artifacts.
+
+If effective value is `true` or `inherit` (interactive mode): use AskUserQuestion for each finding individually as before.
 
 ### 7. Provide Next Actions
 

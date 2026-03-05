@@ -15,6 +15,7 @@ import type {
   ParseError,
   CodeReviewDirective,
   MetricsDirective,
+  InteractiveDirective,
 } from "./types";
 import { VALID_MODEL_NAMES } from "./types";
 
@@ -64,6 +65,7 @@ export function parse(source: string): ParseResult {
   let defaultModel: string | undefined;
   let codeReview: CodeReviewDirective | undefined;
   let metrics: MetricsDirective | undefined;
+  let interactive: InteractiveDirective | undefined;
 
   while (!ctx.check("EOF")) {
     const tok = ctx.peek();
@@ -224,9 +226,44 @@ export function parse(source: string): ParseResult {
         continue;
       }
 
+      if (dirTok.value === "interactive") {
+        ctx.advance(); // consume 'interactive'
+        if (!ctx.expect("LPAREN")) continue;
+
+        let enabled = true;
+
+        if (ctx.check("RPAREN")) {
+          // @interactive() — enabled (default)
+          ctx.advance();
+        } else {
+          const firstTok = ctx.peek();
+          if (firstTok.kind === "IDENT" && firstTok.value === "off") {
+            // @interactive(off)
+            ctx.advance();
+            if (!ctx.expect("RPAREN")) continue;
+            enabled = false;
+          } else if (firstTok.kind === "IDENT" && firstTok.value === "on") {
+            // @interactive(on) — explicit enabled
+            ctx.advance();
+            if (!ctx.expect("RPAREN")) continue;
+            enabled = true;
+          } else {
+            ctx.addError(
+              `Unknown parameter '${firstTok.value || firstTok.kind}' in @interactive(). Valid: on, off`,
+              { line: firstTok.line, col: firstTok.col }
+            );
+            while (!ctx.check("RPAREN") && !ctx.check("EOF")) ctx.advance();
+            if (ctx.check("RPAREN")) ctx.advance();
+          }
+        }
+
+        interactive = { enabled };
+        continue;
+      }
+
       // Unknown directive
       ctx.addError(
-        `Unknown directive '@${dirTok.value}'. Valid directives: @defaultModel, @codeReview, @metrics`,
+        `Unknown directive '@${dirTok.value}'. Valid directives: @defaultModel, @codeReview, @metrics, @interactive`,
         { line: dirTok.line, col: dirTok.col }
       );
       while (!ctx.check("EOF") && ctx.peek().kind !== "IDENT") ctx.advance();
@@ -259,6 +296,7 @@ export function parse(source: string): ParseResult {
       ...(defaultModel !== undefined ? { defaultModel } : {}),
       ...(codeReview !== undefined ? { codeReview } : {}),
       ...(metrics !== undefined ? { metrics } : {}),
+      ...(interactive !== undefined ? { interactive } : {}),
     },
     errors: [],
   };

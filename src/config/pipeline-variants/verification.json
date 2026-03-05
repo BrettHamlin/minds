@@ -4,7 +4,7 @@
   "phases": {
     "clarify": {
       "command": "/collab.clarify",
-      "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR"],
+      "signals": ["CLARIFY_COMPLETE", "CLARIFY_QUESTION", "CLARIFY_ERROR", "CLARIFY_QUESTIONS"],
       "transitions": { "CLARIFY_COMPLETE": { "to": "verify_execute" } }
     },
     "verify_execute": {

@@ -4,13 +4,14 @@
 
 @defaultModel(sonnet)
 @codeReview()
+@interactive()
 
 // ── Phases ────────────────────────────────────────────────────────────────────
 
 phase(clarify)
     .model(opus)
     .command("/collab.clarify")
-    .signals(CLARIFY_COMPLETE, CLARIFY_QUESTION, CLARIFY_ERROR)
+    .signals(CLARIFY_COMPLETE, CLARIFY_QUESTION, CLARIFY_ERROR, CLARIFY_QUESTIONS)
     .on(CLARIFY_COMPLETE, to: plan)
     .on(CLARIFY_ERROR, to: clarify)
 
@@ -28,7 +29,7 @@ phase(tasks)
 
 phase(analyze)
     .command("/collab.analyze")
-    .signals(ANALYZE_COMPLETE, ANALYZE_ERROR)
+    .signals(ANALYZE_COMPLETE, ANALYZE_ERROR, ANALYZE_QUESTIONS)
     .on(ANALYZE_COMPLETE, gate: analyze_review)
     .on(ANALYZE_ERROR, to: analyze)
 

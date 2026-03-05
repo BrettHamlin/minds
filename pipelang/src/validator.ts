@@ -351,7 +351,7 @@ export function validate(ast: PipelineAST): CompileError[] {
     }
   }
 
-  // Pass 2b: validate .codeReview(off) and .metrics(off) modifier placement
+  // Pass 2b: validate .codeReview(off), .metrics(off), and .interactive(on|off) modifier placement
   for (const phase of ast.phases) {
     const isTerminal = phase.modifiers.some((m) => m.kind === "terminal");
     for (const mod of phase.modifiers) {
@@ -364,6 +364,12 @@ export function validate(ast: PipelineAST): CompileError[] {
       if (mod.kind === "metrics" && isTerminal) {
         errors.push({
           message: `Terminal phases cannot have a .metrics() modifier`,
+          loc: mod.loc,
+        });
+      }
+      if (mod.kind === "interactive" && isTerminal) {
+        errors.push({
+          message: `Terminal phases cannot have a .interactive() modifier`,
           loc: mod.loc,
         });
       }

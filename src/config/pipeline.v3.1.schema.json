@@ -16,6 +16,10 @@
       "$ref": "#/$defs/codeReview",
       "description": "Global @codeReview directive configuration"
     },
+    "interactive": {
+      "$ref": "#/$defs/interactive",
+      "description": "Global @interactive directive configuration"
+    },
     "phases": {
       "type": "array",
       "minItems": 1,
@@ -104,6 +108,10 @@
         "codeReview": {
           "$ref": "#/$defs/phaseCodeReview",
           "description": "Per-phase codeReview override (only enabled:false supported from .codeReview(off))"
+        },
+        "interactive": {
+          "$ref": "#/$defs/interactive",
+          "description": "Per-phase interactive override (on or off) from .interactive(on|off)"
         }
       },
       "not": {
@@ -303,6 +311,15 @@
       "description": "Per-phase codeReview override from .codeReview(off)",
       "properties": {
         "enabled": { "type": "boolean", "description": "Whether code review is active for this phase" }
+      }
+    },
+    "interactive": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "description": "Interactive mode config from @interactive() directive or .interactive(on|off) phase modifier",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "When true (default), phases use AskUserQuestion for question collection. When false, phases emit _QUESTIONS signals and await batch resolutions." }
       }
     },
     "transition": {

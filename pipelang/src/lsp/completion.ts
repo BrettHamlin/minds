@@ -8,7 +8,7 @@ import { KNOWN_CONDITIONS, VALID_MODEL_NAMES } from "../types";
 // Fixed keyword completions
 const PHASE_MODIFIERS: CompletionItem[] = [
   "command", "signals", "on", "terminal", "model",
-  "goalGate", "orchestratorContext", "actions", "before", "after", "codeReview", "metrics",
+  "goalGate", "orchestratorContext", "actions", "before", "after", "codeReview", "metrics", "interactive",
 ].map((label) => ({ label, kind: CompletionItemKind.Method, detail: "Phase modifier" }));
 
 const GATE_MODIFIERS: CompletionItem[] = [
@@ -62,6 +62,7 @@ const TOP_LEVEL_KEYWORDS: CompletionItem[] = [
   { label: "@defaultModel", kind: CompletionItemKind.Keyword, insertText: "@defaultModel(${1:sonnet})" },
   { label: "@codeReview", kind: CompletionItemKind.Keyword, insertText: "@codeReview()" },
   { label: "@metrics", kind: CompletionItemKind.Keyword, insertText: "@metrics()" },
+  { label: "@interactive", kind: CompletionItemKind.Keyword, insertText: "@interactive()" },
 ];
 
 /** Get the text of the line up to the cursor */
@@ -168,6 +169,22 @@ export function getCompletions(text: string, pos: Position): CompletionItem[] {
   // After `.metrics(` — only 'off' is valid from phase syntax
   if (/\.metrics\s*\(\s*\w*$/.test(prefix)) {
     return [{ label: "off", kind: CompletionItemKind.Keyword, detail: "Disable metrics for this phase" }];
+  }
+
+  // After `@interactive(` — directive params (on or off)
+  if (/@interactive\s*\([^)]*$/.test(prefix)) {
+    return [
+      { label: "off", kind: CompletionItemKind.Keyword, detail: "Non-interactive (batch findings/resolutions protocol)" },
+      { label: "on", kind: CompletionItemKind.Keyword, detail: "Interactive mode (AskUserQuestion) — default" },
+    ];
+  }
+
+  // After `.interactive(` — on or off valid from phase syntax
+  if (/\.interactive\s*\(\s*\w*$/.test(prefix)) {
+    return [
+      { label: "on", kind: CompletionItemKind.Keyword, detail: "Enable interactive mode for this phase" },
+      { label: "off", kind: CompletionItemKind.Keyword, detail: "Disable interactive mode for this phase" },
+    ];
   }
 
   // After `to:` — phase names

@@ -445,6 +445,10 @@ function main(): void {
   }
   mkdirSync(featureDir, { recursive: true });
 
+  // Create batch Q&A protocol subdirectories (BRE-406)
+  mkdirSync(join(featureDir, "findings"), { recursive: true });
+  mkdirSync(join(featureDir, "resolutions"), { recursive: true });
+
   // Create metadata.json in main repo for worktree discovery
   if (worktreeDir) {
     const mainRepoSpecDir = join(specsDir, branchName);
