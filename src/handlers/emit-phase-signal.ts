@@ -92,7 +92,7 @@ export async function emitPhaseSignal(
   const TMUX_PATH = `${REPO_ROOT}/.collab/scripts/orchestrator/Tmux.ts`;
   const tag = `Emit${phaseName.charAt(0).toUpperCase() + phaseName.slice(1)}Signal`;
 
-  const { mapResponseState, buildSignalMessage, resolveRegistry, truncateDetail } =
+  const { mapResponseState, buildSignalMessage, resolveRegistry, truncateDetail, resolveSignalName } =
     await import("./pipeline-signal.ts");
 
   const event = process.argv[2];
@@ -118,7 +118,8 @@ export async function emitPhaseSignal(
     if (!responseState) {
       console.error(`[${tag}] Unknown event: ${event}`);
     }
-    const status = mapResponseState(responseState ?? fallbackState, registry.current_step);
+    const configSignal = resolveSignalName(phaseName, event, registry);
+    const status = configSignal ?? mapResponseState(responseState ?? fallbackState, registry.current_step);
     const detail = truncateDetail(detailText);
     const signalMessage = buildSignalMessage(registry, status, detail);
 

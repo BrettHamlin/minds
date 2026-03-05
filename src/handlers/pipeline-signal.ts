@@ -10,6 +10,7 @@ import { $ } from "bun";
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+import { loadPipelineForTicket } from "../lib/pipeline/utils";
 
 // Detect repo root and use local state directory
 function getRepoRoot(): string {
@@ -109,4 +110,63 @@ export function truncateDetail(text: string, maxLength: number = 200): string {
     return text;
   }
   return text.substring(0, maxLength - 3) + "...";
+}
+
+const _FAIL_SUFFIXES = ["REJECTED", "FAILED"];
+const _ERROR_SUFFIXES = ["ERROR"];
+const _INFO_SUFFIXES = ["QUESTION", "QUESTIONS", "WAITING", "PROCESSING"];
+
+/**
+ * Resolve the correct signal name from the pipeline config for a given phase and event.
+ *
+ * Mapping rules (deterministic):
+ *   complete/pass/warn → first signal NOT ending in REJECTED/FAILED/ERROR/QUESTION/QUESTIONS/WAITING/PROCESSING
+ *   fail/reject        → first signal ending in REJECTED or FAILED
+ *   error              → first signal ending in ERROR
+ *   start              → {PHASE_UPPER}_PROCESSING (always informational, never in config)
+ *
+ * Returns null if no pipeline config found (caller should use mechanical fallback).
+ */
+export function resolveSignalName(
+  phaseName: string,
+  event: string,
+  registry?: any
+): string | null {
+  if (!registry?.ticket_id) return null;
+
+  try {
+    const loaded = loadPipelineForTicket(REPO_ROOT, registry.ticket_id);
+    const phase = loaded.pipeline.phases?.[phaseName];
+    if (!phase?.signals || !Array.isArray(phase.signals)) return null;
+
+    const signals: string[] = phase.signals;
+    const eventLower = event.toLowerCase();
+
+    if (eventLower === "start") {
+      return `${phaseName.toUpperCase()}_PROCESSING`;
+    }
+
+    if (["complete", "pass", "warn"].includes(eventLower)) {
+      return (
+        signals.find(
+          (s) =>
+            !_FAIL_SUFFIXES.some((suf) => s.endsWith(suf)) &&
+            !_ERROR_SUFFIXES.some((suf) => s.endsWith(suf)) &&
+            !_INFO_SUFFIXES.some((suf) => s.endsWith(suf))
+        ) ?? null
+      );
+    }
+
+    if (["fail", "reject"].includes(eventLower)) {
+      return signals.find((s) => _FAIL_SUFFIXES.some((suf) => s.endsWith(suf))) ?? null;
+    }
+
+    if (eventLower === "error") {
+      return signals.find((s) => _ERROR_SUFFIXES.some((suf) => s.endsWith(suf))) ?? null;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }

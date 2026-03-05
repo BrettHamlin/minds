@@ -14,7 +14,7 @@
     },
     "spec_critique": {
       "command": "/collab.spec-critique",
-      "signals": ["SPEC_CRITIQUE_COMPLETE", "SPEC_CRITIQUE_FAILED", "SPEC_CRITIQUE_QUESTION", "SPEC_CRITIQUE_QUESTIONS"],
+      "signals": ["SPEC_CRITIQUE_COMPLETE", "SPEC_CRITIQUE_FAILED", "SPEC_CRITIQUE_QUESTION", "SPEC_CRITIQUE_QUESTIONS", "SPEC_CRITIQUE_PROCESSING"],
       "transitions": {
         "SPEC_CRITIQUE_COMPLETE": { "to": "plan" },
         "SPEC_CRITIQUE_FAILED": { "to": "clarify" }
@@ -27,10 +27,11 @@
     },
     "plan_review": {
       "command": "/collab.plan",
-      "signals": ["PLAN_REVIEW_APPROVED", "PLAN_REVIEW_REJECTED"],
+      "signals": ["PLAN_REVIEW_APPROVED", "PLAN_REVIEW_REJECTED", "PLAN_REVIEW_COMPLETE"],
       "transitions": {
         "PLAN_REVIEW_APPROVED": { "to": "tasks" },
-        "PLAN_REVIEW_REJECTED": { "to": "plan" }
+        "PLAN_REVIEW_REJECTED": { "to": "plan" },
+        "PLAN_REVIEW_COMPLETE": { "to": "tasks" }
       }
     },
     "tasks": {
@@ -45,10 +46,11 @@
     },
     "analyze_review": {
       "command": "/collab.analyze",
-      "signals": ["ANALYZE_REVIEW_APPROVED", "ANALYZE_REVIEW_REJECTED"],
+      "signals": ["ANALYZE_REVIEW_APPROVED", "ANALYZE_REVIEW_REJECTED", "ANALYZE_REVIEW_COMPLETE"],
       "transitions": {
         "ANALYZE_REVIEW_APPROVED": { "to": "implement" },
-        "ANALYZE_REVIEW_REJECTED": { "to": "analyze" }
+        "ANALYZE_REVIEW_REJECTED": { "to": "analyze" },
+        "ANALYZE_REVIEW_COMPLETE": { "to": "implement" }
       }
     },
     "implement": {
@@ -70,7 +72,7 @@
     },
     "blindqa": {
       "command": "/collab.blindqa",
-      "signals": ["BLINDQA_COMPLETE", "BLINDQA_FAILED", "BLINDQA_ERROR", "BLINDQA_QUESTION", "BLINDQA_WAITING"],
+      "signals": ["BLINDQA_COMPLETE", "BLINDQA_FAILED", "BLINDQA_ERROR", "BLINDQA_QUESTION", "BLINDQA_WAITING", "BLINDQA_PROCESSING"],
       "transitions": {
         "BLINDQA_COMPLETE": { "to": "done" },
         "BLINDQA_FAILED": { "to": "implement" }
