@@ -1,23 +1,9 @@
 import { describe, test, expect } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
+import { SIGNAL_SUFFIXES, isSuccessSignal } from "./pipeline-signal";
 
 const CONFIG_DIR = path.join(__dirname, "../../src/config/pipeline-variants");
-
-// The mapping rules from resolveSignalName
-const SUCCESS_SUFFIXES = ["COMPLETE", "APPROVED", "PASS"];
-const FAIL_SUFFIXES = ["REJECTED", "FAILED"];
-const ERROR_SUFFIXES = ["ERROR"];
-const INFO_SUFFIXES = ["QUESTION", "QUESTIONS", "WAITING", "PROCESSING"];
-
-function isSuccessSignal(signal: string): boolean {
-  return (
-    SUCCESS_SUFFIXES.some((s) => signal.endsWith(s)) &&
-    !FAIL_SUFFIXES.some((s) => signal.endsWith(s)) &&
-    !ERROR_SUFFIXES.some((s) => signal.endsWith(s)) &&
-    !INFO_SUFFIXES.some((s) => signal.endsWith(s))
-  );
-}
 
 describe("signal-contract: pipeline config validation", () => {
   const configFiles = fs.readdirSync(CONFIG_DIR).filter((f) => f.endsWith(".json"));

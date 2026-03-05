@@ -112,9 +112,21 @@ export function truncateDetail(text: string, maxLength: number = 200): string {
   return text.substring(0, maxLength - 3) + "...";
 }
 
-const _FAIL_SUFFIXES = ["REJECTED", "FAILED"];
-const _ERROR_SUFFIXES = ["ERROR"];
-const _INFO_SUFFIXES = ["QUESTION", "QUESTIONS", "WAITING", "PROCESSING"];
+export const SIGNAL_SUFFIXES = {
+  SUCCESS: ["COMPLETE", "APPROVED", "PASS"],
+  FAIL: ["REJECTED", "FAILED"],
+  ERROR: ["ERROR"],
+  INFO: ["QUESTION", "QUESTIONS", "WAITING", "PROCESSING"],
+} as const;
+
+export function isSuccessSignal(signal: string): boolean {
+  return (
+    SIGNAL_SUFFIXES.SUCCESS.some((s) => signal.endsWith(s)) &&
+    !SIGNAL_SUFFIXES.FAIL.some((s) => signal.endsWith(s)) &&
+    !SIGNAL_SUFFIXES.ERROR.some((s) => signal.endsWith(s)) &&
+    !SIGNAL_SUFFIXES.INFO.some((s) => signal.endsWith(s))
+  );
+}
 
 /**
  * Resolve the correct signal name from the pipeline config for a given phase and event.
@@ -147,22 +159,15 @@ export function resolveSignalName(
     }
 
     if (["complete", "pass", "warn"].includes(eventLower)) {
-      return (
-        signals.find(
-          (s) =>
-            !_FAIL_SUFFIXES.some((suf) => s.endsWith(suf)) &&
-            !_ERROR_SUFFIXES.some((suf) => s.endsWith(suf)) &&
-            !_INFO_SUFFIXES.some((suf) => s.endsWith(suf))
-        ) ?? null
-      );
+      return signals.find((s) => isSuccessSignal(s)) ?? null;
     }
 
     if (["fail", "reject"].includes(eventLower)) {
-      return signals.find((s) => _FAIL_SUFFIXES.some((suf) => s.endsWith(suf))) ?? null;
+      return signals.find((s) => SIGNAL_SUFFIXES.FAIL.some((suf) => s.endsWith(suf))) ?? null;
     }
 
     if (eventLower === "error") {
-      return signals.find((s) => _ERROR_SUFFIXES.some((suf) => s.endsWith(suf))) ?? null;
+      return signals.find((s) => SIGNAL_SUFFIXES.ERROR.some((suf) => s.endsWith(suf))) ?? null;
     }
 
     return null;
