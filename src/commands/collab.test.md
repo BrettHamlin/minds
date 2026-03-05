@@ -111,7 +111,7 @@ For each stage, evaluate against these criteria:
 **Stage 2 (TEST-002 — single phase):**
 - fixture config loads without error
 - `phases` has `clarify` and `done`
-- `clarify.transitions.CLARIFY_COMPLETE.to === "done"`
+- `clarify` phase has a completion transition to `"done"`
 - transport is `bus`
 
 **Stage 3 (TEST-003 — two phases):**

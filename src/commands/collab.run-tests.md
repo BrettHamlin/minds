@@ -73,7 +73,7 @@ Include the verdict detail from the executor's last stdout line in the signal.
 bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
-### 4. On RUN_TESTS_FAILED — Remediation
+### 4. On failure — Remediation
 
 When tests fail, the orchestrator will send the full test output back to the agent pane as a remediation prompt. The agent fixes the code and re-runs this command.
 

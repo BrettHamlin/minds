@@ -50,7 +50,7 @@ If the file exists and `current_step` contains `spec_critique` (or `spec.critiqu
 3. Apply resolutions from the orchestrator; re-evaluate verdict
 4. Proceed to Step 5 with final verdict
 
-### 3. Emit SPEC_CRITIQUE_START Signal
+### 3. Emit start signal
 
 Run:
 ```bash
@@ -248,7 +248,7 @@ After signal emission, print the final status:
 ```
 ✅ Spec analysis PASSED - all HIGH issues resolved
 Mode: ${AUTONOMOUS_MODE ? "autonomous" : "interactive"}
-Signal emitted: SPEC_CRITIQUE_PASS
+Signal emitted: pass
 ```
 
 **Warning (warn):**
@@ -262,7 +262,7 @@ Signal emitted: SPEC_CRITIQUE_WARN
 ```
 ❌ Spec analysis FAILED - HIGH issues remain
 Mode: ${AUTONOMOUS_MODE ? "autonomous" : "interactive"}
-Signal emitted: SPEC_CRITIQUE_FAIL
+Signal emitted: fail
 Unresolved issues: [list]
 ```
 

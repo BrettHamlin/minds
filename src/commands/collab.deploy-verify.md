@@ -52,12 +52,12 @@ Capture:
 
 Do NOT duplicate executor logic inline — config reading, URL polling, route checking, and response time capture are all handled by the executor.
 
-**Exit 2 — Emit `DEPLOY_VERIFY_ERROR` and STOP:**
+**Exit 2 — Emit error signal and STOP:**
 ```bash
 bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
-**Exit 1 — Emit `DEPLOY_VERIFY_FAILED` and STOP:**
+**Exit 1 — Emit failure signal and STOP:**
 ```bash
 bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
@@ -83,7 +83,7 @@ If both Layer 1 and Layer 2 pass:
 bun .collab/handlers/emit-signal.ts pass "All smoke routes healthy"
 ```
 
-### 5. On DEPLOY_VERIFY_FAILED — Remediation
+### 5. On failure — Remediation
 
 When verification fails, the orchestrator routes to the next phase per pipeline config (typically `deploy_human_gate` which presents fix-forward / rollback / investigate options via AskUserQuestion).
 

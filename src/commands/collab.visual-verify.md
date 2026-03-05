@@ -61,12 +61,12 @@ Capture:
 
 Do NOT duplicate executor logic inline — config validation, route fetching, and selector checking are all handled by the executor.
 
-**Exit 2 — Emit `VISUAL_VERIFY_ERROR` and STOP:**
+**Exit 2 — Emit error signal and STOP:**
 ```bash
 bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
-**Exit 1 — Emit `VISUAL_VERIFY_FAILED` and STOP:**
+**Exit 1 — Emit failure signal and STOP:**
 ```bash
 bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
@@ -92,7 +92,7 @@ If both Layer 1 and Layer 2 pass:
 bun .collab/handlers/emit-signal.ts pass "All structural and visual checks passed"
 ```
 
-### 6. On VISUAL_VERIFY_FAILED — Remediation
+### 6. On failure — Remediation
 
 When verification fails, the orchestrator sends the structured failure report back to the agent pane. The agent fixes the code and re-runs this command.
 

@@ -31,7 +31,7 @@ Present a structured pre-deploy confirmation gate. This is a human gate that run
 ### Step 1: Gather Context (Deterministic)
 
 1. Run: `bun .collab/scripts/pre-deploy-summary.ts --cwd <worktree-path>`
-2. If exit 2 → emit PRE_DEPLOY_CONFIRM_ERROR. STOP.
+2. If exit 2 → emit error signal. STOP.
    ```bash
    bun .collab/handlers/emit-signal.ts error "Failed to gather deploy context"
    ```
@@ -55,16 +55,16 @@ bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
    - Show: AC summary, changed files count, test status
    - **Question:** "Pre-deploy confirmation for {TICKET_ID}"
    - **Options:** "Approve — proceed with deploy" / "Abort — stop and investigate"
-2. If user approves → emit PRE_DEPLOY_CONFIRM_COMPLETE:
+2. If user approves → emit completion signal:
    ```bash
    bun .collab/handlers/emit-signal.ts pass "Deploy approved for {TICKET_ID}"
    ```
-3. If user aborts → emit PRE_DEPLOY_CONFIRM_FAILED:
+3. If user aborts → emit failure signal:
    ```bash
    bun .collab/handlers/emit-signal.ts fail "Deploy aborted by user"
    ```
 
-### Step 4: On PRE_DEPLOY_CONFIRM_FAILED — Pipeline Halts
+### Step 4: On user abort — Pipeline Halts
 
 When the user aborts, the pipeline does not retry automatically. The orchestrator receives the FAILED signal and routes according to the pipeline config (typically back to a review phase or to escalate).
 

@@ -653,12 +653,13 @@ describe("collab.pre-deploy-confirm.md command file", () => {
     expect(fs.existsSync(fullPath)).toBe(true);
   });
 
-  test("54. collab.pre-deploy-confirm.md contains all three signal names", () => {
+  test("54. collab.pre-deploy-confirm.md uses generic emit-signal.ts pass/fail/error pattern", () => {
     const content = readSourceFile("src/commands/collab.pre-deploy-confirm.md");
 
-    expect(content).toContain("PRE_DEPLOY_CONFIRM_COMPLETE");
-    expect(content).toContain("PRE_DEPLOY_CONFIRM_FAILED");
-    expect(content).toContain("PRE_DEPLOY_CONFIRM_ERROR");
+    // Signal names are not hardcoded in prose — uses generic emit-signal.ts handler
+    expect(content).toContain("emit-signal.ts pass");
+    expect(content).toContain("emit-signal.ts fail");
+    expect(content).toContain("emit-signal.ts error");
   });
 
   test("55. collab.pre-deploy-confirm.md uses correct signal format", () => {

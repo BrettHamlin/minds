@@ -27,7 +27,7 @@ This applies in every scenario: normal completion, after follow-up messages from
 Detect and reduce ambiguity in the active feature specification. Uses the shared batch question/answer protocol from `src/lib/pipeline/questions.ts`:
 
 - **Interactive mode** (`@interactive` enabled, default): Uses AskUserQuestion for each finding.
-- **Non-interactive mode** (`@interactive(off)`): Collects ALL questions upfront into a `FindingsBatch`, writes to `findings/clarify-round-N.json`, emits `CLARIFY_QUESTIONS` signal, then polls for `resolutions/clarify-round-N.json`.
+- **Non-interactive mode** (`@interactive(off)`): Collects ALL questions upfront into a `FindingsBatch`, writes to `findings/clarify-round-N.json`, emits a questions signal, then polls for `resolutions/clarify-round-N.json`.
 
 Both modes share the same analysis and resolution-application code.
 
@@ -183,10 +183,10 @@ Both modes share the same analysis and resolution-application code.
    ls {FEATURE_DIR}/specs/{FEATURE_SLUG}/resolutions/clarify-round-*.json 2>/dev/null
    ```
 
-   If resolutions files exist, this is a **re-dispatch** from the orchestrator. Read the resolutions, apply them to the spec (update sections, add clarifications), then skip to emitting `CLARIFY_COMPLETE`. Do NOT re-collect questions or re-emit `CLARIFY_QUESTIONS`.
+   If resolutions files exist, this is a **re-dispatch** from the orchestrator. Read the resolutions, apply them to the spec (update sections, add clarifications), then skip to emitting the completion signal. Do NOT re-collect questions or re-emit the questions signal.
 
    **First entry (no resolutions):** Collect ALL questions, write them using the CLI, and **end your response**. Do NOT poll or wait for resolutions — the orchestrator will:
-   1. Receive `CLARIFY_QUESTIONS`
+   1. Receive the questions signal
    2. Gather context, synthesize answers, write resolutions
    3. Re-dispatch `/collab.clarify` to this agent pane
 
@@ -209,7 +209,7 @@ Both modes share the same analysis and resolution-application code.
 
    All context fields (`why`, `specReferences`, `codePatterns`, `constraints`, `implications`) are optional.
 
-   After the CLI runs, output: "Emitted CLARIFY_QUESTIONS with {N} questions. Waiting for orchestrator to resolve." then **END RESPONSE** — do not wait, do not poll.
+   After the CLI runs, output: "Emitted questions batch with {N} questions. Waiting for orchestrator to resolve." then **END RESPONSE** — do not wait, do not poll.
 
    **Do NOT use AskUserQuestion in non-interactive mode.** The orchestrator reasons about answers using its full context stack (spec > constitution > prior resolutions > codebase patterns > agent context > coordination).
 

@@ -60,12 +60,12 @@ Capture:
 
 Do NOT duplicate executor logic inline — config reading, file checks, HTTP calls, command execution, and JSON field checks are all handled by the executor.
 
-**Exit 2 — Emit `VERIFY_EXECUTE_ERROR` and STOP:**
+**Exit 2 — Emit error signal and STOP:**
 ```bash
 bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
-**Exit 1 — Emit `VERIFY_EXECUTE_FAILED` and STOP:**
+**Exit 1 — Emit failure signal and STOP:**
 ```bash
 bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
@@ -76,18 +76,18 @@ bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
 
 Only reached when Step 1 passes (exit 0). Read `agentChecks` from the config — these are checks the executor cannot handle:
 1. Execute each using appropriate tools (Browser skill, DB client, etc.)
-2. If any fail → emit `VERIFY_EXECUTE_FAILED` with details
-3. If all pass → emit `VERIFY_EXECUTE_COMPLETE`
+2. If any fail → emit failure signal with details
+3. If all pass → emit completion signal
 
 ```bash
 bun .collab/handlers/emit-signal.ts pass "All checks passed"
 ```
 
-### On VERIFY_EXECUTE_FAILED — Remediation
+### On failure — Remediation
 
 When verification fails, the orchestrator sends the structured failure report back to the agent pane. The agent reviews failures, fixes the underlying issues, and re-runs this command.
 
-The self-loop is managed by the pipeline config (`VERIFY_EXECUTE_FAILED → verify_execute`).
+The self-loop is managed by the pipeline config (fail transition → `verify_execute`).
 
 ## Design Rationale
 

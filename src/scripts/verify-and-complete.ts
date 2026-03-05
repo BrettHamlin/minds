@@ -27,7 +27,19 @@ import { execSync, spawnSync } from "child_process";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { join } from "path";
 
-const PHASE = process.argv[2];
+async function resolvePhase(): Promise<string | undefined> {
+  try {
+    const { resolveRegistry } = await import("../handlers/pipeline-signal");
+    const registry = await resolveRegistry();
+    if (registry?.current_step) {
+      return registry.current_step;
+    }
+  } catch {}
+  // Fallback to CLI arg for non-orchestrated runs
+  return process.argv[2];
+}
+
+const PHASE = await resolvePhase();
 const MESSAGE = process.argv[3] ?? "Phase completed";
 const PHASE_SCOPE = process.argv[4] ?? "";
 
