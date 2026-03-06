@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm';
 import { getSpec, transitionSpecState } from './spec.js';
 import { getQuestionsWithAnswers } from './question.js';
 import { generateSpec } from './llm.js';
-import { markdownToHtml } from '../lib/markdown.js';
+import { markdownToHtml } from '../markdown.js';
 
 export async function generateSpecContent(specId: string) {
   const spec = await getSpec(specId);

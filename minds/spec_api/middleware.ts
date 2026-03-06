@@ -3,7 +3,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { AppError } from '../lib/errors.js';
+import { AppError } from '../shared/errors.js';
 import { randomUUID } from 'crypto';
 
 /**

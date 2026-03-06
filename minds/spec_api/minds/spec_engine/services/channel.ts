@@ -8,7 +8,7 @@
 
 import { db } from '../db/index.js';
 import { channels } from '../db/schema.js';
-import { ConflictError, ERROR_CODES } from '../lib/errors.js';
+import { ConflictError, ERROR_CODES } from '../errors.js';
 
 export async function createChannelRecord(
   specId: string,
@@ -48,7 +48,7 @@ export async function createSlackChannel(
     };
   }
 
-  const { slackApp } = await import('../plugins/slack/client.js');
+  const { slackApp } = await import('../../../../../src/plugins/slack/client.js');
 
   let channelName = name;
   let attempt = 1;
@@ -98,7 +98,7 @@ export async function inviteMembers(
     return;
   }
 
-  const { slackApp } = await import('../plugins/slack/client.js');
+  const { slackApp } = await import('../../../../../src/plugins/slack/client.js');
 
   try {
     await slackApp.client.conversations.invite({
@@ -124,7 +124,7 @@ export async function postWelcomeMessage(
     return;
   }
 
-  const { slackApp } = await import('../plugins/slack/client.js');
+  const { slackApp } = await import('../../../../../src/plugins/slack/client.js');
 
   try {
     await slackApp.client.chat.postMessage({

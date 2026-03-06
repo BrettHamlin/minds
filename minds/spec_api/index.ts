@@ -1,9 +1,10 @@
 import express from 'express';
 import { config } from 'dotenv';
-import { requestIdMiddleware, errorHandler } from './routes/middleware.js';
+import { requestIdMiddleware, errorHandler } from './middleware.js';
 import specfactoryRoutes from './routes/specfactory.js';
 import specRoutes from './routes/spec.js';
-import { startSessionCleanup } from './services/session-cleanup.js';
+import { discoverChildren } from '../discovery.js';
+import { setEngine } from './engine.js';
 
 config();
 
@@ -23,14 +24,22 @@ export const PLUGIN_TYPE: PluginType = VALID_PLUGIN_TYPES.includes(rawPluginType
 
 const slackEnabled = PLUGIN_TYPE === 'slack' || PLUGIN_TYPE === 'both';
 
+// Discover and start SpecEngine child Mind
+const discovery = await discoverChildren(import.meta.dir);
+const specEngineChild = discovery.children.find(c => c.description.name === 'spec_engine');
+if (!specEngineChild) {
+  throw new Error('SpecEngine child Mind not found — ensure minds/spec_engine/server.ts exists');
+}
+setEngine(specEngineChild);
+
+// Start session cleanup via SpecEngine
+await specEngineChild.handle('start session cleanup');
+
 // Conditionally import Slack modules only when Slack is enabled
 if (slackEnabled) {
-  await import('./plugins/slack/commands.js');    // Register slash commands
-  await import('./plugins/slack/interactions.js'); // Register interactive handlers
+  await import('../../src/plugins/slack/commands.js');    // Register slash commands
+  await import('../../src/plugins/slack/interactions.js'); // Register interactive handlers
 }
-
-// Start session cleanup task
-startSessionCleanup();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,7 +70,7 @@ app.listen(PORT, () => {
 if (slackEnabled) {
   (async () => {
     try {
-      const { slackApp } = await import('./plugins/slack/client.js');
+      const { slackApp } = await import('../../src/plugins/slack/client.js');
       await slackApp.start();
       console.log('Slack Bolt app is running!');
     } catch (error) {

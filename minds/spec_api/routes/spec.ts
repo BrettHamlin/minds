@@ -3,10 +3,10 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { asyncHandler } from './middleware.js';
-import { getSpec } from '../services/spec.js';
-import { validateUUID } from '../lib/validation.js';
-import { NotFoundError } from '../lib/errors.js';
+import { asyncHandler } from '../middleware.js';
+import { callEngine } from '../engine.js';
+import { validateUUID } from '../../shared/validation.js';
+import { NotFoundError } from '../../shared/errors.js';
 
 const router = Router();
 
@@ -17,8 +17,16 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 
   validateUUID(id);
 
-  const spec = await getSpec(id);
-  
+  const spec = await callEngine<{
+    id: string; title: string; description: string; state: string;
+    pmUserId: string; pmDisplayName?: string; complexityScore: number;
+    totalQuestions: number; answeredQuestions: number;
+    content?: string; contentHtml?: string;
+    createdAt: Date; updatedAt: Date;
+    channel?: unknown;
+    roles: Array<{ name: string; rationale: string; members: unknown[] }>;
+  }>('get spec', { specId: id });
+
   if (!spec) {
     throw new NotFoundError('Spec not found');
   }

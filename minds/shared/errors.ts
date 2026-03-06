@@ -1,6 +1,11 @@
 /**
- * Custom error classes for the Relay application.
- * Error codes match the ErrorResponse schema in the API contracts.
+ * shared/errors.ts — Protocol-level error hierarchy.
+ *
+ * Shared kernel: like mind.ts and server-base.ts, this is infrastructure that
+ * belongs to no single Mind. Both SpecAPI (catches for HTTP responses) and
+ * SpecEngine (throws from service logic) need this hierarchy.
+ *
+ * No Mind-specific logic here — only the base error contract.
  */
 
 export class AppError extends Error {
@@ -34,13 +39,6 @@ export class ValidationError extends AppError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(code, 400, message, details);
     this.name = 'ValidationError';
-  }
-}
-
-export class LLMError extends AppError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super('LLM_ERROR', 500, message, details);
-    this.name = 'LLMError';
   }
 }
 

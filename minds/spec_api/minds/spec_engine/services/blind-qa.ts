@@ -3,7 +3,8 @@
  */
 
 import { createQuestion, getQuestionCount } from './question.js';
-import { getSpec, transitionSpecState, generateSpecContent } from './spec.js';
+import { getSpec, transitionSpecState } from './spec.js';
+import { generateSpecContent } from './spec-generator.js';
 import { generateQuestion } from './llm.js';
 
 export async function startBlindQA(specId: string) {

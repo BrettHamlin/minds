@@ -1,5 +1,9 @@
 /**
- * Input validation helper functions for the Relay application.
+ * shared/validation.ts — Protocol-level HTTP boundary validators.
+ *
+ * Shared kernel: validators used at the HTTP boundary (SpecAPI routes) and
+ * in SpecEngine service logic. No single Mind owns these — they are
+ * infrastructure, like mind.ts and server-base.ts.
  */
 
 import { ValidationError, ERROR_CODES } from './errors.js';
@@ -48,20 +52,6 @@ export function validateSlackChannelName(name: string): void {
       'INVALID_CHANNEL_NAME',
       'Channel name must be 1-80 characters, start with a letter or number, and contain only lowercase letters, numbers, and hyphens.',
       { providedName: name }
-    );
-  }
-}
-
-/**
- * Validates an option index is within the valid range for a question's options array.
- * @throws ValidationError if out of range
- */
-export function validateOptionIndex(index: number, optionsLength: number): void {
-  if (!Number.isInteger(index) || index < 0 || index >= optionsLength) {
-    throw new ValidationError(
-      'INVALID_OPTION_INDEX',
-      `Option index must be between 0 and ${optionsLength - 1}.`,
-      { providedIndex: index, maxIndex: optionsLength - 1 }
     );
   }
 }

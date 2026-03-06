@@ -5,8 +5,8 @@
 import { db } from '../db/index.js';
 import { answers, questions, specs } from '../db/schema.js';
 import { eq, sql } from 'drizzle-orm';
-import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
-import { validateOptionIndex } from '../lib/validation.js';
+import { ConflictError, NotFoundError, ValidationError } from '../errors.js';
+import { validateOptionIndex } from '../validation.js';
 
 export async function submitAnswer(
   questionId: string,

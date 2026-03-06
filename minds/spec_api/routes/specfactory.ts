@@ -3,15 +3,10 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { asyncHandler } from './middleware.js';
-import { createSpec, updateSpecAnalysis, transitionSpecState } from '../services/spec.js';
-import { createSession, getActiveSession, updateSessionStep } from '../services/session.js';
-import { createRoles, addRoleMembers, getAllMemberUserIds } from '../services/role.js';
-import { createSlackChannel, inviteMembers, postWelcomeMessage, createChannelRecord } from '../services/channel.js';
-import { analyzeDescription, generateChannelNames } from '../services/llm.js';
-import { validateUUID, validateDescriptionLength, validateSlackChannelName } from '../lib/validation.js';
-import { ConflictError, NotFoundError, ValidationError, ERROR_CODES } from '../lib/errors.js';
-import { startBlindQA } from '../services/blind-qa.js';
+import { asyncHandler } from '../middleware.js';
+import { callEngine } from '../engine.js';
+import { validateUUID, validateDescriptionLength, validateSlackChannelName } from '../../shared/validation.js';
+import { ConflictError, NotFoundError, ValidationError, ERROR_CODES } from '../../shared/errors.js';
 import { PLUGIN_TYPE } from '../index.js';
 
 const router = Router();
@@ -25,7 +20,10 @@ router.post('/start', asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Check for existing active session
-  const existingSession = await getActiveSession(pmUserId);
+  const existingSession = await callEngine<{
+    id: string; specId: string; currentStep: string;
+  } | null>('get active session', { pmUserId });
+
   if (existingSession) {
     throw new ConflictError(
       ERROR_CODES.ACTIVE_SESSION_EXISTS,
@@ -38,8 +36,17 @@ router.post('/start', asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Create new spec and session
-  const spec = await createSpec('Untitled Spec', 'Pending description', pmUserId);
-  const session = await createSession(spec.id, pmUserId, slackChannelId);
+  const spec = await callEngine<{ id: string }>('create spec', {
+    title: 'Untitled Spec',
+    description: 'Pending description',
+    pmUserId,
+  });
+
+  const session = await callEngine<{ id: string; currentStep: string }>('create session', {
+    specId: spec.id,
+    pmUserId,
+    slackChannelId,
+  });
 
   res.status(201).json({
     specId: spec.id,
@@ -60,10 +67,20 @@ router.post('/analyze', asyncHandler(async (req: Request, res: Response) => {
   validateDescriptionLength(description, 10);
 
   // Analyze description with LLM
-  const analysis = await analyzeDescription(description);
+  const analysis = await callEngine<{
+    title: string;
+    roles: Array<{ name: string; rationale: string }>;
+    complexityScore: number;
+    estimatedQuestions: number;
+  }>('analyze description', { description });
 
   // Update spec with analysis results
-  await updateSpecAnalysis(specId, analysis.complexityScore, analysis.estimatedQuestions, analysis.title);
+  await callEngine('update spec analysis', {
+    specId,
+    complexityScore: analysis.complexityScore,
+    totalQuestions: analysis.estimatedQuestions,
+    title: analysis.title,
+  });
 
   // Create roles from analysis
   const rolesInput = analysis.roles.map((role, index) => ({
@@ -71,12 +88,12 @@ router.post('/analyze', asyncHandler(async (req: Request, res: Response) => {
     rationale: role.rationale,
     sortOrder: index,
   }));
-  await createRoles(specId, rolesInput);
+  await callEngine('create roles', { specId, roles: rolesInput });
 
   // Update session step
-  const session = await getActiveSession(req.body.pmUserId || '');
+  const session = await callEngine<{ id: string } | null>('get active session', { pmUserId: req.body.pmUserId || '' });
   if (session) {
-    await updateSessionStep(session.id, 'selecting_channel');
+    await callEngine('update session', { sessionId: session.id, step: 'selecting_channel' });
   }
 
   res.status(200).json({
@@ -98,20 +115,20 @@ router.post('/channel-names', asyncHandler(async (req: Request, res: Response) =
 
   validateUUID(specId);
 
-  // Fetch spec to get title and description
-  const { getSpec } = await import('../services/spec.js');
-  const spec = await getSpec(specId);
-  
+  const spec = await callEngine<{ description: string; title: string } | null>('get spec', { specId });
+
   if (!spec) {
     throw new NotFoundError('Spec not found');
   }
 
-  // Generate channel name suggestions
-  const suggestions = await generateChannelNames(spec.description, spec.title);
+  const result = await callEngine<{ names: string[] }>('generate channel names', {
+    description: spec.description,
+    title: spec.title,
+  });
 
   res.status(200).json({
     specId,
-    suggestions,
+    suggestions: result.names,
   });
 }));
 
@@ -126,38 +143,40 @@ router.post('/channel', asyncHandler(async (req: Request, res: Response) => {
   validateUUID(specId);
   validateSlackChannelName(channelName);
 
-  // Get spec details
-  const { getSpec } = await import('../services/spec.js');
-  const spec = await getSpec(specId);
+  const spec = await callEngine<{
+    id: string; title: string; pmUserId: string; pmDisplayName?: string; totalQuestions?: number;
+    roles: Array<{ id: string; name: string }>;
+  } | null>('get spec', { specId });
 
   if (!spec) {
     throw new NotFoundError('Spec not found');
   }
 
-  // Determine whether to skip Slack operations based on PLUGIN_TYPE
   const skipSlack = PLUGIN_TYPE === 'cli';
 
   // Create Slack channel (or synthetic channel in CLI mode)
-  const slackChannel = await createSlackChannel(channelName, { skipSlack });
+  const slackChannel = await callEngine<{ id: string; name: string }>('create slack channel', {
+    name: channelName,
+    skipSlack,
+  });
 
   // Add role members to database
   if (skipSlack) {
-    // In CLI mode, store roles without Slack user lookups (members array may be empty)
     for (const roleAssignment of roles) {
-      const role = spec.roles.find((r: { name: string }) => r.name === roleAssignment.roleName);
+      const role = spec.roles.find((r) => r.name === roleAssignment.roleName);
       if (role && roleAssignment.members?.length > 0) {
         const memberInputs = roleAssignment.members.map((userId: string) => ({
           slackUserId: userId,
-          displayName: userId, // No Slack lookup in CLI mode
+          displayName: userId,
         }));
-        await addRoleMembers(role.id, memberInputs);
+        await callEngine('add role members', { roleId: role.id, members: memberInputs });
       }
     }
   } else {
-    // In Slack mode, fetch display names from Slack API
-    const { slackApp } = await import('../plugins/slack/client.js');
+    // TODO(WA-2): Replace with Integrations Mind handle() call
+    const { slackApp } = await import('../../../src/plugins/slack/client.js');
     for (const roleAssignment of roles) {
-      const role = spec.roles.find((r: { name: string }) => r.name === roleAssignment.roleName);
+      const role = spec.roles.find((r) => r.name === roleAssignment.roleName);
       if (role && roleAssignment.members?.length > 0) {
         const memberInputs = await Promise.all(
           roleAssignment.members.map(async (userId: string) => {
@@ -167,53 +186,50 @@ router.post('/channel', asyncHandler(async (req: Request, res: Response) => {
                 slackUserId: userId,
                 displayName: userInfo.user?.real_name || userInfo.user?.name || userId,
               };
-            } catch (error) {
-              console.error(`Failed to fetch user info for ${userId}:`, error);
-              return {
-                slackUserId: userId,
-                displayName: userId,
-              };
+            } catch {
+              return { slackUserId: userId, displayName: userId };
             }
           })
         );
-        await addRoleMembers(role.id, memberInputs);
+        await callEngine('add role members', { roleId: role.id, members: memberInputs });
       }
     }
   }
 
-  // Get all unique member user IDs for invitation
-  const memberUserIds = await getAllMemberUserIds(specId);
+  const { userIds: memberUserIds } = await callEngine<{ userIds: string[] }>('get member user ids', { specId });
 
-  // Invite all members to channel (skipped in CLI mode)
   if (memberUserIds.length > 0) {
-    await inviteMembers(slackChannel.id, memberUserIds, { skipSlack });
+    await callEngine('invite members', { slackChannelId: slackChannel.id, userIds: memberUserIds, skipSlack });
   }
 
-  // Create channel record in database (always -- even in CLI mode)
-  await createChannelRecord(
+  await callEngine('create channel record', {
     specId,
-    slackChannel.id,
-    slackChannel.name,
-    [],
-    slackChannel.name !== channelName
-  );
+    slackChannelId: slackChannel.id,
+    name: slackChannel.name,
+    nameSuggestions: [],
+    isCustomName: slackChannel.name !== channelName,
+  });
 
-  // Post welcome message (skipped in CLI mode)
-  await postWelcomeMessage(slackChannel.id, spec.title, spec.pmDisplayName || 'PM', { skipSlack });
+  await callEngine('post welcome message', {
+    slackChannelId: slackChannel.id,
+    specTitle: spec.title,
+    pmDisplayName: spec.pmDisplayName ?? 'PM',
+    skipSlack,
+  });
 
-  // Update session and spec state
-  const session = await getActiveSession(spec.pmUserId);
+  const session = await callEngine<{ id: string } | null>('get active session', { pmUserId: spec.pmUserId });
   if (session) {
-    await updateSessionStep(session.id, 'ready');
+    await callEngine('update session', { sessionId: session.id, step: 'ready' });
   }
-  await transitionSpecState(specId, 'drafting', 'questioning');
+  await callEngine('transition spec', { specId, from: 'drafting', to: 'questioning' });
 
-  // Start Blind QA: Generate first question
-  const firstQuestion = await startBlindQA(specId);
+  const firstQuestion = await callEngine<{
+    id: string; text: string; options: string[];
+  }>('start blind qa', { specId });
 
-  // Post question to Slack channel (skipped in CLI mode)
   if (!skipSlack) {
-    const { postQuestionToChannel } = await import('../plugins/slack/interactions.js');
+    // TODO(WA-2): Replace with Integrations Mind handle() call
+    const { postQuestionToChannel } = await import('../../../src/plugins/slack/interactions.js');
     await postQuestionToChannel(
       slackChannel.id,
       { id: firstQuestion.id, text: firstQuestion.text, options: firstQuestion.options, specId },
@@ -240,13 +256,10 @@ router.post('/questions/next', asyncHandler(async (req: Request, res: Response) 
 
   validateUUID(specId);
 
-  const { isComplete } = await import('../services/blind-qa.js');
-  const complete = await isComplete(specId);
+  const { complete } = await callEngine<{ complete: boolean }>('is complete', { specId });
 
   if (complete) {
-    const { getQuestionCount } = await import('../services/question.js');
-    const { answered } = await getQuestionCount(specId);
-    
+    const { answered } = await callEngine<{ answered: number; total: number }>('get question count', { specId });
     res.status(200).json({
       type: 'complete',
       totalAnswered: answered,
@@ -255,10 +268,10 @@ router.post('/questions/next', asyncHandler(async (req: Request, res: Response) 
     return;
   }
 
-  // Generate next question
-  const { getNextUnanswered, getQuestionCount } = await import('../services/question.js');
-  const nextQuestion = await getNextUnanswered(specId);
-  const { answered, total } = await getQuestionCount(specId);
+  const nextQuestion = await callEngine<{ id: string; text: string; options: string[] } | null>(
+    'get next unanswered', { specId }
+  );
+  const { answered, total } = await callEngine<{ answered: number; total: number }>('get question count', { specId });
 
   res.status(200).json({
     type: 'question',
@@ -267,10 +280,7 @@ router.post('/questions/next', asyncHandler(async (req: Request, res: Response) 
       text: nextQuestion?.text,
       options: nextQuestion?.options,
     },
-    progress: {
-      current: answered + 1,
-      total,
-    },
+    progress: { current: answered + 1, total },
   });
 }));
 
@@ -285,27 +295,29 @@ router.post('/questions/answer', asyncHandler(async (req: Request, res: Response
   validateUUID(specId);
   validateUUID(questionId);
 
-  const { submitAnswer } = await import('../services/answer.js');
-  const result = await submitAnswer(questionId, specId, selectedOptionIndex, customText);
+  const result = await callEngine<{
+    answer: { id: string };
+    progress: { answered: number; total: number };
+  }>('submit answer', { questionId, specId, selectedOptionIndex, customText });
 
-  // Check if complete
-  const { isComplete, completeBlindQA, generateNextQuestion } = await import('../services/blind-qa.js');
-  const complete = await isComplete(specId);
+  const { complete } = await callEngine<{ complete: boolean }>('is complete', { specId });
 
   if (complete) {
-    await completeBlindQA(specId);
+    await callEngine('complete blind qa', { specId });
   } else {
-    // Generate next question if not complete
-    const { getQuestionsWithAnswers } = await import('../services/question.js');
-    const questionsWithAnswers = await getQuestionsWithAnswers(specId);
-    const previousAnswers = questionsWithAnswers
+    const questionsData = await callEngine<Array<{
+      text: string;
+      answer?: { isCustom: boolean; customText?: string; selectedOptionText?: string };
+    }>>('get questions with answers', { specId });
+
+    const previousAnswers = questionsData
       .filter(q => q.answer)
       .map(q => ({
         question: q.text,
-        answer: q.answer!.isCustom ? q.answer!.customText! : q.answer!.selectedOptionText!
+        answer: q.answer!.isCustom ? q.answer!.customText! : q.answer!.selectedOptionText!,
       }));
 
-    await generateNextQuestion(specId, previousAnswers);
+    await callEngine('generate next question', { specId, previousAnswers });
   }
 
   res.status(200).json({

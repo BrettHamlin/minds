@@ -5,8 +5,6 @@
 import { db } from '../db/index.js';
 import { specs } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { marked } from 'marked';
-import { generateSpec } from './llm.js';
 
 export async function createSpec(
   title: string,
@@ -89,51 +87,4 @@ export async function transitionSpecState(
   }
 
   return spec;
-}
-
-export async function generateSpecContent(specId: string) {
-  // Get spec with all relations
-  const spec = await getSpec(specId);
-
-  if (!spec) {
-    throw new Error('Spec not found');
-  }
-
-  // Build Q&A array from questions and answers
-  const allQAs = spec.questions
-    .filter(q => q.answer)
-    .map(q => ({
-      question: q.text,
-      answer: q.answer!.isCustom
-        ? q.answer!.customText!
-        : q.answer!.selectedOptionText!
-    }));
-
-  // Get roles array
-  const roles = spec.roles.map(r => ({
-    name: r.name,
-    rationale: r.rationale
-  }));
-
-  // Generate markdown content via LLM
-  const markdownContent = await generateSpec(spec.description, allQAs, roles);
-
-  // Convert to HTML
-  const htmlContent = await marked(markdownContent);
-
-  // Update spec with content
-  const [updatedSpec] = await db
-    .update(specs)
-    .set({
-      content: markdownContent,
-      contentHtml: htmlContent,
-      updatedAt: new Date(),
-    })
-    .where(eq(specs.id, specId))
-    .returning();
-
-  // Transition to completed state
-  await transitionSpecState(specId, 'generating', 'completed');
-
-  return updatedSpec;
 }
