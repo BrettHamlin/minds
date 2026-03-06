@@ -487,21 +487,33 @@ Supported conditions:
 If `gate != null`: proceed to step **d. Gate Evaluation**.
 If `to != null`: skip to step **e. Goal Gate Check**.
 
-##### d. Gate evaluation (AI logic)
+##### d. Gate evaluation (deterministic infrastructure + AI judgment)
 
-*AI LOGIC: Requires full judgment to evaluate gate prompt.*
+1. **Resolve gate prompt (deterministic):**
+   ```bash
+   GATE_DATA=$(bun .collab/scripts/orchestrator/evaluate-gate.ts {ticket_id} {gate_name})
+   ```
+   Parse `prompt` and `validKeywords` from JSON output.
+   - Exit 0: `prompt` contains the fully resolved gate prompt (tokens + file contents substituted). `validKeywords` lists the allowed verdict keywords.
+   - Exit 3: gate not found — fall back to evaluating phase artifacts directly against the ticket acceptance criteria (ad-hoc review). Use `gate.on` keys from pipeline config as valid keywords if available.
 
-1. Load `gates[gate_name]` from the pipeline config (variant first: `.collab/config/pipeline-variants/{PIPELINE[TICKET_ID]}.json`, fallback: `.collab/config/pipeline.json`).
-2. Read the gate prompt file at `gates[gate_name].prompt`. Resolve `${TOKEN}` expressions for context variables in the prompt's YAML front matter. If the gate or prompt file is missing, evaluate the phase artifacts directly against the ticket acceptance criteria (ad-hoc review).
-3. Evaluate using: Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, analysis.md if present, etc.).
-4. Your response must contain exactly one keyword from `gates[gate_name].on`. Match it.
-5. Record gate decision (non-fatal — if exit 2/3, log and continue):
+2. **Evaluate (AI judgment):** Read the resolved `prompt`. Use Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, analysis.md if present). Your verdict must be exactly one keyword from `validKeywords`.
+
+3. **Validate verdict and get routing (deterministic):**
+   ```bash
+   GATE_RESPONSE=$(bun .collab/scripts/orchestrator/evaluate-gate.ts {ticket_id} {gate_name} --verdict {keyword})
+   ```
+   - Exit 0: parse `response` from JSON. Contains routing instructions (`to`, `feedback`, `maxRetries`, etc.).
+   - Exit 2: invalid keyword — re-read `validKeywords` from step 1 output and pick again.
+
+4. **Record gate decision** (non-fatal — if exit 2/3, log and continue):
    ```bash
    bun .collab/scripts/orchestrator/record-gate.ts {ticket_id} {gate_name} {keyword}
    ```
-6. Look up the matched response: `bun .collab/scripts/orchestrator/transition-resolve.ts {ticket_id} --gate {gate_name} {keyword}`
-7. **Feedback**: If matched response has `"feedback": true`, relay your full evaluation to the agent before routing.
-8. **Route**:
+
+5. **Feedback**: If `response.feedback` is set, relay your full evaluation to the agent before routing.
+
+6. **Route**:
    - Response has `to`: set `NEXT={to}`, proceed to **e. Goal Gate Check**.
    - Response has no `to` (retry): increment `retry_count` in registry. Check `on_exhaust` if `retry_count >= max_retries`. Then re-dispatch:
      ```bash

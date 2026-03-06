@@ -45,10 +45,40 @@ If the file exists and `current_step` contains `spec_critique` (or `spec.critiqu
 **Interactive mode** is resolved automatically by `resolveAndApply()` in the shared library — no separate `pipeline-config-read.ts` call is needed. If non-interactive mode is active (resolved internally from pipeline config), use non-interactive batch protocol (emit a questions signal) instead of AskUserQuestion calls.
 
 **Non-interactive batch protocol** (when `INTERACTIVE_MODE=false`):
-1. Collect HIGH/unresolved issues into a `QuestionCollector` (from `.collab/lib/pipeline/questions.ts`)
-2. Call `resolveAndApply()` — writes `findings/spec_critique-round-1.json`, emits a questions signal, polls for `resolutions/spec_critique-round-1.json`
-3. Apply resolutions from the orchestrator; re-evaluate verdict
-4. Proceed to Step 5 with final verdict
+
+**Re-entry detection:** Before collecting issues, check if resolutions already exist from a previous round:
+```bash
+ls {FEATURE_DIR}/resolutions/spec_critique-round-1.json 2>/dev/null
+```
+If resolutions exist, this is a re-dispatch from the orchestrator. Read the resolutions, apply them (mark issues as resolved), re-evaluate verdict, and proceed to Step 5.
+
+**First entry (no resolutions):** Collect HIGH/unresolved issues into a simple JSON array and write using the CLI (this writes the correct schema and emits the signal automatically):
+
+```bash
+cat <<'EOF' | bun .collab/scripts/emit-findings.ts --phase spec_critique --round 1 --ticket {ticket_id} --stdin
+[
+  {
+    "question": "Issue description requiring clarification",
+    "why": "Why this blocks implementation",
+    "specReferences": ["Section X mentions Y"],
+    "constraints": ["Known constraint"],
+    "implications": ["What depends on this decision"]
+  }
+]
+EOF
+```
+
+All context fields (`why`, `specReferences`, `codePatterns`, `constraints`, `implications`) are optional.
+
+After the CLI runs, output: "Emitted {N} questions to orchestrator. Waiting for resolution." then **END RESPONSE** — do not wait, do not poll. The orchestrator will:
+1. Receive the questions signal
+2. Synthesize answers, write resolutions file
+3. Re-dispatch `/collab.spec-critique` to this agent pane
+
+**Do NOT use AskUserQuestion in non-interactive mode.**
+
+1. (On re-entry after resolutions) Apply resolutions from the orchestrator; re-evaluate verdict
+2. Proceed to Step 5 with final verdict
 
 ### 3. Emit start signal
 
