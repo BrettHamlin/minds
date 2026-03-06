@@ -4,11 +4,11 @@ import {
   checkHoldStatus,
   buildDispatchCommand,
   getDispatchableCommand,
-  resolvePhaseHooks,
   waitForPhaseCompletion,
   publishCommandToBus,
   dispatchToAgent,
 } from "./phase-dispatch";
+import { resolveHooksForPhase } from "../dispatch-phase-hooks";
 import { startBusServer, teardownBusServer } from "./orchestrator-init";
 import type { CompiledPipeline } from "../../../lib/pipeline";
 import { writeJsonAtomic, resolvePipelineConfigPath } from "../../../lib/pipeline";
@@ -194,10 +194,10 @@ describe("phase-dispatch: checkHoldStatus()", () => {
 });
 
 // ============================================================================
-// resolvePhaseHooks — already partially tested in slice10.test.ts; extra cases
+// resolveHooksForPhase — imported from dispatch-phase-hooks
 // ============================================================================
 
-describe("phase-dispatch: resolvePhaseHooks()", () => {
+describe("dispatch-phase-hooks: resolveHooksForPhase()", () => {
   const HOOKED_PIPELINE: CompiledPipeline = {
     version: "3.1",
     phases: {
@@ -213,16 +213,19 @@ describe("phase-dispatch: resolvePhaseHooks()", () => {
     },
   };
 
-  test("13. phase with before+after returns both arrays", () => {
-    const hooks = resolvePhaseHooks(HOOKED_PIPELINE, "main");
-    expect(hooks.before).toEqual(["setup"]);
-    expect(hooks.after).toEqual(["cleanup"]);
+  test("13. phase with before hooks returns correct pre array", () => {
+    const before = resolveHooksForPhase(HOOKED_PIPELINE as Record<string, any>, "main", "pre");
+    expect(before).toEqual(["setup"]);
   });
 
-  test("14. phase with no hooks returns empty arrays", () => {
-    const hooks = resolvePhaseHooks(HOOKED_PIPELINE, "setup");
-    expect(hooks.before).toEqual([]);
-    expect(hooks.after).toEqual([]);
+  test("14. phase with after hooks returns correct post array", () => {
+    const after = resolveHooksForPhase(HOOKED_PIPELINE as Record<string, any>, "main", "post");
+    expect(after).toEqual(["cleanup"]);
+  });
+
+  test("15. phase with no hooks returns empty array", () => {
+    const before = resolveHooksForPhase(HOOKED_PIPELINE as Record<string, any>, "setup", "pre");
+    expect(before).toEqual([]);
   });
 });
 

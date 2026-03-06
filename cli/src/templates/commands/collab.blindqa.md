@@ -41,13 +41,18 @@ cat .collab/state/pipeline-registry/${ticket_id}.json | grep '"current_step".*"b
 
 ### 3. Initialize Retry Loop
 
-Set retry count: `attempt = 1`, `max_attempts = 3`
+Read retry config from the registry (survives context compaction):
+```bash
+RETRY_JSON=$(bun .collab/scripts/resolve-retry-config.ts ${ticket_id} blindqa)
+```
+Parse `RETRY_JSON`: `attempt = currentAttempt`, `max_attempts = maxAttempts`.
+If `exhausted == true`: emit failure signal immediately and exit.
 
 ### 4. Emit BLINDQA_START Signal (First Attempt Only)
 
 On first attempt only, run:
 ```bash
-bun .collab/handlers/emit-blindqa-signal.ts start "Starting blind verification (attempt ${attempt}/${max_attempts})"
+bun .collab/handlers/emit-signal.ts start "Starting blind verification (attempt ${attempt}/${max_attempts})"
 ```
 
 This is MANDATORY before invoking BlindQA skill. The signal must be sent before verification begins so orchestrator can track progress.
@@ -156,7 +161,7 @@ Combine evidence from **both** Playwright (step 5a) and BlindQA (step 5b):
 - Both must agree: Playwright shows each AC green, BlindQA reports no issues
 - Emit success signal:
   ```bash
-  bun .collab/handlers/emit-blindqa-signal.ts pass "All ${check_count} checks passed with evidence"
+  bun .collab/handlers/emit-signal.ts pass "All ${check_count} checks passed with evidence"
   ```
 - Exit successfully (pipeline advances to done/next phase)
 
@@ -169,7 +174,7 @@ Combine evidence from **both** Playwright (step 5a) and BlindQA (step 5b):
 - If `attempt >= max_attempts`:
   - Emit failure signal:
     ```bash
-    bun .collab/handlers/emit-blindqa-signal.ts fail "${issue_count} issues remain after ${max_attempts} attempts"
+    bun .collab/handlers/emit-signal.ts fail "${issue_count} issues remain after ${max_attempts} attempts"
     ```
   - Report issues and exit (pipeline halts for manual intervention)
 

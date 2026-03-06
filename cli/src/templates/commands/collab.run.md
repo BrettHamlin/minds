@@ -196,7 +196,7 @@ For EACH ticket ID in TICKET_IDS: call `get_issue` MCP with `includeRelations: t
 
 For EACH ticket ID in TICKET_IDS:
 ```bash
-FIRST_PHASE=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts --first)
+FIRST_PHASE=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts {TICKET_ID} --first)
 bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {TICKET_ID} "$FIRST_PHASE"
 ```
 
@@ -525,34 +525,31 @@ If output starts with `REDIRECT:`: extract phase id, dispatch it, status table, 
 
 Check if `NEXT` is terminal:
 ```bash
-IS_TERMINAL=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts --is-terminal {NEXT})
+IS_TERMINAL=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts {ticket_id} --is-terminal {NEXT})
 ```
 If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
 
-##### f.0 Dependency hold check (AI, before every non-clarify advance)
-
-*AI LOGIC: Check if this ticket is held by a cross-ticket dependency before dispatching the next phase.*
+##### f.0 Dependency hold check (deterministic, before every non-clarify advance)
 
 **Only runs when `NEXT != "clarify"`** (clarify always runs in parallel, even for held tickets).
 
-1. Read registry: `bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id}`
-2. Check for `held_by` field in the output.
-3. **If `held_by` is set:**
-   a. If `hold_external == true`: log "⏸ {ticket_id} is held by external blocker {held_by} — manual release required." Set `status=held`. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
-   b. Check if the blocker has completed by reading its registry:
-      ```bash
-      bun .collab/scripts/orchestrator/commands/registry-read.ts {held_by} 2>/dev/null || echo "REGISTRY_MISSING"
-      ```
-      - If output is `REGISTRY_MISSING` (or blocker registry not found): blocker pipeline has completed → proceed to step f (clear hold and advance normally):
-        ```bash
-        bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field held_by
-        bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_release_when
-        bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_reason
-        bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_external
-        ```
-        Then continue to the normal advance below.
-      - If blocker registry exists (blocker still running): set `status=held`, log "⏸ {ticket_id} is held, waiting for {held_by} to complete." `bun .collab/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
-4. **If `held_by` is not set**: proceed normally (no hold).
+```bash
+HOLD=$(bun .collab/scripts/orchestrator/check-dependency-hold.ts {ticket_id})
+```
+
+Parse `held`, `released`, `waiting_for`, `external`, `was_waiting_for` from JSON output.
+
+- **If `held == true` and `external == true`**: log "⏸ {ticket_id} is held by external blocker {waiting_for} — manual release required." Set `status=held`. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
+- **If `held == true` and `external == false`**: set `status=held`, log "⏸ {ticket_id} is held, waiting for {waiting_for} to complete." `bun .collab/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
+- **If `held == false` and `released == true`** (blocker completed — registry deleted): clear hold fields and proceed:
+  ```bash
+  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field held_by
+  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_release_when
+  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_reason
+  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_external
+  ```
+  Then continue to the normal advance below.
+- **If `held == false`** (no hold): proceed normally.
 
 Update registry and dispatch next phase:
 ```bash
@@ -603,29 +600,37 @@ bun $SCRIPTS/held-release-scan.ts {ticket_id}
 
 `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "'{current_step}' complete for {ticket_id}. Advancing to '{NEXT}'." Run **Signal Drain** before ending.
 
-##### f.1 Before hooks (AI)
+##### f.1 Before hooks (deterministic)
 
-*AI LOGIC: Check for before hooks on the next phase before dispatching it.*
+```bash
+BEFORE_HOOKS=$(bun $SCRIPTS/orchestrator/dispatch-phase-hooks.ts {ticket_id} pre --phase {NEXT})
+```
 
-Read `phases[NEXT].before` from `.collab/config/pipeline.json`:
-- If `before` array is non-empty: for each `{phase}` entry, dispatch it as a hook phase first:
+Parse `hooks` array and `empty` from JSON output.
+
+- If `empty == false`: for each hook phase in `hooks`, dispatch it:
   ```bash
   bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {hook_phase}
   ```
   Wait for the hook phase's `_COMPLETE` signal before dispatching `NEXT`. Log: "Before-hook '{hook_phase}' dispatched for {ticket_id} before '{NEXT}'." **END RESPONSE** and wait for signal.
-- If `before` is absent or empty: dispatch `NEXT` directly (normal flow above).
+- If `empty == true`: dispatch `NEXT` directly (normal flow above).
 
-##### f.2 After hooks (AI)
+##### f.2 After hooks (deterministic)
 
-*AI LOGIC: When a `_COMPLETE` signal arrives and the completed phase has after hooks, run them before advancing.*
+In step **a** (_COMPLETE handler), after appending phase history:
 
-In step **a** (_COMPLETE handler), after appending phase history, read `phases[current_step].after` from `.collab/config/pipeline.json`:
-- If `after` array is non-empty: for each `{phase}` entry, dispatch it as a hook before routing to the next phase:
+```bash
+AFTER_HOOKS=$(bun $SCRIPTS/orchestrator/dispatch-phase-hooks.ts {ticket_id} post)
+```
+
+Parse `hooks` array and `empty` from JSON output (reads `current_step` from registry automatically).
+
+- If `empty == false`: for each hook phase in `hooks`, dispatch it:
   ```bash
   bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {hook_phase}
   ```
   Wait for hook `_COMPLETE`, then proceed to step b. Log: "After-hook '{hook_phase}' dispatched for {ticket_id} after '{current_step}'."
-- If `after` is absent or empty: proceed normally.
+- If `empty == true`: proceed normally.
 `.collab/scripts/webhook-notify.ts {ticket_id} {current_step} {NEXT} running`
 
 #### `_ERROR` or `_FAILED` -- Error

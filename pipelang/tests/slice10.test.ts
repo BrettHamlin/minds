@@ -381,10 +381,10 @@ phase(main)
   });
 });
 
-// ── Orchestrator: resolvePhaseHooks ──────────────────────────────────────────
+// ── Orchestrator: resolveHooksForPhase ───────────────────────────────────────
 
-describe("resolvePhaseHooks()", () => {
-  const { resolvePhaseHooks } = require("../../src/scripts/orchestrator/commands/phase-dispatch");
+describe("resolveHooksForPhase()", () => {
+  const { resolveHooksForPhase } = require("../../src/scripts/orchestrator/dispatch-phase-hooks");
 
   const PIPELINE = {
     version: "3.1",
@@ -403,27 +403,23 @@ describe("resolvePhaseHooks()", () => {
   };
 
   test("returns before and after phase IDs for phase with hooks", () => {
-    const hooks = resolvePhaseHooks(PIPELINE, "main");
-    expect(hooks.before).toEqual(["hook"]);
-    expect(hooks.after).toEqual(["cleanup"]);
+    expect(resolveHooksForPhase(PIPELINE, "main", "pre")).toEqual(["hook"]);
+    expect(resolveHooksForPhase(PIPELINE, "main", "post")).toEqual(["cleanup"]);
   });
 
   test("returns empty arrays for phase with no hooks", () => {
-    const hooks = resolvePhaseHooks(PIPELINE, "plain");
-    expect(hooks.before).toEqual([]);
-    expect(hooks.after).toEqual([]);
+    expect(resolveHooksForPhase(PIPELINE, "plain", "pre")).toEqual([]);
+    expect(resolveHooksForPhase(PIPELINE, "plain", "post")).toEqual([]);
   });
 
   test("returns empty arrays for non-existent phase", () => {
-    const hooks = resolvePhaseHooks(PIPELINE, "nonexistent");
-    expect(hooks.before).toEqual([]);
-    expect(hooks.after).toEqual([]);
+    expect(resolveHooksForPhase(PIPELINE, "nonexistent", "pre")).toEqual([]);
+    expect(resolveHooksForPhase(PIPELINE, "nonexistent", "post")).toEqual([]);
   });
 
   test("returns empty arrays for terminal phase", () => {
-    const hooks = resolvePhaseHooks(PIPELINE, "done");
-    expect(hooks.before).toEqual([]);
-    expect(hooks.after).toEqual([]);
+    expect(resolveHooksForPhase(PIPELINE, "done", "pre")).toEqual([]);
+    expect(resolveHooksForPhase(PIPELINE, "done", "post")).toEqual([]);
   });
 
   test("multiple before hooks returned in order", () => {
@@ -437,7 +433,6 @@ describe("resolvePhaseHooks()", () => {
         done: { terminal: true },
       },
     };
-    const hooks = resolvePhaseHooks(pipeline, "main");
-    expect(hooks.before).toEqual(["a", "b", "c"]);
+    expect(resolveHooksForPhase(pipeline, "main", "pre")).toEqual(["a", "b", "c"]);
   });
 });

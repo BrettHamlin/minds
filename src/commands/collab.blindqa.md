@@ -43,7 +43,12 @@ Verify `MODE_JSON.phase` is "blindqa" (current_step matches).
 
 ### 3. Initialize Retry Loop
 
-Set retry count: `attempt = 1`, `max_attempts = 3`
+Read retry config from the registry (survives context compaction):
+```bash
+RETRY_JSON=$(bun .collab/scripts/resolve-retry-config.ts ${ticket_id} blindqa)
+```
+Parse `RETRY_JSON`: `attempt = currentAttempt`, `max_attempts = maxAttempts`.
+If `exhausted == true`: emit failure signal immediately and exit.
 
 ### 4. Emit BLINDQA_START Signal (First Attempt Only)
 

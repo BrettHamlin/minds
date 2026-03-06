@@ -72,6 +72,7 @@
     },
     "blindqa": {
       "command": "/collab.blindqa",
+      "max_retries": 3,
       "signals": ["BLINDQA_COMPLETE", "BLINDQA_FAILED", "BLINDQA_ERROR", "BLINDQA_QUESTION", "BLINDQA_WAITING", "BLINDQA_PROCESSING"],
       "transitions": {
         "BLINDQA_COMPLETE": { "to": "done" },
