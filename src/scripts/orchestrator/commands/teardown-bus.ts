@@ -18,7 +18,7 @@ import {
   readJsonFile,
   registryPath,
 } from "../../../lib/pipeline";
-import { resolveTransportPath } from "../../../lib/resolve-transport";
+import { resolveTransportPath } from "../../../../minds/transport/resolve-transport";
 
 // ---------------------------------------------------------------------------
 // Core logic (exported for testing)

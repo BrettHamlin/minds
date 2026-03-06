@@ -384,7 +384,8 @@ phase(main)
 // ── Orchestrator: resolveHooksForPhase ───────────────────────────────────────
 
 describe("resolveHooksForPhase()", () => {
-  const { resolveHooksForPhase } = require("../../src/scripts/orchestrator/dispatch-phase-hooks");
+  // CROSS-MIND: runtime import only — Execution Mind owns dispatch-phase-hooks
+  const { resolveHooksForPhase } = require("../../../src/scripts/orchestrator/dispatch-phase-hooks");
 
   const PIPELINE = {
     version: "3.1",

@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { SIGNAL_SUFFIXES, isSuccessSignal } from "./pipeline-signal";
 
-const CONFIG_DIR = path.join(__dirname, "../../src/config/pipeline-variants");
+const CONFIG_DIR = path.join(__dirname, "../../minds/templates/pipeline-variants");
 
 describe("signal-contract: pipeline config validation", () => {
   const configFiles = fs.readdirSync(CONFIG_DIR).filter((f) => f.endsWith(".json"));

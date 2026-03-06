@@ -9,14 +9,15 @@ const _dir: string = (import.meta as { dir?: string }).dir
 
 /**
  * Returns the path to the bundled templates directory.
- * Works in development (Bun, src/utils/) and production (Node.js, dist/).
+ * Templates live at minds/templates/ in the repo root (moved from cli/src/templates/ in WA-1).
+ * Works in development (Bun, cli/src/utils/) and production (Node.js, dist/).
  */
 export function getTemplateDir(): string {
-  // Dev: running source directly — src/utils/../templates = src/templates
-  const devPath = join(_dir, "..", "templates");
+  // Dev: running source directly — cli/src/utils/../../../minds/templates
+  const devPath = join(_dir, "..", "..", "..", "minds", "templates");
   if (existsSync(devPath)) return devPath;
-  // Built: running dist/cli.js — dist/../src/templates = src/templates
-  const builtPath = join(_dir, "..", "src", "templates");
+  // Built: running dist/cli.js — dist/../minds/templates
+  const builtPath = join(_dir, "..", "minds", "templates");
   if (existsSync(builtPath)) return builtPath;
   throw new Error(
     "Template directory not found. Ensure the package was built with `bun run build`."

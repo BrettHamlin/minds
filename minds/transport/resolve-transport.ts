@@ -12,7 +12,7 @@ import * as path from "path";
 import * as fs from "fs";
 
 const thisDir = path.dirname(new URL(import.meta.url).pathname);
-// Both src/lib/ and .collab/lib/ are 2 levels down from repo root
+// minds/transport/ is 2 levels down from repo root
 const repoRoot = path.resolve(thisDir, "../..");
 
 /**
@@ -22,5 +22,5 @@ const repoRoot = path.resolve(thisDir, "../..");
 export function resolveTransportPath(moduleName: string): string {
   const installed = path.join(repoRoot, ".collab", "transport", moduleName);
   if (fs.existsSync(installed)) return installed;
-  return path.join(repoRoot, "transport", moduleName);
+  return path.join(repoRoot, "minds", "transport", moduleName);
 }

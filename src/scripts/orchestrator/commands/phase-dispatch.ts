@@ -38,7 +38,7 @@ import {
 } from "../../../lib/pipeline";
 import type { CompiledPipeline, CompiledPhase, CompiledAction } from "../../../lib/pipeline";
 import { applyUpdates } from "../../../lib/pipeline";
-import { resolveTransportPath } from "../../../lib/resolve-transport";
+import { resolveTransportPath } from "../../../../minds/transport/resolve-transport";
 import { resolveHooksForPhase } from "../dispatch-phase-hooks";
 
 // ---------------------------------------------------------------------------

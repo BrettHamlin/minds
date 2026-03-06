@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { dispatchSignal } from "./emit-phase-signal";
-import { handleBusMessage } from "../../transport/bus-signal-bridge";
+import { handleBusMessage } from "../../minds/transport/bus-signal-bridge";
 import { startBusServer, teardownBusServer } from "../scripts/orchestrator/commands/orchestrator-init";
 
 // __dirname = src/handlers → ../../ = repo root

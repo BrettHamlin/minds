@@ -283,10 +283,10 @@ if (existsSync(specifySrc)) {
 }
 
 // Specify templates (spec-template.md, etc.)
-// Check both src/.specify/templates/ and cli/src/templates/specify-templates/
+// Check both src/.specify/templates/ and minds/templates/specify-templates/
 const specifyTplSources = [
   join(tempDir, "src/.specify/templates"),
-  join(tempDir, "cli/src/templates/specify-templates"),
+  join(tempDir, "minds/templates/specify-templates"),
 ];
 for (const tplSrc of specifyTplSources) {
   if (!existsSync(tplSrc)) continue;
@@ -319,17 +319,17 @@ if (existsSync(hooksSrc)) {
 }
 
 // Pipeline config (always overwrite to keep runtime in sync with source)
-const pipelineConfigSrc = join(tempDir, "src/config/pipeline.json");
+const pipelineConfigSrc = join(tempDir, "minds/templates/pipeline.json");
 if (existsSync(pipelineConfigSrc)) {
   copyFileSync(pipelineConfigSrc, join(repoRoot, ".collab/config/pipeline.json"));
 } else {
-  console.log("  Warning: src/config/pipeline.json not found in source — skipping");
+  console.log("  Warning: minds/templates/pipeline.json not found in source — skipping");
 }
 
 // Schema files
 try {
   execSync(
-    `find "${join(tempDir, "src/config")}" -maxdepth 1 -name "*.schema.json" -exec cp {} "${join(repoRoot, ".collab/config/")}" \\;`,
+    `find "${join(tempDir, "minds/templates")}" -maxdepth 1 -name "*.schema.json" -exec cp {} "${join(repoRoot, ".collab/config/")}" \\;`,
     { shell: true }
   );
 } catch {
@@ -337,7 +337,7 @@ try {
 }
 
 // Pipeline variant configs (always overwrite to keep runtime in sync with source)
-const variantsDir = join(tempDir, "src/config/pipeline-variants");
+const variantsDir = join(tempDir, "minds/templates/pipeline-variants");
 if (existsSync(variantsDir)) {
   execSync(
     `find "${variantsDir}" -name "*.json" -exec cp {} "${join(repoRoot, ".collab/config/pipeline-variants/")}" \\;`,
@@ -345,7 +345,7 @@ if (existsSync(variantsDir)) {
   );
   console.log("Pipeline variant configs installed");
 } else {
-  console.log("  Warning: src/config/pipeline-variants not found in source — skipping");
+  console.log("  Warning: minds/templates/pipeline-variants not found in source — skipping");
 }
 
 // Scan installed variant configs and install any referenced commands missing from
@@ -385,7 +385,7 @@ if (existsSync(installedVariantsDir) && existsSync(variantCommandsSrc)) {
 }
 
 // Test fixture configs (always overwrite to keep runtime in sync with source)
-const testFixturesDir = join(tempDir, "src/config/test-fixtures");
+const testFixturesDir = join(tempDir, "minds/templates/test-fixtures");
 if (existsSync(testFixturesDir)) {
   execSync(
     `find "${testFixturesDir}" -name "*.json" -exec cp {} "${join(repoRoot, ".collab/config/test-fixtures/")}" \\;`,
@@ -393,14 +393,14 @@ if (existsSync(testFixturesDir)) {
   );
   console.log("Test fixture configs installed");
 } else {
-  console.log("  Warning: src/config/test-fixtures not found in source — skipping");
+  console.log("  Warning: minds/templates/test-fixtures not found in source — skipping");
 }
 
 // Default command configs (scaffold only — skip if user has customized)
 const commandConfigs = [
-  { src: "src/config/defaults/run-tests.json", dest: ".collab/config/run-tests.json" },
-  { src: "src/config/defaults/visual-verify.json", dest: ".collab/config/visual-verify.json" },
-  { src: "src/config/defaults/deploy-verify.json", dest: ".collab/config/deploy-verify.json" },
+  { src: "minds/templates/defaults/run-tests.json", dest: ".collab/config/run-tests.json" },
+  { src: "minds/templates/defaults/visual-verify.json", dest: ".collab/config/visual-verify.json" },
+  { src: "minds/templates/defaults/deploy-verify.json", dest: ".collab/config/deploy-verify.json" },
 ];
 let configScaffoldCount = 0;
 for (const cfg of commandConfigs) {
@@ -477,7 +477,7 @@ const constitutionPath = join(repoRoot, ".collab/memory/constitution.md");
 if (!existsSync(constitutionPath)) {
   const constitutionSrcs = [
     join(tempDir, ".specify/templates/constitution-template.md"),
-    join(tempDir, "src/config/constitution-template.md"),
+    join(tempDir, "minds/templates/constitution-template.md"),
   ];
   const constitutionSrc = constitutionSrcs.find((p) => existsSync(p));
   if (constitutionSrc) {

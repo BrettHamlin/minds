@@ -174,7 +174,7 @@ router.post('/channel', asyncHandler(async (req: Request, res: Response) => {
     }
   } else {
     // TODO(WA-2): Replace with Integrations Mind handle() call
-    const { slackApp } = await import('../../../src/plugins/slack/client.js');
+    const { slackApp } = await import('../../../minds/integrations/slack/client.js');
     for (const roleAssignment of roles) {
       const role = spec.roles.find((r) => r.name === roleAssignment.roleName);
       if (role && roleAssignment.members?.length > 0) {
@@ -229,7 +229,7 @@ router.post('/channel', asyncHandler(async (req: Request, res: Response) => {
 
   if (!skipSlack) {
     // TODO(WA-2): Replace with Integrations Mind handle() call
-    const { postQuestionToChannel } = await import('../../../src/plugins/slack/interactions.js');
+    const { postQuestionToChannel } = await import('../../../minds/integrations/slack/interactions.js');
     await postQuestionToChannel(
       slackChannel.id,
       { id: firstQuestion.id, text: firstQuestion.text, options: firstQuestion.options, specId },

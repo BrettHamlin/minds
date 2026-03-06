@@ -8,8 +8,10 @@
 //   import { runPipeline } from "./runner";
 //   const result = await runPipeline(compiledPipeline, { signalTimeoutMs: 30_000 });
 
-import type { CompiledPipeline, CompiledGate, CompiledTransition, ConditionalTransitionRow } from "../../src/lib/pipeline/types";
+// CROSS-MIND: runtime import only — Pipeline Core owns these types
+import type { CompiledPipeline, CompiledGate, CompiledTransition, ConditionalTransitionRow } from "../../../src/lib/pipeline/types";
 import { tmux, sleepMs, sendToPane, openAgentPane, pollForSignal } from "./tmux";
+// CROSS-MIND: runtime import only — Transport Mind owns this module
 import { resolveTransport } from "../../transport/index.ts";
 
 // ── Agent lifecycle interface ─────────────────────────────────────────────────
@@ -67,7 +69,8 @@ export interface RunResult {
 // ── Pure gate routing logic and conditional transitions ───────────────────────
 // Imported and re-exported from shared library
 
-import { resolveGateResponse, resolveConditionalTransition } from "../../src/lib/pipeline/transitions";
+// CROSS-MIND: runtime import only — Pipeline Core owns transitions
+import { resolveGateResponse, resolveConditionalTransition } from "../../../src/lib/pipeline/transitions";
 export { resolveGateResponse, resolveConditionalTransition };
 
 // ── Gate execution ────────────────────────────────────────────────────────────

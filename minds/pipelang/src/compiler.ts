@@ -2,6 +2,7 @@
 
 import type { PipelineAST, DisplayValue, GateDecl } from "./types";
 
+// CROSS-MIND: runtime import only — Pipeline Core owns these types
 // Import and re-export compiled types from shared library
 import type {
   CompiledTransition,
@@ -15,7 +16,7 @@ import type {
   CompiledCodeReview,
   CompiledMetrics,
   CompiledInteractive,
-} from "../../src/lib/pipeline/types";
+} from "../../../src/lib/pipeline/types";
 export type {
   CompiledTransition,
   CompiledDisplayValue,

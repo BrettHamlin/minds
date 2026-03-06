@@ -6,7 +6,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import type { PipelineSnapshot } from "../../transport/status-snapshot";
+import type { PipelineSnapshot } from "../../minds/transport/status-snapshot";
 
 export interface CachedStatus {
   pipelines: PipelineSnapshot[];

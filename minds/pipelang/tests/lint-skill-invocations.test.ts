@@ -11,7 +11,7 @@ import { describe, test, expect } from "bun:test";
 import { readdirSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 
-const COMMANDS_DIR = resolve(import.meta.dir, "../../src/commands");
+const COMMANDS_DIR = resolve(import.meta.dir, "../../../src/commands");
 
 const ALLOWED_PATTERNS = [
   "Read the file",

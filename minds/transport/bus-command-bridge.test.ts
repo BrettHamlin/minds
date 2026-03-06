@@ -1,10 +1,10 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import * as path from "path";
 import { handleCommandMessage } from "./bus-command-bridge";
-import { startBusServer, teardownBusServer } from "../src/scripts/orchestrator/commands/orchestrator-init";
+import { startBusServer, teardownBusServer } from "./test-helpers";
 
-// __dirname = transport/ → .. = repo root
-const REAL_REPO_ROOT = path.resolve(__dirname, "../");
+// __dirname = minds/transport/ → ../.. = repo root
+const REAL_REPO_ROOT = path.resolve(__dirname, "../../");
 
 // ---------------------------------------------------------------------------
 // handleCommandMessage — command delivery and ack
