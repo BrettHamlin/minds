@@ -14,19 +14,21 @@ import {
 // ============================================================================
 
 let tmpDir: string;
+const REGISTRY_SUBDIR = path.join(".collab", "state", "pipeline-registry");
 
 function setupTmpRegistry(): string {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "held-release-test-"));
+  fs.mkdirSync(path.join(tmpDir, REGISTRY_SUBDIR), { recursive: true });
   return tmpDir;
 }
 
 function writeRegistry(
-  dir: string,
+  repoRoot: string,
   ticketId: string,
   data: Record<string, any>
 ): void {
   fs.writeFileSync(
-    path.join(dir, `${ticketId}.json`),
+    path.join(repoRoot, REGISTRY_SUBDIR, `${ticketId}.json`),
     JSON.stringify(data, null, 2)
   );
 }
@@ -232,14 +234,18 @@ describe("isDependencyHoldSatisfied", () => {
 
   beforeEach(() => {
     holdTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dep-hold-test-"));
+    fs.mkdirSync(path.join(holdTmpDir, REGISTRY_SUBDIR), { recursive: true });
   });
 
   afterEach(() => {
     fs.rmSync(holdTmpDir, { recursive: true, force: true });
   });
 
-  function writeReg(dir: string, ticketId: string, data: Record<string, any>): void {
-    fs.writeFileSync(path.join(dir, `${ticketId}.json`), JSON.stringify(data, null, 2));
+  function writeReg(repoRoot: string, ticketId: string, data: Record<string, any>): void {
+    fs.writeFileSync(
+      path.join(repoRoot, REGISTRY_SUBDIR, `${ticketId}.json`),
+      JSON.stringify(data, null, 2)
+    );
   }
 
   test("release_when=done: returns true when blocker registry does not exist", () => {

@@ -30,7 +30,7 @@ import {
   getRepoRoot,
   readJsonFile,
   writeJsonAtomic,
-  getRegistryPath,
+  registryPath,
   TmuxClient,
   OrchestratorError,
   handleError,
@@ -99,8 +99,7 @@ interface WaitForEntry {
 export function checkHoldStatus(
   ticketId: string,
   phaseId: string,
-  repoRoot: string,
-  registryDir: string
+  repoRoot: string
 ): HoldResult {
   const coordPath = path.join(repoRoot, "specs", ticketId, "coordination.json");
   if (!fs.existsSync(coordPath)) {
@@ -118,7 +117,7 @@ export function checkHoldStatus(
     const depPhase = dep.phase;
     if (!depTicket || !depPhase) continue;
 
-    const depRegPath = getRegistryPath(registryDir, depTicket);
+    const depRegPath = registryPath(repoRoot, depTicket);
     const depReg = readJsonFile(depRegPath);
     if (!depReg) {
       return { held: true, reason: `${depTicket}:${depPhase}` };
@@ -362,14 +361,13 @@ async function main(): Promise<void> {
   try {
     const repoRoot = getRepoRoot();
     const configPath = `${repoRoot}/.collab/config/pipeline.json`;
-    const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
 
     const pipeline = readJsonFile(configPath) as CompiledPipeline | null;
     if (!pipeline) {
       throw new OrchestratorError("FILE_NOT_FOUND", `pipeline.json not found: ${configPath}`);
     }
 
-    const regPath = getRegistryPath(registryDir, ticketId);
+    const regPath = registryPath(repoRoot, ticketId);
     const registry = readJsonFile(regPath);
     if (!registry) {
       throw new OrchestratorError("FILE_NOT_FOUND", `Registry not found for ticket: ${ticketId}`);
@@ -381,7 +379,7 @@ async function main(): Promise<void> {
     }
 
     // --- Check hold conditions ---
-    const holdResult = checkHoldStatus(ticketId, phaseId, repoRoot, registryDir);
+    const holdResult = checkHoldStatus(ticketId, phaseId, repoRoot);
     if (holdResult.held) {
       // Update registry to held state
       writeJsonAtomic(

@@ -150,7 +150,7 @@ describe("phase-dispatch: checkHoldStatus()", () => {
   });
 
   test("5. no coordination.json → not held", () => {
-    const result = checkHoldStatus("BRE-99", "clarify", repoRoot, registryDir);
+    const result = checkHoldStatus("BRE-99", "clarify", repoRoot);
     expect(result.held).toBe(false);
   });
 
@@ -169,7 +169,7 @@ describe("phase-dispatch: checkHoldStatus()", () => {
       JSON.stringify({ wait_for: [{ ticket_id: "BRE-DEP", phase: "plan" }] })
     );
 
-    const result = checkHoldStatus("BRE-100", "clarify", repoRoot, registryDir);
+    const result = checkHoldStatus("BRE-100", "clarify", repoRoot);
     expect(result.held).toBe(false);
   });
 
@@ -187,7 +187,7 @@ describe("phase-dispatch: checkHoldStatus()", () => {
       JSON.stringify({ wait_for: [{ ticket_id: "BRE-DEP2", phase: "plan" }] })
     );
 
-    const result = checkHoldStatus("BRE-101", "clarify", repoRoot, registryDir);
+    const result = checkHoldStatus("BRE-101", "clarify", repoRoot);
     expect(result.held).toBe(true);
     expect(result.reason).toBe("BRE-DEP2:plan");
   });

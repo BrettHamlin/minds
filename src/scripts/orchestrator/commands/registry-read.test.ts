@@ -32,14 +32,14 @@ afterAll(() => {
 
 describe("registry-read: readRegistry()", () => {
   test("1. returns registry data for known ticket", () => {
-    const data = readRegistry(TICKET, REGISTRY_DIR);
+    const data = readRegistry(TICKET, REPO_ROOT);
     expect(data.ticket_id).toBe(TICKET);
     expect(data.current_step).toBe("clarify");
     expect(data.nonce).toBe("aabbccdd");
   });
 
   test("2. throws FILE_NOT_FOUND for unknown ticket", () => {
-    expect(() => readRegistry("UNKNOWN-999", REGISTRY_DIR)).toThrow("Registry not found");
+    expect(() => readRegistry("UNKNOWN-999", REPO_ROOT)).toThrow("Registry not found");
   });
 });
 

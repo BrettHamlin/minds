@@ -16,7 +16,7 @@ import * as path from "path";
 import {
   getRepoRoot,
   readJsonFile,
-  getRegistryPath,
+  registryPath,
 } from "../../../lib/pipeline";
 import { resolveTransportPath } from "../../../lib/resolve-transport";
 
@@ -69,8 +69,7 @@ if (import.meta.main) {
   }
 
   const repoRoot = getRepoRoot();
-  const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-  const regPath = getRegistryPath(registryDir, ticketId);
+  const regPath = registryPath(repoRoot, ticketId);
   const registry = readJsonFile(regPath);
 
   if (!registry) {
