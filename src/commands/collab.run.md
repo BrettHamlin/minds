@@ -708,7 +708,7 @@ System nodes — all are non-fatal (exit 2 or 3 = log warning and continue):
 Cleanup:
 4c. Release dependency holds (run before registry deletion so other held tickets can detect completion):
    `bun .collab/scripts/orchestrator/held-release-scan.ts {ticket_id}`
-5. `rm .collab/state/pipeline-registry/{ticket_id}.json`
+5. `rm "$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)"`
 6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
 7. `.collab/scripts/webhook-notify.ts {ticket_id} {current_step} done complete`
 8. Other agents running -> wait. None remain -> "All pipelines complete."

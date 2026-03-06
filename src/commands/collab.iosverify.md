@@ -23,12 +23,13 @@ Parse `ticket_id` from `$ARGUMENTS`. If missing, output "Usage: /collab.iosverif
 ### 2. Verify Registry State
 
 ```bash
-test -f .collab/state/pipeline-registry/${ticket_id}.json || { echo "Not in orchestrated mode"; exit 1; }
+REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts ${ticket_id} registry)
+test -f "$REGISTRY_PATH" || { echo "Not in orchestrated mode"; exit 1; }
 ```
 
 Check current_step is "iosverify":
 ```bash
-cat .collab/state/pipeline-registry/${ticket_id}.json | grep '"current_step".*"iosverify"' || echo "Warning: not in iosverify phase"
+cat "$REGISTRY_PATH" | grep '"current_step".*"iosverify"' || echo "Warning: not in iosverify phase"
 ```
 
 ### 3. Read Build Output Artifact
