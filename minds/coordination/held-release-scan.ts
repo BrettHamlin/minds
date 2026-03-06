@@ -30,13 +30,11 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
-// TODO(WD): These should be requested via parent escalation once Pipeline Core is a Mind.
-import {
-  getRepoRoot,
-  readJsonFile,
-  validateTicketIdArg,
-} from "../../src/lib/pipeline/utils";
-import { registryPath } from "../../src/lib/pipeline/paths";
+// TODO(WD): These should be requested via parent escalation once Router Mind exists (Wave E).
+import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import { readJsonFile } from "../pipeline_core/json-io"; // CROSS-MIND
+import { validateTicketIdArg } from "../pipeline_core/validation"; // CROSS-MIND
+import { registryPath } from "../pipeline_core/paths"; // CROSS-MIND
 
 // ============================================================================
 // Types
@@ -144,8 +142,8 @@ function main(): void {
 
   const repoRoot = getRepoRoot();
   const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-  // registry-update.ts remains in src/scripts/orchestrator/ until Wave D moves it to Execution Mind.
-  const scriptDir = path.join(repoRoot, "src/scripts/orchestrator");
+  // registry-update.ts lives in minds/execution/ (moved by Wave D WD-3)
+  const scriptDir = path.join(repoRoot, "minds/execution");
 
   // Validate registry dir exists
   if (!fs.existsSync(registryDir)) {

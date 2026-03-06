@@ -26,7 +26,7 @@
 
 import { Database } from "bun:sqlite";
 // TODO(WD): getRepoRoot should be requested via parent escalation once Pipeline Core is a Mind.
-import { getRepoRoot } from "../../src/lib/pipeline/utils";
+import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
 import { openMetricsDb } from "./metrics";
 import {
   listRuns,

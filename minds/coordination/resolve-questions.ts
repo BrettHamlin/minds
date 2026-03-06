@@ -26,9 +26,11 @@ import { join, dirname, basename } from "path";
 import { execSync } from "child_process";
 
 // TODO(WD): These should be requested via parent escalation once Pipeline Core is a Mind.
-import type { FindingsBatch, ResolutionBatch } from "../../src/lib/pipeline/questions";
-import { resolutionsPath } from "../../src/lib/pipeline/paths";
-import { getRepoRoot, findFeatureDir, validateTicketIdArg } from "../../src/lib/pipeline/utils";
+import type { FindingsBatch, ResolutionBatch } from "../pipeline_core/questions"; // CROSS-MIND
+import { resolutionsPath } from "../pipeline_core/paths"; // CROSS-MIND
+import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import { findFeatureDir } from "../pipeline_core/feature"; // CROSS-MIND
+import { validateTicketIdArg } from "../pipeline_core/validation"; // CROSS-MIND
 
 // ── Context bundle types ──────────────────────────────────────────────────────
 

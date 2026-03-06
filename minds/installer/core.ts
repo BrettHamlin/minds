@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, chmodSync, 
 import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 // TODO(WD): CLI Mind not decoupled yet — direct import from minds/cli/utils until Wave D
-import { ensureDir } from "../cli/utils/fs";
+import { ensureDir } from "../cli/utils/fs"; // CROSS-MIND
 
 // Resolve template directory — works with Bun (import.meta.dir) and Node.js (fileURLToPath fallback)
 const _dir: string = (import.meta as { dir?: string }).dir

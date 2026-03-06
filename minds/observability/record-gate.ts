@@ -17,7 +17,7 @@
  */
 
 // TODO(WD): getRepoRoot should be requested via parent escalation once Pipeline Core is a Mind.
-import { getRepoRoot } from "../../src/lib/pipeline/utils";
+import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
 import { exitIfMetricsDisabled } from "./metrics-guard";
 import { openMetricsDb, insertGate } from "./metrics";
 

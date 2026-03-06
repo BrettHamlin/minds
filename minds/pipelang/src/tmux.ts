@@ -1,6 +1,6 @@
 // Generic tmux utilities for the pipelang runner
 // CROSS-MIND: runtime import only — Pipeline Core owns tmux-client
-// Re-exports from shared library at src/lib/pipeline/tmux-client.ts
+// Re-exports from minds/pipeline_core/tmux-client.ts (WD-2)
 
 export {
   tmux,
@@ -8,4 +8,4 @@ export {
   sendToPane,
   openAgentPane,
   pollForSignal,
-} from "../../../src/lib/pipeline/tmux-client";
+} from "../../../minds/pipeline_core/tmux-client"; // CROSS-MIND

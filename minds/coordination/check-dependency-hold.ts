@@ -31,13 +31,11 @@
  *   3 = registry not found for the given ticket
  */
 
-// TODO(WD): These should be requested via parent escalation once Pipeline Core is a Mind.
-import {
-  getRepoRoot,
-  readJsonFile,
-  validateTicketIdArg,
-} from "../../src/lib/pipeline/utils";
-import { registryPath } from "../../src/lib/pipeline/paths";
+// TODO(WD): These should be requested via parent escalation once Router Mind exists (Wave E).
+import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import { readJsonFile } from "../pipeline_core/json-io"; // CROSS-MIND
+import { validateTicketIdArg } from "../pipeline_core/validation"; // CROSS-MIND
+import { registryPath } from "../pipeline_core/paths"; // CROSS-MIND
 
 // ---------------------------------------------------------------------------
 // Types

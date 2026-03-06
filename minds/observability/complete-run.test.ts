@@ -11,7 +11,7 @@ import {
   completeRun,
   recordPhase,
 } from "./metrics";
-import { spawnCli } from "../../src/scripts/orchestrator/test-helpers";
+import { spawnCli } from "../execution/test-helpers"; // CROSS-MIND
 
 const CLI_PATH = join(import.meta.dir, "complete-run.ts");
 

@@ -1,6 +1,6 @@
 import { existsSync } from "fs";
 // TODO(WD): Pipeline Core not a Mind yet — direct import until Wave D decoupling
-import { readRepos, writeRepos, getReposFilePath } from "../../../../src/lib/pipeline/repo-registry";
+import { readRepos, writeRepos, getReposFilePath } from "../../../pipeline_core/repo-registry"; // CROSS-MIND
 
 export async function repo(
   positional: string[],

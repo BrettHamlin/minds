@@ -462,7 +462,7 @@ describe("E2E: full pipeline flow", () => {
 
     // Step 1: valid signal through signal-validate.ts
     const sigProc = await Bun.spawn(
-      ["bun", join(import.meta.dir, "../../src/scripts/orchestrator/signal-validate.ts"),
+      ["bun", join(import.meta.dir, "../execution/signal-validate.ts"),
         `[SIGNAL:${TICKET_ID}:${NONCE}] IMPL_COMPLETE | Implementation done`],
       { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
     );
@@ -522,7 +522,7 @@ describe("E2E: full pipeline flow", () => {
 
     // Step 1: signal with WRONG nonce → triggers manual_signal intervention
     const sigProc = await Bun.spawn(
-      ["bun", join(import.meta.dir, "../../src/scripts/orchestrator/signal-validate.ts"),
+      ["bun", join(import.meta.dir, "../execution/signal-validate.ts"),
         `[SIGNAL:${TICKET_ID}:${BAD_NONCE}] IMPL_COMPLETE | Stale signal`],
       { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
     );

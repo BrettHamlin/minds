@@ -440,7 +440,7 @@ describe("E2E: full pipeline flow", () => {
     const sigProc = await Bun.spawn(
       [
         "bun",
-        join(import.meta.dir, "../../src/scripts/orchestrator/signal-validate.ts"),
+        join(import.meta.dir, "../execution/signal-validate.ts"),
         `[SIGNAL:${TICKET_ID}:${NONCE}] IMPL_COMPLETE | Implementation finished`,
       ],
       { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }

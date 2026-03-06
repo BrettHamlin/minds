@@ -16,7 +16,7 @@ import type {
   CompiledCodeReview,
   CompiledMetrics,
   CompiledInteractive,
-} from "../../../src/lib/pipeline/types";
+} from "../../../minds/pipeline_core/types"; // CROSS-MIND
 export type {
   CompiledTransition,
   CompiledDisplayValue,
