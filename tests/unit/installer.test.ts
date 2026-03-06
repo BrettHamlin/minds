@@ -289,8 +289,8 @@ describe("collab.install.ts", () => {
       };
       writeFileSync(statePath, JSON.stringify(mockState, null, 2));
 
-      // Re-install
-      const second = await runInstaller(dir);
+      // Re-install (skip pipelines update to avoid network calls in tests)
+      const second = await runInstaller(dir, { COLLAB_SKIP_UPDATE: "1" });
       expect(second.exitCode).toBe(0);
 
       // State file must be unchanged

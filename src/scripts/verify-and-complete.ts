@@ -26,6 +26,7 @@
 import { execSync, spawnSync } from "child_process";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { join } from "path";
+import { parseTaskPhases } from "../lib/pipeline/task-phases";
 
 async function resolvePhaseAndScope(): Promise<{ phase: string | undefined; autoScope: string }> {
   try {
@@ -146,25 +147,9 @@ if (PHASE === "implement") {
       console.log(`[VerifyComplete] Checking phase ${PHASE_SCOPE} only`);
     }
 
-    // Extract lines in scope (mirrors the awk phase-scoping logic)
-    let inScope = false;
-    const scopedLines: string[] = [];
-    for (const line of lines) {
-      const phaseMatch = line.match(/^## Phase ([0-9]+):/);
-      if (phaseMatch) {
-        const n = parseInt(phaseMatch[1], 10);
-        inScope = n >= rangeStart && n <= rangeEnd;
-        continue;
-      }
-      if (/^## /.test(line)) {
-        inScope = false;
-        continue;
-      }
-      if (inScope) {
-        scopedLines.push(line);
-      }
-    }
-    incomplete = scopedLines.filter((line) => line.startsWith("- [ ]")).length;
+    const phases = parseTaskPhases(content);
+    const scopedPhases = phases.filter((p) => p.number >= rangeStart && p.number <= rangeEnd);
+    incomplete = scopedPhases.reduce((sum, p) => sum + p.incomplete, 0);
   } else {
     incomplete = lines.filter((line) => line.startsWith("- [ ]")).length;
   }
