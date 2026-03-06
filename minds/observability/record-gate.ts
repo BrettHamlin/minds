@@ -16,8 +16,10 @@
  *   3 = skipped (@metrics disabled)
  */
 
-import { getRepoRoot, exitIfMetricsDisabled } from "./orchestrator-utils";
-import { openMetricsDb, insertGate } from "../../lib/pipeline/metrics";
+// TODO(WD): getRepoRoot should be requested via parent escalation once Pipeline Core is a Mind.
+import { getRepoRoot } from "../../src/lib/pipeline/utils";
+import { exitIfMetricsDisabled } from "./metrics-guard";
+import { openMetricsDb, insertGate } from "./metrics";
 
 function main(): void {
   const args = process.argv.slice(2);

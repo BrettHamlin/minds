@@ -25,15 +25,16 @@
  */
 
 import { Database } from "bun:sqlite";
-import { getRepoRoot } from "./orchestrator-utils";
-import { openMetricsDb } from "../../lib/pipeline/metrics";
+// TODO(WD): getRepoRoot should be requested via parent escalation once Pipeline Core is a Mind.
+import { getRepoRoot } from "../../src/lib/pipeline/utils";
+import { openMetricsDb } from "./metrics";
 import {
   listRuns,
   getBottleneckPhases,
   getQualityStats,
-} from "../../lib/pipeline/dashboard";
-import { getGateAccuracyReport } from "../../lib/pipeline/gate-accuracy";
-import { getAllAutonomyRates } from "../../lib/pipeline/autonomy-rate";
+} from "./dashboard-lib";
+import { getGateAccuracyReport } from "./gate-accuracy-lib";
+import { getAllAutonomyRates } from "./autonomy-rate";
 
 // ============================================================================
 // Arg parsing

@@ -22,6 +22,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+// TODO(WD): These should be requested via parent escalation once Pipeline Core is a Mind.
 import {
   getRepoRoot,
   readJsonFile,
@@ -29,7 +30,7 @@ import {
   scanFeaturesMetadata,
   OrchestratorError,
   handleError,
-} from "../../../lib/pipeline";
+} from "../../src/lib/pipeline";
 
 // ---------------------------------------------------------------------------
 // Types

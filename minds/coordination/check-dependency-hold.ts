@@ -31,12 +31,13 @@
  *   3 = registry not found for the given ticket
  */
 
+// TODO(WD): These should be requested via parent escalation once Pipeline Core is a Mind.
 import {
   getRepoRoot,
   readJsonFile,
   validateTicketIdArg,
-} from "../../lib/pipeline/utils";
-import { registryPath } from "../../lib/pipeline/paths";
+} from "../../src/lib/pipeline/utils";
+import { registryPath } from "../../src/lib/pipeline/paths";
 
 // ---------------------------------------------------------------------------
 // Types

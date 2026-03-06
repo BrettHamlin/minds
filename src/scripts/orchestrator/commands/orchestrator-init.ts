@@ -34,7 +34,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { execSync, spawn } from "child_process";
-import { buildAdjacency, detectCycles, buildDependencyHolds, detectImplicitDependencies, type DependencyHold } from "./coordination-check";
+// TODO(WD): Direct import — replace with parent escalation when Coordination becomes a full Mind in Wave D.
+import { buildAdjacency, detectCycles, buildDependencyHolds, detectImplicitDependencies, type DependencyHold } from "../../../../minds/coordination/coordination-check";
 import {
   getRepoRoot,
   readJsonFile,

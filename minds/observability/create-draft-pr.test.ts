@@ -9,12 +9,12 @@ import {
   openInMemoryMetricsDb,
   ensureRun,
   stampPrOnRun,
-} from "../../lib/pipeline/metrics";
+} from "./metrics";
 import {
   extractPrNumber,
   buildPrTitle,
   buildPrBody,
-} from "../../lib/pipeline/draft-pr";
+} from "./draft-pr-lib";
 
 // ============================================================================
 // Unit tests: extractPrNumber

@@ -6,7 +6,7 @@ import { tmpdir } from "os";
 import { execSync } from "child_process";
 
 import { checkDependencyHold } from "./check-dependency-hold";
-import { spawnCli } from "./test-helpers";
+import { spawnCli } from "../../src/scripts/orchestrator/test-helpers";
 
 const CLI_PATH = join(import.meta.dir, "check-dependency-hold.ts");
 

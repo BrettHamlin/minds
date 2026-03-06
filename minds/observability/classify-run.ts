@@ -20,10 +20,12 @@
  *   3 = skipped (@metrics disabled)
  */
 
-import { getRepoRoot, exitIfMetricsDisabled, validateTicketIdArg } from "./orchestrator-utils";
-import { openMetricsDb } from "../../lib/pipeline/metrics";
-import { classifyRun } from "../../lib/pipeline/classify-run";
-import { getAllAutonomyRates } from "../../lib/pipeline/autonomy-rate";
+// TODO(WD): getRepoRoot/validateTicketIdArg should be requested via parent escalation once Pipeline Core is a Mind.
+import { getRepoRoot, validateTicketIdArg } from "../../src/lib/pipeline/utils";
+import { exitIfMetricsDisabled } from "./metrics-guard";
+import { openMetricsDb } from "./metrics";
+import { classifyRun } from "./classify-run-lib";
+import { getAllAutonomyRates } from "./autonomy-rate";
 
 function main(): void {
   const args = process.argv.slice(2);

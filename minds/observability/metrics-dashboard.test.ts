@@ -11,10 +11,10 @@ import {
   insertGate,
   insertIntervention,
   stampPrOnRun,
-} from "../../lib/pipeline/metrics";
-import { updateGateAccuracy } from "../../lib/pipeline/gate-accuracy";
-import { spawnCli } from "./test-helpers";
-import { classifyRun } from "../../lib/pipeline/classify-run";
+} from "./metrics";
+import { updateGateAccuracy } from "./gate-accuracy-lib";
+import { spawnCli } from "../../src/scripts/orchestrator/test-helpers";
+import { classifyRun } from "./classify-run-lib";
 
 const CLI_PATH = join(import.meta.dir, "metrics-dashboard.ts");
 

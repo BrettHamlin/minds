@@ -13,13 +13,14 @@
  */
 
 import { spawnSync } from "child_process";
+// TODO(WD): These should be requested via parent escalation once Pipeline Core is a Mind.
 import {
   getRepoRoot,
   readJsonFile,
   registryPath,
   OrchestratorError,
   handleError,
-} from "../../../lib/pipeline";
+} from "../../src/lib/pipeline";
 
 // ---------------------------------------------------------------------------
 // Core logic (exported for testing)

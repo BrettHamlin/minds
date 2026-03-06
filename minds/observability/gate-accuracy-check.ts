@@ -20,9 +20,11 @@
  *   3 = skipped (@metrics disabled)
  */
 
-import { getRepoRoot, exitIfMetricsDisabled, validateTicketIdArg } from "./orchestrator-utils";
-import { openMetricsDb } from "../../lib/pipeline/metrics";
-import { updateGateAccuracy, getGateAccuracyReport } from "../../lib/pipeline/gate-accuracy";
+// TODO(WD): getRepoRoot/validateTicketIdArg should be requested via parent escalation once Pipeline Core is a Mind.
+import { getRepoRoot, validateTicketIdArg } from "../../src/lib/pipeline/utils";
+import { exitIfMetricsDisabled } from "./metrics-guard";
+import { openMetricsDb } from "./metrics";
+import { updateGateAccuracy, getGateAccuracyReport } from "./gate-accuracy-lib";
 
 function main(): void {
   const args = process.argv.slice(2);

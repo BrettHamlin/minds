@@ -10,7 +10,7 @@ import {
   advanceImplPhase,
   deleteField,
 } from "./registry-update";
-import { openMetricsDb } from "../../lib/pipeline/metrics";
+import { openMetricsDb } from "../../../minds/observability/metrics";
 
 // ============================================================================
 // parseFieldValue

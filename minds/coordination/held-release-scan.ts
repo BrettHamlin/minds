@@ -30,12 +30,13 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+// TODO(WD): These should be requested via parent escalation once Pipeline Core is a Mind.
 import {
   getRepoRoot,
   readJsonFile,
-  registryPath,
   validateTicketIdArg,
-} from "./orchestrator-utils";
+} from "../../src/lib/pipeline/utils";
+import { registryPath } from "../../src/lib/pipeline/paths";
 
 // ============================================================================
 // Types
@@ -143,7 +144,8 @@ function main(): void {
 
   const repoRoot = getRepoRoot();
   const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-  const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+  // registry-update.ts remains in src/scripts/orchestrator/ until Wave D moves it to Execution Mind.
+  const scriptDir = path.join(repoRoot, "src/scripts/orchestrator");
 
   // Validate registry dir exists
   if (!fs.existsSync(registryDir)) {

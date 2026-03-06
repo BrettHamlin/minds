@@ -33,9 +33,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 
-import type { Resolution, ResolutionBatch } from "../../../lib/pipeline/questions";
-import { resolutionsPath } from "../../../lib/pipeline/paths";
-import { getRepoRoot, findFeatureDir, validateTicketIdArg } from "../../../lib/pipeline/utils";
+// TODO(WD): These should be requested via parent escalation once Pipeline Core is a Mind.
+import type { Resolution, ResolutionBatch } from "../../src/lib/pipeline/questions";
+import { resolutionsPath } from "../../src/lib/pipeline/paths";
+import { getRepoRoot, findFeatureDir, validateTicketIdArg } from "../../src/lib/pipeline/utils";
 
 // ── Validation ────────────────────────────────────────────────────────────────
 

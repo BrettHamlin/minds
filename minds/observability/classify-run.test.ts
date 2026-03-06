@@ -9,12 +9,12 @@ import {
   ensureRun,
   insertIntervention,
   recordPhase,
-} from "../../lib/pipeline/metrics";
-import { classifyRun } from "../../lib/pipeline/classify-run";
+} from "./metrics";
+import { classifyRun } from "./classify-run-lib";
 import {
   getAutonomyRate,
   getAllAutonomyRates,
-} from "../../lib/pipeline/autonomy-rate";
+} from "./autonomy-rate";
 import type { Database } from "bun:sqlite";
 
 // ============================================================================
@@ -462,7 +462,7 @@ describe("E2E: full pipeline flow", () => {
 
     // Step 1: valid signal through signal-validate.ts
     const sigProc = await Bun.spawn(
-      ["bun", join(import.meta.dir, "signal-validate.ts"),
+      ["bun", join(import.meta.dir, "../../src/scripts/orchestrator/signal-validate.ts"),
         `[SIGNAL:${TICKET_ID}:${NONCE}] IMPL_COMPLETE | Implementation done`],
       { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
     );
@@ -522,7 +522,7 @@ describe("E2E: full pipeline flow", () => {
 
     // Step 1: signal with WRONG nonce → triggers manual_signal intervention
     const sigProc = await Bun.spawn(
-      ["bun", join(import.meta.dir, "signal-validate.ts"),
+      ["bun", join(import.meta.dir, "../../src/scripts/orchestrator/signal-validate.ts"),
         `[SIGNAL:${TICKET_ID}:${BAD_NONCE}] IMPL_COMPLETE | Stale signal`],
       { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
     );

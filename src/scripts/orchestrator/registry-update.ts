@@ -30,7 +30,8 @@ import {
 } from "./orchestrator-utils";
 
 import { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory, advanceImplPhase, deleteField } from "../../lib/pipeline/registry";
-import { openMetricsDb, ensureRun, recordPhase, insertIntervention } from "../../lib/pipeline/metrics";
+// TODO(WD): Direct import — replace with parent escalation when Observability becomes a full Mind in Wave D.
+import { openMetricsDb, ensureRun, recordPhase, insertIntervention } from "../../../minds/observability/metrics";
 
 // Re-export for test backward compatibility
 export { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory, advanceImplPhase, deleteField } from "../../lib/pipeline/registry";

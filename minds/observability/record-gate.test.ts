@@ -9,8 +9,8 @@ import {
   openInMemoryMetricsDb,
   ensureRun,
   insertGate,
-} from "../../lib/pipeline/metrics";
-import { spawnCli } from "./test-helpers";
+} from "./metrics";
+import { spawnCli } from "../../src/scripts/orchestrator/test-helpers";
 
 const CLI_PATH = join(import.meta.dir, "record-gate.ts");
 

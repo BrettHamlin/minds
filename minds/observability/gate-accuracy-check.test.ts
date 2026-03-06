@@ -3,8 +3,8 @@ import { describe, test, expect, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { openMetricsDb, openInMemoryMetricsDb, ensureRun, insertGate, recordPhase } from "../../lib/pipeline/metrics";
-import { updateGateAccuracy, getGateAccuracyReport } from "../../lib/pipeline/gate-accuracy";
+import { openMetricsDb, openInMemoryMetricsDb, ensureRun, insertGate, recordPhase } from "./metrics";
+import { updateGateAccuracy, getGateAccuracyReport } from "./gate-accuracy-lib";
 import type { Database } from "bun:sqlite";
 
 // ============================================================================
@@ -440,7 +440,7 @@ describe("E2E: full pipeline flow", () => {
     const sigProc = await Bun.spawn(
       [
         "bun",
-        join(import.meta.dir, "signal-validate.ts"),
+        join(import.meta.dir, "../../src/scripts/orchestrator/signal-validate.ts"),
         `[SIGNAL:${TICKET_ID}:${NONCE}] IMPL_COMPLETE | Implementation finished`,
       ],
       { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }

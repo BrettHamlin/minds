@@ -10,8 +10,8 @@ import {
   ensureRun,
   completeRun,
   recordPhase,
-} from "../../lib/pipeline/metrics";
-import { spawnCli } from "./test-helpers";
+} from "./metrics";
+import { spawnCli } from "../../src/scripts/orchestrator/test-helpers";
 
 const CLI_PATH = join(import.meta.dir, "complete-run.ts");
 

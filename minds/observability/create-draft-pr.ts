@@ -21,13 +21,15 @@
  */
 
 import { execSync } from "child_process";
-import { getRepoRoot, exitIfMetricsDisabled, validateTicketIdArg } from "./orchestrator-utils";
+// TODO(WD): getRepoRoot/validateTicketIdArg should be requested via parent escalation once Pipeline Core is a Mind.
+import { getRepoRoot, validateTicketIdArg } from "../../src/lib/pipeline/utils";
+import { exitIfMetricsDisabled } from "./metrics-guard";
 import {
   openMetricsDb,
   ensureRun,
   stampPrOnRun,
-} from "../../lib/pipeline/metrics";
-import { createDraftPr } from "../../lib/pipeline/draft-pr";
+} from "./metrics";
+import { createDraftPr } from "./draft-pr-lib";
 
 function main(): void {
   const args = process.argv.slice(2);

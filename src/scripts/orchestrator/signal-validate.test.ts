@@ -2,7 +2,7 @@ import { describe, expect, test, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { openMetricsDb } from "../../lib/pipeline/metrics";
+import { openMetricsDb } from "../../../minds/observability/metrics";
 import {
   parseSignal,
   validateSignal,

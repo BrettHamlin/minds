@@ -25,6 +25,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { createHash } from "crypto";
+// TODO(WD): These should be requested via parent escalation once Pipeline Core is a Mind.
 import {
   getRepoRoot,
   readJsonFile,
@@ -33,7 +34,7 @@ import {
   validateTicketIdArg,
   OrchestratorError,
   handleError,
-} from "../../../lib/pipeline";
+} from "../../src/lib/pipeline";
 
 // ---------------------------------------------------------------------------
 // Types

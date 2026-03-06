@@ -21,7 +21,8 @@
 
 import { getRepoRoot, readJsonFile, registryPath, loadPipelineForTicket } from "./orchestrator-utils";
 import { parseSignal, getAllowedSignals, type ParsedSignal } from "../../lib/pipeline/signal";
-import { openMetricsDb, ensureRun, insertSignal, insertIntervention } from "../../lib/pipeline/metrics";
+// TODO(WD): Direct import — replace with parent escalation when Observability becomes a full Mind in Wave D.
+import { openMetricsDb, ensureRun, insertSignal, insertIntervention } from "../../../minds/observability/metrics";
 
 // Re-export for test backward compatibility
 export { parseSignal } from "../../lib/pipeline/signal";

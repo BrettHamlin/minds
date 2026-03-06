@@ -8,7 +8,7 @@ import {
   insertGate,
   insertSignal,
   insertIntervention,
-} from "../../lib/pipeline/metrics";
+} from "./metrics";
 
 // ============================================================================
 // DB Creation & Schema
