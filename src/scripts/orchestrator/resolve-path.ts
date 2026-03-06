@@ -30,6 +30,24 @@ if (!ticketId || !pathType) {
 
 const repoRoot = getRepoRoot();
 
+function resolveFeatureSubpath(
+  pathFn: (featureDir: string, phase: string, round: number) => string,
+  typeName: string,
+): void {
+  const phase = rest[0];
+  const round = parseInt(rest[1] ?? "1", 10);
+  if (!phase) {
+    console.error(`Usage: resolve-path.ts <TICKET_ID> ${typeName} <phase> <round>`);
+    process.exit(1);
+  }
+  const featureDir = findFeatureDir(repoRoot, ticketId);
+  if (!featureDir) {
+    console.error(`[resolve-path] Feature directory not found for ticket: ${ticketId}`);
+    process.exit(1);
+  }
+  console.log(pathFn(featureDir, phase, round));
+}
+
 switch (pathType) {
   case "registry":
     console.log(registryPath(repoRoot, ticketId));
@@ -39,37 +57,13 @@ switch (pathType) {
     console.log(signalQueuePath(repoRoot, ticketId));
     break;
 
-  case "findings": {
-    const phase = rest[0];
-    const round = parseInt(rest[1] ?? "1", 10);
-    if (!phase) {
-      console.error("Usage: resolve-path.ts <TICKET_ID> findings <phase> <round>");
-      process.exit(1);
-    }
-    const featureDir = findFeatureDir(repoRoot, ticketId);
-    if (!featureDir) {
-      console.error(`[resolve-path] Feature directory not found for ticket: ${ticketId}`);
-      process.exit(1);
-    }
-    console.log(findingsPath(featureDir, phase, round));
+  case "findings":
+    resolveFeatureSubpath(findingsPath, "findings");
     break;
-  }
 
-  case "resolutions": {
-    const phase = rest[0];
-    const round = parseInt(rest[1] ?? "1", 10);
-    if (!phase) {
-      console.error("Usage: resolve-path.ts <TICKET_ID> resolutions <phase> <round>");
-      process.exit(1);
-    }
-    const featureDir = findFeatureDir(repoRoot, ticketId);
-    if (!featureDir) {
-      console.error(`[resolve-path] Feature directory not found for ticket: ${ticketId}`);
-      process.exit(1);
-    }
-    console.log(resolutionsPath(featureDir, phase, round));
+  case "resolutions":
+    resolveFeatureSubpath(resolutionsPath, "resolutions");
     break;
-  }
 
   default:
     console.error(

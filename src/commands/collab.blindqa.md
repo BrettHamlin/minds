@@ -31,12 +31,13 @@ If no ticket ID provided, error and exit.
 
 Check that orchestrated mode is active:
 ```bash
-test -f .collab/state/pipeline-registry/${ticket_id}.json || { echo "Not in orchestrated mode"; exit 1; }
+REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts ${ticket_id} registry)
+test -f "$REGISTRY_PATH" || { echo "Not in orchestrated mode"; exit 1; }
 ```
 
 Verify current_step is "blindqa":
 ```bash
-cat .collab/state/pipeline-registry/${ticket_id}.json | grep '"current_step".*"blindqa"' || { echo "Warning: not in blindqa phase"; }
+cat "$REGISTRY_PATH" | grep '"current_step".*"blindqa"' || { echo "Warning: not in blindqa phase"; }
 ```
 
 ### 3. Initialize Retry Loop
