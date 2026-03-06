@@ -9,6 +9,7 @@ import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { emitStatusEvent } from "./status-emitter";
+import { registryPath } from "./paths";
 
 export function getRepoRoot(): string {
   try {
@@ -53,9 +54,6 @@ export function validateTicketIdArg(args: string[], scriptName: string): void {
   }
 }
 
-export function getRegistryPath(registryDir: string, ticketId: string): string {
-  return path.join(registryDir, `${ticketId}.json`);
-}
 
 /**
  * Feature metadata as stored in specs/{feature}/metadata.json.
@@ -240,14 +238,13 @@ export function resolvePipelineConfigPath(
   options: {
     variant?: string;
     ticketId?: string;
-    registryDir?: string;
   } = {}
 ): string {
   const defaultPath = path.join(repoRoot, ".collab", "config", "pipeline.json");
 
   let variant = options.variant;
-  if (!variant && options.ticketId && options.registryDir) {
-    const regPath = getRegistryPath(options.registryDir, options.ticketId);
+  if (!variant && options.ticketId) {
+    const regPath = registryPath(repoRoot, options.ticketId);
     const registry = readJsonFile(regPath);
     variant = registry?.pipeline_variant as string | undefined;
   }
@@ -283,8 +280,7 @@ export interface LoadedPipeline {
 }
 
 export function loadPipelineForTicket(repoRoot: string, ticketId: string): LoadedPipeline {
-  const registryDir = path.join(repoRoot, ".collab", "state", "pipeline-registry");
-  const regPath = getRegistryPath(registryDir, ticketId);
+  const regPath = registryPath(repoRoot, ticketId);
   const registry = readJsonFile(regPath);
   const variant = registry?.pipeline_variant as string | undefined;
 

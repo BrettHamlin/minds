@@ -7,6 +7,7 @@
 
 export * from "./types";
 export * from "./utils";
+export * from "./paths";
 export * from "./registry";
 export * from "./signal";
 export * from "./transitions";

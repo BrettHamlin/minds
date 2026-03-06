@@ -19,16 +19,16 @@
 import {
   getRepoRoot,
   readJsonFile,
-  getRegistryPath,
+  registryPath,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
 
-export function readRegistry(ticketId: string, registryDir: string): Record<string, unknown> {
-  const registryPath = getRegistryPath(registryDir, ticketId);
-  const data = readJsonFile(registryPath);
+export function readRegistry(ticketId: string, repoRoot: string): Record<string, unknown> {
+  const regPath = registryPath(repoRoot, ticketId);
+  const data = readJsonFile(regPath);
   if (data === null) {
-    throw new OrchestratorError("FILE_NOT_FOUND", `Registry not found: ${registryPath}`);
+    throw new OrchestratorError("FILE_NOT_FOUND", `Registry not found: ${regPath}`);
   }
   return data;
 }
@@ -54,8 +54,7 @@ function main(): void {
 
   try {
     const repoRoot = getRepoRoot();
-    const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-    const data = readRegistry(ticketId, registryDir);
+    const data = readRegistry(ticketId, repoRoot);
 
     if (fieldName !== undefined) {
       const val = data[fieldName];

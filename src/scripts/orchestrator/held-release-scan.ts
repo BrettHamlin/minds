@@ -33,7 +33,7 @@ import { execSync } from "child_process";
 import {
   getRepoRoot,
   readJsonFile,
-  getRegistryPath,
+  registryPath,
   validateTicketIdArg,
 } from "./orchestrator-utils";
 
@@ -62,9 +62,9 @@ interface PhaseHistoryEntry {
  */
 export function isDependencySatisfied(
   dep: Dependency,
-  registryDir: string
+  repoRoot: string
 ): boolean {
-  const depRegistryPath = getRegistryPath(registryDir, dep.ticket_id);
+  const depRegistryPath = registryPath(repoRoot, dep.ticket_id);
   const depRegistry = readJsonFile(depRegistryPath);
 
   if (!depRegistry) return false;
@@ -83,10 +83,10 @@ export function isDependencySatisfied(
 export function checkHeldTicket(
   heldTicketId: string,
   waitFor: Dependency[],
-  registryDir: string
+  repoRoot: string
 ): { satisfied: boolean; blockingDep?: string } {
   for (const dep of waitFor) {
-    if (!isDependencySatisfied(dep, registryDir)) {
+    if (!isDependencySatisfied(dep, repoRoot)) {
       return {
         satisfied: false,
         blockingDep: `${dep.ticket_id}:${dep.phase}`,
@@ -114,9 +114,9 @@ export function checkHeldTicket(
 export function isDependencyHoldSatisfied(
   blockerTicketId: string,
   releaseWhen: string,
-  registryDir: string
+  repoRoot: string
 ): boolean {
-  const blockerRegistryPath = getRegistryPath(registryDir, blockerTicketId);
+  const blockerRegistryPath = registryPath(repoRoot, blockerTicketId);
   const blockerRegistry = readJsonFile(blockerRegistryPath);
 
   if (releaseWhen === "done") {
@@ -180,7 +180,7 @@ function main(): void {
       }
 
       const releaseWhen = (registry.hold_release_when as string | undefined) || "done";
-      const satisfied = isDependencyHoldSatisfied(heldBy, releaseWhen, registryDir);
+      const satisfied = isDependencyHoldSatisfied(heldBy, releaseWhen, repoRoot);
 
       if (satisfied) {
         execSync(`bun "${scriptDir}/registry-update.ts" "${heldTicket}" status=running`, { stdio: "inherit" });
@@ -230,7 +230,7 @@ function main(): void {
       continue;
     }
 
-    const result = checkHeldTicket(heldTicket, waitFor, registryDir);
+    const result = checkHeldTicket(heldTicket, waitFor, repoRoot);
 
     if (result.satisfied) {
       execSync(

@@ -28,7 +28,7 @@
  *   3 = file error (registry or pipeline.json missing)
  */
 
-import { getRepoRoot, readJsonFile, getRegistryPath } from "./orchestrator-utils";
+import { getRepoRoot, readJsonFile, registryPath } from "./orchestrator-utils";
 import type { PhaseHistoryEntry } from "../../lib/pipeline/registry";
 
 // Re-export types for test backward compatibility
@@ -102,7 +102,6 @@ function main(): void {
 
   const repoRoot = getRepoRoot();
   const configPath = `${repoRoot}/.collab/config/pipeline.json`;
-  const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
 
   // Read pipeline config
   const pipeline = readJsonFile(configPath);
@@ -129,8 +128,8 @@ function main(): void {
   }
 
   // Read registry
-  const registryPath = getRegistryPath(registryDir, ticketId);
-  const registry = readJsonFile(registryPath);
+  const regPath = registryPath(repoRoot, ticketId);
+  const registry = readJsonFile(regPath);
   if (registry === null) {
     console.error(`Error: Registry not found for ticket: ${ticketId}`);
     process.exit(3);

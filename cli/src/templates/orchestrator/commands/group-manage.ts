@@ -29,7 +29,7 @@ import {
   getRepoRoot,
   readJsonFile,
   writeJsonAtomic,
-  getRegistryPath,
+  registryPath,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
@@ -73,8 +73,8 @@ function nowIso(): string {
 // Registry validation
 // ---------------------------------------------------------------------------
 
-function validateTicket(ticketId: string, registryDir: string): void {
-  const regPath = getRegistryPath(registryDir, ticketId);
+function validateTicket(ticketId: string, repoRoot: string): void {
+  const regPath = registryPath(repoRoot, ticketId);
   if (!fs.existsSync(regPath)) {
     throw new OrchestratorError("VALIDATION", `No registry for ticket ${ticketId}`);
   }
@@ -86,7 +86,7 @@ function validateTicket(ticketId: string, registryDir: string): void {
 
 export function cmdCreate(
   ticketIds: string[],
-  registryDir: string,
+  repoRoot: string,
   groupsDir: string
 ): Group {
   if (ticketIds.length < 2) {
@@ -94,7 +94,7 @@ export function cmdCreate(
   }
 
   for (const ticket of ticketIds) {
-    validateTicket(ticket, registryDir);
+    validateTicket(ticket, repoRoot);
   }
 
   const groupId = generateGroupId(ticketIds);
@@ -111,7 +111,7 @@ export function cmdCreate(
 
   // Update each ticket registry with group_id
   for (const ticket of ticketIds) {
-    const regPath = getRegistryPath(registryDir, ticket);
+    const regPath = registryPath(repoRoot, ticket);
     const reg = readJsonFile(regPath);
     if (!reg) {
       throw new OrchestratorError("FILE_NOT_FOUND", `Registry disappeared for ${ticket}`);
@@ -125,7 +125,7 @@ export function cmdCreate(
 export function cmdAdd(
   groupId: string,
   ticketId: string,
-  registryDir: string,
+  repoRoot: string,
   groupsDir: string
 ): Group {
   const groupFile = path.join(groupsDir, `${groupId}.json`);
@@ -134,7 +134,7 @@ export function cmdAdd(
     throw new OrchestratorError("FILE_NOT_FOUND", `Group not found: ${groupId}`);
   }
 
-  validateTicket(ticketId, registryDir);
+  validateTicket(ticketId, repoRoot);
 
   if (group.tickets.includes(ticketId)) {
     console.error(`Warning: Ticket ${ticketId} already in group ${groupId}`);
@@ -150,7 +150,7 @@ export function cmdAdd(
   writeJsonAtomic(groupFile, updated);
 
   // Update ticket registry
-  const regPath = getRegistryPath(registryDir, ticketId);
+  const regPath = registryPath(repoRoot, ticketId);
   const reg = readJsonFile(regPath);
   if (!reg) {
     throw new OrchestratorError("FILE_NOT_FOUND", `Registry disappeared for ${ticketId}`);
@@ -162,12 +162,12 @@ export function cmdAdd(
 
 export function cmdQuery(
   ticketId: string,
-  registryDir: string,
+  repoRoot: string,
   groupsDir: string
 ): Record<string, unknown> {
-  validateTicket(ticketId, registryDir);
+  validateTicket(ticketId, repoRoot);
 
-  const regPath = getRegistryPath(registryDir, ticketId);
+  const regPath = registryPath(repoRoot, ticketId);
   const reg = readJsonFile(regPath);
   if (!reg) {
     throw new OrchestratorError("FILE_NOT_FOUND", `Registry not found for ${ticketId}`);
@@ -193,7 +193,7 @@ export function cmdQuery(
 
 export function cmdList(
   groupId: string,
-  registryDir: string,
+  repoRoot: string,
   groupsDir: string
 ): Record<string, unknown> {
   const groupFile = path.join(groupsDir, `${groupId}.json`);
@@ -203,7 +203,7 @@ export function cmdList(
   }
 
   const tickets: TicketStatus[] = group.tickets.map((ticketId) => {
-    const regPath = getRegistryPath(registryDir, ticketId);
+    const regPath = registryPath(repoRoot, ticketId);
     const reg = readJsonFile(regPath);
     if (!reg) {
       return {
@@ -259,7 +259,7 @@ function main(): void {
 
     switch (subcommand) {
       case "create": {
-        const group = cmdCreate(rest, registryDir, groupsDir);
+        const group = cmdCreate(rest, repoRoot, groupsDir);
         console.log(JSON.stringify(group, null, 2));
         break;
       }
@@ -267,7 +267,7 @@ function main(): void {
         if (rest.length < 2) {
           throw new OrchestratorError("USAGE", "add requires <group_id> <ticket_id>");
         }
-        const group = cmdAdd(rest[0], rest[1], registryDir, groupsDir);
+        const group = cmdAdd(rest[0], rest[1], repoRoot, groupsDir);
         console.log(`Added ${rest[1]} to group ${rest[0]}`);
         break;
       }
@@ -275,7 +275,7 @@ function main(): void {
         if (rest.length < 1) {
           throw new OrchestratorError("USAGE", "query requires <ticket_id>");
         }
-        const result = cmdQuery(rest[0], registryDir, groupsDir);
+        const result = cmdQuery(rest[0], repoRoot, groupsDir);
         console.log(JSON.stringify(result, null, 2));
         break;
       }
@@ -283,7 +283,7 @@ function main(): void {
         if (rest.length < 1) {
           throw new OrchestratorError("USAGE", "list requires <group_id>");
         }
-        const result = cmdList(rest[0], registryDir, groupsDir);
+        const result = cmdList(rest[0], repoRoot, groupsDir);
         console.log(JSON.stringify(result, null, 2));
         break;
       }

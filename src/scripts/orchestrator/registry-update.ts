@@ -25,7 +25,7 @@ import {
   getRepoRoot,
   readJsonFile,
   writeJsonAtomic,
-  getRegistryPath,
+  registryPath,
   validateTicketIdArg,
 } from "./orchestrator-utils";
 
@@ -82,13 +82,12 @@ function main(): void {
 
   const ticketId = args[0];
   const repoRoot = getRepoRoot();
-  const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-  const registryPath = getRegistryPath(registryDir, ticketId);
+  const regPath = registryPath(repoRoot, ticketId);
 
   // Read existing registry
-  const registry = readJsonFile(registryPath);
+  const registry = readJsonFile(regPath);
   if (registry === null) {
-    console.error(`Error: Registry not found: ${registryPath}`);
+    console.error(`Error: Registry not found: ${regPath}`);
     process.exit(3);
   }
 
@@ -111,7 +110,7 @@ function main(): void {
 
     const updated = appendPhaseHistory(registry, entry);
     try {
-      writeJsonAtomic(registryPath, updated);
+      writeJsonAtomic(regPath, updated);
     } catch {
       console.error("Error: Failed to append phase_history entry");
       process.exit(3);
@@ -146,7 +145,7 @@ function main(): void {
       process.exit(1);
     }
     try {
-      writeJsonAtomic(registryPath, updated);
+      writeJsonAtomic(regPath, updated);
     } catch {
       console.error("Error: Failed to advance impl phase");
       process.exit(3);
@@ -165,7 +164,7 @@ function main(): void {
     const fieldToDelete = args[2];
     const updated = deleteField(registry, fieldToDelete);
     try {
-      writeJsonAtomic(registryPath, updated);
+      writeJsonAtomic(regPath, updated);
     } catch {
       console.error("Error: Failed to delete field");
       process.exit(3);
@@ -201,7 +200,7 @@ function main(): void {
   const updated = applyUpdates(registry, updates);
 
   try {
-    writeJsonAtomic(registryPath, updated);
+    writeJsonAtomic(regPath, updated);
   } catch {
     console.error("Error: Failed to apply updates");
     process.exit(3);

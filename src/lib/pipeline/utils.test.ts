@@ -62,10 +62,7 @@ describe("resolvePipelineConfigPath", () => {
       current_step: "clarify",
     });
 
-    const result = resolvePipelineConfigPath(tmpDir, {
-      ticketId: "BRE-999",
-      registryDir,
-    });
+    const result = resolvePipelineConfigPath(tmpDir, { ticketId: "BRE-999" });
     expect(result).toBe(path.join(variantsDir, "fast.json"));
   });
 
@@ -75,18 +72,12 @@ describe("resolvePipelineConfigPath", () => {
       current_step: "clarify",
     });
 
-    const result = resolvePipelineConfigPath(tmpDir, {
-      ticketId: "BRE-1000",
-      registryDir,
-    });
+    const result = resolvePipelineConfigPath(tmpDir, { ticketId: "BRE-1000" });
     expect(result).toBe(path.join(tmpDir, ".collab", "config", "pipeline.json"));
   });
 
   test("6. ticketId but registry file missing → returns default pipeline.json", () => {
-    const result = resolvePipelineConfigPath(tmpDir, {
-      ticketId: "BRE-MISSING",
-      registryDir,
-    });
+    const result = resolvePipelineConfigPath(tmpDir, { ticketId: "BRE-MISSING" });
     expect(result).toBe(path.join(tmpDir, ".collab", "config", "pipeline.json"));
   });
 
@@ -96,7 +87,6 @@ describe("resolvePipelineConfigPath", () => {
     const result = resolvePipelineConfigPath(tmpDir, {
       variant: "nonexistent",
       ticketId: "BRE-999",
-      registryDir,
     });
     expect(result).toBe(path.join(tmpDir, ".collab", "config", "pipeline.json"));
   });
@@ -111,16 +101,12 @@ describe("resolvePipelineConfigPath", () => {
     const result = resolvePipelineConfigPath(tmpDir, {
       variant: "fast",
       ticketId: "BRE-2000",
-      registryDir,
     });
     expect(result).toBe(path.join(variantsDir, "fast.json"));
   });
 
-  test("9. ticketId without registryDir → skips registry lookup, returns default", () => {
-    const result = resolvePipelineConfigPath(tmpDir, {
-      ticketId: "BRE-999",
-      // registryDir intentionally omitted
-    });
+  test("9. ticketId with no variant in registry → returns default pipeline.json", () => {
+    const result = resolvePipelineConfigPath(tmpDir, { ticketId: "BRE-1000" });
     expect(result).toBe(path.join(tmpDir, ".collab", "config", "pipeline.json"));
   });
 

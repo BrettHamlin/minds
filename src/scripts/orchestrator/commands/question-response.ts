@@ -16,7 +16,7 @@ import { spawnSync } from "child_process";
 import {
   getRepoRoot,
   readJsonFile,
-  getRegistryPath,
+  registryPath,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
@@ -38,8 +38,7 @@ export async function questionResponse(
   const repoRoot = opts?.repoRoot ?? getRepoRoot();
   const fetchFn = opts?.fetch ?? globalThis.fetch;
 
-  const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-  const regPath = getRegistryPath(registryDir, ticketId);
+  const regPath = registryPath(repoRoot, ticketId);
   const registry = readJsonFile(regPath);
 
   const transport = (registry?.transport as string | undefined) ?? "tmux";

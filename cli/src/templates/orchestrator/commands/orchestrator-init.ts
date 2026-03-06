@@ -39,7 +39,7 @@ import {
   getRepoRoot,
   readJsonFile,
   writeJsonAtomic,
-  getRegistryPath,
+  registryPath as mkRegistryPath,
   readFeatureMetadata,
   TmuxClient,
   OrchestratorError,
@@ -586,7 +586,7 @@ export function createRegistry(
   const pipeline = readJsonFile(ctx.configPath) as CompiledPipeline | null;
   const firstPhase = pipeline?.phases ? Object.keys(pipeline.phases)[0] : "clarify";
 
-  const registryPath = getRegistryPath(ctx.registryDir, ctx.ticketId);
+  const registryPath = mkRegistryPath(ctx.repoRoot, ctx.ticketId);
   const registry: Record<string, unknown> = {
     orchestrator_pane_id: ctx.orchestratorPane,
     agent_pane_id: agentPane,
@@ -862,7 +862,7 @@ async function main(): Promise<void> {
     // Idempotency guard: if a registry already exists for this ticket, reuse it
     // instead of creating a duplicate pane. This prevents ghost panes when the
     // orchestrator retries a call it thought failed (e.g., stdout not captured).
-    const existingRegistry = getRegistryPath(ctx.registryDir, ticketId);
+    const existingRegistry = mkRegistryPath(ctx.repoRoot, ticketId);
     if (fs.existsSync(existingRegistry)) {
       const existing = readJsonFile(existingRegistry);
       if (existing?.agent_pane_id && existing?.nonce) {

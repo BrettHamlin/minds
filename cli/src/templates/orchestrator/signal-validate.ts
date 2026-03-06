@@ -19,7 +19,7 @@
  *   3 = file error (registry not found)
  */
 
-import { getRepoRoot, readJsonFile, getRegistryPath } from "./orchestrator-utils";
+import { getRepoRoot, readJsonFile, registryPath } from "./orchestrator-utils";
 import { parseSignal, getAllowedSignals, type ParsedSignal } from "../../lib/pipeline/signal";
 import { openMetricsDb, ensureRun, insertSignal, insertIntervention } from "../../lib/pipeline/metrics";
 
@@ -182,11 +182,9 @@ function main(): void {
     process.exit(2);
   }
 
-  const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-
   // Read registry
-  const registryPath = getRegistryPath(registryDir, parsed.ticketId);
-  const registry = readJsonFile(registryPath);
+  const regPath = registryPath(repoRoot, parsed.ticketId);
+  const registry = readJsonFile(regPath);
   if (registry === null) {
     console.error(
       JSON.stringify({

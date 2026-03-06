@@ -37,10 +37,6 @@ export function writeJsonAtomic(filePath: string, data: any): void {
   }
 }
 
-export function getRegistryPath(registryDir: string, ticketId: string): string {
-  return path.join(registryDir, `${ticketId}.json`);
-}
-
 /**
  * Feature metadata as stored in specs/{feature}/metadata.json.
  * Key normalization: `pipeline` → `pipeline_variant` is handled by readFeatureMetadata.

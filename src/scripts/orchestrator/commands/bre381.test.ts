@@ -11,7 +11,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { writeJsonAtomic, getRegistryPath } from "../../../lib/pipeline";
+import { writeJsonAtomic } from "../../../lib/pipeline";
 import { questionResponse } from "./question-response";
 import { teardownBusPids } from "./teardown-bus";
 import { resolveTransportFile } from "./orchestrator-init";
