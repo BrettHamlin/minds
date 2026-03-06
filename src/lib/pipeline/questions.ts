@@ -9,9 +9,10 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
+import { dirname } from "path";
 import { execSync } from "child_process";
 import { getRepoRoot, resolvePipelineConfigPath } from "./utils";
+import { findingsPath, resolutionsPath } from "./paths";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -160,24 +161,6 @@ export function resolveMode(options: ModeResolutionOptions = {}): InteractiveMod
   return "interactive";
 }
 
-// ── File paths ───────────────────────────────────────────────────────────────
-
-export function getFindingsPath(
-  featureDir: string,
-  phase: string,
-  round: number,
-): string {
-  return join(featureDir, "findings", `${phase}-round-${round}.json`);
-}
-
-export function getResolutionsPath(
-  featureDir: string,
-  phase: string,
-  round: number,
-): string {
-  return join(featureDir, "resolutions", `${phase}-round-${round}.json`);
-}
-
 // ── Non-interactive: emit batch + await answers ───────────────────────────────
 
 /**
@@ -188,15 +171,15 @@ export async function emitQuestionBatch(
   batch: FindingsBatch,
   featureDir: string,
 ): Promise<string> {
-  const findingsPath = getFindingsPath(featureDir, batch.phase, batch.round);
-  mkdirSync(dirname(findingsPath), { recursive: true });
-  writeFileSync(findingsPath, JSON.stringify(batch, null, 2));
+  const filePath = findingsPath(featureDir, batch.phase, batch.round);
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, JSON.stringify(batch, null, 2));
 
   // Emit the _QUESTIONS signal with the findings file path as detail
   const signal = `${batch.phase.toUpperCase()}_QUESTIONS`;
   try {
     execSync(
-      `bun .collab/handlers/emit-phase-signal.ts "${signal}" "${findingsPath}"`,
+      `bun .collab/handlers/emit-phase-signal.ts "${signal}" "${filePath}"`,
       { stdio: "inherit" },
     );
   } catch {
@@ -207,7 +190,7 @@ export async function emitQuestionBatch(
     );
   }
 
-  return findingsPath;
+  return filePath;
 }
 
 /**
@@ -226,10 +209,10 @@ export function checkForResolutions(
   phase: string,
   round: number,
 ): ResolutionBatch | null {
-  const resolutionsPath = getResolutionsPath(featureDir, phase, round);
+  const filePath = resolutionsPath(featureDir, phase, round);
 
-  if (existsSync(resolutionsPath)) {
-    const raw = readFileSync(resolutionsPath, "utf-8");
+  if (existsSync(filePath)) {
+    const raw = readFileSync(filePath, "utf-8");
     return JSON.parse(raw) as ResolutionBatch;
   }
 

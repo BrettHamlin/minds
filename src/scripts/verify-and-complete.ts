@@ -27,21 +27,27 @@ import { execSync, spawnSync } from "child_process";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { join } from "path";
 
-async function resolvePhase(): Promise<string | undefined> {
+async function resolvePhaseAndScope(): Promise<{ phase: string | undefined; autoScope: string }> {
   try {
     const { resolveRegistry } = await import("../handlers/pipeline-signal");
     const registry = await resolveRegistry();
     if (registry?.current_step) {
-      return registry.current_step;
+      // Auto-detect phase scope from implement_phase_plan when no explicit arg given
+      const plan = registry.implement_phase_plan;
+      const autoScope =
+        plan?.current_impl_phase != null ? String(plan.current_impl_phase) : "";
+      return { phase: registry.current_step, autoScope };
     }
   } catch {}
   // Fallback to CLI arg for non-orchestrated runs
-  return process.argv[2];
+  return { phase: process.argv[2], autoScope: "" };
 }
 
-const PHASE = await resolvePhase();
+const { phase: resolvedPhase, autoScope } = await resolvePhaseAndScope();
+const PHASE = resolvedPhase;
 const MESSAGE = process.argv[3] ?? "Phase completed";
-const PHASE_SCOPE = process.argv[4] ?? "";
+// Explicit CLI arg takes precedence; registry auto-detection is fallback
+const PHASE_SCOPE = process.argv[4] ?? autoScope;
 
 if (!PHASE) {
   console.error("[VerifyComplete] ERROR: phase-name argument required");

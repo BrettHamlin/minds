@@ -26,7 +26,7 @@ import { join, dirname, basename } from "path";
 import { execSync } from "child_process";
 
 import type { FindingsBatch, ResolutionBatch } from "../../../lib/pipeline/questions";
-import { getResolutionsPath, getFindingsPath } from "../../../lib/pipeline/questions";
+import { resolutionsPath } from "../../../lib/pipeline/paths";
 import { getRepoRoot, findFeatureDir, validateTicketIdArg } from "../../../lib/pipeline/utils";
 
 // ── Context bundle types ──────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ function loadPriorResolutions(featureDir: string, phase: string, currentRound: n
   if (!existsSync(resDir)) return results;
 
   for (let round = 1; round < currentRound; round++) {
-    const path = getResolutionsPath(featureDir, phase, round);
+    const path = resolutionsPath(featureDir, phase, round);
     const data = safeReadJson(path);
     if (data) results.push(data as ResolutionBatch);
   }

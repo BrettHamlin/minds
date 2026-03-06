@@ -42,7 +42,7 @@ import { join, dirname } from "path";
 import { execSync } from "child_process";
 
 import type { Finding, FindingsBatch } from "../lib/pipeline/questions";
-import { getFindingsPath } from "../lib/pipeline/questions";
+import { findingsPath } from "../lib/pipeline/paths";
 import { getRepoRoot } from "../lib/pipeline/utils";
 
 // ── Input types ──────────────────────────────────────────────────────────────
@@ -210,10 +210,10 @@ async function main(): Promise<void> {
   };
 
   // Write findings file
-  const findingsPath = getFindingsPath(featureDir, phase, round);
+  const filePath = findingsPath(featureDir, phase, round);
   try {
-    mkdirSync(dirname(findingsPath), { recursive: true });
-    writeFileSync(findingsPath, JSON.stringify(batch, null, 2));
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(filePath, JSON.stringify(batch, null, 2));
   } catch (e) {
     console.error(`Error writing findings: ${e}`);
     process.exit(3);
@@ -223,14 +223,14 @@ async function main(): Promise<void> {
   const repoRoot = getRepoRoot();
   try {
     execSync(
-      `bun .collab/handlers/emit-question-signal.ts question "${findingsPath}"`,
+      `bun .collab/handlers/emit-question-signal.ts question "${filePath}"`,
       { stdio: "inherit", cwd: repoRoot },
     );
   } catch {
-    console.error(`Warning: could not emit signal. Findings written to: ${findingsPath}`);
+    console.error(`Warning: could not emit signal. Findings written to: ${filePath}`);
   }
 
-  console.log(`[emit-findings] Written ${findings.length} finding(s) to: ${findingsPath}`);
+  console.log(`[emit-findings] Written ${findings.length} finding(s) to: ${filePath}`);
   console.log(`[emit-findings] Phase: ${phase}, Round: ${round}, Ticket: ${ticketId}`);
 }
 

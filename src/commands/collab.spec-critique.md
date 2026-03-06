@@ -27,14 +27,13 @@ If no ticket ID provided, error and exit.
 
 Check if autonomous (orchestrated) mode is active by reading the registry file directly:
 
-Use the **Read** tool on the absolute path:
+Get the registry path and use the **Read** tool on it:
+```bash
+REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)
 ```
-Read: {repo_root}/.collab/state/pipeline-registry/{ticket_id}.json
-```
+Then: `Read: $REGISTRY_PATH`
 
-Where `{repo_root}` is the git repository root (use `git rev-parse --show-toplevel` via Bash if needed).
-
-**IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the known path.
+**IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the resolved path.
 
 If the file exists and `current_step` contains `spec_critique` (or `spec.critique`), set `AUTONOMOUS_MODE=true`. Otherwise `AUTONOMOUS_MODE=false`.
 
@@ -48,9 +47,9 @@ If the file exists and `current_step` contains `spec_critique` (or `spec.critiqu
 
 **Re-entry detection:** Before collecting issues, check if resolutions already exist from a previous round:
 ```bash
-ls {FEATURE_DIR}/resolutions/spec_critique-round-1.json 2>/dev/null
+RESOLUTIONS_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} resolutions spec_critique 1)
 ```
-If resolutions exist, this is a re-dispatch from the orchestrator. Read the resolutions, apply them (mark issues as resolved), re-evaluate verdict, and proceed to Step 5.
+If `$RESOLUTIONS_PATH` exists (use `test -f "$RESOLUTIONS_PATH"`), this is a re-dispatch from the orchestrator. Read the resolutions file at that path, apply them (mark issues as resolved), re-evaluate verdict, and proceed to Step 5.
 
 **First entry (no resolutions):** Collect HIGH/unresolved issues into a simple JSON array and write using the CLI (this writes the correct schema and emits the signal automatically):
 
