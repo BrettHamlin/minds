@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, chmodSync, readFileSync } from "fs";
 import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
-import { ensureDir } from "./fs";
+// TODO(WD): CLI Mind not decoupled yet — direct import from minds/cli/utils until Wave D
+import { ensureDir } from "../cli/utils/fs";
 
 // Resolve template directory — works with Bun (import.meta.dir) and Node.js (fileURLToPath fallback)
 const _dir: string = (import.meta as { dir?: string }).dir
@@ -9,12 +10,12 @@ const _dir: string = (import.meta as { dir?: string }).dir
 
 /**
  * Returns the path to the bundled templates directory.
- * Templates live at minds/templates/ in the repo root (moved from cli/src/templates/ in WA-1).
- * Works in development (Bun, cli/src/utils/) and production (Node.js, dist/).
+ * Templates live at minds/templates/ in the repo root.
+ * Works in development (Bun, minds/installer/) and production (Node.js, dist/).
  */
 export function getTemplateDir(): string {
-  // Dev: running source directly — cli/src/utils/../../../minds/templates
-  const devPath = join(_dir, "..", "..", "..", "minds", "templates");
+  // Dev: running source directly — minds/installer/../templates = minds/templates
+  const devPath = join(_dir, "..", "templates");
   if (existsSync(devPath)) return devPath;
   // Built: running dist/cli.js — dist/../minds/templates
   const builtPath = join(_dir, "..", "minds", "templates");

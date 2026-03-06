@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 import { program } from "commander";
-import { initCommand } from "../src/commands/init";
-import { updateCommand } from "../src/commands/update";
-import { statusCommand } from "../src/commands/status";
-import { repoResolve, repoAdd, repoList, repoRemove } from "../src/commands/repo";
+import { initCommand } from "../../../cli/src/commands/init";
+import { updateCommand } from "../../../cli/src/commands/update";
+import { statusCommand } from "../../../cli/src/commands/status";
+import { repoResolve, repoAdd, repoList, repoRemove } from "../../../cli/src/commands/repo";
 
 program
   .name("collab")

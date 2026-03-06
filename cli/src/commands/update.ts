@@ -1,7 +1,7 @@
 import chalk from "chalk";
-import { isGitRepo, getRepoRoot } from "../utils/git";
-import { readVersion, writeVersion } from "../utils/version";
-import { installTemplates, getTemplateDir } from "../utils/installer";
+import { isGitRepo, getRepoRoot } from "../../../minds/cli/utils/git";
+import { readVersion, writeVersion } from "../../../minds/cli/utils/version";
+import { installTemplates, getTemplateDir } from "../../../minds/installer/core";
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";

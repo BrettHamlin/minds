@@ -13,7 +13,7 @@
 
 import { execSync } from "child_process";
 import * as fs from "fs";
-import { resolveTransportPath } from "../../minds/transport/resolve-transport";
+import { resolveTransportPath } from "../transport/resolve-transport";
 
 function getRepoRoot(): string {
   try {

@@ -1,5 +1,6 @@
 import { existsSync } from "fs";
-import { readRepos, writeRepos, getReposFilePath } from "../../../lib/pipeline/repo-registry";
+// TODO(WD): Pipeline Core not a Mind yet — direct import until Wave D decoupling
+import { readRepos, writeRepos, getReposFilePath } from "../../../../src/lib/pipeline/repo-registry";
 
 export async function repo(
   positional: string[],

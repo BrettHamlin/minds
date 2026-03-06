@@ -10,7 +10,8 @@ import { $ } from "bun";
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
-import { loadPipelineForTicket } from "../lib/pipeline/utils";
+// TODO(WD): Pipeline Core not a Mind yet — direct import until Wave D decoupling
+import { loadPipelineForTicket } from "../../src/lib/pipeline/utils";
 
 // Detect repo root and use local state directory
 function getRepoRoot(): string {
