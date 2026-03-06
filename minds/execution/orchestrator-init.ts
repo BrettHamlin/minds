@@ -99,6 +99,10 @@ interface RollbackState {
 export function resolveTransportFile(repoRoot: string, filename: string): string {
   const installed = path.join(repoRoot, ".collab", "transport", filename);
   if (fs.existsSync(installed)) return installed;
+  // Dev path: transport files live in minds/transport/ after Wave A migration
+  const devPath = path.join(repoRoot, "minds", "transport", filename);
+  if (fs.existsSync(devPath)) return devPath;
+  // Legacy fallback for repos that haven't migrated
   return path.join(repoRoot, "transport", filename);
 }
 
