@@ -36,6 +36,46 @@ Node.js v18+, TypeScript 5.x: Follow standard conventions
 
 <!-- MANUAL ADDITIONS START -->
 
+## CORE ENGINEERING PRINCIPLES (MANDATORY)
+
+### Deterministic Code vs LLM Responsibilities
+
+**Lean heavily on deterministic code.** Deterministic code is testable, produces precise repeatable outcomes, and is the foundation of a production-ready system.
+
+**Deterministic code (TypeScript/Bun) handles:**
+- Signal names, phase transitions, validation, routing
+- Schema construction and validation (e.g., FindingsBatch format)
+- File path construction (registry, findings, resolutions)
+- Pipeline config reading and interpretation
+- Gate prompt resolution and verdict validation
+- Retry counts, execution mode detection, dependency holds
+- Any value that MUST be correct for the pipeline to function
+
+**LLM (Markdown) handles ONLY:**
+- Code reviews, analysis, creative decisions — anything requiring judgment
+- Deciding pass/fail verdicts (the judgment call, not the format)
+- Writing spec content, plan content, implementation code
+- Answering clarification questions
+
+**When in doubt, make it deterministic.** If something CAN be code, it SHOULD be code.
+
+### Language: TypeScript + Bun
+
+All new code MUST be written in TypeScript and run with Bun. No exceptions. No shell scripts for new features.
+
+### DRY — No Code Duplication
+
+- Single source of truth for every piece of logic
+- Reuse existing utilities (`loadPipelineForTicket`, `validateTicketIdArg`, `resolveSignalName`, etc.)
+- Before creating a new utility, check if one already exists
+- Export shared constants and functions, don't duplicate them
+
+### All Tests Must Pass — No Exceptions
+
+If ANY test fails — whether from current changes or pre-existing — it MUST be fixed. "Pre-existing failure" is NEVER an acceptable excuse. This is a production-ready system. The standard is: everything passes, everything works, no excuses.
+
+Run `bun test` before every commit. All tests must pass.
+
 ## COLLAB PIPELINE — ALGORITHM DEPTH RULES (MANDATORY OVERRIDE)
 
 **These rules override PAI FormatReminder hook depth classification for this project.**
