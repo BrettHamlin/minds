@@ -116,6 +116,12 @@ export interface ModeResolutionOptions {
    * Useful for testing.
    */
   forceMode?: InteractiveMode;
+  /**
+   * Default mode when no explicit interactive config is found.
+   * Defaults to "interactive" (preserves existing behavior for non-orchestrated runs).
+   * Pass "non-interactive" for orchestrated pipelines where absence of config = batch mode.
+   */
+  defaultMode?: InteractiveMode;
 }
 
 /**
@@ -134,7 +140,7 @@ export function resolveMode(options: ModeResolutionOptions = {}): InteractiveMod
   try {
     const configPath =
       options.pipelineConfigPath ?? resolvePipelineConfigPath(getRepoRoot());
-    if (!configPath || !existsSync(configPath)) return "interactive";
+    if (!configPath || !existsSync(configPath)) return options.defaultMode ?? "interactive";
 
     const raw = readFileSync(configPath, "utf-8");
     const pipeline = JSON.parse(raw) as Record<string, any>;
@@ -155,10 +161,10 @@ export function resolveMode(options: ModeResolutionOptions = {}): InteractiveMod
       return globalInteractive.enabled ? "interactive" : "non-interactive";
     }
   } catch {
-    // Any error → fall back to interactive (safe default)
+    // Any error → fall back to defaultMode or interactive (safe default)
   }
 
-  return "interactive";
+  return options.defaultMode ?? "interactive";
 }
 
 // ── Non-interactive: emit batch + await answers ───────────────────────────────

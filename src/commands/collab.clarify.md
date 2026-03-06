@@ -41,30 +41,16 @@ Both modes share the same analysis and resolution-application code.
 
 2. **Detect Execution Mode**
 
-   Check if autonomous (orchestrated) mode is active by reading the registry file directly:
-
-   Get the registry path and use the **Read** tool on it:
-   ```bash
-   REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)
-   ```
-   Then: `Read: $REGISTRY_PATH`
-
    Where `{ticket_id}` is extracted from `$ARGUMENTS` or from the `BRANCH` name (e.g., branch `BRE-246-content-curator` → ticket_id `BRE-246`).
 
-   **IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the resolved path.
-
-   If the file exists and `current_step` contains `clarify`, set `AUTONOMOUS_MODE=true`. Otherwise `AUTONOMOUS_MODE=false`.
-
-   **Interactive mode detection:**
-
-   When `AUTONOMOUS_MODE=true`: read the pipeline config to check for an `interactive` field:
+   Run the mode resolution script:
    ```bash
-   INTERACTIVE_RAW=$(bun .collab/scripts/orchestrator/commands/pipeline-config-read.ts interactive 2>/dev/null || echo "")
+   MODE_JSON=$(bun .collab/scripts/resolve-execution-mode.ts {ticket_id} --phase clarify)
    ```
-   - If `interactive.enabled` is explicitly `true` → `INTERACTIVE_MODE=true`
-   - If `interactive.enabled` is `false` OR the `interactive` field is absent → `INTERACTIVE_MODE=false` (default non-interactive)
 
-   When `AUTONOMOUS_MODE=false` (manual run): `INTERACTIVE_MODE=true` (default — user expects AskUserQuestion prompts).
+   Parse JSON to extract:
+   - `AUTONOMOUS_MODE` = `MODE_JSON.autonomous` (true if registry active with clarify as current step)
+   - `INTERACTIVE_MODE` = `MODE_JSON.interactive` (true only when interactive.enabled=true in pipeline config, or manual run)
 
    **IMPORTANT:** The absence of `interactive` in pipeline.json means non-interactive. This is the standard for orchestrated pipelines — the orchestrator handles all questions via the batch protocol.
 

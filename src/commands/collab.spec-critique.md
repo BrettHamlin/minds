@@ -25,23 +25,18 @@ If no ticket ID provided, error and exit.
 
 ### 2. Detect Execution Mode and Interactive Mode
 
-Check if autonomous (orchestrated) mode is active by reading the registry file directly:
-
-Get the registry path and use the **Read** tool on it:
+Run the mode resolution script:
 ```bash
-REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)
+MODE_JSON=$(bun .collab/scripts/resolve-execution-mode.ts {ticket_id} --phase spec_critique)
 ```
-Then: `Read: $REGISTRY_PATH`
 
-**IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the resolved path.
-
-If the file exists and `current_step` contains `spec_critique` (or `spec.critique`), set `AUTONOMOUS_MODE=true`. Otherwise `AUTONOMOUS_MODE=false`.
+Parse JSON to extract:
+- `AUTONOMOUS_MODE` = `MODE_JSON.autonomous` (true if registry active with spec_critique as current step)
+- `INTERACTIVE_MODE` = `MODE_JSON.interactive` (true only when interactive.enabled=true in pipeline config, or manual run)
 
 **`AUTONOMOUS_MODE=true`** → pipeline orchestrator launched this skill; nobody is watching; **DO NOT use AskUserQuestion**. Proceed to Step 4a.
 
 **`AUTONOMOUS_MODE=false`** → interactive (standalone) invocation; user is present. Proceed to Step 4b.
-
-**Interactive mode** is resolved automatically by `resolveAndApply()` in the shared library — no separate `pipeline-config-read.ts` call is needed. If non-interactive mode is active (resolved internally from pipeline config), use non-interactive batch protocol (emit a questions signal) instead of AskUserQuestion calls.
 
 **Non-interactive batch protocol** (when `INTERACTIVE_MODE=false`):
 

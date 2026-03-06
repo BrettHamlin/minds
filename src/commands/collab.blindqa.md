@@ -31,14 +31,15 @@ If no ticket ID provided, error and exit.
 
 Check that orchestrated mode is active:
 ```bash
-REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts ${ticket_id} registry)
-test -f "$REGISTRY_PATH" || { echo "Not in orchestrated mode"; exit 1; }
+MODE_JSON=$(bun .collab/scripts/resolve-execution-mode.ts ${ticket_id} --phase blindqa)
 ```
 
-Verify current_step is "blindqa":
-```bash
-cat "$REGISTRY_PATH" | grep '"current_step".*"blindqa"' || { echo "Warning: not in blindqa phase"; }
+Parse `MODE_JSON.autonomous`. If `false`, error and exit:
 ```
+Not in orchestrated mode — blindqa requires an active pipeline registry.
+```
+
+Verify `MODE_JSON.phase` is "blindqa" (current_step matches).
 
 ### 3. Initialize Retry Loop
 

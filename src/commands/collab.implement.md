@@ -43,6 +43,19 @@ You do not need to wait for step 10. Any time your response represents "this pha
    - Store the phase scope; it constrains steps 5 and 6 (task filtering and execution)
    - **Note**: Do NOT pass the scope to the verify script in step 10 — it auto-detects from the registry
 
+1c. **Load Phase Structure** (deterministic — do this before step 5):
+
+   Where `{ticket_id}` is extracted from `$ARGUMENTS` or the current branch name.
+
+   ```bash
+   PHASE_DATA=$(bun .collab/scripts/analyze-task-phases.ts {ticket_id})
+   ```
+
+   Parse JSON to get `totalPhases`, `phases[]`, and `nextIncompletePhase`.
+   - Use `totalPhases` to understand the overall scope
+   - If no phase scope from step 1b, use `nextIncompletePhase` to determine which phase to resume
+   - Each phase entry provides `number`, `title`, `total`, `complete`, `incomplete` counts without LLM parsing
+
 2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
    - Scan all checklist files in the checklists/ directory
    - For each checklist, count:

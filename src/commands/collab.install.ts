@@ -449,8 +449,9 @@ if (existsSync(settingsSrc)) {
 }
 
 // Auto-update installed packs so reinstalls pull latest versions from the registry
+// Skip when COLLAB_SKIP_UPDATE=1 (testing — avoids network calls in unit tests)
 const installedPipelinesPath = join(repoRoot, ".collab/state/installed-pipelines.json");
-if (existsSync(installedPipelinesPath)) {
+if (!process.env.COLLAB_SKIP_UPDATE && existsSync(installedPipelinesPath)) {
   try {
     const pipelinesState = JSON.parse(readFileSync(installedPipelinesPath, "utf-8"));
     const hasPipelines = Object.keys(pipelinesState.pipelines ?? {}).length > 0;
@@ -461,6 +462,7 @@ if (existsSync(installedPipelinesPath)) {
           cwd: repoRoot,
           stdio: "inherit",
           shell: true,
+          timeout: 30000, // 30s max to prevent hanging on slow networks
         });
       }
     }
