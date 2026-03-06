@@ -39,6 +39,7 @@ import {
 import type { CompiledPipeline, CompiledPhase, CompiledAction } from "../../../lib/pipeline";
 import { applyUpdates } from "../../../lib/pipeline";
 import { resolveTransportPath } from "../../../lib/resolve-transport";
+import { resolveHooksForPhase } from "../dispatch-phase-hooks";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -273,22 +274,6 @@ export function getDispatchableCommand(
   return null;
 }
 
-/**
- * Return the before and after hook phase IDs declared on a compiled phase.
- * Returns empty arrays when the phase has no hooks or doesn't exist.
- */
-export function resolvePhaseHooks(
-  pipeline: CompiledPipeline,
-  phaseId: string
-): { before: string[]; after: string[] } {
-  const phase = pipeline.phases[phaseId];
-  if (!phase) return { before: [], after: [] };
-  return {
-    before: (phase.before ?? []).map((h) => h.phase),
-    after: (phase.after ?? []).map((h) => h.phase),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Before-hook execution
 // ---------------------------------------------------------------------------
@@ -396,9 +381,9 @@ async function main(): Promise<void> {
     }
 
     // --- Execute before hooks ---
-    const hooks = resolvePhaseHooks(pipeline, phaseId);
-    if (hooks.before.length > 0) {
-      await executeBeforeHooks(agentPane, hooks.before, pipeline, regPath);
+    const beforeHooks = resolveHooksForPhase(pipeline as Record<string, any>, phaseId, "pre");
+    if (beforeHooks.length > 0) {
+      await executeBeforeHooks(agentPane, beforeHooks, pipeline, regPath);
     }
 
     // --- Resolve phase command ---

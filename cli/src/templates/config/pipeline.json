@@ -138,6 +138,7 @@
       ]
     },
     "blindqa": {
+      "max_retries": 3,
       "actions": [
         {
           "display": "${TICKET_ID} — Starting Blind QA verification phase"
