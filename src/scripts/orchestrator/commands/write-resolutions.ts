@@ -34,7 +34,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 
 import type { Resolution, ResolutionBatch } from "../../../lib/pipeline/questions";
-import { getResolutionsPath } from "../../../lib/pipeline/questions";
+import { resolutionsPath } from "../../../lib/pipeline/paths";
 import { getRepoRoot, findFeatureDir, validateTicketIdArg } from "../../../lib/pipeline/utils";
 
 // ── Validation ────────────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ async function main(): Promise<void> {
     process.exit(3);
   }
 
-  const outPath = getResolutionsPath(featureDir, phase, round);
+  const outPath = resolutionsPath(featureDir, phase, round);
   try {
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, JSON.stringify(batch, null, 2));

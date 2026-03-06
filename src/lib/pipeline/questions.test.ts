@@ -8,8 +8,6 @@ import {
   QuestionCollector,
   resolveMode,
   presentInteractive,
-  getFindingsPath,
-  getResolutionsPath,
   type Finding,
   type Resolution,
 } from "./questions";
@@ -276,23 +274,3 @@ describe("presentInteractive(): empty context fields", () => {
   });
 });
 
-// ── File path helpers ─────────────────────────────────────────────────────────
-
-describe("getFindingsPath()", () => {
-  test("constructs correct path", () => {
-    const p = getFindingsPath("/tmp/myfeature", "clarify", 1);
-    expect(p).toBe("/tmp/myfeature/findings/clarify-round-1.json");
-  });
-
-  test("constructs round-2 path", () => {
-    const p = getFindingsPath("/tmp/myfeature", "analyze", 2);
-    expect(p).toBe("/tmp/myfeature/findings/analyze-round-2.json");
-  });
-});
-
-describe("getResolutionsPath()", () => {
-  test("constructs correct path", () => {
-    const p = getResolutionsPath("/tmp/myfeature", "clarify", 1);
-    expect(p).toBe("/tmp/myfeature/resolutions/clarify-round-1.json");
-  });
-});

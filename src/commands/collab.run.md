@@ -213,10 +213,14 @@ Before routing any input, check `.collab/state/signal-queue/` for pending signal
 ls .collab/state/signal-queue/*.json 2>/dev/null
 ```
 
-For each file found:
-1. Read the file: `cat .collab/state/signal-queue/{ticket_id}.json` — extract the `signal` field.
-2. Process the signal through **Signal Processing** below exactly as if it had arrived via tmux.
-3. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm .collab/state/signal-queue/{filename}`
+For each file found (each file is named `{ticket_id}.json`):
+1. Parse `{ticket_id}` from the filename. Get the canonical path:
+   ```bash
+   SIGNAL_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} signal-queue)
+   ```
+2. Read the file: `cat "$SIGNAL_PATH"` — extract the `signal` field.
+3. Process the signal through **Signal Processing** below exactly as if it had arrived via tmux.
+4. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm "$SIGNAL_PATH"`
 
 Then proceed to Input Routing for the current input.
 
@@ -230,10 +234,14 @@ Run this **before every END RESPONSE** to process any signals that arrived durin
 ls .collab/state/signal-queue/*.json 2>/dev/null
 ```
 
-For each file found:
-1. Read the file: `cat .collab/state/signal-queue/{filename}` — extract the `signal` field.
-2. Process the signal through **Signal Processing** above exactly as if it had arrived via tmux.
-3. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm .collab/state/signal-queue/{filename}`
+For each file found (each file is named `{ticket_id}.json`):
+1. Parse `{ticket_id}` from the filename. Get the canonical path:
+   ```bash
+   SIGNAL_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} signal-queue)
+   ```
+2. Read the file: `cat "$SIGNAL_PATH"` — extract the `signal` field.
+3. Process the signal through **Signal Processing** above exactly as if it had arrived via tmux.
+4. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm "$SIGNAL_PATH"`
 
 If no files remain, end the response normally.
 
@@ -664,7 +672,11 @@ For signals that do not match any suffix above (e.g., `VERIFY_PASS`, `VERIFY_FAI
 
 ### [CMD:remove {ticket_id}]
 
-Validate. `rm .collab/state/pipeline-registry/{ticket_id}.json`. `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+Validate. Remove the registry file:
+```bash
+rm $(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)
+```
+`bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
 
 ### Unknown
 

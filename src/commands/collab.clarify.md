@@ -43,14 +43,15 @@ Both modes share the same analysis and resolution-application code.
 
    Check if autonomous (orchestrated) mode is active by reading the registry file directly:
 
-   Use the **Read** tool on the absolute path:
+   Get the registry path and use the **Read** tool on it:
+   ```bash
+   REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)
    ```
-   Read: {repo_root}/.collab/state/pipeline-registry/{ticket_id}.json
-   ```
+   Then: `Read: $REGISTRY_PATH`
 
-   Where `{repo_root}` is the git repository root (use `git rev-parse --show-toplevel` via Bash if needed), and `{ticket_id}` is extracted from `$ARGUMENTS` or from the `BRANCH` name (e.g., branch `BRE-246-content-curator` → ticket_id `BRE-246`).
+   Where `{ticket_id}` is extracted from `$ARGUMENTS` or from the `BRANCH` name (e.g., branch `BRE-246-content-curator` → ticket_id `BRE-246`).
 
-   **IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the known path.
+   **IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the resolved path.
 
    If the file exists and `current_step` contains `clarify`, set `AUTONOMOUS_MODE=true`. Otherwise `AUTONOMOUS_MODE=false`.
 
@@ -180,10 +181,10 @@ Both modes share the same analysis and resolution-application code.
    **Re-entry detection:** Before collecting questions, check if resolutions already exist from a previous round:
 
    ```bash
-   ls {FEATURE_DIR}/specs/{FEATURE_SLUG}/resolutions/clarify-round-*.json 2>/dev/null
+   RESOLUTIONS_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} resolutions clarify 1)
    ```
 
-   If resolutions files exist, this is a **re-dispatch** from the orchestrator. Read the resolutions, apply them to the spec (update sections, add clarifications), then skip to emitting the completion signal. Do NOT re-collect questions or re-emit the questions signal.
+   If `$RESOLUTIONS_PATH` exists (use `test -f "$RESOLUTIONS_PATH"`), this is a **re-dispatch** from the orchestrator. Read the resolutions file at that path, apply them to the spec (update sections, add clarifications), then skip to emitting the completion signal. Do NOT re-collect questions or re-emit the questions signal.
 
    **First entry (no resolutions):** Collect ALL questions, write them using the CLI, and **end your response**. Do NOT poll or wait for resolutions — the orchestrator will:
    1. Receive the questions signal

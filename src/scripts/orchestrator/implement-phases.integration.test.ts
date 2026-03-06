@@ -300,3 +300,34 @@ describe("verify-and-complete.sh: phase-scope awk logic (E2E)", () => {
     expect(countIncomplete(tasksFile, "4")).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Auto-detection: no explicit scope arg, no registry → falls back to all-tasks
+// (Registry auto-detection requires TMUX_PANE which is not set in test env,
+//  so resolveRegistry() returns null and PHASE_SCOPE defaults to "" → all tasks)
+// ---------------------------------------------------------------------------
+
+describe("verify-and-complete: auto-detect scope fallback (no registry)", () => {
+  let tasksFile: string;
+
+  beforeAll(() => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "collab-autodetect-"));
+    tasksFile = path.join(tmp, "tasks.md");
+    fs.writeFileSync(tasksFile, TASKS_MD);
+  });
+
+  afterAll(() => {
+    fs.rmSync(path.dirname(tasksFile), { recursive: true, force: true });
+  });
+
+  test("23. no scope arg, no registry → counts all incomplete tasks (same as test 15)", () => {
+    // When TMUX_PANE is unset (test env), resolveRegistry returns null,
+    // autoScope is "", so PHASE_SCOPE="" → all tasks scanned: 3 incomplete
+    expect(countIncomplete(tasksFile, null)).toBe(3);
+  });
+
+  test("24. explicit scope arg still takes precedence over auto-detection", () => {
+    // Even if TMUX_PANE were set, explicit arg overrides auto-detection
+    expect(countIncomplete(tasksFile, "3")).toBe(0);
+  });
+});
