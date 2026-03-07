@@ -94,12 +94,24 @@ This command executes implementation for the **collab repo itself**, where work 
 
    b. **Build the Mind brief**: Compose a scoped instruction block for this Mind's drone.
 
+      First, load the profile documents:
+
+      ```bash
+      # Shared standards — include in every brief
+      cat minds/STANDARDS.md
+
+      # Mind-specific profile — append if it exists
+      [ -f minds/{mind_name}/MIND.md ] && cat minds/{mind_name}/MIND.md
+      ```
+
       The brief includes:
       - **Identity**: Which Mind this drone is acting as, and its domain
       - **Owned files**: The `owns_files` list from minds.json (the drone's file-system boundary)
       - **Tasks**: The full task list for this Mind, verbatim from tasks.md
       - **Contracts**: What this Mind produces (from `exposes`) and what it consumes (from `consumes`), filtered to only what's relevant to these tasks
       - **Dependencies**: If this Mind depends on others, list the specific interfaces it should import and from where
+      - **Standards**: The full content of `minds/STANDARDS.md`
+      - **Mind profile**: The full content of `minds/{mind_name}/MIND.md` (if it exists)
       - **Acceptance criteria**: Derived from the task descriptions — each task's file path and behavior expectation
 
       Brief format:
@@ -119,13 +131,30 @@ This command executes implementation for the **collab repo itself**, where work 
       - Produces: {exposes entries relevant to these tasks}
       - Consumes: {consumes entries — import from these paths, do not reimplement}
 
+      --- Engineering Standards ---
+      {full content of minds/STANDARDS.md}
+
+      --- Mind Profile ---
+      {full content of minds/{mind_name}/MIND.md, if it exists — omit section if file not found}
+
       Acceptance criteria:
       - All tasks marked [X] in tasks.md
       - All produced interfaces exported at their declared paths
       - `bun test` passes with no failures
       - No files modified outside your owned paths
 
-      When all tasks are complete, report: "MIND_COMPLETE @{mind_name} {ticket_id}"
+      Review checklist (verify before reporting MIND_COMPLETE):
+      - [ ] All tasks marked [X]
+      - [ ] No files modified outside owns_files
+      - [ ] No duplicated logic (check against existing codebase)
+      - [ ] All new functions have tests
+      - [ ] All tests pass (`bun test`)
+      - [ ] No lint errors
+      - [ ] Interface contracts honored (produces/consumes match declarations)
+      - [ ] No hardcoded values that should be config
+      - [ ] Error messages include context (not just "failed")
+
+      When all tasks are complete and the checklist passes, report: "MIND_COMPLETE @{mind_name} {ticket_id}"
       ```
 
    c. **Send brief to drone pane**:
