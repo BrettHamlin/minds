@@ -17,6 +17,7 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
 
   switch (workUnit.intent) {
+    case "evaluate gate":
     case "record gate result": {
       const { openMetricsDb, insertGate } = await import("./metrics.js");
       const repoRoot = ctx.repoRoot as string | undefined;
@@ -78,6 +79,8 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
       return { status: "handled", result: { ...result, autonomyRates: rates } };
     }
 
+    case "log observability metrics":
+    case "view pipeline metrics":
     case "show dashboard": {
       const { openMetricsDb } = await import("./metrics.js");
       const repoRoot = ctx.repoRoot as string | undefined;
@@ -126,6 +129,9 @@ export default createMind({
     "classify run",
     "show dashboard",
     "check gate accuracy",
+    "log observability metrics",
+    "evaluate gate",
+    "view pipeline metrics",
   ],
   handle,
 });

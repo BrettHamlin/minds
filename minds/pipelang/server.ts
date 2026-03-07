@@ -59,7 +59,7 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
 export default createMind({
   name: "pipelang",
   domain: "Pipeline DSL: lexer, parser, compiler, validator, and LSP for .pipeline files.",
-  keywords: ["pipelang", "pipeline", "dsl", "compile", "validate", "diff", "lsp", "language", "syntax"],
+  keywords: ["pipelang", "dsl", "compile", "validate", "diff", "lsp", "language", "syntax", "dotpipeline"],
   owns_files: ["minds/pipelang/"],
   capabilities: [
     "compile pipeline source to JSON",

@@ -14,6 +14,7 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
 
   switch (workUnit.intent) {
+    case "send notification":
     case "post message to Slack channel": {
       const { postQuestionToChannel } = await import("./slack/interactions.js");
       const { channelId, question, progress } = ctx as {
@@ -48,6 +49,10 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
       return { status: "handled", result: { user: info.user } };
     }
 
+    case "connect to integration":
+    case "list integrations":
+      return { status: "handled", data: { available: ["slack"], future: ["discord", "teams"] } };
+
     default:
       return { status: "escalate" };
   }
@@ -62,6 +67,9 @@ export default createMind({
     "post message to Slack channel",
     "create Slack channel",
     "get Slack user info",
+    "send notification",
+    "connect to integration",
+    "list integrations",
   ],
   handle,
 });

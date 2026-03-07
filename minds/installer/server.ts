@@ -13,6 +13,9 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
 
   switch (workUnit.intent) {
+    case "run installer":
+    case "install collab scripts":
+    case "set up collab":
     case "install pipeline": {
       const { installTemplates, getTemplateDir } = await import("./core.js");
       const repoRoot = ctx.repoRoot as string | undefined;
@@ -50,6 +53,9 @@ export default createMind({
     "install pipeline",
     "get file mappings",
     "check for updates",
+    "run installer",
+    "install collab scripts",
+    "set up collab",
   ],
   handle,
 });

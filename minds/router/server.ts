@@ -176,6 +176,10 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
     return {
       status: "handled",
       error: err instanceof Error ? err.message : String(err),
+      _routing: {
+        mind: best.mind.name,
+        score: best.score,
+      },
     };
   }
 }
