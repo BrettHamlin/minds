@@ -486,6 +486,32 @@ if (!existsSync(constitutionPath)) {
   console.log("Constitution file exists — preserving");
 }
 
+// ── Generate Mind registry (.collab/minds.json) ─────────────────────────────
+// Discovers all Minds from the collab source and writes a registry file so that
+// collab.tasks and collab.implement can assign @mind tags and filter by Mind scope.
+
+const mindsJsonDest = join(repoRoot, ".collab/minds.json");
+try {
+  const genScript = join(tempDir, "minds/generate-registry.ts");
+  if (existsSync(genScript)) {
+    execSync(`bun "${genScript}"`, {
+      cwd: tempDir,
+      stdio: "pipe",
+      timeout: 60000,
+    });
+    const generatedPath = join(tempDir, ".collab/minds.json");
+    if (existsSync(generatedPath)) {
+      copyFileSync(generatedPath, mindsJsonDest);
+      console.log("Mind registry generated: .collab/minds.json");
+    }
+  } else {
+    console.log("  minds/generate-registry.ts not found — skipping mind registry");
+  }
+} catch (e: unknown) {
+  const msg = e instanceof Error ? e.message : String(e);
+  console.log(`  Warning: minds.json generation skipped: ${msg}`);
+}
+
 // ── Cleanup ───────────────────────────────────────────────────────────────────
 
 if (!localPath) {

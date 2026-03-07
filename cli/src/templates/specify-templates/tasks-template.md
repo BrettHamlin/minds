@@ -12,10 +12,11 @@ description: "Task list template for feature implementation"
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
-## Format: `[ID] [P?] [Story] Description`
+## Format: `[ID] [P?] [Story] [@Mind?] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
+- **[@Mind]**: Which Mind is responsible (from .collab/minds.json). Optional — include when minds.json is available.
 - Include exact file paths in descriptions
 
 ## Path Conventions
@@ -43,6 +44,21 @@ description: "Task list template for feature implementation"
   DO NOT keep these sample tasks in the generated tasks.md file.
   ============================================================================
 -->
+
+## Mind Assignment
+
+If `.collab/minds.json` exists in the repository, assign each task to the responsible Mind using the `@mind` tag. The Mind registry contains each Mind's name, domain, and owned files.
+
+**Assignment rule**: Match the task's target file path against each Mind's `owns_files` to determine the responsible Mind. If no Mind owns the file, omit the `@mind` tag.
+
+**Contract interfaces**: When tasks span multiple Minds, add a contract note showing the producer/consumer relationship:
+
+```text
+- [ ] T014 [US1] @pipeline_core Expose registryPath() in minds/pipeline_core/paths.ts
+  produces: [registryPath]
+- [ ] T015 [US1] @execution Import registryPath in minds/execution/dispatch-phase.ts
+  consumes: [pipeline_core/registryPath]
+```
 
 ## Phase 1: Setup (Shared Infrastructure)
 
@@ -116,6 +132,11 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T021 [US2] Implement [Service] in src/services/[service].py
 - [ ] T022 [US2] Implement [endpoint/feature] in src/[location]/[file].py
 - [ ] T023 [US2] Integrate with User Story 1 components (if needed)
+
+<!-- @mind examples (shown when minds.json is present):
+- CORRECT: - [ ] T021 [P] [US2] @signals Emit phase signal in minds/signals/emit-phase-signal.ts
+- CORRECT: - [ ] T022 [US2] @pipeline_core Resolve registry path in minds/pipeline_core/paths.ts
+-->
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 

@@ -56,5 +56,7 @@ export default createMind({
     "list packages",
     "resolve repo path",
   ],
+  exposes: ["install package", "list packages", "resolve repo path", "ensureDir utility"],
+  consumes: [],
   handle,
 });

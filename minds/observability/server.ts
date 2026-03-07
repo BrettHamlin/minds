@@ -133,5 +133,18 @@ export default createMind({
     "evaluate gate",
     "view pipeline metrics",
   ],
+  exposes: [
+    "record gate result",
+    "create draft pr",
+    "complete run",
+    "classify run",
+    "show dashboard",
+    "check gate accuracy",
+  ],
+  consumes: [
+    "pipeline_core/getRepoRoot",
+    "pipeline_core/validateTicketIdArg",
+    "pipeline_core/readJsonFile",
+  ],
   handle,
 });

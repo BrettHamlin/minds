@@ -63,5 +63,11 @@ export default createMind({
     "resolve signal name",
     "emit phase signal",
   ],
+  exposes: ["emit signal", "resolve signal name", "emit phase signal"],
+  consumes: [
+    "pipeline_core/loadPipelineForTicket",
+    "pipeline_core/signal",
+    "transport/resolveTransportPath",
+  ],
   handle,
 });

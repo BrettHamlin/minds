@@ -35,12 +35,14 @@ This applies in every scenario: normal completion, after follow-up messages from
 
 1. **Setup**: Run `bun .collab/scripts/resolve-feature.ts` from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS list.
 
-2. **Load design documents**: Read from FEATURE_DIR:
+2. **Load Mind registry** (if available): Read `.collab/minds.json` from repo root. If it exists, parse the JSON to get the list of Minds with their names and `owns_files`. Use this to assign `@mind` tags to tasks based on file path ownership. If `minds.json` does not exist, skip mind assignment (backward compatible).
+
+3. **Load design documents**: Read from FEATURE_DIR:
    - **Required**: plan.md (tech stack, libraries, structure), spec.md (user stories with priorities)
    - **Optional**: data-model.md (entities), contracts/ (API endpoints), research.md (decisions), quickstart.md (test scenarios)
    - Note: Not all projects have all documents. Generate tasks based on what's available.
 
-3. **Execute task generation workflow**:
+4. **Execute task generation workflow**:
    - Load plan.md and extract tech stack, libraries, project structure
    - Load spec.md and extract user stories with their priorities (P1, P2, P3, etc.)
    - If data-model.md exists: Extract entities and map to user stories
@@ -50,8 +52,10 @@ This applies in every scenario: normal completion, after follow-up messages from
    - Generate dependency graph showing user story completion order
    - Create parallel execution examples per user story
    - Validate task completeness (each user story has all needed tasks, independently testable)
+   - If minds.json loaded: For each task, match its file path against Mind `owns_files` to assign `@mind` tag
+   - If tasks span multiple Minds: Add contract interface notes showing producer/consumer relationships
 
-4. **Generate tasks.md**: Use `.specify/templates/tasks-template.md` as structure, fill with:
+5. **Generate tasks.md**: Use `.specify/templates/tasks-template.md` as structure, fill with:
    - Correct feature name from plan.md
    - Phase 1: Setup tasks (project initialization)
    - Phase 2: Foundational tasks (blocking prerequisites for all user stories)
@@ -64,13 +68,13 @@ This applies in every scenario: normal completion, after follow-up messages from
    - Parallel execution examples per story
    - Implementation strategy section (MVP first, incremental delivery)
 
-5. **Emit Completion Signal**
+6. **Emit Completion Signal**
    ```bash
    bun .collab/handlers/emit-signal.ts complete "Task generation phase finished"
    ```
    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 
-6. **Report**: Output path to generated tasks.md and summary:
+7. **Report**: Output path to generated tasks.md and summary:
    - Total task count
    - Task count per user story
    - Parallel opportunities identified
@@ -115,6 +119,8 @@ Every task MUST strictly follow this format:
 - ✅ CORRECT: `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.py`
 - ✅ CORRECT: `- [ ] T012 [P] [US1] Create User model in src/models/user.py`
 - ✅ CORRECT: `- [ ] T014 [US1] Implement UserService in src/services/user_service.py`
+- ✅ CORRECT: `- [ ] T015 [P] [US1] @signals Emit phase signal in minds/signals/emit-phase-signal.ts`
+- ✅ CORRECT: `- [ ] T016 [US2] @pipeline_core Resolve registry path in minds/pipeline_core/paths.ts`
 - ❌ WRONG: `- [ ] Create User model` (missing ID and Story label)
 - ❌ WRONG: `T001 [US1] Create model` (missing checkbox)
 - ❌ WRONG: `- [ ] [US1] Create User model` (missing Task ID)

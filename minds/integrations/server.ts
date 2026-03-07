@@ -71,5 +71,12 @@ export default createMind({
     "connect to integration",
     "list integrations",
   ],
+  exposes: [
+    "post message to Slack channel",
+    "create Slack channel",
+    "get Slack user info",
+    "send notification",
+  ],
+  consumes: [],
   handle,
 });
