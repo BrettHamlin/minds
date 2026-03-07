@@ -74,14 +74,17 @@ function buildMcpServer(config: MindConfig, description: MindDescription): McpSe
         ...(intent !== null && { intent }),
       };
       const result = await config.handle(workUnit);
-      // Stamp routing observability
-      result._routing = {
-        ...result._routing,
-        mind: config.name,
-        ...(intent !== null && { intent }),
+      // Stamp routing observability (spread to avoid mutating handler's result)
+      const stamped = {
+        ...result,
+        _routing: {
+          ...result._routing,
+          mind: config.name,
+          ...(intent !== null && { intent }),
+        },
       };
       return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
+        content: [{ type: "text", text: JSON.stringify(stamped) }],
       };
     }
   );
@@ -161,13 +164,15 @@ export async function createMind(config: MindConfig): Promise<RunningMind> {
         intent = workUnit.intent;
       }
       const result = await config.handle(workUnit);
-      // Stamp routing observability
-      result._routing = {
-        ...result._routing,
-        mind: config.name,
-        ...(intent !== null && { intent }),
+      // Stamp routing observability (spread to avoid mutating handler's result)
+      return {
+        ...result,
+        _routing: {
+          ...result._routing,
+          mind: config.name,
+          ...(intent !== null && { intent }),
+        },
       };
-      return result;
     },
 
     describe(): MindDescription {
