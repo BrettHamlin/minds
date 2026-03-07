@@ -1,0 +1,242 @@
+---
+description: Cross-artifact consistency analysis using shared question/answer protocol (interactive or batch)
+---
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+You **MUST** consider the user input before proceeding (if not empty).
+
+## Orchestrator Signal Contract (ALWAYS ACTIVE)
+
+> **This applies throughout your entire execution — not just at the end.**
+
+Whenever you have **finished all analysis work for this phase**, run:
+
+```bash
+bun .collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"
+```
+
+This verification script will automatically emit the completion signal to the orchestrator.
+
+This applies in every scenario: normal completion, after fixing CRITICAL issues flagged by the orchestrator, after any retry. Any response that represents "this phase is done" must end with running this script.
+
+---
+
+## Goal
+
+Identify inconsistencies, duplications, ambiguities, and underspecified items across the three core artifacts (`spec.md`, `plan.md`, `tasks.md`) before implementation. This command MUST run only after `/collab.tasks` has successfully produced a complete `tasks.md`.
+
+## Operating Constraints
+
+**Read-only during initial analysis**: Do **not** modify any files during the analysis pass. Output a structured analysis report. When the orchestrator sends remediation instructions after the initial signal, apply all directed changes to the appropriate files, then re-run the verification script.
+
+**Constitution Authority**: The project constitution (`.collab/memory/constitution.md`) is **non-negotiable** within this analysis scope. Constitution conflicts are automatically CRITICAL and require adjustment of the spec, plan, or tasks—not dilution, reinterpretation, or silent ignoring of the principle. If a principle itself needs to change, that must occur in a separate, explicit constitution update outside `/collab.analyze`.
+
+## Execution Steps
+
+### 1. Initialize Analysis Context
+
+Run `bun .collab/scripts/resolve-feature.ts --require-tasks --include-tasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
+
+- SPEC = FEATURE_DIR/spec.md
+- PLAN = FEATURE_DIR/plan.md
+- TASKS = FEATURE_DIR/tasks.md
+
+Abort with an error message if any required file is missing (instruct the user to run missing prerequisite command).
+For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+
+### 2. Load Artifacts (Progressive Disclosure)
+
+Load only the minimal necessary context from each artifact:
+
+**From spec.md:**
+
+- Overview/Context
+- Functional Requirements
+- Non-Functional Requirements
+- User Stories
+- Edge Cases (if present)
+
+**From plan.md:**
+
+- Architecture/stack choices
+- Data Model references
+- Phases
+- Technical constraints
+
+**From tasks.md:**
+
+- Task IDs
+- Descriptions
+- Phase grouping
+- Parallel markers [P]
+- Referenced file paths
+
+**From constitution:**
+
+- Load `.collab/memory/constitution.md` for principle validation
+
+### 3. Build Semantic Models
+
+Create internal representations (do not include raw artifacts in output):
+
+- **Requirements inventory**: Each functional + non-functional requirement with a stable key (derive slug based on imperative phrase; e.g., "User can upload file" → `user-can-upload-file`)
+- **User story/action inventory**: Discrete user actions with acceptance criteria
+- **Task coverage mapping**: Map each task to one or more requirements or stories (inference by keyword / explicit reference patterns like IDs or key phrases)
+- **Constitution rule set**: Extract principle names and MUST/SHOULD normative statements
+
+### 4. Detection Passes (Token-Efficient Analysis)
+
+Focus on high-signal findings. Limit to 50 findings total; aggregate remainder in overflow summary.
+
+#### A. Duplication Detection
+
+- Identify near-duplicate requirements
+- Mark lower-quality phrasing for consolidation
+
+#### B. Ambiguity Detection
+
+- Flag vague adjectives (fast, scalable, secure, intuitive, robust) lacking measurable criteria
+- Flag unresolved placeholders (TODO, TKTK, ???, `<placeholder>`, etc.)
+
+#### C. Underspecification
+
+- Requirements with verbs but missing object or measurable outcome
+- User stories missing acceptance criteria alignment
+- Tasks referencing files or components not defined in spec/plan
+
+#### D. Constitution Alignment
+
+- Any requirement or plan element conflicting with a MUST principle
+- Missing mandated sections or quality gates from constitution
+
+#### E. Coverage Gaps
+
+- Requirements with zero associated tasks
+- Tasks with no mapped requirement/story
+- Non-functional requirements not reflected in tasks (e.g., performance, security)
+
+#### F. Inconsistency
+
+- Terminology drift (same concept named differently across files)
+- Data entities referenced in plan but absent in spec (or vice versa)
+- Task ordering contradictions (e.g., integration tasks before foundational setup tasks without dependency note)
+- Conflicting requirements (e.g., one requires Next.js while other specifies Vue)
+
+### 5. Severity Assignment
+
+Use this heuristic to prioritize findings:
+
+- **CRITICAL**: Violates constitution MUST, missing core spec artifact, or requirement with zero coverage that blocks baseline functionality
+- **HIGH**: Duplicate or conflicting requirement, ambiguous security/performance attribute, untestable acceptance criterion
+- **MEDIUM**: Terminology drift, missing non-functional task coverage, underspecified edge case
+- **LOW**: Style/wording improvements, minor redundancy not affecting execution order
+
+### 6. Produce Compact Analysis Report
+
+Generate the report below and **write it to `$FEATURE_DIR/analysis.md`** (overwrite if exists). Also output it to the console for visibility. The file must be written before the signal is emitted in step 8 so the orchestrator can read it immediately.
+
+## Specification Analysis Report
+
+| ID | Category | Severity | Location(s) | Summary | Recommendation |
+|----|----------|----------|-------------|---------|----------------|
+| A1 | Duplication | HIGH | spec.md:L120-134 | Two similar requirements ... | Merge phrasing; keep clearer version |
+
+(Add one row per finding; generate stable IDs prefixed by category initial.)
+
+**Coverage Summary Table:**
+
+| Requirement Key | Has Task? | Task IDs | Notes |
+|-----------------|-----------|----------|-------|
+
+**Constitution Alignment Issues:** (if any)
+
+**Unmapped Tasks:** (if any)
+
+**Metrics:**
+
+- Total Requirements
+- Total Tasks
+- Coverage % (requirements with >=1 task)
+- Ambiguity Count
+- Duplication Count
+- Critical Issues Count
+
+### 6b. Structured Findings (Batch Q&A Protocol)
+
+If there are CRITICAL or HIGH findings that require clarification (not just remediation), collect them using the shared question/answer protocol from `.collab/lib/pipeline/questions.ts`:
+
+**Interactive mode** is resolved automatically by `resolveAndApply()` — no separate `pipeline-config-read.ts` call is needed. If non-interactive mode is active (resolved internally from pipeline config):
+
+1. Collect each finding that requires an answer into a `QuestionCollector`:
+   ```typescript
+   const collector = new QuestionCollector("analyze", ticketId, specExcerpt);
+   collector.add("How should we resolve the conflicting X requirement?", {
+     why: "Implementation cannot proceed without resolving this conflict",
+     specReferences: ["spec.md:L45", "plan.md:L12"],
+     codePatterns: ["src/foo.ts uses pattern X"],
+     constraints: ["Must be backward compatible"],
+     implications: ["Task T-3 and T-7 depend on this decision"],
+   });
+   ```
+
+2. Call `resolveAndApply()` — this writes `findings/analyze-round-1.json` and emits `ANALYZE_QUESTIONS` signal, then polls for resolutions.
+
+3. Apply resolutions to artifacts.
+
+If effective value is `true` or `inherit` (interactive mode): use AskUserQuestion for each finding individually as before.
+
+### 7. Provide Next Actions
+
+At end of report, output a concise Next Actions block:
+
+- If CRITICAL issues exist: Recommend resolving before `/collab.implement`
+- If only LOW/MEDIUM: User may proceed, but provide improvement suggestions
+- Provide explicit command suggestions: e.g., "Run /collab.specify with refinement", "Run /collab.plan to adjust architecture", "Manually edit tasks.md to add coverage for 'performance-metrics'"
+
+### 8. Verify Completion and Emit Signal
+
+Run the verification script to automatically emit the completion signal:
+
+```bash
+bun .collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"
+```
+
+This script automatically emits the ANALYZE_COMPLETE signal to the orchestrator.
+
+**CRITICAL**: This step is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
+
+**If the orchestrator sends remediation instructions:** Apply all directed changes to the appropriate files (plan.md, tasks.md, spec.md, or other artifacts as specified). Then re-run the verification script to emit the signal again.
+
+### 9. Apply Orchestrator Remediations
+
+When the orchestrator sends remediation instructions, apply all directed changes to the appropriate files (plan.md, tasks.md, spec.md, or other artifacts as specified). Do not ask for confirmation — the orchestrator's instructions are authoritative. Once all changes are applied, re-run the verification script:
+
+```bash
+bun .collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"
+```
+
+## Operating Principles
+
+### Context Efficiency
+
+- **Minimal high-signal tokens**: Focus on actionable findings, not exhaustive documentation
+- **Progressive disclosure**: Load artifacts incrementally; don't dump all content into analysis
+- **Token-efficient output**: Limit findings table to 50 rows; summarize overflow
+- **Deterministic results**: Rerunning without changes should produce consistent IDs and counts
+
+### Analysis Guidelines
+
+- **NEVER modify files during the analysis pass** (read-only until orchestrator sends remediation instructions)
+- **NEVER hallucinate missing sections** (if absent, report them accurately)
+- **Prioritize constitution violations** (these are always CRITICAL)
+- **Use examples over exhaustive rules** (cite specific instances, not generic patterns)
+- **Report zero issues gracefully** (emit success report with coverage statistics)
+
+## Context
+
+$ARGUMENTS

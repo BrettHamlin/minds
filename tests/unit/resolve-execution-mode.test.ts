@@ -10,7 +10,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import * as os from "os";
-import { resolveMode } from "../../src/lib/pipeline/questions";
+import { resolveMode } from "../../minds/pipeline_core/questions";
 
 // ── resolveMode: defaultMode extension (BRE-429) ───────────────────────────
 
@@ -106,7 +106,7 @@ describe("resolve-execution-mode CLI: argument validation", () => {
   test("exits with error when first arg is a flag (not ticket ID)", () => {
     const { spawnSync } = require("child_process");
     const result = spawnSync("bun", [
-      "src/scripts/resolve-execution-mode.ts",
+      "minds/execution/resolve-execution-mode.ts",
       "--phase",
       "clarify",
     ], { encoding: "utf-8", cwd: join(import.meta.dir, "../..") });
@@ -118,7 +118,7 @@ describe("resolve-execution-mode CLI: argument validation", () => {
   test("exits with error when no arguments provided", () => {
     const { spawnSync } = require("child_process");
     const result = spawnSync("bun", [
-      "src/scripts/resolve-execution-mode.ts",
+      "minds/execution/resolve-execution-mode.ts",
     ], { encoding: "utf-8", cwd: join(import.meta.dir, "../..") });
 
     expect(result.status).toBe(1);

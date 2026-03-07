@@ -14,9 +14,9 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
-import { resolveTransition } from "../../src/lib/pipeline/transitions";
-import { resolvePaths } from "../../src/scripts/orchestrator/commands/orchestrator-init";
-import type { InitContext } from "../../src/scripts/orchestrator/commands/orchestrator-init";
+import { resolveTransition } from "../../minds/pipeline_core/transitions";
+import { resolvePaths } from "../../minds/execution/orchestrator-init";
+import type { InitContext } from "../../minds/execution/orchestrator-init";
 import * as os from "os";
 
 // ── Fixture paths ────────────────────────────────────────────────────────────

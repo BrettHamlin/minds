@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // Absolute path to the CLI entry point
-const CLI_ENTRY = join(import.meta.dir, "../../src/cli/index.ts");
+const CLI_ENTRY = join(import.meta.dir, "../../minds/cli/index.ts");
 
 // ─── Subprocess helper ────────────────────────────────────────────────────────
 // Uses Bun.spawn (async) rather than spawnSync so the event loop stays free to

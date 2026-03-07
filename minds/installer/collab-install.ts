@@ -127,7 +127,11 @@ const CORE_COMMANDS = [
 
 console.log("Installing core commands...");
 for (const cmd of CORE_COMMANDS) {
-  const src = join(tempDir, "src/commands", cmd);
+  // collab.install.ts lives in minds/templates/commands/ (standalone template copy)
+  const srcDir = cmd === "collab.install.ts"
+    ? join(tempDir, "minds/templates/commands")
+    : join(tempDir, "src/commands");
+  const src = join(srcDir, cmd);
   if (existsSync(src)) {
     copyFileSync(src, join(repoRoot, ".claude/commands", cmd));
   } else {
@@ -146,22 +150,22 @@ if (process.env.COLLAB_SKIP_BUILD) {
   // Dev/test mode: install a bun-run wrapper so tests don't need a full compile
   writeFileSync(
     binaryPath,
-    `#!/usr/bin/env bash\nexec bun run "${join(tempDir, "src/cli/index.ts")}" "$@"\n`
+    `#!/usr/bin/env bash\nexec bun run "${join(tempDir, "minds/cli/index.ts")}" "$@"\n`
   );
   console.log("  (dev mode: bun-run wrapper installed)");
 } else {
-  const cliSrc = join(tempDir, "src/cli/index.ts");
+  const cliSrc = join(tempDir, "minds/cli/index.ts");
   if (existsSync(cliSrc)) {
     try {
       execSync(
-        `cd "${tempDir}" && bun build src/cli/index.ts --compile --outfile "${binaryPath}"`,
+        `cd "${tempDir}" && bun build minds/cli/index.ts --compile --outfile "${binaryPath}"`,
         { shell: true, stdio: "inherit" }
       );
     } catch {
       console.log("  Warning: CLI binary build failed — skipping");
     }
   } else {
-    console.log("  Warning: src/cli/index.ts not found in source — binary not built");
+    console.log("  Warning: minds/cli/index.ts not found in source — binary not built");
   }
 }
 
@@ -174,8 +178,8 @@ if (existsSync(binaryPath)) {
 
 console.log("Installing runtime files...");
 
-// Signal handlers
-const handlersSrc = join(tempDir, "src/handlers");
+// Signal handlers (standalone copies from minds/templates/handlers/)
+const handlersSrc = join(tempDir, "minds/templates/handlers");
 if (existsSync(handlersSrc)) {
   execSync(
     `find "${handlersSrc}" -name "*.ts" -exec cp {} "${join(repoRoot, ".collab/handlers/")}" \\;`,
@@ -187,8 +191,8 @@ if (existsSync(handlersSrc)) {
   );
 }
 
-// Orchestrator scripts (preserve commands/ subdirectory, exclude *.test.ts)
-const orchSrc = join(tempDir, "src/scripts/orchestrator");
+// Orchestrator scripts (standalone copies from minds/templates/orchestrator/, preserve commands/ subdirectory)
+const orchSrc = join(tempDir, "minds/templates/orchestrator");
 if (existsSync(orchSrc)) {
   // Copy top-level scripts
   for (const f of readdirSync(orchSrc)) {
@@ -216,8 +220,8 @@ if (existsSync(orchSrc)) {
   );
 }
 
-// Non-orchestrator scripts (top-level of src/scripts/, exclude *.test.ts)
-const scriptsSrc = join(tempDir, "src/scripts");
+// Non-orchestrator scripts (standalone copies from minds/templates/scripts/)
+const scriptsSrc = join(tempDir, "minds/templates/scripts");
 if (existsSync(scriptsSrc)) {
   execSync(
     `find "${scriptsSrc}" -maxdepth 1 \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" -exec cp {} "${join(repoRoot, ".collab/scripts/")}" \\;`,
@@ -229,24 +233,14 @@ if (existsSync(scriptsSrc)) {
   );
 }
 
-// Shared library files (src/lib/, excluding tests, including subdirectories)
-const libSrc = join(tempDir, "src/lib");
-if (existsSync(libSrc)) {
-  // Copy top-level .ts files
-  execSync(
-    `find "${libSrc}" -maxdepth 1 -name "*.ts" ! -name "*.test.ts" -exec cp {} "${join(repoRoot, ".collab/lib/")}" \\;`,
-    { shell: true }
-  );
-  // Copy subdirectories (e.g. pipeline/) recursively — one level deep
-  for (const entry of readdirSync(libSrc)) {
-    const entryPath = join(libSrc, entry);
-    if (!statSync(entryPath).isDirectory()) continue;
-    const destDir = join(repoRoot, ".collab/lib", entry);
-    mkdirSync(destDir, { recursive: true });
-    for (const file of readdirSync(entryPath)) {
-      if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
-      copyFileSync(join(entryPath, file), join(destDir, file));
-    }
+// Shared library files (standalone copies from minds/templates/lib-pipeline/ → .collab/lib/pipeline/)
+const libPipelineSrc = join(tempDir, "minds/templates/lib-pipeline");
+if (existsSync(libPipelineSrc)) {
+  const destDir = join(repoRoot, ".collab/lib/pipeline");
+  mkdirSync(destDir, { recursive: true });
+  for (const file of readdirSync(libPipelineSrc)) {
+    if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
+    copyFileSync(join(libPipelineSrc, file), join(destDir, file));
   }
   execSync(
     `find "${join(repoRoot, ".collab/lib")}" -name "*.ts" -exec chmod +x {} \\;`,
@@ -254,16 +248,18 @@ if (existsSync(libSrc)) {
   );
 }
 
-// Transport scripts
-if (existsSync(join(tempDir, "transport"))) {
+// Transport scripts (from minds/transport/, excluding dev-only server.ts)
+const transportSrc = join(tempDir, "minds/transport");
+if (existsSync(transportSrc)) {
   // Clear stale transport files before copying fresh ones
   execSync(`rm -f "${repoRoot}/.collab/transport/"*.ts`, { stdio: "ignore" });
+  for (const f of readdirSync(transportSrc)) {
+    if (!f.endsWith(".ts") || f.endsWith(".test.ts") || f === "server.ts") continue;
+    if (statSync(join(transportSrc, f)).isDirectory()) continue;
+    copyFileSync(join(transportSrc, f), join(repoRoot, ".collab/transport", f));
+  }
   execSync(
-    `find "${join(tempDir, "transport")}" -maxdepth 1 -name "*.ts" ! -name "*.test.ts" -exec cp {} "${repoRoot}/.collab/transport/" \\;`,
-    { shell: true }
-  );
-  execSync(
-    `find "${repoRoot}/.collab/transport" -name "*.ts" -exec chmod +x {} \\;`,
+    `find "${join(repoRoot, ".collab/transport")}" -name "*.ts" -exec chmod +x {} \\;`,
     { shell: true }
   );
 }

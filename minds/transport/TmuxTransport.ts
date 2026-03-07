@@ -19,7 +19,7 @@ const thisDir = path.dirname(new URL(import.meta.url).pathname);
 let repoRoot = path.resolve(thisDir, "../..");
 let tmuxClientPath = path.join(repoRoot, ".collab/lib/pipeline/tmux-client.ts");
 if (!fs.existsSync(tmuxClientPath)) {
-  tmuxClientPath = path.join(repoRoot, "src/lib/pipeline/tmux-client.ts");
+  tmuxClientPath = path.join(repoRoot, "minds/pipeline_core/tmux-client.ts");
 }
 const { tmux, sleepMs, sendToPane } = await import(tmuxClientPath);
 

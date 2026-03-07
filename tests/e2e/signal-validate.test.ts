@@ -8,8 +8,8 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { parseSignal, getAllowedSignals } from "../../src/lib/pipeline/signal";
-import { validateSignal } from "../../src/scripts/orchestrator/signal-validate";
+import { parseSignal, getAllowedSignals } from "../../minds/pipeline_core/signal";
+import { validateSignal } from "../../minds/execution/signal-validate";
 import { compileCollab } from "./helpers";
 
 // ── Compile once ──────────────────────────────────────────────────────────────

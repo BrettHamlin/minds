@@ -11,7 +11,7 @@ import { describe, test, expect } from "bun:test";
 import {
   resolveTransition,
   resolveConditionalTransition,
-} from "../../src/lib/pipeline/transitions";
+} from "../../minds/pipeline_core/transitions";
 import { compileCollab } from "./helpers";
 
 // ── Compile once ──────────────────────────────────────────────────────────────

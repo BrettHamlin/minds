@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { parseTaskPhases } from "../../src/lib/pipeline/task-phases";
+import { parseTaskPhases } from "../../minds/pipeline_core/task-phases";
 
 describe("parseTaskPhases: no phase sections", () => {
   test("returns empty array when content has no ## Phase N: headings", () => {
@@ -147,7 +147,7 @@ describe("analyze-task-phases CLI: argument validation", () => {
 
   test("exits with error when no arguments provided", () => {
     const result = spawnSync("bun", [
-      "src/scripts/analyze-task-phases.ts",
+      "minds/execution/analyze-task-phases.ts",
     ], { encoding: "utf-8", cwd: PROJECT_ROOT });
 
     expect(result.status).toBe(1);
@@ -156,7 +156,7 @@ describe("analyze-task-phases CLI: argument validation", () => {
 
   test("exits with error when first arg is a flag (not ticket ID)", () => {
     const result = spawnSync("bun", [
-      "src/scripts/analyze-task-phases.ts",
+      "minds/execution/analyze-task-phases.ts",
       "--help",
     ], { encoding: "utf-8", cwd: PROJECT_ROOT });
 

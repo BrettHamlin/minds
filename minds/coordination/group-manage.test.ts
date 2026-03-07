@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { generateGroupId, cmdCreate, cmdAdd, cmdQuery, cmdList } from "./group-manage";
-import { writeJsonAtomic } from "../../src/lib/pipeline";
+import { writeJsonAtomic } from "../pipeline_core";
 
 let tmpDir: string;
 let groupsDir: string;

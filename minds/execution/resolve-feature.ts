@@ -5,7 +5,7 @@
  * Replaces: check-prerequisites.sh, setup-plan.sh, common.sh
  *
  * Usage:
- *   bun src/scripts/resolve-feature.ts [--require-tasks] [--include-tasks] [--setup-plan]
+ *   bun minds/execution/resolve-feature.ts [--require-tasks] [--include-tasks] [--setup-plan]
  *
  * Output: JSON to stdout
  */

@@ -35,7 +35,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // Absolute path to the installer script
-const INSTALLER = join(import.meta.dir, "../../src/commands/collab.install.ts");
+const INSTALLER = join(import.meta.dir, "../../minds/installer/collab-install.ts");
 
 // The local collab project — passed as COLLAB_SRC to bypass GitHub clone
 const PROJECT_ROOT = join(import.meta.dir, "../../");

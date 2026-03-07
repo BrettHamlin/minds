@@ -21,7 +21,7 @@ import { resolve } from "path";
 const PROJECT_ROOT = resolve(import.meta.dir, "../..");
 const CONFIG_READ_PATH = resolve(
   PROJECT_ROOT,
-  "src/scripts/orchestrator/commands/pipeline-config-read.ts"
+  "minds/execution/pipeline-config-read.ts"
 );
 
 describe("pipeline-config-read interactive default", () => {

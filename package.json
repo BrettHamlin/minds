@@ -8,7 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "bun test tests/ src/scripts/orchestrator/",
+    "test": "bun test tests/",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts"
   },

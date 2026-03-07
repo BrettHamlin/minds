@@ -20,7 +20,7 @@ import {
   registryPath,
   OrchestratorError,
   handleError,
-} from "../../src/lib/pipeline";
+} from "../pipeline_core";
 
 // ---------------------------------------------------------------------------
 // Core logic (exported for testing)

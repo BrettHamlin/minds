@@ -273,7 +273,7 @@ describe("collab.install.ts structural checks", () => {
 
   test("15. transport/ directory copy step is present", () => {
     expect(installSrc).toContain(".collab/transport");
-    expect(installSrc).toContain('join(tempDir, "transport")');
+    expect(installSrc).toContain('join(tempDir, "minds/transport")');
   });
 
   test("16. .collab/transport dir is created in dirs array", () => {

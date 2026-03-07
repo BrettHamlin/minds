@@ -9,7 +9,7 @@ import { describe, test, expect } from "bun:test";
 import {
   resolvePipelineVariant,
   classifyArgs,
-} from "../../src/scripts/orchestrator/commands/resolve-tickets.ts";
+} from "../../minds/coordination/resolve-tickets";
 
 // ---------------------------------------------------------------------------
 // classifyArgs — argument classification

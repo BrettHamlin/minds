@@ -89,10 +89,10 @@ if (existsSync(skillsSrc)) {
   console.log("  Warning: No skills directory found in source");
 }
 
-// Copy handlers
+// Copy handlers (standalone copies from minds/templates/handlers/)
 console.log("  -> Handlers...");
 execSync(
-  `find "${tempDir}/src/handlers" -name "*.ts" -exec cp {} "${repoRoot}/.collab/handlers/" \\;`,
+  `find "${tempDir}/minds/templates/handlers" -name "*.ts" -exec cp {} "${repoRoot}/.collab/handlers/" \\;`,
   { shell: true }
 );
 execSync(
@@ -102,10 +102,10 @@ execSync(
 const handlerCount = readdirSync(join(repoRoot, ".collab/handlers"))
   .filter((f) => f.endsWith(".ts")).length;
 
-// Copy orchestrator scripts
+// Copy orchestrator scripts (standalone copies from minds/templates/orchestrator/)
 console.log("  -> Orchestrator scripts...");
 execSync(
-  `find "${tempDir}/src/scripts/orchestrator" \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" -exec cp {} "${repoRoot}/.collab/scripts/orchestrator/" \\;`,
+  `find "${tempDir}/minds/templates/orchestrator" \\( -name "*.sh" -o -name "*.ts" \\) ! -name "*.test.ts" -exec cp {} "${repoRoot}/.collab/scripts/orchestrator/" \\;`,
   { shell: true }
 );
 execSync(
@@ -117,10 +117,10 @@ const orchestratorScriptCount = execSync(
   { encoding: "utf-8", shell: true }
 ).trim();
 
-// Copy non-orchestrator collab scripts
+// Copy non-orchestrator collab scripts (standalone copies from minds/templates/scripts/)
 console.log("  -> Collab scripts...");
 execSync(
-  `find "${tempDir}/src/scripts" -maxdepth 1 \\( -name "*.sh" -o -name "*.ts" \\) -exec cp {} "${repoRoot}/.collab/scripts/" \\;`,
+  `find "${tempDir}/minds/templates/scripts" -maxdepth 1 \\( -name "*.sh" -o -name "*.ts" \\) -exec cp {} "${repoRoot}/.collab/scripts/" \\;`,
   { shell: true }
 );
 execSync(

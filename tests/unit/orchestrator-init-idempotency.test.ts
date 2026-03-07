@@ -20,7 +20,7 @@ import { resolve } from "path";
 const PROJECT_ROOT = resolve(import.meta.dir, "../..");
 const INIT_PATH = resolve(
   PROJECT_ROOT,
-  "src/scripts/orchestrator/commands/orchestrator-init.ts"
+  "minds/execution/orchestrator-init.ts"
 );
 
 describe("orchestrator-init idempotency guard", () => {

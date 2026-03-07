@@ -12,14 +12,14 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 
-// Ensure .collab/config/pipeline.json is in sync with src/config/pipeline.json
+// Ensure .collab/config/pipeline.json is in sync with minds/templates/pipeline.json
 // before any tests run (module-level, so it runs even in parallel test execution).
 {
   const _root = execSync("git rev-parse --show-toplevel", {
     encoding: "utf-8",
     cwd: import.meta.dir,
   }).trim();
-  const _src = path.join(_root, "src/config/pipeline.json");
+  const _src = path.join(_root, "minds/templates/pipeline.json");
   const _dst = path.join(_root, ".collab/config/pipeline.json");
   if (fs.existsSync(_src)) {
     fs.mkdirSync(path.dirname(_dst), { recursive: true });
@@ -27,13 +27,13 @@ import { execSync } from "child_process";
   }
 }
 
-// Ensure .collab/config/pipeline-variants/ is in sync with src/config/pipeline-variants/
+// Ensure .collab/config/pipeline-variants/ is in sync with minds/templates/pipeline-variants/
 {
   const _root = execSync("git rev-parse --show-toplevel", {
     encoding: "utf-8",
     cwd: import.meta.dir,
   }).trim();
-  const _variantsSrc = path.join(_root, "src/config/pipeline-variants");
+  const _variantsSrc = path.join(_root, "minds/templates/pipeline-variants");
   const _variantsDst = path.join(_root, ".collab/config/pipeline-variants");
   if (fs.existsSync(_variantsSrc)) {
     fs.mkdirSync(_variantsDst, { recursive: true });
@@ -85,7 +85,7 @@ describe("section delimiter in signal pipeline", () => {
   });
 
   test("3. pipeline-signal.ts truncateDetail only uses substring (no character filtering)", () => {
-    const content = readSourceFile("src/handlers/pipeline-signal.ts");
+    const content = readSourceFile("minds/signals/pipeline-signal.ts");
 
     // Find the truncateDetail function body
     const funcStart = content.indexOf("function truncateDetail");
@@ -139,28 +139,28 @@ describe("collab.analyze.md file write instructions", () => {
 // analyze gate rule tests (4 tests)
 // ===========================================================================
 
-describe("analyze gate (src/config/gates/analyze.md)", () => {
+describe("analyze gate (minds/templates/gates/analyze.md)", () => {
   test("6. analyze gate has ANALYSIS_MD context token", () => {
-    const content = readSourceFile("src/config/gates/analyze.md");
+    const content = readSourceFile("minds/templates/gates/analyze.md");
 
     // The gate must reference ANALYSIS_MD in its frontmatter context section
     expect(content).toContain("ANALYSIS_MD");
   });
 
   test("7. analyze gate has REMEDIATION_COMPLETE response", () => {
-    const content = readSourceFile("src/config/gates/analyze.md");
+    const content = readSourceFile("minds/templates/gates/analyze.md");
 
     expect(content).toContain("REMEDIATION_COMPLETE");
   });
 
   test("8. analyze gate has ESCALATION response", () => {
-    const content = readSourceFile("src/config/gates/analyze.md");
+    const content = readSourceFile("minds/templates/gates/analyze.md");
 
     expect(content).toContain("ESCALATION");
   });
 
   test("9. analyze gate prohibits independent artifact review", () => {
-    const content = readSourceFile("src/config/gates/analyze.md");
+    const content = readSourceFile("minds/templates/gates/analyze.md");
 
     // The gate must contain the instruction preventing the orchestrator
     // from substituting its own review for the analyze agent's report
@@ -295,7 +295,7 @@ describe("pipeline variant routing instructions", () => {
   });
 
   test("29. orchestrator-init.ts reads pipeline_variant from metadata", () => {
-    const content = readSourceFile("src/scripts/orchestrator/commands/orchestrator-init.ts");
+    const content = readSourceFile("minds/execution/orchestrator-init.ts");
 
     expect(content).toContain("pipeline_variant");
     expect(content).toContain("pipeline-variants");
@@ -614,12 +614,12 @@ describe("collab.verify-execute.md command file", () => {
 
 describe("emit-verify-execute-signal.ts handler", () => {
   test("51. emit-verify-execute-signal.ts exists", () => {
-    const fullPath = path.join(REPO_ROOT, "src/handlers/emit-verify-execute-signal.ts");
+    const fullPath = path.join(REPO_ROOT, "minds/signals/emit-verify-execute-signal.ts");
     expect(fs.existsSync(fullPath)).toBe(true);
   });
 
   test("52. emit-verify-execute-signal.ts uses emitPhaseSignal factory", () => {
-    const content = readSourceFile("src/handlers/emit-verify-execute-signal.ts");
+    const content = readSourceFile("minds/signals/emit-verify-execute-signal.ts");
 
     expect(content).toContain('emitPhaseSignal("verify_execute"');
     expect(content).toContain("emit-phase-signal");
@@ -632,12 +632,12 @@ describe("emit-verify-execute-signal.ts handler", () => {
 
 describe("verify-execute-executor.ts file", () => {
   test("72. verify-execute-executor.ts exists", () => {
-    const fullPath = path.join(REPO_ROOT, "src/scripts/verify-execute-executor.ts");
+    const fullPath = path.join(REPO_ROOT, "minds/execution/verify-execute-executor.ts");
     expect(fs.existsSync(fullPath)).toBe(true);
   });
 
   test("73. verify-execute-executor.ts uses getRepoRoot pattern", () => {
-    const content = readSourceFile("src/scripts/verify-execute-executor.ts");
+    const content = readSourceFile("minds/execution/verify-execute-executor.ts");
     expect(content).toContain("getRepoRoot");
     expect(content).toContain("git rev-parse --show-toplevel");
   });
@@ -675,12 +675,12 @@ describe("collab.pre-deploy-confirm.md command file", () => {
 
 describe("emit-pre-deploy-confirm-signal.ts handler", () => {
   test("56. emit-pre-deploy-confirm-signal.ts exists", () => {
-    const fullPath = path.join(REPO_ROOT, "src/handlers/emit-pre-deploy-confirm-signal.ts");
+    const fullPath = path.join(REPO_ROOT, "minds/signals/emit-pre-deploy-confirm-signal.ts");
     expect(fs.existsSync(fullPath)).toBe(true);
   });
 
   test("57. emit-pre-deploy-confirm-signal.ts uses emitPhaseSignal factory", () => {
-    const content = readSourceFile("src/handlers/emit-pre-deploy-confirm-signal.ts");
+    const content = readSourceFile("minds/signals/emit-pre-deploy-confirm-signal.ts");
 
     expect(content).toContain('emitPhaseSignal("pre_deploy_confirm"');
     expect(content).toContain("emit-phase-signal");
@@ -718,12 +718,12 @@ describe("collab.deploy-verify.md command file", () => {
 
 describe("emit-deploy-verify-signal.ts handler", () => {
   test("61. emit-deploy-verify-signal.ts exists", () => {
-    const fullPath = path.join(REPO_ROOT, "src/handlers/emit-deploy-verify-signal.ts");
+    const fullPath = path.join(REPO_ROOT, "minds/signals/emit-deploy-verify-signal.ts");
     expect(fs.existsSync(fullPath)).toBe(true);
   });
 
   test("62. emit-deploy-verify-signal.ts uses emitPhaseSignal factory", () => {
-    const content = readSourceFile("src/handlers/emit-deploy-verify-signal.ts");
+    const content = readSourceFile("minds/signals/emit-deploy-verify-signal.ts");
 
     expect(content).toContain('emitPhaseSignal("deploy_verify"');
     expect(content).toContain("emit-phase-signal");
@@ -736,12 +736,12 @@ describe("emit-deploy-verify-signal.ts handler", () => {
 
 describe("deploy-verify-executor.ts file", () => {
   test("70. deploy-verify-executor.ts exists", () => {
-    const fullPath = path.join(REPO_ROOT, "src/scripts/deploy-verify-executor.ts");
+    const fullPath = path.join(REPO_ROOT, "minds/execution/deploy-verify-executor.ts");
     expect(fs.existsSync(fullPath)).toBe(true);
   });
 
   test("71. deploy-verify-executor.ts uses getRepoRoot pattern", () => {
-    const content = readSourceFile("src/scripts/deploy-verify-executor.ts");
+    const content = readSourceFile("minds/execution/deploy-verify-executor.ts");
     expect(content).toContain("getRepoRoot");
     expect(content).toContain("git rev-parse --show-toplevel");
   });
@@ -753,12 +753,12 @@ describe("deploy-verify-executor.ts file", () => {
 
 describe("pre-deploy-summary.ts file", () => {
   test("74. pre-deploy-summary.ts exists", () => {
-    const fullPath = path.join(REPO_ROOT, "src/scripts/pre-deploy-summary.ts");
+    const fullPath = path.join(REPO_ROOT, "minds/execution/pre-deploy-summary.ts");
     expect(fs.existsSync(fullPath)).toBe(true);
   });
 
   test("75. pre-deploy-summary.ts uses getRepoRoot pattern", () => {
-    const content = readSourceFile("src/scripts/pre-deploy-summary.ts");
+    const content = readSourceFile("minds/execution/pre-deploy-summary.ts");
     expect(content).toContain("getRepoRoot");
     expect(content).toContain("git rev-parse --show-toplevel");
   });
@@ -859,7 +859,7 @@ describe("pipeline-variants/deploy.json structure", () => {
 
 describe("emit-code-review-signal.ts handler", () => {
   test("83. emit-code-review-signal.ts exists", () => {
-    const fullPath = path.join(REPO_ROOT, "src/handlers/emit-code-review-signal.ts");
+    const fullPath = path.join(REPO_ROOT, "minds/signals/emit-code-review-signal.ts");
     expect(fs.existsSync(fullPath)).toBe(true);
   });
 
@@ -875,36 +875,36 @@ describe("emit-code-review-signal.ts handler", () => {
 
 describe("collab.install.ts installer updates", () => {
   test("77. collab.install.ts contains pipeline-variants copy section", () => {
-    const content = readSourceFile("src/commands/collab.install.ts");
+    const content = readSourceFile("minds/installer/collab-install.ts");
     expect(content).toContain("pipeline-variants");
     expect(content).toContain("variantsDir");
   });
 
   test("78. collab.install.ts contains command config scaffold section", () => {
-    const content = readSourceFile("src/commands/collab.install.ts");
+    const content = readSourceFile("minds/installer/collab-install.ts");
     expect(content).toContain("commandConfigs");
     expect(content).toContain("configScaffoldCount");
     expect(content).toContain("scaffold");
   });
 
-  test("79. src/config/defaults/run-tests.json exists and is valid JSON", () => {
-    const fullPath = path.join(REPO_ROOT, "src/config/defaults/run-tests.json");
+  test("79. minds/templates/defaults/run-tests.json exists and is valid JSON", () => {
+    const fullPath = path.join(REPO_ROOT, "minds/templates/defaults/run-tests.json");
     expect(fs.existsSync(fullPath)).toBe(true);
     const content = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
     expect(content.command).toBe("npm test");
     expect(content.timeout).toBe(120);
   });
 
-  test("80. src/config/defaults/visual-verify.json exists and is valid JSON", () => {
-    const fullPath = path.join(REPO_ROOT, "src/config/defaults/visual-verify.json");
+  test("80. minds/templates/defaults/visual-verify.json exists and is valid JSON", () => {
+    const fullPath = path.join(REPO_ROOT, "minds/templates/defaults/visual-verify.json");
     expect(fs.existsSync(fullPath)).toBe(true);
     const content = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
     expect(content.baseUrl).toBe("http://localhost:3000");
     expect(content.routes).toBeArray();
   });
 
-  test("81. src/config/defaults/deploy-verify.json exists and is valid JSON", () => {
-    const fullPath = path.join(REPO_ROOT, "src/config/defaults/deploy-verify.json");
+  test("81. minds/templates/defaults/deploy-verify.json exists and is valid JSON", () => {
+    const fullPath = path.join(REPO_ROOT, "minds/templates/defaults/deploy-verify.json");
     expect(fs.existsSync(fullPath)).toBe(true);
     const content = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
     expect(content.productionUrl).toBe("https://your-app.example.com");
@@ -912,7 +912,7 @@ describe("collab.install.ts installer updates", () => {
   });
 
   test("82. collab.install.ts lists all 5 new commands in Available Commands", () => {
-    const content = readSourceFile("src/commands/collab.install.ts");
+    const content = readSourceFile("minds/installer/collab-install.ts");
     expect(content).toContain("/collab.run-tests");
     expect(content).toContain("/collab.visual-verify");
     expect(content).toContain("/collab.verify-execute");

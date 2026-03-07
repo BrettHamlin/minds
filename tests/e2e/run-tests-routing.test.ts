@@ -16,8 +16,8 @@ import { join } from "path";
 import {
   resolveTransition,
   resolveConditionalTransition,
-} from "../../src/lib/pipeline/transitions";
-import { resolvePhaseCommand } from "../../src/scripts/orchestrator/commands/phase-dispatch";
+} from "../../minds/pipeline_core/transitions";
+import { resolvePhaseCommand } from "../../minds/execution/phase-dispatch";
 import { compileCollab } from "./helpers";
 
 // ── Compile once ──────────────────────────────────────────────────────────────

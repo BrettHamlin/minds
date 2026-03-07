@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "fs";
 
-const RESOLVE_QUESTIONS_PATH = "src/scripts/orchestrator/commands/resolve-questions.ts";
+const RESOLVE_QUESTIONS_PATH = "minds/coordination/resolve-questions.ts";
 
 describe("resolve-questions.ts schema tolerance", () => {
   test("guards finding.context access with optional chaining before using codePatterns", () => {

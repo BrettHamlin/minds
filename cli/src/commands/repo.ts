@@ -1,5 +1,5 @@
 import { existsSync } from "fs";
-import { readRepos, writeRepos, getReposFilePath } from "../../../src/lib/pipeline/repo-registry";
+import { readRepos, writeRepos, getReposFilePath } from "../../../minds/pipeline_core/repo-registry";
 
 export function repoResolve(repoId: string): void {
   const repos = readRepos();

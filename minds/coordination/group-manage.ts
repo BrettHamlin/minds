@@ -34,7 +34,7 @@ import {
   validateTicketIdArg,
   OrchestratorError,
   handleError,
-} from "../../src/lib/pipeline";
+} from "../pipeline_core";
 
 // ---------------------------------------------------------------------------
 // Types

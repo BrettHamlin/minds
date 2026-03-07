@@ -15,7 +15,7 @@ import { execSync } from "child_process";
 
 // ---------------------------------------------------------------------------
 // Test-suite setup: ensure .collab/config/pipeline.json mirrors the source of
-// truth at src/config/pipeline.json.  The .collab/ directory is gitignored and
+// truth at minds/templates/pipeline.json.  The .collab/ directory is gitignored and
 // may be absent or stale in fresh checkouts.  Orchestrator scripts resolve
 // pipeline.json at ${repoRoot}/.collab/config/pipeline.json, so we keep it in
 // sync here rather than requiring a manual install step.
@@ -26,7 +26,7 @@ import { execSync } from "child_process";
     encoding: "utf-8",
     cwd: import.meta.dir,
   }).trim();
-  const _src = path.join(_root, "src/config/pipeline.json");
+  const _src = path.join(_root, "minds/templates/pipeline.json");
   const _dst = path.join(_root, ".collab/config/pipeline.json");
   if (fs.existsSync(_src)) {
     fs.mkdirSync(path.dirname(_dst), { recursive: true });
@@ -43,14 +43,16 @@ const REPO_ROOT = execSync("git rev-parse --show-toplevel", {
   cwd: import.meta.dir,
 }).trim();
 
-const SCRIPTS_DIR = path.join(REPO_ROOT, "src/scripts/orchestrator");
+const SCRIPTS_DIR = path.join(REPO_ROOT, "minds/execution");
+const COORDINATION_DIR = path.join(REPO_ROOT, "minds/coordination");
 const REGISTRY_DIR = path.join(REPO_ROOT, ".collab/state/pipeline-registry");
 
 function runScript(
   script: string,
-  args: string[]
+  args: string[],
+  scriptDir?: string
 ): { exitCode: number; stdout: string; stderr: string } {
-  const result = Bun.spawnSync(["bun", path.join(SCRIPTS_DIR, script), ...args], {
+  const result = Bun.spawnSync(["bun", path.join(scriptDir ?? SCRIPTS_DIR, script), ...args], {
     cwd: REPO_ROOT,
     env: { ...process.env, NODE_ENV: "test" },
   });
@@ -467,7 +469,7 @@ describe("held-release-scan.ts", () => {
     });
     createdTickets.push(CLEAN_TICKET);
 
-    const result = runScript("held-release-scan.ts", []);
+    const result = runScript("held-release-scan.ts", [], COORDINATION_DIR);
 
     expect(result.exitCode).toBe(0);
     // Should not report any releases (may say "No held agents found." but only
@@ -503,7 +505,7 @@ describe("held-release-scan.ts", () => {
       { ticket_id: DONE_TICKET, phase: "implement" },
     ]);
 
-    const result = runScript("held-release-scan.ts", []);
+    const result = runScript("held-release-scan.ts", [], COORDINATION_DIR);
 
     // The script tries to call registry-update.sh which may not exist.
     // If it exits 0 and stdout contains "Released", the test passes.
@@ -550,7 +552,7 @@ describe("held-release-scan.ts", () => {
       { ticket_id: RUNNING_TICKET, phase: "implement" },
     ]);
 
-    const result = runScript("held-release-scan.ts", []);
+    const result = runScript("held-release-scan.ts", [], COORDINATION_DIR);
 
     // The script should identify HOLD-002 as still held
     // It may also process other held tickets from test 26 — we just check
@@ -571,7 +573,7 @@ describe("held-release-scan.ts", () => {
     // Remove from tracking since we already deleted them
     createdTickets.length = 0;
 
-    const result = runScript("held-release-scan.ts", []);
+    const result = runScript("held-release-scan.ts", [], COORDINATION_DIR);
 
     expect(result.exitCode).toBe(0);
   });

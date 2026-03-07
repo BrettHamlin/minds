@@ -14,7 +14,7 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { resolveTransition } from "../../src/lib/pipeline/transitions";
+import { resolveTransition } from "../../minds/pipeline_core/transitions";
 
 // ── Fixture paths ────────────────────────────────────────────────────────────
 
