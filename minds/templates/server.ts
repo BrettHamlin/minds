@@ -34,46 +34,46 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const req = workUnit.request.toLowerCase().trim();
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
 
-  // "list templates" — returns full file inventory
-  if (req.startsWith("list templates")) {
-    const files = listTemplates();
-    return { status: "handled", result: { files } };
-  }
+  switch (workUnit.intent) {
+    case "list templates": {
+      const files = listTemplates();
+      return { status: "handled", result: { files } };
+    }
 
-  // "read template {path}" — returns file content
-  if (req.startsWith("read template")) {
-    const filePath = (ctx.path as string | undefined) ?? req.replace(/^read template\s*/i, "").trim();
-    if (!filePath) {
-      return { status: "handled", error: "Missing path. Provide context.path or append path to request." };
+    case "read template content by path": {
+      const filePath = (ctx.path as string | undefined) ?? req.replace(/^read template\s*/i, "").trim();
+      if (!filePath) {
+        return { status: "handled", error: "Missing path. Provide context.path or append path to request." };
+      }
+      const abs = join(TEMPLATES_DIR, filePath);
+      if (!existsSync(abs)) {
+        return { status: "handled", error: `Template not found: ${filePath}` };
+      }
+      const content = readFileSync(abs, "utf-8");
+      return { status: "handled", result: { path: filePath, content } };
     }
-    const abs = join(TEMPLATES_DIR, filePath);
-    if (!existsSync(abs)) {
-      return { status: "handled", error: `Template not found: ${filePath}` };
-    }
-    const content = readFileSync(abs, "utf-8");
-    return { status: "handled", result: { path: filePath, content } };
-  }
 
-  // "get schema {name}" — returns JSON schema content
-  if (req.startsWith("get schema")) {
-    const name = (ctx.name as string | undefined) ?? req.replace(/^get schema\s*/i, "").trim();
-    if (!name) {
-      return { status: "handled", error: "Missing schema name. Provide context.name or append name to request." };
+    case "get JSON schema by name": {
+      const name = (ctx.name as string | undefined) ?? req.replace(/^get schema\s*/i, "").trim();
+      if (!name) {
+        return { status: "handled", error: "Missing schema name. Provide context.name or append name to request." };
+      }
+      const candidates = [
+        join(TEMPLATES_DIR, name),
+        join(TEMPLATES_DIR, `${name}.schema.json`),
+        join(TEMPLATES_DIR, `pipeline.${name}.schema.json`),
+      ];
+      const found = candidates.find((p) => existsSync(p));
+      if (!found) {
+        return { status: "handled", error: `Schema not found: ${name}` };
+      }
+      const content = readFileSync(found, "utf-8");
+      return { status: "handled", result: { name, schema: JSON.parse(content) } };
     }
-    const candidates = [
-      join(TEMPLATES_DIR, name),
-      join(TEMPLATES_DIR, `${name}.schema.json`),
-      join(TEMPLATES_DIR, `pipeline.${name}.schema.json`),
-    ];
-    const found = candidates.find((p) => existsSync(p));
-    if (!found) {
-      return { status: "handled", error: `Schema not found: ${name}` };
-    }
-    const content = readFileSync(found, "utf-8");
-    return { status: "handled", result: { name, schema: JSON.parse(content) } };
-  }
 
-  return { status: "escalate" };
+    default:
+      return { status: "escalate" };
+  }
 }
 
 export default createMind({

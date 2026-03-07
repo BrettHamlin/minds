@@ -16,6 +16,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod";
 import type { Mind, MindDescription, WorkUnit, WorkResult } from "./mind.js";
 import { validateWorkUnit } from "./mind.js";
+import { matchIntent } from "./intent.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -65,10 +66,12 @@ function buildMcpServer(config: MindConfig, description: MindDescription): McpSe
       inputSchema: WorkUnitSchema,
     },
     async (input) => {
+      const intent = matchIntent(input.request, config.capabilities);
       const workUnit: WorkUnit = {
         request: input.request,
         context: input.context,
         from: input.from,
+        ...(intent !== null && { intent }),
       };
       const result = await config.handle(workUnit);
       return {
@@ -143,6 +146,10 @@ export async function createMind(config: MindConfig): Promise<RunningMind> {
     async handle(workUnit: WorkUnit): Promise<WorkResult> {
       if (!validateWorkUnit(workUnit)) {
         return { status: "handled", error: "Invalid WorkUnit" };
+      }
+      if (workUnit.intent === undefined) {
+        const intent = matchIntent(workUnit.request, config.capabilities);
+        if (intent !== null) workUnit = { ...workUnit, intent };
       }
       return config.handle(workUnit);
     },

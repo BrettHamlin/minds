@@ -12,39 +12,38 @@ import { createMind } from "../server-base.js";
 import type { WorkUnit, WorkResult } from "../mind.js";
 
 async function handle(workUnit: WorkUnit): Promise<WorkResult> {
-  const req = workUnit.request.toLowerCase().trim();
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
 
-  // "install package" — install a pipeline or pack by name
-  if (req.startsWith("install package") || req.startsWith("install pipeline")) {
-    const { install } = await import("./commands/pipelines/install.js");
-    const name = ctx.name as string | undefined;
-    if (!name) {
-      return { status: "handled", error: "Missing context.name" };
+  switch (workUnit.intent) {
+    case "install package": {
+      const { install } = await import("./commands/pipelines/install.js");
+      const name = ctx.name as string | undefined;
+      if (!name) {
+        return { status: "handled", error: "Missing context.name" };
+      }
+      await install([name], {});
+      return { status: "handled", result: { ok: true } };
     }
-    await install([name], {});
-    return { status: "handled", result: { ok: true } };
-  }
 
-  // "list packages" — list installed pipelines
-  if (req.startsWith("list packages") || req.startsWith("list pipelines")) {
-    const { list } = await import("./commands/pipelines/list.js");
-    await list([], {});
-    return { status: "handled", result: { ok: true } };
-  }
-
-  // "resolve repo path" — resolve a repo-id to its local path
-  if (req.startsWith("resolve repo path") || req.startsWith("resolve repo")) {
-    const { repo } = await import("./commands/repo/index.js");
-    const repoId = ctx.repoId as string | undefined;
-    if (!repoId) {
-      return { status: "handled", error: "Missing context.repoId" };
+    case "list packages": {
+      const { list } = await import("./commands/pipelines/list.js");
+      await list([], {});
+      return { status: "handled", result: { ok: true } };
     }
-    await repo(["resolve", repoId], {});
-    return { status: "handled", result: { ok: true } };
-  }
 
-  return { status: "escalate" };
+    case "resolve repo path": {
+      const { repo } = await import("./commands/repo/index.js");
+      const repoId = ctx.repoId as string | undefined;
+      if (!repoId) {
+        return { status: "handled", error: "Missing context.repoId" };
+      }
+      await repo(["resolve", repoId], {});
+      return { status: "handled", result: { ok: true } };
+    }
+
+    default:
+      return { status: "escalate" };
+  }
 }
 
 export default createMind({

@@ -14,108 +14,104 @@ import { createMind } from "../server-base.js";
 import type { WorkUnit, WorkResult } from "../mind.js";
 
 async function handle(workUnit: WorkUnit): Promise<WorkResult> {
-  const req = workUnit.request.toLowerCase().trim();
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
 
-  // "record gate result" — record a gate evaluation decision in metrics.db
-  if (req.startsWith("record gate result")) {
-    const { openMetricsDb, insertGate } = await import("./metrics.js");
-    const repoRoot = ctx.repoRoot as string | undefined;
-    const ticketId = ctx.ticketId as string | undefined;
-    const gateName = ctx.gateName as string | undefined;
-    const decision = ctx.decision as string | undefined;
-    const reasoning = ctx.reasoning as string | null | undefined;
-    if (!repoRoot || !ticketId || !gateName || !decision) {
-      return { status: "handled", error: "Missing context: repoRoot, ticketId, gateName, decision" };
+  switch (workUnit.intent) {
+    case "record gate result": {
+      const { openMetricsDb, insertGate } = await import("./metrics.js");
+      const repoRoot = ctx.repoRoot as string | undefined;
+      const ticketId = ctx.ticketId as string | undefined;
+      const gateName = ctx.gateName as string | undefined;
+      const decision = ctx.decision as string | undefined;
+      const reasoning = ctx.reasoning as string | null | undefined;
+      if (!repoRoot || !ticketId || !gateName || !decision) {
+        return { status: "handled", error: "Missing context: repoRoot, ticketId, gateName, decision" };
+      }
+      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
+      const db = openMetricsDb(dbPath);
+      const id = insertGate(db, ticketId, gateName, decision, reasoning ?? null);
+      db.close();
+      return { status: "handled", result: { ticketId, gate: gateName, decision, id } };
     }
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
-    const id = insertGate(db, ticketId, gateName, decision, reasoning ?? null);
-    db.close();
-    return { status: "handled", result: { ticketId, gate: gateName, decision, id } };
-  }
 
-  // "create draft pr" — create a GitHub draft PR before TERMINAL
-  if (req.startsWith("create draft pr")) {
-    const { createDraftPr } = await import("./draft-pr-lib.js");
-    const repoRoot = ctx.repoRoot as string | undefined;
-    const branch = ctx.branch as string | undefined;
-    const ticketId = ctx.ticketId as string | undefined;
-    if (!repoRoot || !branch || !ticketId) {
-      return { status: "handled", error: "Missing context: repoRoot, branch, ticketId" };
+    case "create draft pr": {
+      const { createDraftPr } = await import("./draft-pr-lib.js");
+      const repoRoot = ctx.repoRoot as string | undefined;
+      const branch = ctx.branch as string | undefined;
+      const ticketId = ctx.ticketId as string | undefined;
+      if (!repoRoot || !branch || !ticketId) {
+        return { status: "handled", error: "Missing context: repoRoot, branch, ticketId" };
+      }
+      const result = await createDraftPr(branch, ticketId);
+      return { status: "handled", result };
     }
-    const result = await createDraftPr(branch, ticketId);
-    return { status: "handled", result };
-  }
 
-  // "complete run" — finalize run record at TERMINAL
-  if (req.startsWith("complete run")) {
-    const { openMetricsDb, completeRun } = await import("./metrics.js");
-    const repoRoot = ctx.repoRoot as string | undefined;
-    const ticketId = ctx.ticketId as string | undefined;
-    const outcome = ctx.outcome as string | undefined;
-    if (!repoRoot || !ticketId || !outcome) {
-      return { status: "handled", error: "Missing context: repoRoot, ticketId, outcome" };
+    case "complete run": {
+      const { openMetricsDb, completeRun } = await import("./metrics.js");
+      const repoRoot = ctx.repoRoot as string | undefined;
+      const ticketId = ctx.ticketId as string | undefined;
+      const outcome = ctx.outcome as string | undefined;
+      if (!repoRoot || !ticketId || !outcome) {
+        return { status: "handled", error: "Missing context: repoRoot, ticketId, outcome" };
+      }
+      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
+      const db = openMetricsDb(dbPath);
+      completeRun(db, ticketId, outcome);
+      db.close();
+      return { status: "handled", result: { ticketId, outcome } };
     }
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
-    completeRun(db, ticketId, outcome);
-    db.close();
-    return { status: "handled", result: { ticketId, outcome } };
-  }
 
-  // "classify run" — classify run as autonomous or not at TERMINAL
-  if (req.startsWith("classify run")) {
-    const { openMetricsDb } = await import("./metrics.js");
-    const { classifyRun } = await import("./classify-run-lib.js");
-    const { getAllAutonomyRates } = await import("./autonomy-rate.js");
-    const repoRoot = ctx.repoRoot as string | undefined;
-    const ticketId = ctx.ticketId as string | undefined;
-    if (!repoRoot || !ticketId) {
-      return { status: "handled", error: "Missing context: repoRoot, ticketId" };
+    case "classify run": {
+      const { openMetricsDb } = await import("./metrics.js");
+      const { classifyRun } = await import("./classify-run-lib.js");
+      const { getAllAutonomyRates } = await import("./autonomy-rate.js");
+      const repoRoot = ctx.repoRoot as string | undefined;
+      const ticketId = ctx.ticketId as string | undefined;
+      if (!repoRoot || !ticketId) {
+        return { status: "handled", error: "Missing context: repoRoot, ticketId" };
+      }
+      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
+      const db = openMetricsDb(dbPath);
+      const result = classifyRun(db, ticketId);
+      const rates = getAllAutonomyRates(db);
+      db.close();
+      return { status: "handled", result: { ...result, autonomyRates: rates } };
     }
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
-    const result = classifyRun(db, ticketId);
-    const rates = getAllAutonomyRates(db);
-    db.close();
-    return { status: "handled", result: { ...result, autonomyRates: rates } };
-  }
 
-  // "show dashboard" — display pipeline run dashboard
-  if (req.startsWith("show dashboard")) {
-    const { openMetricsDb, listRuns } = await import("./metrics.js");
-    const repoRoot = ctx.repoRoot as string | undefined;
-    const last = (ctx.last as number | undefined) ?? 10;
-    if (!repoRoot) {
-      return { status: "handled", error: "Missing context.repoRoot" };
+    case "show dashboard": {
+      const { openMetricsDb } = await import("./metrics.js");
+      const repoRoot = ctx.repoRoot as string | undefined;
+      const last = (ctx.last as number | undefined) ?? 10;
+      if (!repoRoot) {
+        return { status: "handled", error: "Missing context.repoRoot" };
+      }
+      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
+      const db = openMetricsDb(dbPath);
+      const { listRuns: listRunsFn } = await import("./dashboard-lib.js");
+      const runs = listRunsFn(db, { last });
+      db.close();
+      return { status: "handled", result: { runs } };
     }
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
-    const { listRuns: listRunsFn } = await import("./dashboard-lib.js");
-    const runs = listRunsFn(db, { last });
-    db.close();
-    return { status: "handled", result: { runs } };
-  }
 
-  // "check gate accuracy" — evaluate gate accuracy at TERMINAL
-  if (req.startsWith("check gate accuracy")) {
-    const { openMetricsDb } = await import("./metrics.js");
-    const { updateGateAccuracy, getGateAccuracyReport } = await import("./gate-accuracy-lib.js");
-    const repoRoot = ctx.repoRoot as string | undefined;
-    const ticketId = ctx.ticketId as string | undefined;
-    if (!repoRoot || !ticketId) {
-      return { status: "handled", error: "Missing context: repoRoot, ticketId" };
+    case "check gate accuracy": {
+      const { openMetricsDb } = await import("./metrics.js");
+      const { updateGateAccuracy, getGateAccuracyReport } = await import("./gate-accuracy-lib.js");
+      const repoRoot = ctx.repoRoot as string | undefined;
+      const ticketId = ctx.ticketId as string | undefined;
+      if (!repoRoot || !ticketId) {
+        return { status: "handled", error: "Missing context: repoRoot, ticketId" };
+      }
+      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
+      const db = openMetricsDb(dbPath);
+      updateGateAccuracy(db, ticketId);
+      const report = getGateAccuracyReport(db);
+      db.close();
+      return { status: "handled", result: report };
     }
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
-    updateGateAccuracy(db, ticketId);
-    const report = getGateAccuracyReport(db);
-    db.close();
-    return { status: "handled", result: report };
-  }
 
-  return { status: "escalate" };
+    default:
+      return { status: "escalate" };
+  }
 }
 
 export default createMind({

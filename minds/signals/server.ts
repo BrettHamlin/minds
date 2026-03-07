@@ -11,47 +11,46 @@ import { createMind } from "../server-base.js";
 import type { WorkUnit, WorkResult } from "../mind.js";
 
 async function handle(workUnit: WorkUnit): Promise<WorkResult> {
-  const req = workUnit.request.toLowerCase().trim();
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
 
-  // "emit signal" — emit a phase signal for a given event
-  if (req.startsWith("emit signal")) {
-    const { emitPhaseSignal } = await import("./emit-phase-signal.js");
-    const phaseName = ctx.phase as string | undefined;
-    const eventMap = ctx.eventMap as Record<string, string> | undefined;
-    if (!phaseName || !eventMap) {
-      return { status: "handled", error: "Missing context.phase or context.eventMap" };
+  switch (workUnit.intent) {
+    case "emit signal": {
+      const { emitPhaseSignal } = await import("./emit-phase-signal.js");
+      const phaseName = ctx.phase as string | undefined;
+      const eventMap = ctx.eventMap as Record<string, string> | undefined;
+      if (!phaseName || !eventMap) {
+        return { status: "handled", error: "Missing context.phase or context.eventMap" };
+      }
+      await emitPhaseSignal(phaseName, eventMap);
+      return { status: "handled", result: { ok: true } };
     }
-    await emitPhaseSignal(phaseName, eventMap);
-    return { status: "handled", result: { ok: true } };
-  }
 
-  // "resolve signal name" — resolve the signal name from pipeline config
-  if (req.startsWith("resolve signal name")) {
-    const { resolveSignalName } = await import("./pipeline-signal.js");
-    const phaseName = ctx.phase as string | undefined;
-    const event = ctx.event as string | undefined;
-    const registry = ctx.registry;
-    if (!phaseName || !event) {
-      return { status: "handled", error: "Missing context.phase or context.event" };
+    case "resolve signal name": {
+      const { resolveSignalName } = await import("./pipeline-signal.js");
+      const phaseName = ctx.phase as string | undefined;
+      const event = ctx.event as string | undefined;
+      const registry = ctx.registry;
+      if (!phaseName || !event) {
+        return { status: "handled", error: "Missing context.phase or context.event" };
+      }
+      const name = resolveSignalName(phaseName, event, registry);
+      return { status: "handled", result: { signalName: name } };
     }
-    const name = resolveSignalName(phaseName, event, registry);
-    return { status: "handled", result: { signalName: name } };
-  }
 
-  // "emit phase signal" — emit a phase-specific signal by phase name
-  if (req.startsWith("emit phase signal")) {
-    const { emitPhaseSignal } = await import("./emit-phase-signal.js");
-    const phaseName = ctx.phase as string | undefined;
-    const eventMap = ctx.eventMap as Record<string, string> | undefined;
-    if (!phaseName || !eventMap) {
-      return { status: "handled", error: "Missing context.phase or context.eventMap" };
+    case "emit phase signal": {
+      const { emitPhaseSignal } = await import("./emit-phase-signal.js");
+      const phaseName = ctx.phase as string | undefined;
+      const eventMap = ctx.eventMap as Record<string, string> | undefined;
+      if (!phaseName || !eventMap) {
+        return { status: "handled", error: "Missing context.phase or context.eventMap" };
+      }
+      await emitPhaseSignal(phaseName, eventMap);
+      return { status: "handled", result: { ok: true } };
     }
-    await emitPhaseSignal(phaseName, eventMap);
-    return { status: "handled", result: { ok: true } };
-  }
 
-  return { status: "escalate" };
+    default:
+      return { status: "escalate" };
+  }
 }
 
 export default createMind({

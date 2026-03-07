@@ -7,6 +7,8 @@ export interface WorkUnit {
   request: string;
   context?: unknown;
   from?: string;
+  /** Best-matching capability string from this Mind's description, set by server-base. */
+  intent?: string;
 }
 
 export interface WorkResult {
