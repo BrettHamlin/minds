@@ -260,6 +260,22 @@ if (import.meta.main) {
 
   // Discover siblings eagerly, then announce readiness
   _state = await discoverSiblings();
+
+  // Load embedding model for hybrid search (BM25 + vector)
+  const { loadEmbeddingModel } = await import("../embeddings.js");
+  const model = await loadEmbeddingModel();
+  if (model) {
+    _state.mindRouter.setModel(model);
+    // Re-index children with embeddings now that model is available
+    // addChild is idempotent — BM25Index.add() handles duplicate removal
+    for (const child of _state.children) {
+      await _state.mindRouter.addChild(child.description);
+    }
+    console.log(`[router] Embedding model loaded — hybrid search active`);
+  } else {
+    console.log(`[router] Embedding model unavailable — BM25-only mode`);
+  }
+
   process.stdout.write(`MIND_READY port=${server.port}\n`);
 
   // ---------------------------------------------------------------------------
