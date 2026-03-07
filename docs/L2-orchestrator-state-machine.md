@@ -1,7 +1,7 @@
 # L2 -- Orchestrator State Machine
 
 **Last verified**: 2026-02-21
-**Source of truth**: `src/config/pipeline.json` (v3.0), `src/commands/collab.run.md`, scripts in `src/scripts/orchestrator/`
+**Source of truth**: `src/config/pipeline.json` (v3.0), `src/commands/collab.run.md`, scripts in `minds/execution/` and `minds/coordination/`
 
 ---
 
@@ -14,7 +14,7 @@ The architecture has three layers:
 | Layer | Location | Changes when |
 |---|---|---|
 | **Declarative** | `pipeline.json` | Workflow evolves (new phases, transitions, gates) |
-| **Execution** | `orchestrator/*.sh`, `orchestrator/*.ts` | Pipeline.json schema changes (rare) |
+| **Execution** | `minds/execution/*.ts`, `minds/coordination/*.ts` | Pipeline.json schema changes (rare) |
 | **Judgment** | `collab.run.md` | Gate evaluation policies change |
 
 All scripts are generic interpreters. They read rules from `pipeline.json` and execute them. Adding, renaming, or reordering phases requires zero script changes.
@@ -591,9 +591,9 @@ Located at `src/commands/collab.install.ts`. Installs collab into any git reposi
    - `src/commands/*.md` --> `.claude/commands/`
    - `src/commands/collab.install.ts` --> `.claude/commands/collab.install.ts`
    - `src/skills/*` --> `.claude/skills/`
-   - `src/handlers/*.ts` --> `.collab/handlers/` (+x)
-   - `src/scripts/orchestrator/*.{sh,ts}` (excluding `*.test.ts`) --> `.collab/scripts/orchestrator/` (+x on .sh)
-   - `src/scripts/*.{sh,ts}` (top-level, e.g., `verify-and-complete.ts`, `webhook-notify.ts`) --> `.collab/scripts/`
+   - `minds/signals/*.ts` --> `.collab/handlers/` (+x)
+   - `minds/execution/*.ts` (excluding `*.test.ts`) --> `.collab/scripts/orchestrator/`
+   - `minds/execution/verify-and-complete.ts`, `minds/execution/webhook-notify.ts` --> `.collab/scripts/`
    - `.specify/scripts/*` --> `.specify/scripts/`
    - `.specify/templates/*` --> `.specify/templates/`
 4. **Conditional copies** (skip if already exists, user may have customized):
@@ -621,7 +621,7 @@ Located at `scripts/install.sh`. For the collab repo itself (development use).
    - `.claude/hooks/handlers/`
 2. **Copy commands**: `src/commands/*.md` --> `.claude/commands/`
 3. **Copy skills**: `src/skills/{BlindQA,SpecCritique,SpecCreator}` --> `.claude/skills/`
-4. **Copy handlers**: `src/handlers/*.ts` --> `.claude/hooks/handlers/` (+x)
+4. **Copy handlers**: `minds/signals/*.ts` --> `.claude/hooks/handlers/` (+x)
 
 Note: the local install does NOT copy orchestrator scripts, pipeline config, or coordination schemas. Those are referenced directly from `src/` via the repo structure.
 
@@ -634,9 +634,9 @@ Complete source-to-destination mapping for remote install:
 | `src/commands/*.md` | `.claude/commands/` | Always overwrite |
 | `src/commands/collab.install.ts` | `.claude/commands/collab.install.ts` | Always overwrite |
 | `src/skills/*` | `.claude/skills/` | Always overwrite |
-| `src/handlers/*.ts` | `.collab/handlers/` | Always overwrite |
-| `src/scripts/orchestrator/*.{sh,ts}` | `.collab/scripts/orchestrator/` | Always overwrite |
-| `src/scripts/*.{sh,ts}` | `.collab/scripts/` | Always overwrite |
+| `minds/signals/*.ts` | `.collab/handlers/` | Always overwrite |
+| `minds/execution/*.ts` | `.collab/scripts/orchestrator/` | Always overwrite |
+| `minds/execution/verify-and-complete.ts`, `webhook-notify.ts` | `.collab/scripts/` | Always overwrite |
 | `src/config/pipeline.json` | `.collab/config/pipeline.json` | Always overwrite |
 | `src/config/*.schema.json` | `.collab/config/` | Always overwrite |
 | `src/config/orchestrator-contexts/*` | `.collab/config/orchestrator-contexts/` | Always overwrite |

@@ -21,13 +21,13 @@ This document provides function-level documentation for every script, handler, c
 
 ## 1. Orchestrator Scripts
 
-All orchestrator scripts live in `src/scripts/orchestrator/` and are deployed to `.collab/scripts/orchestrator/`.
+All orchestrator scripts live in `minds/execution/` (with coordination scripts in `minds/coordination/`) and are deployed to `.collab/scripts/orchestrator/`.
 
 ---
 
 ### orchestrator-init.sh
 
-**Path**: `src/scripts/orchestrator/orchestrator-init.sh`
+**Path**: `minds/execution/orchestrator-init.ts`
 **Language**: Bash
 **Purpose**: Deterministic orchestrator initialization. Validates pipeline schema, runs coordination checks, resolves worktree paths, sets up symlinks, spawns an agent pane via tmux, and creates the ticket registry file.
 **Called by**: `/collab.run` command (Setup step 3)
@@ -62,7 +62,7 @@ All orchestrator scripts live in `src/scripts/orchestrator/` and are deployed to
 
 ### phase-dispatch.sh
 
-**Path**: `src/scripts/orchestrator/phase-dispatch.sh`
+**Path**: `minds/execution/phase-dispatch.ts`
 **Language**: Bash
 **Purpose**: Read a phase's command from pipeline.json, check coordination.json for hold conditions, and send the command to the agent pane via Tmux.ts. This is a generic interpreter -- adding or renaming phases requires NO changes to this script.
 **Called by**: `/collab.run` orchestrator (Setup step 5, Signal Processing advance step, Command Processing)
@@ -98,7 +98,7 @@ All orchestrator scripts live in `src/scripts/orchestrator/` and are deployed to
 
 ### phase-advance.sh
 
-**Path**: `src/scripts/orchestrator/phase-advance.sh`
+**Path**: `minds/execution/phase-advance.ts`
 **Language**: Bash
 **Purpose**: Determine the next phase after the current phase completes by reading the phase sequence from pipeline.json. Pure function with no side effects.
 **Called by**: Not directly called by the orchestrator (the orchestrator uses transition-resolve.ts instead for routing). Available as a utility.
@@ -128,7 +128,7 @@ All orchestrator scripts live in `src/scripts/orchestrator/` and are deployed to
 
 ### transition-resolve.sh
 
-**Path**: `src/scripts/orchestrator/transition-resolve.sh`
+**Path**: `minds/execution/transition-resolve.ts` (CLI mode)
 **Language**: Bash
 **Purpose**: Look up the matching transition in pipeline.json given a current phase and incoming signal type. Returns the target phase and/or gate information as JSON.
 **Called by**: Orchestrator signal processing (the `.ts` version is preferred)
@@ -163,7 +163,7 @@ All orchestrator scripts live in `src/scripts/orchestrator/` and are deployed to
 
 ### transition-resolve.ts
 
-**Path**: `src/scripts/orchestrator/transition-resolve.ts`
+**Path**: `minds/execution/transition-resolve.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: TypeScript equivalent of transition-resolve.sh. Exports the `resolveTransition()` pure function for use by other TypeScript scripts, and provides identical CLI behavior.
 **Called by**: `/collab.run` orchestrator signal processing (step c)
@@ -182,7 +182,7 @@ All orchestrator scripts live in `src/scripts/orchestrator/` and are deployed to
 
 ### signal-validate.sh
 
-**Path**: `src/scripts/orchestrator/signal-validate.sh`
+**Path**: `minds/execution/signal-validate.ts` (CLI mode)
 **Language**: Bash
 **Purpose**: Parse signal strings from agent panes, validate against the ticket registry (nonce match, phase correctness), and output structured JSON.
 **Called by**: Orchestrator signal processing (the `.ts` version is preferred)
@@ -216,7 +216,7 @@ Error JSON on stderr for invalid signals.
 
 ### signal-validate.ts
 
-**Path**: `src/scripts/orchestrator/signal-validate.ts`
+**Path**: `minds/execution/signal-validate.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: TypeScript equivalent of signal-validate.sh. Exports `parseSignal()` and `validateSignal()` pure functions.
 **Called by**: `/collab.run` orchestrator signal processing (step 1)
@@ -234,7 +234,7 @@ Error JSON on stderr for invalid signals.
 
 ### goal-gate-check.sh
 
-**Path**: `src/scripts/orchestrator/goal-gate-check.sh`
+**Path**: `minds/execution/goal-gate-check.ts` (CLI mode)
 **Language**: Bash
 **Purpose**: Before advancing to a terminal phase ("done"), verify that all phases with a `goal_gate` field in pipeline.json have been satisfied in the ticket's `phase_history`. Goal gates only apply when `NEXT_PHASE` is terminal; otherwise the script returns PASS immediately.
 **Called by**: Orchestrator signal processing (step e)
@@ -267,7 +267,7 @@ Error JSON on stderr for invalid signals.
 
 ### goal-gate-check.ts
 
-**Path**: `src/scripts/orchestrator/goal-gate-check.ts`
+**Path**: `minds/execution/goal-gate-check.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: TypeScript equivalent of goal-gate-check.sh. Exports the `checkGoalGates()` pure function.
 **Called by**: `/collab.run` orchestrator signal processing (step e)
@@ -284,7 +284,7 @@ Error JSON on stderr for invalid signals.
 
 ### registry-read.sh
 
-**Path**: `src/scripts/orchestrator/registry-read.sh`
+**Path**: `minds/execution/registry-read.ts`
 **Language**: Bash
 **Purpose**: Read and output the JSON registry for a given ticket ID.
 **Called by**: Orchestrator signal processing (step 2)
@@ -310,7 +310,7 @@ Error JSON on stderr for invalid signals.
 
 ### registry-update.sh
 
-**Path**: `src/scripts/orchestrator/registry-update.sh`
+**Path**: `minds/execution/registry-update.ts` (CLI mode)
 **Language**: Bash
 **Purpose**: Apply field=value updates to a ticket registry file using atomic write (tmp + mv). Supports a whitelisted set of field names to prevent garbage data. Also supports `--append-phase-history` mode for adding entries to the phase_history array.
 **Called by**: Multiple orchestrator scripts (phase-dispatch.sh for holds, orchestrator signal processing, held-release-scan.sh)
@@ -344,7 +344,7 @@ Error JSON on stderr for invalid signals.
 
 ### registry-update.ts
 
-**Path**: `src/scripts/orchestrator/registry-update.ts`
+**Path**: `minds/execution/registry-update.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: TypeScript equivalent of registry-update.sh. Exports `parseFieldValue()`, `applyUpdates()`, and `appendPhaseHistory()` pure functions plus the `ALLOWED_FIELDS` set.
 **Called by**: `/collab.run` orchestrator signal processing
@@ -363,7 +363,7 @@ Error JSON on stderr for invalid signals.
 
 ### held-release-scan.sh
 
-**Path**: `src/scripts/orchestrator/held-release-scan.sh`
+**Path**: `minds/coordination/held-release-scan.ts` (CLI mode)
 **Language**: Bash
 **Purpose**: After a phase completes, scan all pipeline registry files for agents with `status=held`. For each, check if all `wait_for` dependencies in `coordination.json` are now satisfied. Release satisfied agents by updating their status to `running`.
 **Called by**: Orchestrator signal processing (advance step f)
@@ -396,7 +396,7 @@ Error JSON on stderr for invalid signals.
 
 ### held-release-scan.ts
 
-**Path**: `src/scripts/orchestrator/held-release-scan.ts`
+**Path**: `minds/coordination/held-release-scan.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: TypeScript equivalent of held-release-scan.sh. Exports `isDependencySatisfied()` and `checkHeldTicket()` pure functions.
 **Called by**: `/collab.run` orchestrator advance step
@@ -414,7 +414,7 @@ Error JSON on stderr for invalid signals.
 
 ### status-table.sh
 
-**Path**: `src/scripts/orchestrator/status-table.sh`
+**Path**: `minds/execution/status-table.ts`
 **Language**: Bash
 **Purpose**: Scan all ticket registry files and render a formatted ASCII table showing the current state of all pipeline tickets.
 **Called by**: `/collab.run` orchestrator (after every state change)
@@ -445,7 +445,7 @@ Error JSON on stderr for invalid signals.
 
 ### coordination-check.sh
 
-**Path**: `src/scripts/orchestrator/coordination-check.sh`
+**Path**: `minds/coordination/coordination-check.ts`
 **Language**: Bash
 **Purpose**: Validate all per-ticket `coordination.json` files for unknown references and circular dependencies. Uses DFS cycle detection.
 **Called by**: `orchestrator-init.sh` (step 2)
@@ -474,7 +474,7 @@ Error JSON on stderr for invalid signals.
 
 ### group-manage.sh
 
-**Path**: `src/scripts/orchestrator/group-manage.sh`
+**Path**: `minds/coordination/group-manage.ts`
 **Language**: Bash
 **Purpose**: Create and manage coordination groups that link multiple tickets together for synchronized pipeline operations (e.g., deploy gates).
 **Called by**: `/collab.run` orchestrator (CMD:add processing, manual use)
@@ -509,7 +509,7 @@ Error JSON on stderr for invalid signals.
 
 ### Tmux.ts
 
-**Path**: `src/scripts/orchestrator/Tmux.ts`
+**Path**: `minds/execution/Tmux.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: Safe tmux interaction CLI. Wraps `tmux send-keys`, `capture-pane`, `split-window`, pane labeling, and pane existence checks. ALWAYS appends Enter (C-m) to `send-keys` calls unless `--no-enter` is explicitly used.
 **Called by**: All orchestrator scripts that interact with tmux panes
@@ -558,7 +558,7 @@ Error JSON on stderr for invalid signals.
 
 ### orchestrator-utils.ts
 
-**Path**: `src/scripts/orchestrator/orchestrator-utils.ts`
+**Path**: `minds/execution/orchestrator-utils.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: Shared utility functions for all TypeScript orchestrator scripts. Pure functions for repo root detection, JSON file I/O, and registry path construction.
 **Called by**: All `.ts` orchestrator scripts (transition-resolve.ts, signal-validate.ts, goal-gate-check.ts, registry-update.ts, held-release-scan.ts)
@@ -581,7 +581,7 @@ Error JSON on stderr for invalid signals.
 
 ### verify-and-complete.ts
 
-**Path**: `src/scripts/verify-and-complete.ts`
+**Path**: `minds/execution/verify-and-complete.ts`
 **Language**: Bash
 **Purpose**: Verify that a phase is complete (phase-specific checks) and automatically emit the completion signal to the orchestrator via `emit-question-signal.ts`.
 **Called by**: Phase commands (`collab.implement`, `collab.analyze`) at the end of their execution
@@ -611,7 +611,7 @@ Error JSON on stderr for invalid signals.
 
 ### webhook-notify.ts
 
-**Path**: `src/scripts/webhook-notify.ts`
+**Path**: `minds/execution/webhook-notify.ts`
 **Language**: TypeScript
 **Purpose**: Send phase change notifications to the OpenClaw webhook endpoint, which forwards to Discord.
 **Called by**: `/collab.run` orchestrator after phase transitions
@@ -639,13 +639,13 @@ Error JSON on stderr for invalid signals.
 
 ## 3. Signal Handlers
 
-All handlers live in `src/handlers/` and are deployed to `.collab/handlers/`.
+All signal handlers live in `minds/signals/` and are deployed to `.collab/handlers/`.
 
 ---
 
 ### pipeline-signal.ts
 
-**Path**: `src/handlers/pipeline-signal.ts`
+**Path**: `minds/signals/pipeline-signal.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: Shared signal utility functions used by all signal emitters. Provides `mapResponseState()`, `buildSignalMessage()`, `resolveRegistry()`, and `truncateDetail()`.
 **Called by**: `emit-question-signal.ts`, `emit-blindqa-signal.ts` (via dynamic import)
@@ -673,7 +673,7 @@ All handlers live in `src/handlers/` and are deployed to `.collab/handlers/`.
 
 ### emit-question-signal.ts
 
-**Path**: `src/handlers/emit-question-signal.ts`
+**Path**: `minds/signals/emit-question-signal.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: Emit PHASE_QUESTION or PHASE_COMPLETE signals to the orchestrator. Called directly by phase commands (collab.clarify, collab.plan, collab.tasks) before AskUserQuestion or at completion.
 **Called by**: `collab.clarify` (before each AskUserQuestion and at completion), `collab.plan` (at completion), `collab.tasks` (at completion), `verify-and-complete.ts` (at completion)
@@ -703,7 +703,7 @@ All handlers live in `src/handlers/` and are deployed to `.collab/handlers/`.
 
 ### emit-blindqa-signal.ts
 
-**Path**: `src/handlers/emit-blindqa-signal.ts`
+**Path**: `minds/signals/emit-blindqa-signal.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: Emit BLINDQA lifecycle signals (start, pass, fail) to the orchestrator.
 **Called by**: `collab.blindqa` command at lifecycle points
@@ -731,7 +731,7 @@ All handlers live in `src/handlers/` and are deployed to `.collab/handlers/`.
 
 ### emit-spec-critique-signal.ts
 
-**Path**: `src/handlers/emit-spec-critique-signal.ts`
+**Path**: `minds/signals/emit-spec-critique-signal.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: Emit SPEC_CRITIQUE lifecycle signals (start, pass, warn, fail).
 **Called by**: `collab.spec-critique` command at lifecycle points
@@ -766,7 +766,7 @@ All handlers live in `src/handlers/` and are deployed to `.collab/handlers/`.
 
 ### resolve-tokens.ts
 
-**Path**: `src/handlers/resolve-tokens.ts`
+**Path**: `minds/signals/resolve-tokens.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: Pipeline v3 token expression resolver. Substitutes `{{TOKEN}}` expressions in template strings using a three-tier resolution strategy.
 **Called by**: Orchestrator gate evaluation (when resolving gate prompt templates)
@@ -801,7 +801,7 @@ All handlers live in `src/handlers/` and are deployed to `.collab/handlers/`.
 
 ### question-signal.hook.ts
 
-**Path**: `src/hooks/question-signal.hook.ts`
+**Path**: `minds/signals/question-signal.hook.ts`
 **Language**: TypeScript (Bun)
 **Purpose**: Emit PHASE_QUESTION signal to the orchestrator when an agent calls AskUserQuestion. Fires on `PreToolUse:AskUserQuestion` in orchestrated agent sessions.
 **Called by**: Claude Code hook system (PreToolUse trigger, AskUserQuestion matcher)

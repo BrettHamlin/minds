@@ -88,10 +88,10 @@ Signal suffixes determine routing:
 |-----------|----------|----------|---------|
 | Pipeline config | `src/config/pipeline.json` | JSON | Declarative workflow definition |
 | Orchestrator command | `src/commands/collab.run.md` | Markdown | AI judgment instructions |
-| Orchestrator scripts (13) | `src/scripts/orchestrator/*.sh` | Bash | Deterministic execution engine |
-| Orchestrator TS scripts (6) | `src/scripts/orchestrator/*.ts` | TypeScript | Complex logic (validation, transitions) |
+| Orchestrator scripts | `minds/execution/*.ts` | TypeScript | Deterministic execution engine |
+| Coordination scripts | `minds/coordination/*.ts` | TypeScript | Multi-ticket coordination, holds, groups |
 | Phase commands (15) | `src/commands/collab.*.md` | Markdown | Per-phase agent instructions |
-| Signal handlers (5) | `src/handlers/*.ts` | TypeScript | Signal emission from agents |
+| Signal handlers | `minds/signals/*.ts` | TypeScript | Signal emission from agents |
 | Skills (3) | `src/skills/{BlindQA,SpecCreator,SpecCritique}/` | Markdown | Reusable AI skill definitions |
 | Go attractor | `collab/attractor/` | Go | Binary signal monitor with AI gates |
 | CLI client | `cli/` | TypeScript | Standalone CLI for Relay platform |
@@ -118,11 +118,11 @@ Signal suffixes determine routing:
 
 The repository uses a two-layer model:
 
-- **`src/`** = Canonical source of truth (git-tracked)
+- **`minds/`** = Canonical source of truth for pipeline orchestrator code (git-tracked)
 - **`.claude/`, `.collab/`, `.specify/`** = Runtime directories (gitignored, populated by install)
 
-Install (`scripts/install.sh` for local, `collab.install.ts` for remote) copies from `src/` to runtime directories. This means:
-- Edit in `src/`, never in runtime dirs (Constitution Principle I)
+Install (`scripts/install.sh` for local, `collab.install.ts` for remote) copies from `minds/` to runtime directories. This means:
+- Edit in `minds/`, never in runtime dirs (Constitution Principle I)
 - Runtime dirs don't exist in fresh clones until install runs
 - `.test.ts` files are excluded from deployment
 
