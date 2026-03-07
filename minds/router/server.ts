@@ -162,7 +162,14 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
 
   try {
     const result = await child.handle(workUnit.request, workUnit.context);
-    return result as WorkResult;
+    const workResult = result as WorkResult;
+    // Merge routing observability from router level — preserves child's _routing.intent
+    workResult._routing = {
+      ...workResult._routing,
+      mind: best.mind.name,
+      score: best.score,
+    };
+    return workResult;
   } catch (err) {
     return {
       status: "handled",

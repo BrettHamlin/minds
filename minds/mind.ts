@@ -15,6 +15,12 @@ export interface WorkResult {
   status: "handled" | "escalate";
   data?: unknown;
   error?: string;
+  /** Routing observability — set by server-base and router, never by Mind handlers */
+  _routing?: {
+    mind?: string;
+    score?: number;
+    intent?: string;
+  };
 }
 
 export interface MindDescription {
@@ -50,6 +56,13 @@ export function validateWorkResult(value: unknown): value is WorkResult {
   const obj = value as Record<string, unknown>;
   if (obj.status !== "handled" && obj.status !== "escalate") return false;
   if (obj.error !== undefined && typeof obj.error !== "string") return false;
+  if (obj._routing !== undefined) {
+    if (typeof obj._routing !== "object" || obj._routing === null) return false;
+    const r = obj._routing as Record<string, unknown>;
+    if (r.mind !== undefined && typeof r.mind !== "string") return false;
+    if (r.score !== undefined && typeof r.score !== "number") return false;
+    if (r.intent !== undefined && typeof r.intent !== "string") return false;
+  }
   return true;
 }
 

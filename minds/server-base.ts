@@ -74,6 +74,12 @@ function buildMcpServer(config: MindConfig, description: MindDescription): McpSe
         ...(intent !== null && { intent }),
       };
       const result = await config.handle(workUnit);
+      // Stamp routing observability
+      result._routing = {
+        ...result._routing,
+        mind: config.name,
+        ...(intent !== null && { intent }),
+      };
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
       };
@@ -147,11 +153,21 @@ export async function createMind(config: MindConfig): Promise<RunningMind> {
       if (!validateWorkUnit(workUnit)) {
         return { status: "handled", error: "Invalid WorkUnit" };
       }
+      let intent: string | null = null;
       if (workUnit.intent === undefined) {
-        const intent = matchIntent(workUnit.request, config.capabilities);
+        intent = matchIntent(workUnit.request, config.capabilities);
         if (intent !== null) workUnit = { ...workUnit, intent };
+      } else {
+        intent = workUnit.intent;
       }
-      return config.handle(workUnit);
+      const result = await config.handle(workUnit);
+      // Stamp routing observability
+      result._routing = {
+        ...result._routing,
+        mind: config.name,
+        ...(intent !== null && { intent }),
+      };
+      return result;
     },
 
     describe(): MindDescription {
