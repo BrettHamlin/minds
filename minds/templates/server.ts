@@ -86,5 +86,7 @@ export default createMind({
     "read template content by path",
     "get JSON schema by name",
   ],
+  exposes: ["list templates", "read template content by path", "get JSON schema by name"],
+  consumes: [],
   handle,
 });

@@ -61,5 +61,11 @@ export default createMind({
     "resolve transport implementation path",
     "get transport status",
   ],
+  exposes: [
+    "publish message via transport",
+    "resolve transport implementation path",
+    "get transport status",
+  ],
+  consumes: [],
   handle,
 });

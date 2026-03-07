@@ -48,5 +48,7 @@ export default createMind({
     "validate HTTP inputs",
     "format HTTP responses",
   ],
+  exposes: ["serve HTTP REST endpoints", "route requests to SpecEngine"],
+  consumes: ["spec_engine child Mind"],
   handle,
 });

@@ -28,6 +28,8 @@ export interface MindConfig {
   keywords: string[];
   owns_files: string[];
   capabilities: string[];
+  exposes?: string[];
+  consumes?: string[];
   handle(workUnit: WorkUnit): Promise<WorkResult>;
 }
 
@@ -115,6 +117,8 @@ export async function createMind(config: MindConfig): Promise<RunningMind> {
     keywords: config.keywords,
     owns_files: config.owns_files,
     capabilities: config.capabilities,
+    ...(config.exposes !== undefined && { exposes: config.exposes }),
+    ...(config.consumes !== undefined && { consumes: config.consumes }),
   };
 
   // Bun HTTP server — each request gets a fresh McpServer + transport (stateless)

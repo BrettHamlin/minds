@@ -66,5 +66,11 @@ export default createMind({
     "validate pipeline config",
     "diff two pipeline versions",
   ],
+  exposes: [
+    "compile pipeline source to JSON",
+    "validate pipeline config",
+    "diff two pipeline versions",
+  ],
+  consumes: ["pipeline_core/CompiledPipeline type", "transport/resolveTransport"],
   handle,
 });

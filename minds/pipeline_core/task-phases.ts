@@ -68,3 +68,55 @@ export function parseTaskPhases(content: string): TaskPhase[] {
   if (currentPhase) phases.push(currentPhase);
   return phases;
 }
+
+// ---------------------------------------------------------------------------
+// Task-line parsing (individual task items with @mind / [P] / [US#] tags)
+// ---------------------------------------------------------------------------
+
+export interface ParsedTask {
+  id: string;
+  mind: string | null;
+  parallelizable: boolean;
+  story: string | null;
+  description: string;
+  complete: boolean;
+}
+
+/**
+ * Regex for a single task line.
+ * Group 1: checkbox content (' ', 'x', or 'X')
+ * Group 2: task ID (T followed by digits)
+ * Group 3: the block of recognized tags ([P], [US\w+], @mindname) in any order
+ * Group 4: remaining description text
+ */
+const TASK_LINE_RE = /^- \[([ xX])\]\s+(T\d+)((?:\s+(?:\[P\]|\[US\w+\]|@[\w-]+))*)\s*(.*?)\s*$/;
+
+/**
+ * Parses a single task line into a ParsedTask.
+ * Returns null if the line is not a valid task line.
+ */
+export function parseTaskLine(line: string): ParsedTask | null {
+  const m = line.match(TASK_LINE_RE);
+  if (!m) return null;
+
+  const [, checkbox, id, tags, description] = m;
+  return {
+    id,
+    complete: checkbox === "x" || checkbox === "X",
+    parallelizable: /\[P\]/.test(tags),
+    story: tags.match(/\[(US\w+)\]/)?.[1] ?? null,
+    mind: tags.match(/@([\w-]+)/)?.[1] ?? null,
+    description,
+  };
+}
+
+/**
+ * Parses all task lines from a tasks.md content string.
+ * Non-task lines are silently skipped.
+ */
+export function parseTasks(content: string): ParsedTask[] {
+  return content.split("\n").flatMap((line) => {
+    const task = parseTaskLine(line);
+    return task ? [task] : [];
+  });
+}

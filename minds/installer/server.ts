@@ -57,5 +57,7 @@ export default createMind({
     "install collab scripts",
     "set up collab",
   ],
+  exposes: ["install pipeline", "get file mappings", "check for updates"],
+  consumes: ["cli/ensureDir"],
   handle,
 });

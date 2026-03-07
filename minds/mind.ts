@@ -9,6 +9,11 @@ export interface WorkUnit {
   from?: string;
   /** Best-matching capability string from this Mind's description, set by server-base. */
   intent?: string;
+  contract?: {
+    produces?: string[];
+    consumes?: string[];
+    boundaries?: string[];
+  };
 }
 
 export interface WorkResult {
@@ -20,6 +25,7 @@ export interface WorkResult {
     mind?: string;
     score?: number;
     intent?: string;
+    routed?: string;
   };
 }
 
@@ -29,6 +35,8 @@ export interface MindDescription {
   keywords: string[];
   owns_files: string[];
   capabilities: string[];
+  exposes?: string[];
+  consumes?: string[];
 }
 
 export interface Mind {
@@ -45,6 +53,13 @@ export function validateWorkUnit(value: unknown): value is WorkUnit {
   const obj = value as Record<string, unknown>;
   if (typeof obj.request !== "string") return false;
   if (obj.from !== undefined && typeof obj.from !== "string") return false;
+  if (obj.contract !== undefined) {
+    if (typeof obj.contract !== "object" || obj.contract === null) return false;
+    const c = obj.contract as Record<string, unknown>;
+    if (c.produces !== undefined && (!Array.isArray(c.produces) || !c.produces.every((p) => typeof p === "string"))) return false;
+    if (c.consumes !== undefined && (!Array.isArray(c.consumes) || !c.consumes.every((x) => typeof x === "string"))) return false;
+    if (c.boundaries !== undefined && (!Array.isArray(c.boundaries) || !c.boundaries.every((b) => typeof b === "string"))) return false;
+  }
   return true;
 }
 
@@ -62,6 +77,7 @@ export function validateWorkResult(value: unknown): value is WorkResult {
     if (r.mind !== undefined && typeof r.mind !== "string") return false;
     if (r.score !== undefined && typeof r.score !== "number") return false;
     if (r.intent !== undefined && typeof r.intent !== "string") return false;
+    if (r.routed !== undefined && typeof r.routed !== "string") return false;
   }
   return true;
 }
@@ -77,5 +93,7 @@ export function validateMindDescription(value: unknown): value is MindDescriptio
   if (!Array.isArray(obj.keywords) || !obj.keywords.every((k) => typeof k === "string")) return false;
   if (!Array.isArray(obj.owns_files) || !obj.owns_files.every((f) => typeof f === "string")) return false;
   if (!Array.isArray(obj.capabilities) || !obj.capabilities.every((c) => typeof c === "string")) return false;
+  if (obj.exposes !== undefined && (!Array.isArray(obj.exposes) || !obj.exposes.every((e) => typeof e === "string"))) return false;
+  if (obj.consumes !== undefined && (!Array.isArray(obj.consumes) || !obj.consumes.every((c) => typeof c === "string"))) return false;
   return true;
 }

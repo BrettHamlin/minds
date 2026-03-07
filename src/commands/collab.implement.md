@@ -43,7 +43,20 @@ You do not need to wait for step 10. Any time your response represents "this pha
    - Store the phase scope; it constrains steps 5 and 6 (task filtering and execution)
    - **Note**: Do NOT pass the scope to the verify script in step 10 — it auto-detects from the registry
 
-1c. **Load Phase Structure** (deterministic — do this before step 5):
+1c. **Parse Mind Scope** (if `$ARGUMENTS` contains `mind:<name>`):
+   - `mind:signals` → execute only tasks tagged `@signals` in tasks.md
+   - `mind:pipeline_core` → execute only tasks tagged `@pipeline_core`
+   - No mind argument → execute ALL tasks regardless of `@mind` tag (default, backwards compatible)
+   - Store the mind scope; it constrains step 5 (task filtering) alongside phase scope
+   - Mind scope and phase scope can combine: `phase:3 mind:signals` → only @signals tasks in Phase 3
+
+1d. **Load Mind Registry** (if `.collab/minds.json` exists at repo root):
+   - Read and parse the JSON to get the list of Minds with their `name`, `domain`, `owns_files`, `exposes`, and `consumes`
+   - If `minds.json` does not exist, skip (backward compatible — all tasks execute normally)
+   - If mind scope is active from step 1c, verify the named Mind exists in the registry. If not found, warn and fall back to executing all tasks.
+   - Use the registry to understand cross-Mind contracts: when a task's `@mind` tag differs from the current mind scope, that task belongs to another Mind and should be skipped (but its outputs may be consumed)
+
+1e. **Load Phase Structure** (deterministic — do this before step 5):
 
    Where `{ticket_id}` is extracted from `$ARGUMENTS` or the current branch name.
 
@@ -142,15 +155,18 @@ You do not need to wait for step 10. Any time your response represents "this pha
 5. Parse tasks.md structure and extract:
    - **Task phases**: Setup, Tests, Core, Integration, Polish
    - **Task dependencies**: Sequential vs parallel execution rules
-   - **Task details**: ID, description, file paths, parallel markers [P]
+   - **Task details**: ID, description, file paths, parallel markers [P], `@mind` assignments, `[US#]` story labels
    - **Execution flow**: Order and dependency requirements
    - **If phase scope is active**: Filter the task list to include ONLY tasks from the specified phase(s). Skip all other phases entirely.
+   - **If mind scope is active**: Filter the task list to include ONLY tasks tagged with the specified `@mind`. Tasks without any `@mind` tag (e.g., setup/foundational tasks) are always included regardless of mind scope.
+   - **Contract awareness**: For tasks with `produces:` or `consumes:` annotations, note the inter-Mind interfaces. When executing a task that `consumes:` from another Mind, verify the consumed interface exists before proceeding.
 
 6. Execute implementation following the task plan:
    - **Phase-by-phase execution**: Complete each phase before moving to the next
-   - **Respect dependencies**: Run sequential tasks in order, parallel tasks [P] can run together  
+   - **Respect dependencies**: Run sequential tasks in order, parallel tasks [P] can run together
    - **Follow TDD approach**: Execute test tasks before their corresponding implementation tasks
    - **File-based coordination**: Tasks affecting the same files must run sequentially
+   - **Mind boundary enforcement**: Only modify files within the current Mind's `owns_files` paths (from minds.json). If a task requires changes outside the Mind's boundary, flag it rather than proceeding.
    - **Validation checkpoints**: Verify each phase completion before proceeding
 
 7. Implementation execution rules:

@@ -108,5 +108,19 @@ export default createMind({
     "resolve questions",
     "release held tickets",
   ],
+  exposes: [
+    "check coordination",
+    "check dependency hold",
+    "manage group",
+    "resolve questions",
+    "release held tickets",
+  ],
+  consumes: [
+    "pipeline_core/registryPath",
+    "pipeline_core/resolutionsPath",
+    "pipeline_core/findFeatureDir",
+    "pipeline_core/validateTicketIdArg",
+    "pipeline_core/readJsonFile",
+  ],
   handle,
 });

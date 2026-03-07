@@ -57,6 +57,50 @@ describe("validateWorkUnit", () => {
   it("accepts undefined from (optional field)", () => {
     expect(validateWorkUnit({ request: "do something" })).toBe(true);
   });
+
+  it("accepts WorkUnit without contract (backward compat)", () => {
+    expect(validateWorkUnit({ request: "do something" })).toBe(true);
+  });
+
+  it("accepts WorkUnit with contract containing all fields", () => {
+    expect(
+      validateWorkUnit({
+        request: "do something",
+        contract: {
+          produces: ["minds/signals/output.ts"],
+          consumes: ["minds/pipeline_core/utils.ts"],
+          boundaries: ["minds/signals/"],
+        },
+      })
+    ).toBe(true);
+  });
+
+  it("accepts WorkUnit with contract containing only produces", () => {
+    expect(
+      validateWorkUnit({ request: "do something", contract: { produces: ["out.ts"] } })
+    ).toBe(true);
+  });
+
+  it("accepts WorkUnit with empty contract object", () => {
+    expect(validateWorkUnit({ request: "do something", contract: {} })).toBe(true);
+  });
+
+  it("rejects non-object contract", () => {
+    expect(validateWorkUnit({ request: "do something", contract: "string" })).toBe(false);
+    expect(validateWorkUnit({ request: "do something", contract: 42 })).toBe(false);
+  });
+
+  it("rejects non-array produces", () => {
+    expect(
+      validateWorkUnit({ request: "do something", contract: { produces: "out.ts" } })
+    ).toBe(false);
+  });
+
+  it("rejects non-string entries in boundaries", () => {
+    expect(
+      validateWorkUnit({ request: "do something", contract: { boundaries: ["minds/", 42] } })
+    ).toBe(false);
+  });
 });
 
 describe("validateWorkResult", () => {
@@ -91,6 +135,12 @@ describe("validateWorkResult", () => {
 
   it("rejects null", () => {
     expect(validateWorkResult(null)).toBe(false);
+  });
+
+  it("accepts _routing with routed string", () => {
+    expect(
+      validateWorkResult({ status: "handled", _routing: { mind: "signals", routed: "direct" } })
+    ).toBe(true);
   });
 });
 
@@ -145,6 +195,36 @@ describe("validateMindDescription", () => {
     expect(
       validateMindDescription({ ...valid, keywords: [], owns_files: [], capabilities: [] })
     ).toBe(true);
+  });
+
+  it("accepts description with exposes and consumes", () => {
+    expect(
+      validateMindDescription({ ...valid, exposes: ["SPEC_COMPLETE"], consumes: ["PLAN_COMPLETE"] })
+    ).toBe(true);
+  });
+
+  it("accepts description without exposes or consumes (backward compat)", () => {
+    expect(validateMindDescription(valid)).toBe(true);
+  });
+
+  it("accepts empty exposes and consumes arrays", () => {
+    expect(validateMindDescription({ ...valid, exposes: [], consumes: [] })).toBe(true);
+  });
+
+  it("rejects non-array exposes", () => {
+    expect(validateMindDescription({ ...valid, exposes: "SPEC_COMPLETE" })).toBe(false);
+  });
+
+  it("rejects exposes with non-string entries", () => {
+    expect(validateMindDescription({ ...valid, exposes: ["SPEC_COMPLETE", 42] })).toBe(false);
+  });
+
+  it("rejects non-array consumes", () => {
+    expect(validateMindDescription({ ...valid, consumes: "PLAN_COMPLETE" })).toBe(false);
+  });
+
+  it("rejects consumes with non-string entries", () => {
+    expect(validateMindDescription({ ...valid, consumes: [true, "PLAN_COMPLETE"] })).toBe(false);
   });
 });
 
