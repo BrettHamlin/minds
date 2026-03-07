@@ -26,6 +26,7 @@ import {
   getRepoRoot,
   readJsonFile,
   readFeatureMetadata,
+  scanFeaturesMetadata,
   OrchestratorError,
   handleError,
 } from "../../../lib/pipeline";
@@ -211,6 +212,53 @@ export function buildDependencyHolds(
   }
 
   return holds;
+}
+
+/**
+ * Detect implicit dependencies for a ticket based on pipeline variant relationships.
+ *
+ * For multi-ticket pipelines, verification/frontend/any non-backend variants inherently
+ * depend on backend variants completing first. This function scans the registry for active
+ * backend tickets and returns them as implicit blockers for non-backend variants.
+ *
+ * Backend tickets never have implicit dependencies (they are the root producers).
+ */
+export function detectImplicitDependencies(
+  ticketId: string,
+  pipelineVariant: string | undefined,
+  registryDir: string,
+  specsDir?: string
+): string[] {
+  if (pipelineVariant === "backend") {
+    return [];
+  }
+
+  const implicit: string[] = [];
+
+  // Primary: scan registry for active backend tickets.
+  if (fs.existsSync(registryDir)) {
+    for (const file of fs.readdirSync(registryDir)) {
+      if (!file.endsWith(".json")) continue;
+      const reg = readJsonFile(path.join(registryDir, file)) as Record<string, unknown> | null;
+      if (!reg) continue;
+      if (reg.ticket_id === ticketId) continue;
+      if (reg.pipeline_variant === "backend") {
+        implicit.push(reg.ticket_id as string);
+      }
+    }
+  }
+
+  // Fallback: scan specs/ metadata.json when registry has no backend entries yet.
+  if (implicit.length === 0 && specsDir) {
+    for (const meta of scanFeaturesMetadata(specsDir)) {
+      if (meta.ticket_id === ticketId) continue;
+      if (meta.pipeline_variant === "backend") {
+        implicit.push(meta.ticket_id);
+      }
+    }
+  }
+
+  return [...new Set(implicit)];
 }
 
 // ---------------------------------------------------------------------------

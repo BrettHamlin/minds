@@ -17,7 +17,6 @@
 import { execSync } from "child_process";
 import * as fs from "fs";
 
-// Detect repo root and use local paths
 function getRepoRoot(): string {
   try {
     return execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
@@ -27,64 +26,70 @@ function getRepoRoot(): string {
 }
 
 const REPO_ROOT = getRepoRoot();
-const REGISTRY_DIR = `${REPO_ROOT}/.collab/state/pipeline-registry`;
 
-const args = process.argv.slice(2);
-const [eventType, message] = args;
+const { mapResponseState, buildSignalMessage, resolveRegistry, truncateDetail } =
+  await import("./pipeline-signal.ts");
 
-if (!eventType || !message) {
-  console.error("Usage: bun emit-spec-critique-signal.ts <start|pass|warn|fail> <message>");
-  process.exit(1);
+function getResponseState(event: string): string {
+  switch (event) {
+    case "start":
+      return "awaitingInput";
+    case "pass":
+      return "completed";
+    case "warn":
+      return "completed";
+    case "fail":
+      return "failed";
+    default:
+      console.error(`[EmitSpecCritiqueSignal] Unknown event: ${event}`);
+      return "completed";
+  }
 }
 
-// Determine ticket ID from current directory or registry
-function getTicketId(): string {
+async function main() {
+  const event = process.argv[2];
+  const detailText = process.argv[3] || `SpecCritique ${event}`;
+
+  if (!event) {
+    console.error('[EmitSpecCritiqueSignal] Usage: bun emit-spec-critique-signal.ts <start|pass|warn|fail> "detail message"');
+    process.exit(1);
+  }
+
   try {
-    // Try to find ticket from registry files
-    const files = execSync(`ls ${REGISTRY_DIR}/*.json 2>/dev/null || echo ""`, {
-      encoding: "utf-8",
-    }).trim();
-
-    if (files) {
-      const firstFile = files.split("\n")[0];
-      const ticketId = firstFile.match(/([A-Z]+-\d+)\.json$/)?.[1];
-      if (ticketId) return ticketId;
+    const registry = await resolveRegistry();
+    if (!registry) {
+      console.error('[EmitSpecCritiqueSignal] No registry found - not in orchestrated mode');
+      process.exit(0);
     }
-  } catch { /* intentionally empty */ }
 
-  return "UNKNOWN";
+    if (registry.current_step !== "spec_critique") {
+      console.error(`[EmitSpecCritiqueSignal] Warning: current_step is "${registry.current_step}", expected "spec_critique"`);
+    }
+
+    const responseState = getResponseState(event);
+    const status = mapResponseState(responseState, registry.current_step);
+    const detail = truncateDetail(detailText);
+    const signalMessage = buildSignalMessage(registry, status, detail);
+
+    // Persist signal to queue before transport send (survives orchestrator context compaction)
+    const queueDir = `${REPO_ROOT}/.collab/state/signal-queue`;
+    fs.mkdirSync(queueDir, { recursive: true });
+    const queueFile = `${queueDir}/${registry.ticket_id}.json`;
+    const queueTmp = `${queueFile}.tmp`;
+    fs.writeFileSync(queueTmp, JSON.stringify({ signal: signalMessage, emitted_at: new Date().toISOString() }, null, 2) + "\n");
+    fs.renameSync(queueTmp, queueFile);
+
+    // Dispatch via transport
+    const { dispatchSignal } = await import("./emit-phase-signal.ts");
+    const target = registry.orchestrator_pane_id || registry.orchestrator_window_id;
+    await dispatchSignal(signalMessage, target, "spec_critique", registry.ticket_id, registry.nonce, "");
+
+    console.error(`[EmitSpecCritiqueSignal] Sent ${status} to ${target}`);
+    console.error(`[EmitSpecCritiqueSignal] Event: ${event}, Detail: ${detailText}`);
+  } catch (error) {
+    console.error('[EmitSpecCritiqueSignal] Error:', error);
+    process.exit(1);
+  }
 }
 
-const ticketId = getTicketId();
-
-// Map event types to signal names
-const signalMap: Record<string, string> = {
-  start: "SPEC_CRITIQUE_START",
-  pass: "SPEC_CRITIQUE_PASS",
-  warn: "SPEC_CRITIQUE_WARN",
-  fail: "SPEC_CRITIQUE_FAIL",
-};
-
-const signal = signalMap[eventType];
-if (!signal) {
-  console.error(`Unknown event type: ${eventType}`);
-  process.exit(1);
-}
-
-// Emit signal in orchestrator-compatible format
-const signalOutput = `[SIGNAL:${ticketId}:${Date.now()}] ${signal} | ${message}`;
-
-// Persist signal to queue before emitting (survives orchestrator context compaction)
-const queueDir = `${REPO_ROOT}/.collab/state/signal-queue`;
-fs.mkdirSync(queueDir, { recursive: true });
-const queueFile = `${queueDir}/${ticketId}.json`;
-const queueTmp = `${queueFile}.tmp`;
-fs.writeFileSync(queueTmp, JSON.stringify({ signal: signalOutput, emitted_at: new Date().toISOString() }, null, 2) + "\n");
-fs.renameSync(queueTmp, queueFile);
-
-console.log(signalOutput);
-
-// Also log to stderr for orchestrator capture
-console.error(signalOutput);
-
-process.exit(0);
+main();
