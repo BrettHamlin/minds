@@ -131,6 +131,83 @@ export function scanFeaturesMetadata(specsDir: string): FeatureMetadata[] {
  * Falls back to scanning metadata.json files for ticket_id match (Pass 2).
  * Returns the full path, or null if not found.
  */
+/**
+ * Resolve the pipeline config file path, supporting pipeline variants.
+ *
+ * Resolution order:
+ *   1. Explicit `variant` option  → .collab/config/pipeline-variants/{variant}.json
+ *   2. `ticketId` + registry      → read pipeline_variant from registry, same resolution
+ *   3. Default                    → .collab/config/pipeline.json
+ */
+export function resolvePipelineConfigPath(
+  repoRoot: string,
+  options: { variant?: string; ticketId?: string } = {}
+): string {
+  const defaultPath = path.join(repoRoot, ".collab", "config", "pipeline.json");
+
+  let variant = options.variant;
+  if (!variant && options.ticketId) {
+    const { registryPath } = require("./paths");
+    const regPath = registryPath(repoRoot, options.ticketId);
+    const registry = readJsonFile(regPath);
+    variant = registry?.pipeline_variant as string | undefined;
+  }
+
+  if (variant) {
+    const variantPath = path.join(
+      repoRoot, ".collab", "config", "pipeline-variants", `${variant}.json`
+    );
+    if (fs.existsSync(variantPath)) return variantPath;
+  }
+
+  return defaultPath;
+}
+
+export interface LoadedPipeline {
+  configPath: string;
+  pipeline: Record<string, any>;
+  variant: string | undefined;
+}
+
+/**
+ * Load pipeline config for a ticket — SINGLE SOURCE OF TRUTH.
+ *
+ * Reads the registry, resolves the variant, loads and returns the config.
+ */
+export function loadPipelineForTicket(repoRoot: string, ticketId: string): LoadedPipeline {
+  const { registryPath } = require("./paths");
+  const regPath = registryPath(repoRoot, ticketId);
+  const registry = readJsonFile(regPath);
+  const variant = registry?.pipeline_variant as string | undefined;
+  const effectiveRoot = (registry?.repo_path as string | undefined) ?? repoRoot;
+  const configPath = resolvePipelineConfigPath(effectiveRoot, { variant });
+  const pipeline = readJsonFile(configPath);
+
+  if (!pipeline || !pipeline.phases || typeof pipeline.phases !== "object") {
+    throw new Error(
+      `Pipeline config not found or malformed: ${configPath}` +
+      (variant ? ` (variant: ${variant})` : "") +
+      ` for ticket ${ticketId}`
+    );
+  }
+
+  return { configPath, pipeline, variant };
+}
+
+/**
+ * Validate that the first CLI argument is a ticket ID, not a flag.
+ */
+export function validateTicketIdArg(args: string[], scriptName: string): void {
+  if (args.length >= 1 && args[0].startsWith("--")) {
+    console.error(
+      `Error: First argument must be a ticket ID, not a flag.\n` +
+      `Got: "${args[0]}"\n\n` +
+      `Usage: ${scriptName} <TICKET_ID> ...`
+    );
+    process.exit(1);
+  }
+}
+
 export function findFeatureDir(repoRoot: string, ticketId: string): string | null {
   const specsDir = path.join(repoRoot, "specs");
   if (!fs.existsSync(specsDir)) return null;

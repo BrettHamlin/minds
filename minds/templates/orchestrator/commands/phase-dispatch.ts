@@ -37,6 +37,7 @@ import {
 } from "../../../lib/pipeline";
 import type { CompiledPipeline, CompiledPhase, CompiledAction } from "../../../lib/pipeline";
 import { applyUpdates } from "../../../lib/pipeline";
+import { loadPipelineForTicket, resolvePipelineConfigPath } from "../../../lib/pipeline/utils";
 import { resolveHooksForPhase } from "../dispatch-phase-hooks";
 
 // ---------------------------------------------------------------------------
@@ -346,11 +347,18 @@ async function main(): Promise<void> {
 
   try {
     const repoRoot = getRepoRoot();
-    const configPath = `${repoRoot}/.collab/config/pipeline.json`;
 
-    const pipeline = readJsonFile(configPath) as CompiledPipeline | null;
+    // Load variant-aware pipeline config
+    let pipeline: CompiledPipeline | null;
+    try {
+      const result = loadPipelineForTicket(repoRoot, ticketId);
+      pipeline = result.pipeline as CompiledPipeline;
+    } catch {
+      const configPath = resolvePipelineConfigPath(repoRoot);
+      pipeline = readJsonFile(configPath) as CompiledPipeline | null;
+    }
     if (!pipeline) {
-      throw new OrchestratorError("FILE_NOT_FOUND", `pipeline.json not found: ${configPath}`);
+      throw new OrchestratorError("FILE_NOT_FOUND", `pipeline config not found`);
     }
 
     const regPath = registryPath(repoRoot, ticketId);

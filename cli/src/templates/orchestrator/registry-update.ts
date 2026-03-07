@@ -26,6 +26,7 @@ import {
   readJsonFile,
   writeJsonAtomic,
   registryPath,
+  resolvePipelineConfigPath,
 } from "./orchestrator-utils";
 
 import { ALLOWED_FIELDS, parseFieldValue, applyUpdates, appendPhaseHistory, advanceImplPhase, deleteField } from "../../lib/pipeline/registry";
@@ -218,7 +219,9 @@ function main(): void {
     // force-sets status=done, which skips normal phase progression.
     const MANUAL_TERMINAL_STATUSES = new Set(["done", "complete", "abandoned", "aborted"]);
     if (updates.status !== undefined && MANUAL_TERMINAL_STATUSES.has(updates.status)) {
-      const pipeline = readJsonFile(`${repoRoot}/.collab/config/pipeline.json`);
+      const variant = registry.pipeline_variant as string | undefined;
+      const effectiveRoot = (registry.repo_path as string | undefined) ?? repoRoot;
+      const pipeline = readJsonFile(resolvePipelineConfigPath(effectiveRoot, { variant }));
       const terminalPhase = findTerminalPhase(pipeline);
       const currentStep = registry.current_step ?? null;
       // Log intervention only when not already at the terminal phase

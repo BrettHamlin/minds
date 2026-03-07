@@ -22,7 +22,7 @@
  *   3 = file error (pipeline.json missing/malformed)
  */
 
-import { getRepoRoot, readJsonFile } from "./orchestrator-utils";
+import { getRepoRoot, readJsonFile, resolvePipelineConfigPath } from "./orchestrator-utils";
 import { resolveTransition } from "../../lib/pipeline/transitions";
 
 // Re-export for test backward compatibility
@@ -47,31 +47,61 @@ export function resolveGateResponse(
 // CLI Entry Point
 // ============================================================================
 
+function extractTicketFlag(args: string[]): string | undefined {
+  const idx = args.indexOf("--ticket");
+  if (idx !== -1 && idx + 1 < args.length) {
+    const ticketId = args[idx + 1];
+    args.splice(idx, 2);
+    return ticketId;
+  }
+  return undefined;
+}
+
+function loadPipelineConfig(repoRoot: string, ticketId?: string): any {
+  const configPath = resolvePipelineConfigPath(repoRoot, ticketId ? { ticketId } : {});
+  return readJsonFile(configPath);
+}
+
+/**
+ * Detect if the first arg looks like a ticket ID (e.g., BRE-418) rather than
+ * a phase name. Ticket IDs contain uppercase letters + hyphen + digits.
+ * Phase names are lowercase_snake_case.
+ */
+function looksLikeTicketId(arg: string): boolean {
+  return /^[A-Z]+-\d+$/.test(arg);
+}
+
 function main(): void {
   const args = process.argv.slice(2);
+  let ticketId = extractTicketFlag(args);
+
+  // Support: transition-resolve.ts <TICKET_ID> <CURRENT_PHASE> <SIGNAL_TYPE>
+  // (orchestrator agents naturally pass ticket ID as first positional arg)
+  if (!ticketId && args.length >= 3 && args[0] !== "--gate" && looksLikeTicketId(args[0])) {
+    ticketId = args.shift()!;
+  }
 
   // --gate GATE_NAME KEYWORD: look up a gate response object
   if (args[0] === "--gate") {
     if (args.length < 3) {
-      console.error("Usage: transition-resolve.ts --gate <GATE_NAME> <KEYWORD>");
+      console.error("Usage: transition-resolve.ts [TICKET_ID] --gate <GATE_NAME> <KEYWORD>");
       process.exit(1);
     }
     const gateName = args[1];
     const keyword = args[2];
 
     const repoRoot = getRepoRoot();
-    const configPath = `${repoRoot}/.collab/config/pipeline.json`;
-    const pipeline = readJsonFile(configPath);
+    const pipeline = loadPipelineConfig(repoRoot, ticketId);
 
     if (pipeline === null) {
-      console.error(`Error: pipeline.json not found or malformed: ${configPath}`);
+      console.error(`Error: pipeline config not found or malformed`);
       process.exit(3);
     }
 
     const response = resolveGateResponse(pipeline, gateName, keyword);
     if (response === null) {
       console.error(
-        `Error: gate '${gateName}' or keyword '${keyword}' not found in pipeline.json`
+        `Error: gate '${gateName}' or keyword '${keyword}' not found in pipeline config`
       );
       process.exit(2);
     }
@@ -82,7 +112,7 @@ function main(): void {
 
   if (args.length < 2) {
     console.error(
-      "Usage: transition-resolve.ts <CURRENT_PHASE> <SIGNAL_TYPE> [--plain]"
+      "Usage: transition-resolve.ts [TICKET_ID] <CURRENT_PHASE> <SIGNAL_TYPE> [--plain]"
     );
     process.exit(1);
   }
@@ -92,11 +122,10 @@ function main(): void {
   const plainOnly = args.includes("--plain");
 
   const repoRoot = getRepoRoot();
-  const configPath = `${repoRoot}/.collab/config/pipeline.json`;
-  const pipeline = readJsonFile(configPath);
+  const pipeline = loadPipelineConfig(repoRoot, ticketId);
 
   if (pipeline === null) {
-    console.error(`Error: pipeline.json not found or malformed: ${configPath}`);
+    console.error(`Error: pipeline config not found or malformed`);
     process.exit(3);
   }
 

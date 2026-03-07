@@ -28,7 +28,7 @@
  *   3 = file error (registry or pipeline.json missing)
  */
 
-import { getRepoRoot, readJsonFile, registryPath } from "./orchestrator-utils";
+import { getRepoRoot, readJsonFile, registryPath, resolvePipelineConfigPath } from "./orchestrator-utils";
 import type { PhaseHistoryEntry } from "../../lib/pipeline/registry";
 
 // Re-export types for test backward compatibility
@@ -101,12 +101,18 @@ function main(): void {
   const nextPhase = args[1];
 
   const repoRoot = getRepoRoot();
-  const configPath = `${repoRoot}/.collab/config/pipeline.json`;
+
+  // Resolve pipeline config (variant-aware via registry)
+  const regPath = registryPath(repoRoot, ticketId);
+  const registry = readJsonFile(regPath);
+  const variant = registry?.pipeline_variant as string | undefined;
+  const effectiveRoot = (registry?.repo_path as string | undefined) ?? repoRoot;
+  const configPath = resolvePipelineConfigPath(effectiveRoot, { variant });
 
   // Read pipeline config
   const pipeline = readJsonFile(configPath);
   if (pipeline === null) {
-    console.error(`Error: pipeline.json not found: ${configPath}`);
+    console.error(`Error: pipeline config not found: ${configPath}`);
     process.exit(3);
   }
 
@@ -127,9 +133,7 @@ function main(): void {
     process.exit(0);
   }
 
-  // Read registry
-  const regPath = registryPath(repoRoot, ticketId);
-  const registry = readJsonFile(regPath);
+  // Registry already loaded above for variant resolution
   if (registry === null) {
     console.error(`Error: Registry not found for ticket: ${ticketId}`);
     process.exit(3);

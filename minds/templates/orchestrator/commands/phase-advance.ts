@@ -3,13 +3,13 @@
 /**
  * phase-advance.ts - Determine the next phase after the current one
  *
- * Reads phase ordering from pipeline.json using object insertion order
- * (equivalent to jq's keys_unsorted). Returns the next phase name to stdout.
+ * Ticket ID is REQUIRED — the script reads the registry to resolve the
+ * correct pipeline variant config automatically. No --pipeline flag needed.
  *
  * Usage:
- *   bun commands/phase-advance.ts <CURRENT_PHASE>         # next phase
- *   bun commands/phase-advance.ts --first                 # first phase key
- *   bun commands/phase-advance.ts --is-terminal <PHASE>   # "true" or "false"
+ *   bun commands/phase-advance.ts <TICKET_ID> <CURRENT_PHASE>       # next phase
+ *   bun commands/phase-advance.ts <TICKET_ID> --first                # first phase key
+ *   bun commands/phase-advance.ts <TICKET_ID> --is-terminal <PHASE>  # "true" or "false"
  *
  * Output (stdout):
  *   Phase name, "done", "true", or "false"
@@ -18,19 +18,40 @@
  *   0 = success
  *   1 = usage error
  *   2 = validation error (unknown phase)
- *   3 = file error (pipeline.json missing or malformed)
+ *   3 = file error (pipeline config missing or malformed)
  */
 
 import {
   getRepoRoot,
-  readJsonFile,
-  OrchestratorError,
-  handleError,
-} from "../../../lib/pipeline";
-import type { CompiledPipeline } from "../../../lib/pipeline";
+  loadPipelineForTicket,
+  validateTicketIdArg,
+} from "../orchestrator-utils";
+
+// Error types matching pipeline_core
+class OrchestratorError extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+    this.name = "OrchestratorError";
+  }
+}
+
+function handleError(err: unknown): void {
+  if (err instanceof OrchestratorError) {
+    console.error(`Error: ${err.message}`);
+    const exitCode = err.code === "VALIDATION" ? 2 : err.code === "FILE_NOT_FOUND" ? 3 : 1;
+    process.exit(exitCode);
+  }
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+
+interface CompiledPipeline {
+  phases: Record<string, any>;
+  [key: string]: any;
+}
 
 /**
- * Get the next phase ID from pipeline.json given the current phase.
+ * Get the next phase ID given the current phase.
  * Uses object insertion order (same as jq keys_unsorted).
  * Returns "done" if current is the last phase.
  */
@@ -54,7 +75,7 @@ export function getNextPhase(pipeline: CompiledPipeline, currentPhase: string): 
 }
 
 /**
- * Get the first phase ID from pipeline.json using insertion order.
+ * Get the first phase ID using insertion order.
  */
 export function getFirstPhase(pipeline: CompiledPipeline): string {
   const phaseIds = Object.keys(pipeline.phases);
@@ -65,7 +86,7 @@ export function getFirstPhase(pipeline: CompiledPipeline): string {
 }
 
 /**
- * Return true if the given phase ID is marked terminal in pipeline.json.
+ * Return true if the given phase ID is marked terminal.
  * Throws VALIDATION error for unknown phase IDs.
  */
 export function isTerminalPhase(pipeline: CompiledPipeline, phaseId: string): boolean {
@@ -78,37 +99,31 @@ export function isTerminalPhase(pipeline: CompiledPipeline, phaseId: string): bo
 
 function main(): void {
   const args = process.argv.slice(2);
-  if (args.length < 1) {
+  validateTicketIdArg(args, "phase-advance.ts");
+
+  if (args.length < 2) {
     console.error(
-      "Usage: phase-advance.ts <CURRENT_PHASE>\n" +
-      "       phase-advance.ts --first\n" +
-      "       phase-advance.ts --is-terminal <PHASE>"
+      "Usage: phase-advance.ts <TICKET_ID> <CURRENT_PHASE>\n" +
+      "       phase-advance.ts <TICKET_ID> --first\n" +
+      "       phase-advance.ts <TICKET_ID> --is-terminal <PHASE>"
     );
     process.exit(1);
   }
 
   try {
     const repoRoot = getRepoRoot();
-    const configPath = `${repoRoot}/.collab/config/pipeline.json`;
-    const pipeline = readJsonFile(configPath) as CompiledPipeline | null;
+    const ticketId = args[0];
+    const { pipeline } = loadPipelineForTicket(repoRoot, ticketId);
 
-    if (pipeline === null) {
-      throw new OrchestratorError("FILE_NOT_FOUND", `pipeline.json not found: ${configPath}`);
-    }
-
-    if (!pipeline.phases || typeof pipeline.phases !== "object" || Array.isArray(pipeline.phases)) {
-      throw new OrchestratorError("FILE_NOT_FOUND", `pipeline.json is malformed: expected phases object`);
-    }
-
-    if (args[0] === "--first") {
-      console.log(getFirstPhase(pipeline));
-    } else if (args[0] === "--is-terminal") {
-      if (args.length < 2) {
-        throw new OrchestratorError("USAGE", "Usage: phase-advance.ts --is-terminal <PHASE>");
+    if (args[1] === "--first") {
+      console.log(getFirstPhase(pipeline as CompiledPipeline));
+    } else if (args[1] === "--is-terminal") {
+      if (args.length < 3) {
+        throw new OrchestratorError("USAGE", "Usage: phase-advance.ts <TICKET_ID> --is-terminal <PHASE>");
       }
-      console.log(isTerminalPhase(pipeline, args[1]) ? "true" : "false");
+      console.log(isTerminalPhase(pipeline as CompiledPipeline, args[2]) ? "true" : "false");
     } else {
-      const nextPhase = getNextPhase(pipeline, args[0]);
+      const nextPhase = getNextPhase(pipeline as CompiledPipeline, args[1]);
       console.log(nextPhase);
     }
   } catch (err) {

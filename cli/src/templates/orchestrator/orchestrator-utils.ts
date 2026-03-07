@@ -7,16 +7,17 @@
  * All orchestrator scripts import from here; tests import from here.
  */
 
-import { getRepoRoot, readJsonFile, writeJsonAtomic } from "../../lib/pipeline/utils";
+import { getRepoRoot, readJsonFile, writeJsonAtomic, resolvePipelineConfigPath, loadPipelineForTicket, validateTicketIdArg } from "../../lib/pipeline/utils";
 import { registryPath } from "../../lib/pipeline/paths";
-export { getRepoRoot, readJsonFile, writeJsonAtomic, registryPath };
+export { getRepoRoot, readJsonFile, writeJsonAtomic, registryPath, resolvePipelineConfigPath, loadPipelineForTicket, validateTicketIdArg };
 
 /**
  * Check @metrics directive and exit 3 if metrics are disabled.
  * Extracted from the identical 5-line block repeated in all system node CLIs.
  */
-export function exitIfMetricsDisabled(repoRoot: string): void {
-  const pipeline = readJsonFile(`${repoRoot}/.collab/config/pipeline.json`);
+export function exitIfMetricsDisabled(repoRoot: string, variant?: string): void {
+  const configPath = resolvePipelineConfigPath(repoRoot, { variant });
+  const pipeline = readJsonFile(configPath);
   if (pipeline?.metrics?.enabled === false) {
     console.log(JSON.stringify({ skipped: true, reason: "@metrics(false)" }));
     process.exit(3);

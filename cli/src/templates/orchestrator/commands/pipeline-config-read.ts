@@ -22,7 +22,7 @@
  *   3 = pipeline.json not found or malformed
  */
 
-import { getRepoRoot, readJsonFile } from "../orchestrator-utils";
+import { getRepoRoot, readJsonFile, resolvePipelineConfigPath, loadPipelineForTicket } from "../orchestrator-utils";
 
 function main(): void {
   const args = process.argv.slice(2);
@@ -40,20 +40,32 @@ function main(): void {
     process.exit(1);
   }
 
-  // Parse --phase flag
+  // Parse --phase and --ticket flags
   let phaseName: string | undefined;
+  let ticketId: string | undefined;
   for (let i = 1; i < args.length; i++) {
     if (args[i] === "--phase" && args[i + 1]) {
       phaseName = args[++i];
+    } else if (args[i] === "--ticket" && args[i + 1]) {
+      ticketId = args[++i];
     }
   }
 
   const repoRoot = getRepoRoot();
-  const configPath = `${repoRoot}/.collab/config/pipeline.json`;
-  const pipeline = readJsonFile(configPath);
+  let pipeline: any;
+  if (ticketId) {
+    try {
+      const result = loadPipelineForTicket(repoRoot, ticketId);
+      pipeline = result.pipeline;
+    } catch {
+      pipeline = readJsonFile(resolvePipelineConfigPath(repoRoot));
+    }
+  } else {
+    pipeline = readJsonFile(resolvePipelineConfigPath(repoRoot));
+  }
 
   if (pipeline === null) {
-    console.error(`Error: pipeline.json not found: ${configPath}`);
+    console.error(`Error: pipeline config not found`);
     process.exit(3);
   }
 
