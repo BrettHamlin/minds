@@ -120,6 +120,34 @@ describe("classifyRun — with interventions", () => {
 });
 
 // ============================================================================
+// Unit tests: durationMs
+// ============================================================================
+
+describe("classifyRun — durationMs", () => {
+  test("returns durationMs when duration_ms is set on the runs row", () => {
+    const db: Database = openInMemoryMetricsDb();
+    ensureRun(db, "DR-1");
+    db.query("UPDATE runs SET duration_ms = 4200 WHERE id = 'DR-1'").run();
+
+    const result = classifyRun(db, "DR-1");
+
+    expect(result.durationMs).toBe(4200);
+    db.close();
+  });
+
+  test("returns durationMs=null when duration_ms is null on the runs row", () => {
+    const db: Database = openInMemoryMetricsDb();
+    ensureRun(db, "DR-2");
+    // duration_ms not set — remains NULL
+
+    const result = classifyRun(db, "DR-2");
+
+    expect(result.durationMs).toBeNull();
+    db.close();
+  });
+});
+
+// ============================================================================
 // Unit tests: getAutonomyRate
 // ============================================================================
 
@@ -384,6 +412,24 @@ describe("classify-run CLI integration", () => {
     expect(proc.exitCode).toBe(3);
     const out = JSON.parse(await new Response(proc.stdout).text());
     expect(out.skipped).toBe(true);
+  });
+
+  test("JSON output includes durationMs field", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-CR-DMS");
+
+    const db = openMetricsDb(metricsPath);
+    db.query("UPDATE runs SET duration_ms = 12345 WHERE id = 'BRE-CR-DMS'").run();
+    db.close();
+
+    const proc = await Bun.spawn(
+      ["bun", join(import.meta.dir, "classify-run.ts"), "BRE-CR-DMS"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await proc.exited;
+
+    expect(proc.exitCode).toBe(0);
+    const out = JSON.parse(await new Response(proc.stdout).text());
+    expect(out.durationMs).toBe(12345);
   });
 
   test("autonomyRates reflect history across multiple runs", async () => {
