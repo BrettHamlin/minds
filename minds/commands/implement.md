@@ -319,7 +319,30 @@ This command executes implementation for the **collab repo itself**, where work 
 
        Run this per-drone, in the same order as review (Wave 1 drones before Wave 2, etc.).
 
-   9c. **Integration / E2E tests**: After ALL drones are merged, run real-world tests the way a user would use the feature. No fixtures, no mocks — actual execution.
+   9c. **Flush review learnings to memory**: After merging each drone, write a brief summary of what was learned during the review to the reviewing Mind's daily log. This captures institutional knowledge — patterns confirmed, violations caught, architectural decisions observed.
+
+       For each Mind that completed review, write a temporary file with the review summary, then call write-cli.ts:
+
+       ```bash
+       cat > /tmp/{mind_name}-review-learnings.md << 'EOF'
+       ## Review of @{mind_name} for {ticket_id}
+
+       {1-3 sentences summarizing key findings from the citation-based review:
+        - Patterns confirmed (e.g., "All path construction uses paths.ts utilities")
+        - Violations found and fixed (e.g., "Drone initially had inline path construction, fixed on re-dispatch")
+        - Decisions made (e.g., "Added --content-file flag for multi-line review summaries")}
+       EOF
+
+       bun minds/memory/lib/write-cli.ts --mind {mind_name} --content-file /tmp/{mind_name}-review-learnings.md
+       ```
+
+       **Rules:**
+       - Write concrete, durable insights — not session-specific state
+       - Skip the flush for trivial passes with nothing new learned
+       - One write per Mind per review cycle
+       - Clean up the temp file after the write succeeds
+
+   9d. **Integration / E2E tests**: After ALL drones are merged, run real-world tests the way a user would use the feature. No fixtures, no mocks — actual execution.
 
        ```bash
        # Run all unit tests first (sanity check post-merge)
@@ -356,7 +379,19 @@ This command executes implementation for the **collab repo itself**, where work 
     Tasks: N/N complete
     ```
 
-11. **Teardown cleanup**: After final verification passes, clean up all compaction-resilience artifacts.
+11. **Memory hygiene**: After all drones are merged and tests pass, run hygiene on participating Minds to prune stale entries from their MEMORY.md files.
+
+    For each Mind that was dispatched in this run:
+
+    ```bash
+    bun minds/memory/lib/hygiene-cli.ts --mind {mind_name} --prune
+    ```
+
+    This is a lightweight, idempotent operation — safe to run even if no stale entries exist. It removes any lines marked `<!-- STALE -->` from the Mind's MEMORY.md.
+
+    Note: Promotion (daily log → MEMORY.md) is deliberately left manual. Automatic promotion requires judgment about which entries are durable — run `hygiene-cli.ts --mind {name} --promote "insight text"` manually when you identify entries worth promoting.
+
+12. **Teardown cleanup**: After final verification passes, clean up all compaction-resilience artifacts.
 
     Tear down the Minds bus (reads PIDs from state file, kills them, clears state):
 
