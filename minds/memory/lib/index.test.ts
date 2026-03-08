@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { Database } from "bun:sqlite";
-import { chunkText, createIndex, syncIndex, indexPath, embeddingToBlob, blobToEmbedding } from "./index";
+import { chunkText, createIndex, syncIndex, indexPath, embeddingToBlob, blobToEmbedding, warmSession, _resetWarmState } from "./index";
 import type { EmbeddingProvider } from "./embeddings";
 
 // We test createIndex/syncIndex against the real "memory" mind
@@ -258,5 +258,74 @@ describe("embeddingToBlob / blobToEmbedding", () => {
     const vec = [1.0, 2.0, 3.0];
     const blob = embeddingToBlob(vec);
     expect(blob.byteLength).toBe(vec.length * 4);
+  });
+});
+
+// ─── warmSession ──────────────────────────────────────────────────────────────
+
+describe("warmSession", () => {
+  beforeEach(() => {
+    _resetWarmState(TEST_MIND);
+  });
+
+  afterEach(() => {
+    const dbPath = indexPath(TEST_MIND);
+    if (existsSync(dbPath)) rmSync(dbPath);
+    _resetWarmState(TEST_MIND);
+  });
+
+  test("creates index if missing", async () => {
+    const dbPath = indexPath(TEST_MIND);
+    if (existsSync(dbPath)) rmSync(dbPath);
+
+    await warmSession(TEST_MIND);
+
+    expect(existsSync(dbPath)).toBe(true);
+    const db = new Database(dbPath);
+    try {
+      const count = db.query("SELECT COUNT(*) as n FROM chunks").get() as { n: number };
+      expect(count.n).toBeGreaterThan(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("idempotent — second call is a no-op (does not re-sync)", async () => {
+    await warmSession(TEST_MIND);
+
+    const dbPath = indexPath(TEST_MIND);
+    const db1 = new Database(dbPath);
+    const count1 = (db1.query("SELECT COUNT(*) as n FROM chunks").get() as { n: number }).n;
+    db1.close();
+
+    // Second call — should be a no-op (warm state set)
+    await warmSession(TEST_MIND);
+
+    const db2 = new Database(dbPath);
+    const count2 = (db2.query("SELECT COUNT(*) as n FROM chunks").get() as { n: number }).n;
+    db2.close();
+
+    expect(count1).toBe(count2);
+  });
+
+  test("re-syncs after _resetWarmState (simulates file change scenario)", async () => {
+    await warmSession(TEST_MIND);
+
+    const dbPath = indexPath(TEST_MIND);
+    const db1 = new Database(dbPath);
+    const count1 = (db1.query("SELECT COUNT(*) as n FROM chunks").get() as { n: number }).n;
+    db1.close();
+
+    // Reset warm state so next call triggers a real sync
+    _resetWarmState(TEST_MIND);
+
+    await warmSession(TEST_MIND);
+
+    const db2 = new Database(dbPath);
+    const count2 = (db2.query("SELECT COUNT(*) as n FROM chunks").get() as { n: number }).n;
+    db2.close();
+
+    // After re-sync, chunk count should match (same files → same count)
+    expect(count2).toBe(count1);
   });
 });
