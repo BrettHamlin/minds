@@ -222,3 +222,41 @@ export async function syncIndex(mindName: string, provider?: EmbeddingProvider):
     db.close();
   }
 }
+
+/**
+ * Tracks which minds have been warmed in this process lifetime.
+ * Used by warmSession() to make repeated calls idempotent.
+ */
+const _warmedMinds = new Set<string>();
+
+/**
+ * Warms the search index for a Mind by running syncIndex.
+ * Idempotent: if the Mind has already been warmed in this process, returns immediately.
+ * Logs timing via performance.now().
+ *
+ * @param mindName - Name of the Mind to warm
+ */
+export async function warmSession(mindName: string): Promise<void> {
+  if (_warmedMinds.has(mindName)) {
+    return;
+  }
+
+  const start = performance.now();
+  await syncIndex(mindName);
+  const elapsed = (performance.now() - start).toFixed(1);
+
+  _warmedMinds.add(mindName);
+  console.log(`warmSession: "${mindName}" warmed in ${elapsed}ms`);
+}
+
+/**
+ * Resets the warm state for a Mind (for testing only).
+ * @internal
+ */
+export function _resetWarmState(mindName?: string): void {
+  if (mindName) {
+    _warmedMinds.delete(mindName);
+  } else {
+    _warmedMinds.clear();
+  }
+}
