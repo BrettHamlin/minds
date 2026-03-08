@@ -6,7 +6,10 @@
 // Most tests stub at the module boundary to avoid process lifecycle flakiness.
 
 import { describe, test, expect, mock, afterEach } from "bun:test";
-import { teardownMindsBus } from "../minds-bus-lifecycle.ts";
+import * as path from "path";
+import * as os from "os";
+import { promises as fs } from "fs";
+import { teardownMindsBus, readBusState } from "../minds-bus-lifecycle.ts";
 
 // ---------------------------------------------------------------------------
 // teardownMindsBus
@@ -88,13 +91,12 @@ describe("startMindsBus — channel naming contract", () => {
 // ---------------------------------------------------------------------------
 
 describe("startMindsBus + teardownMindsBus — integration", () => {
+  const thisDir = path.dirname(new URL(import.meta.url).pathname);
+  // minds/transport/__tests__/ → go up 3 levels to repo root
+  const repoRoot = path.resolve(thisDir, "../../..");
+
   test("starts a real bus server and returns busUrl, busServerPid, bridgePid", async () => {
-    // Only run if we can determine the repo root (skip in environments without bun)
     const { startMindsBus } = await import("../minds-bus-lifecycle.ts");
-    const path = await import("path");
-    const thisDir = path.dirname(new URL(import.meta.url).pathname);
-    // minds/transport/__tests__/ → go up 3 levels to repo root
-    const repoRoot = path.resolve(thisDir, "../../..");
 
     const info = await startMindsBus(repoRoot, "%dummy-pane", "BRE-TEST-LIFECYCLE");
 
@@ -109,17 +111,28 @@ describe("startMindsBus + teardownMindsBus — integration", () => {
       // Verify the bus server is reachable
       const res = await fetch(`${info.busUrl}/status`);
       expect(res.ok).toBe(true);
+
+      // T008: verify startMindsBus writes state file
+      const state = await readBusState(repoRoot, "BRE-TEST-LIFECYCLE");
+      expect(state).not.toBeNull();
+      expect(state!.busUrl).toBe(info.busUrl);
+      expect(state!.busServerPid).toBe(info.busServerPid);
+      expect(state!.bridgePid).toBe(info.bridgePid);
+      expect(state!.ticketId).toBe("BRE-TEST-LIFECYCLE");
+      expect(typeof state!.startedAt).toBe("string");
     } finally {
-      // Always teardown to avoid orphaned processes
-      await teardownMindsBus({ busServerPid: info.busServerPid, bridgePid: info.bridgePid });
+      // Always teardown to avoid orphaned processes (pass repoRoot+ticketId to clear state)
+      await teardownMindsBus({
+        busServerPid: info.busServerPid,
+        bridgePid: info.bridgePid,
+        repoRoot,
+        ticketId: "BRE-TEST-LIFECYCLE",
+      });
     }
   }, 10000); // 10s timeout for subprocess startup
 
   test("teardown stops the bus server (requests fail after teardown)", async () => {
     const { startMindsBus } = await import("../minds-bus-lifecycle.ts");
-    const path = await import("path");
-    const thisDir = path.dirname(new URL(import.meta.url).pathname);
-    const repoRoot = path.resolve(thisDir, "../../..");
 
     const info = await startMindsBus(repoRoot, "%dummy-pane", "BRE-TEST-TEARDOWN");
 
@@ -127,7 +140,16 @@ describe("startMindsBus + teardownMindsBus — integration", () => {
     const beforeRes = await fetch(`${info.busUrl}/status`);
     expect(beforeRes.ok).toBe(true);
 
-    await teardownMindsBus({ busServerPid: info.busServerPid, bridgePid: info.bridgePid });
+    // T008: verify state file exists before teardown
+    const stateBefore = await readBusState(repoRoot, "BRE-TEST-TEARDOWN");
+    expect(stateBefore).not.toBeNull();
+
+    await teardownMindsBus({
+      busServerPid: info.busServerPid,
+      bridgePid: info.bridgePid,
+      repoRoot,
+      ticketId: "BRE-TEST-TEARDOWN",
+    });
 
     // Give process a moment to fully terminate
     await Bun.sleep(200);
@@ -140,5 +162,9 @@ describe("startMindsBus + teardownMindsBus — integration", () => {
       failed = true;
     }
     expect(failed).toBe(true);
+
+    // T008: verify teardownMindsBus clears the state file
+    const stateAfter = await readBusState(repoRoot, "BRE-TEST-TEARDOWN");
+    expect(stateAfter).toBeNull();
   }, 15000);
 });

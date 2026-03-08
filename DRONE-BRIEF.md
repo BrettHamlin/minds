@@ -1,66 +1,36 @@
-# Drone Brief: @templates BRE-442
+# Drone Brief: @transport for BRE-446 (Wave 2)
 
-Mind pane ID: %31299
+## Tasks assigned to you
 
-## Problem
+- [ ] T009 @transport Update minds/lib/drone-pane.ts to accept --bus-url flag and inject BUS_URL env var into the Claude Code spawn command using injectBusEnv from minds/transport/minds-bus-lifecycle.ts
+- [ ] T010 @transport Update minds/dispatch.ts to:
+  a) Remove bus lifecycle management from dispatchWave() — no more startMindsBus/teardownMindsBus calls inside dispatchWave. The caller handles bus lifecycle externally.
+  b) dispatchWave should require busUrl in options when bus transport is desired (keep backward compat: if no busUrl, tmux fallback still works)
+  c) dispatchToMind should pass busUrl to drone-pane.ts via --bus-url flag (instead of publishing DRONE_SPAWNED directly). The drone-pane.ts now injects BUS_URL into the drone's env.
+  d) Keep the DRONE_SPAWNED bus publish in dispatchToMind as a notification (it's useful for monitoring), but move the brief delivery back to tmux-send for all cases (bus or not). The bus carries signals, tmux carries brief text.
 
-17 files referenced by installed `.claude/commands/*.md` are missing from `minds/templates/`. The installer copies `minds/templates/` → `.collab/`, so anything not in templates doesn't get installed.
+## Key context
 
-## Task
+- injectBusEnv() is already exported from minds/transport/minds-bus-lifecycle.ts (you built it in Wave 1)
+- drone-pane.ts currently launches Claude with: `'cd ${worktreePath} && claude --dangerously-skip-permissions --model sonnet' Enter`
+- With --bus-url, it should become: `'cd ${worktreePath} && BUS_URL=${busUrl} claude --dangerously-skip-permissions --model sonnet' Enter`
+- dispatch.ts currently calls dev-pane.ts (the generic one). It should call drone-pane.ts instead (minds/lib/drone-pane.ts) with --mind and --ticket flags
+- The startMindsBus/teardownMindsBus imports can stay in dispatch.ts but dispatchWave should NOT call them. Remove the lifecycle management from dispatchWave's try/finally block.
 
-Add the 17 missing files to `minds/templates/` so they get installed to target repos.
+## Files to modify
 
-**Each file must be a 1:1 copy of its source, with only the import path changed:**
-- Source uses `../pipeline_core` or `../signals/` (Mind-relative)
-- Template must use `../lib/pipeline/` (`.collab/`-relative)
-
-### Missing files to add
-
-**handlers/** (add to `minds/templates/handlers/`):
-1. `emit-signal.ts` — source: `minds/signals/emit-signal.ts`
-2. `emit-build-signal.ts` — source: `minds/signals/emit-build-signal.ts` (if it doesn't exist as a standalone, check if it's a thin wrapper calling emit-signal.ts — if so, create the same pattern)
-3. `emit-verify-signal.ts` — source: `minds/signals/emit-verify-signal.ts` (same — check source)
-
-**scripts/** (add to `minds/templates/scripts/`):
-4. `analyze-task-phases.ts` — source: `minds/execution/analyze-task-phases.ts`
-5. `resolve-execution-mode.ts` — source: `minds/execution/resolve-execution-mode.ts`
-6. `emit-findings.ts` — source: `minds/signals/emit-findings.ts`
-7. `deploy-verify-executor.ts` — source: `minds/execution/deploy-verify-executor.ts`
-8. `pre-deploy-summary.ts` — source: `minds/execution/pre-deploy-summary.ts`
-9. `run-tests-executor.ts` — source: find in `minds/execution/` or `minds/signals/`
-10. `verify-execute-executor.ts` — source: find in `minds/execution/`
-11. `visual-verify-executor.ts` — source: find in `minds/execution/`
-
-**scripts/orchestrator/commands/** (add to `minds/templates/scripts/orchestrator/commands/`):
-12. `resolve-questions.ts` — source: find in `minds/execution/`
-13. `teardown-bus.ts` — source: find in `minds/execution/` or `minds/transport/`
-14. `write-resolutions.ts` — source: find in `minds/execution/`
-
-**lib/pipeline/** (add to `minds/templates/lib-pipeline/`):
-15. `questions.ts` — source: `minds/pipeline_core/questions.ts`
-
-**transport/** (add to `minds/templates/transport/`):
-16. `bus-server.ts` — source: `minds/transport/bus-server.ts`
-
-**scripts/orchestrator/** (add to `minds/templates/scripts/orchestrator/`):
-17. `evaluate-gate.ts` — source: `minds/execution/evaluate-gate.ts`
-
-## Rules
-
-- **1:1 copy** of source file. Do NOT rewrite, rename variables, or change logic.
-- **Only change import paths**: `../pipeline_core` → `../lib/pipeline`, `../signals/` → `../handlers/`, etc.
-- If a source file doesn't exist, check if the command that references it is outdated. Note it and skip.
-- Create directories as needed (`mkdir -p`).
-- Do NOT modify any files outside `minds/templates/`.
+- minds/lib/drone-pane.ts — add --bus-url flag, inject into spawn command
+- minds/dispatch.ts — refactor dispatchWave, update dispatchToMind to use drone-pane.ts
+- minds/dispatch.test.ts — update tests to reflect the changes
 
 ## Acceptance criteria
 
-- All 17 files (or noted as non-existent source) present in `minds/templates/`
-- Import paths adjusted for `.collab/` installed structure
-- No logic changes vs source
+- drone-pane.ts accepts --bus-url and injects BUS_URL env var
+- dispatchWave no longer calls startMindsBus/teardownMindsBus
+- dispatchToMind uses drone-pane.ts (not dev-pane.ts)
+- All existing tests pass (update mocks as needed)
+- bun test minds/ passes
 
 ## When done
 
-```bash
-bun minds/lib/tmux-send.ts %31299 "DRONE_COMPLETE @templates BRE-442"
-```
+Do NOT commit. Type: DRONE_COMPLETE @transport BRE-446 Wave 2

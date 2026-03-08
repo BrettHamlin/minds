@@ -20,6 +20,7 @@
  *     [--base <branch>]              # base branch to fork from (default: current branch)
  *     [--claude-file <path>]         # file whose content to write as drone's private CLAUDE.md
  *     [--brief-file <path>]          # file whose content to write as DRONE-BRIEF.md
+ *     [--bus-url <url>]             # when provided, injects BUS_URL env var into Claude Code spawn command
  *
  * Output: JSON to stdout
  *   { drone_pane, worktree, branch, base, claude_dir, mind_pane }
@@ -28,6 +29,7 @@
 import { execSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { basename, resolve } from "path";
+import { injectBusEnv } from "../transport/minds-bus-lifecycle.ts";
 
 // ─── CLAUDE.md assembly ───────────────────────────────────────────────────────
 
@@ -137,6 +139,7 @@ const mindPane = getArg("--mind-pane") ?? callerPane;
 
 const claudeFile = getArg("--claude-file");
 const briefFile = getArg("--brief-file");
+const busUrl = getArg("--bus-url");
 
 // ─── Repo context ─────────────────────────────────────────────────────────────
 
@@ -251,10 +254,11 @@ try {
 
 // ─── Launch Claude Code Sonnet (no collab/pipeline pack install) ──────────────
 
-run(
-  `tmux send-keys -t ${dronePane} ` +
-  `'cd ${worktreePath} && claude --dangerously-skip-permissions --model sonnet' Enter`
-);
+let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model sonnet`;
+if (busUrl) {
+  launchCmd = injectBusEnv(launchCmd, busUrl);
+}
+run(`tmux send-keys -t ${dronePane} '${launchCmd}' Enter`);
 
 // ─── Output result ────────────────────────────────────────────────────────────
 

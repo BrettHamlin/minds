@@ -135,7 +135,7 @@ describe("dispatchToMind", () => {
     cleanup = tmp.cleanup;
 
     spawnSpy = spyOn(Bun, "spawn").mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) {
+      if (args.some((a) => a.includes("drone-pane.ts"))) {
         return makeProcess(0, DEV_PANE_OUTPUT);
       }
       return makeProcess(0, "");
@@ -184,13 +184,18 @@ describe("dispatchToMind", () => {
     expect(result.paneId).toBe("%1234");
   });
 
-  it("spawns dev-pane.ts", async () => {
+  it("spawns drone-pane.ts with --mind and --ticket flags", async () => {
     await dispatchToMind("signals", "brief", { repoRoot, busUrl: MOCK_BUS_URL, ticketId: MOCK_TICKET_ID });
     const calls = spawnSpy.mock.calls;
-    const hasDevPane = calls.some((c) =>
-      (c[0] as string[]).some((a) => a.includes("dev-pane.ts"))
+    const dronePaneCall = calls.find((c) =>
+      (c[0] as string[]).some((a) => a.includes("drone-pane.ts"))
     );
-    expect(hasDevPane).toBe(true);
+    expect(dronePaneCall).toBeDefined();
+    const args = dronePaneCall![0] as string[];
+    expect(args).toContain("--mind");
+    expect(args).toContain("signals");
+    expect(args).toContain("--ticket");
+    expect(args).toContain(MOCK_TICKET_ID);
   });
 
   it("publishes DRONE_SPAWNED event via bus when busUrl and ticketId provided", async () => {
@@ -217,42 +222,68 @@ describe("dispatchToMind", () => {
     expect(parsed.type).toBe("DRONE_SPAWNED");
   });
 
-  it("passes --branch option to dev-pane.ts", async () => {
+  it("passes --branch option to drone-pane.ts", async () => {
     await dispatchToMind("signals", "brief", { repoRoot, branch: "my-branch", busUrl: MOCK_BUS_URL, ticketId: MOCK_TICKET_ID });
-    const devPaneCall = spawnSpy.mock.calls.find((c) =>
-      (c[0] as string[]).some((a) => a.includes("dev-pane.ts"))
+    const dronePaneCall = spawnSpy.mock.calls.find((c) =>
+      (c[0] as string[]).some((a) => a.includes("drone-pane.ts"))
     );
-    expect(devPaneCall).toBeDefined();
-    const args = devPaneCall![0] as string[];
+    expect(dronePaneCall).toBeDefined();
+    const args = dronePaneCall![0] as string[];
     expect(args).toContain("--branch");
     expect(args).toContain("my-branch");
   });
 
-  it("passes --base option to dev-pane.ts", async () => {
+  it("passes --base option to drone-pane.ts", async () => {
     await dispatchToMind("signals", "brief", { repoRoot, base: "dev", busUrl: MOCK_BUS_URL, ticketId: MOCK_TICKET_ID });
-    const devPaneCall = spawnSpy.mock.calls.find((c) =>
-      (c[0] as string[]).some((a) => a.includes("dev-pane.ts"))
+    const dronePaneCall = spawnSpy.mock.calls.find((c) =>
+      (c[0] as string[]).some((a) => a.includes("drone-pane.ts"))
     );
-    const args = devPaneCall![0] as string[];
+    const args = dronePaneCall![0] as string[];
     expect(args).toContain("--base");
     expect(args).toContain("dev");
   });
 
-  it("throws when dev-pane.ts exits non-zero", async () => {
+  it("passes --bus-url to drone-pane.ts when busUrl provided", async () => {
+    await dispatchToMind("signals", "brief", { repoRoot, busUrl: MOCK_BUS_URL, ticketId: MOCK_TICKET_ID });
+    const dronePaneCall = spawnSpy.mock.calls.find((c) =>
+      (c[0] as string[]).some((a) => a.includes("drone-pane.ts"))
+    );
+    expect(dronePaneCall).toBeDefined();
+    const args = dronePaneCall![0] as string[];
+    expect(args).toContain("--bus-url");
+    expect(args).toContain(MOCK_BUS_URL);
+  });
+
+  it("does not pass --bus-url to drone-pane.ts when busUrl not provided", async () => {
     spawnSpy.mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) {
+      if (args.some((a) => a.includes("drone-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
+      return makeProcess(0, "");
+    });
+
+    await dispatchToMind("signals", "brief", { repoRoot });
+
+    const dronePaneCall = spawnSpy.mock.calls.find((c) =>
+      (c[0] as string[]).some((a) => a.includes("drone-pane.ts"))
+    );
+    const args = dronePaneCall![0] as string[];
+    expect(args).not.toContain("--bus-url");
+  });
+
+  it("throws when drone-pane.ts exits non-zero", async () => {
+    spawnSpy.mockImplementation((args: string[]) => {
+      if (args.some((a) => a.includes("drone-pane.ts"))) {
         return makeProcess(1, "", "pane creation failed");
       }
       return makeProcess(0, "");
     });
     await expect(
       dispatchToMind("signals", "brief", { repoRoot, busUrl: MOCK_BUS_URL, ticketId: MOCK_TICKET_ID })
-    ).rejects.toThrow("dev-pane.ts failed");
+    ).rejects.toThrow("drone-pane.ts failed");
   });
 
-  it("throws when dev-pane.ts returns invalid JSON", async () => {
+  it("throws when drone-pane.ts returns invalid JSON", async () => {
     spawnSpy.mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) {
+      if (args.some((a) => a.includes("drone-pane.ts"))) {
         return makeProcess(0, "not json at all");
       }
       return makeProcess(0, "");
@@ -262,7 +293,7 @@ describe("dispatchToMind", () => {
     ).rejects.toThrow("invalid JSON");
   });
 
-  it("throws when mindsPublish fails (bus returns error)", async () => {
+  it("does not throw when DRONE_SPAWNED publish fails (non-critical notification)", async () => {
     fetchSpy.mockImplementation(async (input: string | URL | Request): Promise<Response> => {
       const url = String(input instanceof Request ? input.url : input);
       if (url.includes("/publish")) {
@@ -270,14 +301,25 @@ describe("dispatchToMind", () => {
       }
       return new Response("", { status: 200 });
     });
+    // Brief delivery (tmux-send) should succeed; DRONE_SPAWNED failure is swallowed
     await expect(
       dispatchToMind("signals", "brief", { repoRoot, busUrl: MOCK_BUS_URL, ticketId: MOCK_TICKET_ID })
-    ).rejects.toThrow();
+    ).resolves.toBeDefined();
   });
 
-  it("falls back to tmux-send.ts when no busUrl provided", async () => {
+  it("always uses tmux-send.ts for brief delivery (with or without busUrl)", async () => {
+    // With busUrl
+    await dispatchToMind("signals", "brief", { repoRoot, busUrl: MOCK_BUS_URL, ticketId: MOCK_TICKET_ID });
+    const callsWithBus = spawnSpy.mock.calls;
+    const hasTmuxSendWithBus = callsWithBus.some((c) =>
+      (c[0] as string[]).some((a) => a.includes("tmux-send.ts"))
+    );
+    expect(hasTmuxSendWithBus).toBe(true);
+  });
+
+  it("uses tmux-send.ts for brief delivery when no busUrl provided", async () => {
     spawnSpy.mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
+      if (args.some((a) => a.includes("drone-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
       if (args.some((a) => a.includes("tmux-send.ts"))) return makeProcess(0, "");
       return makeProcess(0, "");
     });
@@ -293,7 +335,7 @@ describe("dispatchToMind", () => {
 
   it("throws when legacy tmux-send.ts exits non-zero", async () => {
     spawnSpy.mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) {
+      if (args.some((a) => a.includes("drone-pane.ts"))) {
         return makeProcess(0, DEV_PANE_OUTPUT);
       }
       if (args.some((a) => a.includes("tmux-send.ts"))) {
@@ -492,7 +534,7 @@ describe("dispatchWave", () => {
 
   it("returns CompletionResult for each mind in the wave", async () => {
     spawnSpy = spyOn(Bun, "spawn").mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
+      if (args.some((a) => a.includes("drone-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
       return makeProcess(0, "");
     });
 
@@ -522,7 +564,7 @@ describe("dispatchWave", () => {
   it("dispatches all minds — dev-pane.ts called once per mind", async () => {
     let devPaneCallCount = 0;
     spawnSpy = spyOn(Bun, "spawn").mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) {
+      if (args.some((a) => a.includes("drone-pane.ts"))) {
         devPaneCallCount++;
         return makeProcess(0, DEV_PANE_OUTPUT);
       }
@@ -565,7 +607,7 @@ describe("dispatchWave", () => {
 
   it("handles single-mind wave", async () => {
     spawnSpy = spyOn(Bun, "spawn").mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
+      if (args.some((a) => a.includes("drone-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
       return makeProcess(0, "");
     });
 
@@ -589,7 +631,7 @@ describe("dispatchWave", () => {
 
   it("returns failure for minds that time out", async () => {
     spawnSpy = spyOn(Bun, "spawn").mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
+      if (args.some((a) => a.includes("drone-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
       return makeProcess(0, "");
     });
 
@@ -613,7 +655,7 @@ describe("dispatchWave", () => {
 
   it("propagates busUrl from dispatch options to dispatchToMind (publishes via bus)", async () => {
     spawnSpy = spyOn(Bun, "spawn").mockImplementation((args: string[]) => {
-      if (args.some((a) => a.includes("dev-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
+      if (args.some((a) => a.includes("drone-pane.ts"))) return makeProcess(0, DEV_PANE_OUTPUT);
       return makeProcess(0, "");
     });
 
