@@ -147,6 +147,16 @@ This command executes implementation for the **collab repo itself**, where work 
     WAVE_ID="wave-$(date +%s)"
     ```
 
+    Print the **dashboard** URL (NOT the bus URL) for the user:
+
+    ```bash
+    cat .collab/aggregator-port
+    ```
+
+    Print: `Dashboard: http://localhost:{aggregator-port}/minds`
+
+    Do NOT print the bus URL to the user — it's an internal address with no UI.
+
 6. **For each wave, for each Mind in the wave**:
 
    a. **Create Mind+Drone pair** using `drone-pane.ts`:
