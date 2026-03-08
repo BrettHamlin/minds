@@ -295,8 +295,10 @@ This command executes implementation for the **collab repo itself**, where work 
    9b. **Commit and merge**: After review passes for each drone (including any fix cycles), merge the drone's branch into the target branch:
 
        ```bash
-       bun minds/lib/merge-drone.ts {worktree_path} {target_branch}
+       bun minds/lib/merge-drone.ts {worktree_path} {target_branch} --log-content "..."
        ```
+
+       The `--log-content` value should be a one-sentence summary of what was learned from the review in step 9a — patterns confirmed, violations caught, or decisions made (e.g., "All registry writes used registryPath(); no inline path construction found.").
 
        Parse the JSON output:
        - If `hasConflicts` is `true`: report the conflict details to the user and **stop** — do not proceed to the next drone or step 10 until resolved manually.
