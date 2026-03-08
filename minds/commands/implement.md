@@ -136,10 +136,10 @@ This command executes implementation for the **collab repo itself**, where work 
 
 6. **For each wave, for each Mind in the wave**:
 
-   a. **Create Mind+Drone pair** using `/drone.launch`:
+   a. **Create Mind+Drone pair** using `drone-pane.ts`:
 
-      ```
-      /drone.launch {mind_name} {ticket_id}
+      ```bash
+      bun minds/lib/drone-pane.ts --mind {mind_name} --ticket {ticket_id} --bus-url $BUS_URL
       ```
 
       Parse the JSON output:

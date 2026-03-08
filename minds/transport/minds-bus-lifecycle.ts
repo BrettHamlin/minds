@@ -258,6 +258,10 @@ export async function startMindsBus(
   const serverPath = path.join(thisDir, "bus-server.ts");
   const bridgePath = path.join(thisDir, "bus-signal-bridge.ts");
 
+  // Remove stale bus-port file so the polling fallback doesn't pick up a dead port
+  const portFile = path.join(repoRoot, ".collab", "bus-port");
+  try { await fs.unlink(portFile); } catch { /* may not exist */ }
+
   const { pid: busServerPid, url: busUrl } = await spawnBusServer(serverPath, repoRoot);
 
   const channel = `minds-${ticketId}`;
