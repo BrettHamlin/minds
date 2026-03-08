@@ -244,8 +244,7 @@ if (import.meta.main) {
   function repoRootOrCwd(): string {
     return (
       getFlag("--repo-root") ??
-      tryRun("git rev-parse --show-toplevel") ||
-      process.cwd()
+      (tryRun("git rev-parse --show-toplevel") || process.cwd())
     );
   }
 
