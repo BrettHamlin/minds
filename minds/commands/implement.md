@@ -327,7 +327,7 @@ This command executes implementation for the **collab repo itself**, where work 
        ```
 
        Then run real-world verification appropriate to the feature:
-       - **Pipeline/collab flows**: Run the flow end-to-end (e.g., `/collab.run`)
+       - **Pipeline/collab flows**: Launch a new tmux window, start Claude Code, run the flow end-to-end (e.g., `/collab.run`)
        - **Web features**: Use the Playwright/Browser skill to test in a real browser
        - **iOS features**: Use the iOS simulator skill to verify on-device
        - **CLI commands**: Actually run the command and verify the output
