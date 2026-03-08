@@ -8,6 +8,8 @@ import { searchMemory } from "./search";
 import { syncIndex, createIndex, indexPath } from "./index";
 import { appendDailyLog } from "./write";
 import { dailyLogPath } from "./paths";
+import { l2Normalize } from "./embeddings";
+import type { EmbeddingProvider } from "./embeddings";
 
 const TEST_MIND = "memory";
 const TEST_DATE = "2099-02-01"; // far future to avoid real log conflicts
@@ -100,5 +102,65 @@ describe("searchMemory", () => {
     expect(Array.isArray(results)).toBe(true);
 
     if (existsSync(dbPath)) rmSync(dbPath);
+  });
+
+  test("BM25-only fallback when provider is null", async () => {
+    await appendDailyLog(TEST_MIND, "bm25_fallback_keyword_test_9876", TEST_DATE);
+    await syncIndex(TEST_MIND); // no provider
+
+    // Explicitly pass null to bypass auto-creation
+    const results = await searchMemory(TEST_MIND, "bm25_fallback_keyword_test_9876", {
+      provider: null,
+    });
+
+    expect(Array.isArray(results)).toBe(true);
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].content).toContain("bm25_fallback_keyword_test_9876");
+  });
+
+  test("BM25-only results have positive scores (converted from negative FTS5 rank)", async () => {
+    await appendDailyLog(TEST_MIND, "score_conversion_test_7654", TEST_DATE);
+    await syncIndex(TEST_MIND);
+
+    const results = await searchMemory(TEST_MIND, "score_conversion_test_7654", {
+      provider: null,
+    });
+
+    for (const r of results) {
+      expect(r.score).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  test("hybrid search with stub provider returns results ordered by score", async () => {
+    await appendDailyLog(TEST_MIND, "hybrid_search_unique_token_8877", TEST_DATE);
+    await syncIndex(TEST_MIND);
+
+    // Stub provider that returns deterministic embeddings
+    const stubProvider: EmbeddingProvider = {
+      embedQuery: async (text) => l2Normalize([1, 0, 0, 0]),
+      embedBatch: async (texts) => texts.map(() => l2Normalize([1, 0, 0, 0])),
+    };
+
+    // Sync with embeddings so vector search has data
+    await syncIndex(TEST_MIND, stubProvider);
+
+    const results = await searchMemory(TEST_MIND, "hybrid_search_unique_token_8877", {
+      provider: stubProvider,
+    });
+
+    expect(Array.isArray(results)).toBe(true);
+    // Results should be ordered by score descending
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i].score).toBeLessThanOrEqual(results[i - 1].score);
+    }
+  });
+
+  test("graceful degradation: no error when provider is null and no embeddings stored", async () => {
+    await syncIndex(TEST_MIND); // no embeddings
+
+    // Should fall back to BM25-only without error
+    await expect(
+      searchMemory(TEST_MIND, "memory", { provider: null })
+    ).resolves.toBeInstanceOf(Array);
   });
 });
