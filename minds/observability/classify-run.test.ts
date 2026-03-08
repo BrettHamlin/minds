@@ -10,7 +10,7 @@ import {
   insertIntervention,
   recordPhase,
 } from "./metrics";
-import { classifyRun } from "./classify-run-lib";
+import { classifyRun, formatDuration } from "./classify-run-lib";
 import {
   getAutonomyRate,
   getAllAutonomyRates,
@@ -189,6 +189,93 @@ describe("classifyRun — durationMs", () => {
 
     expect(result.durationMs).not.toBeNull();
     expect(result.durationMs!).toBeGreaterThanOrEqual(0);
+    db.close();
+  });
+});
+
+// ============================================================================
+// Unit tests: formatDuration
+// ============================================================================
+
+describe("formatDuration", () => {
+  test("null → null", () => {
+    expect(formatDuration(null)).toBeNull();
+  });
+
+  test("0ms → '0s'", () => {
+    expect(formatDuration(0)).toBe("0s");
+  });
+
+  test("sub-second (1–999ms) → '< 1s'", () => {
+    expect(formatDuration(1)).toBe("< 1s");
+    expect(formatDuration(500)).toBe("< 1s");
+    expect(formatDuration(999)).toBe("< 1s");
+  });
+
+  test("exactly 1s → '1s'", () => {
+    expect(formatDuration(1000)).toBe("1s");
+  });
+
+  test("seconds only → 'Xs'", () => {
+    expect(formatDuration(45_000)).toBe("45s");
+    expect(formatDuration(59_000)).toBe("59s");
+  });
+
+  test("minutes + seconds → 'Xm Ys'", () => {
+    expect(formatDuration(150_000)).toBe("2m 30s");
+    expect(formatDuration(61_000)).toBe("1m 1s");
+  });
+
+  test("exact minutes (no seconds) → 'Xm'", () => {
+    expect(formatDuration(120_000)).toBe("2m");
+    expect(formatDuration(300_000)).toBe("5m");
+  });
+
+  test("hours + minutes → 'Xh Ym'", () => {
+    expect(formatDuration(3_900_000)).toBe("1h 5m");
+    expect(formatDuration(7_380_000)).toBe("2h 3m");
+  });
+
+  test("exact hours (no minutes) → 'Xh'", () => {
+    expect(formatDuration(3_600_000)).toBe("1h");
+    expect(formatDuration(7_200_000)).toBe("2h");
+  });
+});
+
+// ============================================================================
+// Unit tests: classifyRun — durationFormatted
+// ============================================================================
+
+describe("classifyRun — durationFormatted", () => {
+  test("returns durationFormatted string when duration_ms is set", () => {
+    const db: Database = openInMemoryMetricsDb();
+    ensureRun(db, "DF-1");
+    db.query("UPDATE runs SET duration_ms = 150000 WHERE id = 'DF-1'").run();
+
+    const result = classifyRun(db, "DF-1");
+
+    expect(result.durationFormatted).toBe("2m 30s");
+    db.close();
+  });
+
+  test("returns null durationFormatted when run has no row (no timestamps available)", () => {
+    const db: Database = openInMemoryMetricsDb();
+    // Call classifyRun for a run that was never inserted — runRow is null → durationMs is null
+
+    const result = classifyRun(db, "DF-MISSING");
+
+    expect(result.durationFormatted).toBeNull();
+    db.close();
+  });
+
+  test("durationFormatted reflects computed duration from timestamps", () => {
+    const db: Database = openInMemoryMetricsDb();
+    ensureRun(db, "DF-3");
+    db.query("UPDATE runs SET started_at = '2026-03-07T10:00:00.000Z', completed_at = '2026-03-07T10:05:00.000Z' WHERE id = 'DF-3'").run();
+
+    const result = classifyRun(db, "DF-3");
+
+    expect(result.durationFormatted).toBe("5m");
     db.close();
   });
 });
@@ -476,6 +563,24 @@ describe("classify-run CLI integration", () => {
     expect(proc.exitCode).toBe(0);
     const out = JSON.parse(await new Response(proc.stdout).text());
     expect(out.durationMs).toBe(12345);
+  });
+
+  test("JSON output includes durationFormatted field", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-CR-DFM");
+
+    const db = openMetricsDb(metricsPath);
+    db.query("UPDATE runs SET duration_ms = 150000 WHERE id = 'BRE-CR-DFM'").run();
+    db.close();
+
+    const proc = await Bun.spawn(
+      ["bun", join(import.meta.dir, "classify-run.ts"), "BRE-CR-DFM"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await proc.exited;
+
+    expect(proc.exitCode).toBe(0);
+    const out = JSON.parse(await new Response(proc.stdout).text());
+    expect(out.durationFormatted).toBe("2m 30s");
   });
 
   test("autonomyRates reflect history across multiple runs", async () => {

@@ -24,6 +24,36 @@ export interface ClassifyRunResult {
   autonomous: boolean;
   interventionCount: number;
   durationMs: number | null;
+  durationFormatted: string | null;
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Convert a duration in milliseconds to a human-readable string.
+ *
+ * Examples: null → null, 0 → "0s", 500 → "< 1s", 45000 → "45s",
+ *           150000 → "2m 30s", 3900000 → "1h 5m"
+ */
+export function formatDuration(ms: number | null): string | null {
+  if (ms === null) return null;
+  if (ms === 0) return "0s";
+  if (ms < 1000) return "< 1s";
+
+  const totalSecs = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSecs / 3600);
+  const mins  = Math.floor((totalSecs % 3600) / 60);
+  const secs  = totalSecs % 60;
+
+  if (hours > 0) {
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+  if (mins > 0) {
+    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+  }
+  return `${secs}s`;
 }
 
 // ============================================================================
@@ -69,5 +99,5 @@ export function classifyRun(db: Database, runId: string): ClassifyRunResult {
     }
   }
 
-  return { runId, autonomous, interventionCount, durationMs };
+  return { runId, autonomous, interventionCount, durationMs, durationFormatted: formatDuration(durationMs) };
 }
