@@ -1,0 +1,16 @@
+{
+  "name": "@collab/minds-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.462.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.14",
+    "autoprefixer": "^10.4.20"
+  }
+}

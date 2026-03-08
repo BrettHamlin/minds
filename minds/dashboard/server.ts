@@ -13,41 +13,19 @@
 import { createMind } from "../server-base.js";
 import type { WorkUnit, WorkResult } from "../mind.js";
 import { MindsEventType, type MindsBusMessage } from "../transport/minds-events.js";
+import { MindsStateTracker } from "./state-tracker.js";
+import { createMindsRouteHandler } from "./route-handler.js";
 
-// ---------------------------------------------------------------------------
-// State types
-// ---------------------------------------------------------------------------
+// Re-export extended types from state-tracker
+export type {
+  Drone,
+  Wave,
+  Contract,
+  MindsState,
+} from "./state-tracker.js";
 
-export interface Drone {
-  mindName: string;
-  status: "pending" | "active" | "reviewing" | "merging" | "complete" | "failed";
-  paneId?: string;
-  worktree?: string;
-  startedAt?: string;
-  completedAt?: string;
-}
-
-export interface Wave {
-  id: string;
-  status: "active" | "complete" | "pending";
-  drones: Drone[];
-  startedAt?: string;
-  completedAt?: string;
-}
-
-export interface Contract {
-  producer: string;
-  consumer: string;
-  interface: string;
-  status: "pending" | "fulfilled";
-}
-
-export interface MindsState {
-  ticketId: string;
-  waves: Wave[];
-  contracts: Contract[];
-  updatedAt: string;
-}
+// Module-level tracker instance
+export const tracker = new MindsStateTracker();
 
 // ---------------------------------------------------------------------------
 // Handler
@@ -56,38 +34,34 @@ export interface MindsState {
 async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   switch (workUnit.intent) {
     case "build minds state from event": {
-      // Stub — actual implementation in BRE-445
       const message = workUnit.context as MindsBusMessage | undefined;
       if (!message) {
         return { status: "handled", error: "Missing context: MindsBusMessage" };
       }
-      // Validate event type is known
       const knownTypes = Object.values(MindsEventType) as string[];
       if (!knownTypes.includes(message.type)) {
         return { status: "handled", error: `Unknown MindsEventType: ${message.type}` };
       }
+      tracker.applyEvent(message);
       return { status: "handled", result: { applied: message.type, ticketId: message.ticketId } };
     }
 
     case "get minds state": {
-      // Stub — returns empty state; actual implementation in BRE-445
       const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
       const ticketId = ctx.ticketId as string | undefined;
-      if (!ticketId) {
-        return { status: "handled", error: "Missing context.ticketId" };
+      if (ticketId) {
+        const state = tracker.getState(ticketId);
+        if (!state) {
+          return { status: "handled", error: `No state for ticket: ${ticketId}` };
+        }
+        return { status: "handled", result: state };
       }
-      const state: MindsState = {
-        ticketId,
-        waves: [],
-        contracts: [],
-        updatedAt: new Date().toISOString(),
-      };
-      return { status: "handled", result: state };
+      return { status: "handled", result: tracker.getAllActive() };
     }
 
     case "serve dashboard": {
-      // Stub — routes added to aggregator in BRE-445
-      return { status: "handled", result: { message: "Dashboard routes registered (stub)" } };
+      const routeHandler = createMindsRouteHandler(tracker);
+      return { status: "handled", result: { routeHandler, message: "Dashboard route handler created" } };
     }
 
     default:
