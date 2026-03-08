@@ -17,6 +17,22 @@ export interface CachedStatus {
 
 const STALE_THRESHOLD_MS = 30_000;
 
+/**
+ * Format a duration in milliseconds as a human-readable elapsed time string.
+ * Examples: "2m", "1h 5m", "45s", "3h 12m"
+ */
+export function formatElapsed(ms: number): string {
+  if (ms < 0) return "0s";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${seconds}s`;
+}
+
 export function render(cachePath?: string): string {
   const resolvedPath =
     cachePath ||
@@ -34,7 +50,16 @@ export function render(cachePath?: string): string {
     if (cache.pipelines.length === 0) return "collab: idle";
 
     return cache.pipelines
-      .map((p) => `${p.ticketId} ${p.phase} ▸ ${p.detail}`)
+      .map((p) => {
+        let line = `${p.ticketId} ${p.phase} ▸ ${p.detail}`;
+        if (p.startedAt) {
+          const elapsed = Date.now() - new Date(p.startedAt).getTime();
+          if (!isNaN(elapsed) && elapsed >= 0) {
+            line += ` (${formatElapsed(elapsed)})`;
+          }
+        }
+        return line;
+      })
       .join(" | ");
   } catch {
     return "collab: error";

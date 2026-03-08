@@ -52,10 +52,22 @@ export function classifyRun(db: Database, runId: string): ClassifyRunResult {
     .run(autonomous ? 1 : 0, interventionCount, runId);
 
   const runRow = db
-    .query("SELECT duration_ms FROM runs WHERE id = ?")
-    .get(runId) as { duration_ms: number | null } | null;
+    .query("SELECT duration_ms, started_at, completed_at FROM runs WHERE id = ?")
+    .get(runId) as { duration_ms: number | null; started_at: string | null; completed_at: string | null } | null;
 
-  const durationMs = runRow?.duration_ms ?? null;
+  let durationMs = runRow?.duration_ms ?? null;
+
+  // Compute duration from timestamps when duration_ms is NULL
+  if (durationMs === null && runRow?.started_at) {
+    const start = new Date(runRow.started_at).getTime();
+    const end = runRow.completed_at
+      ? new Date(runRow.completed_at).getTime()
+      : Date.now();
+    if (!isNaN(start) && !isNaN(end)) {
+      durationMs = end - start;
+      db.query("UPDATE runs SET duration_ms = ? WHERE id = ?").run(durationMs, runId);
+    }
+  }
 
   return { runId, autonomous, interventionCount, durationMs };
 }
