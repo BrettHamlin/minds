@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "multi-repo.schema.json",
+  "title": "Multi-repo Configuration",
+  "description": "Maps repo IDs to absolute paths for multi-repo orchestration. Copy to .collab/config/multi-repo.json and add repo_id to specs/{TICKET_ID}/metadata.json.",
+  "type": "object",
+  "required": ["repos"],
+  "additionalProperties": false,
+  "properties": {
+    "repos": {
+      "type": "object",
+      "description": "Map of repo_id to repo metadata",
+      "additionalProperties": {
+        "$ref": "#/$defs/repo"
+      }
+    }
+  },
+  "$defs": {
+    "repo": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Absolute path to the repository"
+        }
+      }
+    }
+  }
+}

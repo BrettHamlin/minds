@@ -1,0 +1,340 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pipeline.v3.1.schema.json",
+  "title": "Pipeline v3.1 Config",
+  "description": "Schema for Collab pipeline configuration. v3.1 adds DSL-required constructs: displayValue object forms (Gap 4), fileOrInlineValue for prompt/orchestratorContext (Gaps 5-6), skip_to on gates (Gap 1), escalate exhaust mode (Gap 2), feedback string enum (Gap 3 — BREAKING), and on_exhaust moved to per-response (Gap 7 — BREAKING). See docs/BRE-231-review.md for rationale.",
+  "type": "object",
+  "required": ["version", "phases", "transitions"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "3.1",
+      "description": "Schema version discriminator"
+    },
+    "codeReview": {
+      "$ref": "#/$defs/codeReview",
+      "description": "Global @codeReview directive configuration"
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/phase"
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/gate"
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/transition"
+      }
+    }
+  },
+  "$defs": {
+    "phase": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique phase identifier"
+        },
+        "command": {
+          "type": "string",
+          "description": "Shorthand: single command sent to agent. Mutually exclusive with actions."
+        },
+        "actions": {
+          "type": "array",
+          "description": "Explicit action sequence. Mutually exclusive with command.",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Valid signal types this phase can emit"
+        },
+        "goal_gate": {
+          "type": "string",
+          "enum": ["always", "if_triggered"],
+          "description": "Goal gate enforcement mode"
+        },
+        "orchestrator_context": {
+          "$ref": "#/$defs/fileOrInlineValue"
+        },
+        "terminal": {
+          "type": "boolean",
+          "description": "If true, pipeline ends when this phase is reached"
+        },
+        "before": {
+          "type": "array",
+          "description": "Hook phases to dispatch before this phase is dispatched",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string", "description": "Phase ID to run as a before hook" }
+            }
+          }
+        },
+        "after": {
+          "type": "array",
+          "description": "Hook phases to dispatch after this phase completes",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string", "description": "Phase ID to run as an after hook" }
+            }
+          }
+        },
+        "codeReview": {
+          "$ref": "#/$defs/phaseCodeReview",
+          "description": "Per-phase codeReview override (only enabled:false supported from .codeReview(off))"
+        }
+      },
+      "not": {
+        "required": ["command", "actions"],
+        "description": "command and actions are mutually exclusive"
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "actions": {
+                "type": "array"
+              }
+            },
+            "required": ["actions"]
+          },
+          "then": {
+            "properties": {
+              "actions": {
+                "type": "array",
+                "description": "At most one command action per phase",
+                "not": {
+                  "contains": {
+                    "type": "object",
+                    "properties": {
+                      "command": { "type": "string" }
+                    },
+                    "required": ["command"]
+                  },
+                  "minContains": 2,
+                  "maxContains": 100
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["display"],
+          "additionalProperties": false,
+          "properties": {
+            "display": {
+              "$ref": "#/$defs/displayValue"
+            }
+          }
+        },
+        {
+          "required": ["prompt"],
+          "additionalProperties": false,
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "Text sent to agent immediately; no signal wait"
+            }
+          }
+        },
+        {
+          "required": ["command"],
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "Text sent to agent; orchestrator waits for signal"
+            }
+          }
+        }
+      ]
+    },
+    "displayValue": {
+      "description": "Display action value — Gap 4. Plain string (inline), AI expression object, or file reference object.",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Inline text shown in orchestrator window"
+        },
+        {
+          "type": "object",
+          "required": ["ai"],
+          "additionalProperties": false,
+          "properties": {
+            "ai": {
+              "type": "string",
+              "description": "AI expression evaluated by orchestrator at dispatch time"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["file"],
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "File path read by orchestrator at dispatch time"
+            }
+          }
+        }
+      ]
+    },
+    "fileOrInlineValue": {
+      "description": "String (file path), file object, or inline object — Gaps 5 and 6. Plain string is a file path (backwards compatible).",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "File path (backwards compatible)"
+        },
+        {
+          "type": "object",
+          "required": ["file"],
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "File path"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["inline"],
+          "additionalProperties": false,
+          "properties": {
+            "inline": {
+              "type": "string",
+              "description": "Inline text"
+            }
+          }
+        }
+      ]
+    },
+    "gate": {
+      "type": "object",
+      "required": ["prompt", "responses"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt": {
+          "$ref": "#/$defs/fileOrInlineValue"
+        },
+        "skip_to": {
+          "type": "string",
+          "description": "Gap 1: Phase to route to when a response exhausts via 'skip'. The LSP validates skip_to is present on any gate where a response uses on_exhaust: skip."
+        },
+        "responses": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/gateResponse"
+          },
+          "description": "Keyword-to-routing map"
+        }
+      }
+    },
+    "gateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "to": {
+          "type": "string",
+          "description": "Target phase ID. Omit to retry current phase."
+        },
+        "feedback": {
+          "type": "string",
+          "enum": ["enrich", "raw"],
+          "description": "Gap 3 (BREAKING — was boolean): Relay gate analysis back to agent. 'enrich' cross-references against ACs; 'raw' relays verbatim."
+        },
+        "max_retries": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Max retries before on_exhaust fires"
+        },
+        "on_exhaust": {
+          "type": "string",
+          "enum": ["skip", "abort", "escalate"],
+          "description": "Gap 7 (BREAKING — moved from gate level) + Gap 2 (escalate added): Behavior when retry_count >= max_retries. 'skip' routes to gate.skip_to; 'abort' halts pipeline; 'escalate' halts and notifies user for manual resume."
+        }
+      }
+    },
+    "codeReview": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "description": "Global code review configuration from @codeReview() directive",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Whether code review is active" },
+        "model": { "type": "string", "description": "Claude model ID for the review subagent" },
+        "file": { "type": "string", "description": "Architecture document path for the reviewer" },
+        "maxAttempts": { "type": "number", "minimum": 1, "description": "Max review cycles before escalation" }
+      }
+    },
+    "phaseCodeReview": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "description": "Per-phase codeReview override from .codeReview(off)",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Whether code review is active for this phase" }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": ["from", "signal"],
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["to"] },
+        { "required": ["gate"] }
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Phase ID this transition applies to"
+        },
+        "signal": {
+          "type": "string",
+          "description": "Signal type that triggers this transition"
+        },
+        "to": {
+          "type": "string",
+          "description": "Target phase ID for direct transition"
+        },
+        "gate": {
+          "type": "string",
+          "description": "Gate name for AI-evaluated transition"
+        },
+        "if": {
+          "type": "string",
+          "description": "Optional condition expression; row is conditional if present"
+        }
+      }
+    }
+  }
+}

@@ -16,10 +16,10 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { install } from "../../src/cli/commands/pipelines/install.js";
-import { readState } from "../../src/cli/lib/state.js";
-import { readLockfile } from "../../src/cli/lib/lockfile.js";
-import { checkAllClis, getBlockingClis } from "../../src/cli/lib/cli-resolver.js";
+import { install } from "../../minds/cli/commands/pipelines/install.js";
+import { readState } from "../../minds/cli/lib/state.js";
+import { readLockfile } from "../../minds/cli/lib/lockfile.js";
+import { checkAllClis, getBlockingClis } from "../../minds/cli/lib/cli-resolver.js";
 import { createTestEnv, type TestEnv } from "../helpers/test-env.js";
 import { startLocalRegistry, type LocalRegistry } from "../helpers/local-registry.js";
 

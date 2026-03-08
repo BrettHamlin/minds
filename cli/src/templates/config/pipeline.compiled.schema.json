@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pipeline.compiled.schema.json",
+  "title": "Compiled Pipeline Config",
+  "description": "Schema for compiled pipeline.json output from the pipelang DSL compiler. Phases are keyed by name with transitions embedded.",
+  "type": "object",
+  "required": ["version", "phases"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "3.1",
+      "description": "Schema version discriminator"
+    },
+    "phases": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/compiledPhase"
+      }
+    },
+    "defaultModel": {
+      "type": "string",
+      "description": "Default Claude model ID for all phases"
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/compiledGate"
+      }
+    },
+    "codeReview": {
+      "$ref": "#/$defs/codeReview"
+    },
+    "transport": {
+      "type": "string",
+      "enum": ["tmux", "bus"],
+      "default": "tmux",
+      "description": "Agent communication transport. Default: tmux."
+    }
+  },
+  "$defs": {
+    "compiledPhase": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Slash command sent to agent"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/compiledAction"
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "transitions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/compiledTransition"
+          }
+        },
+        "conditionalTransitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/conditionalTransitionRow"
+          }
+        },
+        "terminal": {
+          "type": "boolean"
+        },
+        "goal_gate": {
+          "type": "string",
+          "enum": ["always", "if_triggered"]
+        },
+        "orchestrator_context": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "required": ["inline"],
+              "additionalProperties": false,
+              "properties": {
+                "inline": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "outputs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "codeReview": {
+          "$ref": "#/$defs/phaseCodeReview"
+        },
+        "before": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string" }
+            }
+          }
+        },
+        "after": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["phase"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "compiledTransition": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["to"],
+          "additionalProperties": false,
+          "properties": {
+            "to": { "type": "string" }
+          }
+        },
+        {
+          "required": ["gate"],
+          "additionalProperties": false,
+          "properties": {
+            "gate": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "conditionalTransitionRow": {
+      "type": "object",
+      "required": ["signal"],
+      "additionalProperties": false,
+      "properties": {
+        "signal": { "type": "string" },
+        "if": { "type": "string" },
+        "to": { "type": "string" },
+        "gate": { "type": "string" }
+      }
+    },
+    "compiledAction": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["display"],
+          "additionalProperties": false,
+          "properties": {
+            "display": {
+              "$ref": "#/$defs/compiledDisplayValue"
+            }
+          }
+        },
+        {
+          "required": ["prompt"],
+          "additionalProperties": false,
+          "properties": {
+            "prompt": {
+              "$ref": "#/$defs/compiledDisplayValue"
+            }
+          }
+        },
+        {
+          "required": ["command"],
+          "additionalProperties": false,
+          "properties": {
+            "command": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "compiledDisplayValue": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["ai"],
+          "additionalProperties": false,
+          "properties": {
+            "ai": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["file"],
+          "additionalProperties": false,
+          "properties": {
+            "file": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "compiledGate": {
+      "type": "object",
+      "required": ["prompt", "on"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "required": ["ai"],
+              "additionalProperties": false,
+              "properties": {
+                "ai": { "type": "string" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["inline"],
+              "additionalProperties": false,
+              "properties": {
+                "inline": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "on": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/compiledGateResponse"
+          }
+        },
+        "skipTo": {
+          "type": "string"
+        }
+      }
+    },
+    "compiledGateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "to": { "type": "string" },
+        "feedback": {
+          "type": "string",
+          "enum": ["enrich", "raw"]
+        },
+        "maxRetries": {
+          "type": "number",
+          "minimum": 0
+        },
+        "onExhaust": {
+          "type": "string",
+          "enum": ["skip", "abort", "escalate"]
+        }
+      }
+    },
+    "codeReview": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "model": { "type": "string" },
+        "file": { "type": "string" },
+        "maxAttempts": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    },
+    "phaseCodeReview": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}

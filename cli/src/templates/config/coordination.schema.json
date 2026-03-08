@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coordination.schema.json",
+  "title": "Coordination Config",
+  "description": "Per-ticket cross-ticket phase dependency declarations. Lives in specs/{TICKET_ID}/coordination.json.",
+  "type": "object",
+  "required": ["wait_for"],
+  "additionalProperties": false,
+  "properties": {
+    "wait_for": {
+      "description": "Single dependency (object) or AND array. Object form is syntactic sugar for single-element array.",
+      "oneOf": [
+        { "$ref": "#/$defs/waitForDep" },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/waitForDep" }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "waitForDep": {
+      "type": "object",
+      "required": ["id", "phase"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Ticket ID of the dependency (e.g., BRE-230)"
+        },
+        "phase": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Phase ID that must appear in phase_history with _COMPLETE signal"
+        }
+      }
+    }
+  }
+}

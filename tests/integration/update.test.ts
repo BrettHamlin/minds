@@ -10,10 +10,10 @@
  */
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { install } from "../../src/cli/commands/pipelines/install.js";
-import { update } from "../../src/cli/commands/pipelines/update.js";
-import { readState } from "../../src/cli/lib/state.js";
-import { readLockfile } from "../../src/cli/lib/lockfile.js";
+import { install } from "../../minds/cli/commands/pipelines/install.js";
+import { update } from "../../minds/cli/commands/pipelines/update.js";
+import { readState } from "../../minds/cli/lib/state.js";
+import { readLockfile } from "../../minds/cli/lib/lockfile.js";
 import { createTestEnv, type TestEnv } from "../helpers/test-env.js";
 import { startLocalRegistry, type LocalRegistry } from "../helpers/local-registry.js";
 

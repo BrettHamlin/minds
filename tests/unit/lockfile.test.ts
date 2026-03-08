@@ -16,8 +16,8 @@ import {
   addPackToLockfile,
   removePipelineFromLockfile,
   removeFromLockfile,
-} from "../../src/cli/lib/lockfile.js";
-import type { Lockfile, PipelineManifest } from "../../src/cli/types/index.js";
+} from "../../minds/cli/lib/lockfile.js";
+import type { Lockfile, PipelineManifest } from "../../minds/cli/types/index.js";
 
 function tmpPath(name: string): string {
   return join(tmpdir(), `lockfile-test-${name}-${Date.now()}.json`);

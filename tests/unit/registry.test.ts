@@ -14,8 +14,8 @@ import {
   listPipelines,
   listPacks,
   buildVersionMap,
-} from "../../src/cli/lib/registry.js";
-import type { RegistryIndex, PipelineManifest } from "../../src/cli/types/index.js";
+} from "../../minds/cli/lib/registry.js";
+import type { RegistryIndex, PipelineManifest } from "../../minds/cli/types/index.js";
 
 const FIXTURES = join(import.meta.dir, "../fixtures/mock-registry");
 

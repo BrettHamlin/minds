@@ -17,9 +17,9 @@ import {
   installCli,
   resolveCliDeps,
   CLI_STRATEGIES,
-} from "../../src/cli/lib/cli-resolver.js";
-import { removePipelineFromClis } from "../../src/cli/lib/state.js";
-import type { CliDependency } from "../../src/cli/types/index.js";
+} from "../../minds/cli/lib/cli-resolver.js";
+import { removePipelineFromClis } from "../../minds/cli/lib/state.js";
+import type { CliDependency } from "../../minds/cli/types/index.js";
 
 // ─── checkCli ────────────────────────────────────────────────────────────────
 

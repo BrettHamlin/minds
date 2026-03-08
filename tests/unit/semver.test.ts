@@ -14,7 +14,7 @@ import {
   minVersion,
   bestMatch,
   format,
-} from "../../src/cli/lib/semver.js";
+} from "../../minds/cli/lib/semver.js";
 
 // ─── parse ───────────────────────────────────────────────────────────────────
 

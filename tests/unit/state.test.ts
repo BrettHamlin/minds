@@ -17,8 +17,8 @@ import {
   removePipelineFromClis,
   listPipelineNames,
   isPipelineInstalled,
-} from "../../src/cli/lib/state.js";
-import type { InstalledState } from "../../src/cli/types/index.js";
+} from "../../minds/cli/lib/state.js";
+import type { InstalledState } from "../../minds/cli/types/index.js";
 
 function tmpPath(name: string): string {
   return join(tmpdir(), `state-test-${name}-${Date.now()}.json`);
