@@ -7,7 +7,7 @@
 
 import { join } from "path";
 import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync } from "fs";
-import { memoryDir, memoryMdPath } from "./paths.js";
+import { memoryDir, memoryMdPath, contractDataDir } from "./paths.js";
 
 /** Result of provisioning a single Mind. */
 export interface ProvisionResult {
@@ -20,6 +20,57 @@ export interface ProvisionResult {
 export interface ProvisionAllResult {
   provisioned: ProvisionResult[];
   skipped: string[];
+}
+
+const CONTRACT_DATA_README = `# Contract Data Directory
+
+Stores ContractPattern JSON files for cross-Mind handoff patterns.
+
+## Format
+
+Each file is a JSON-serialized ContractPattern with the following fields:
+
+- \`sourcePhase\` — originating Mind/phase name (e.g. "clarify")
+- \`targetPhase\` — receiving Mind/phase name (e.g. "plan")
+- \`artifactShape\` — human-readable description of the artifact's shape
+- \`sections\` — ordered list of expected sections (name, required, description)
+- \`metadata\` — key-value tags for categorization
+- \`timestamp\` — ISO 8601 recording time
+
+## Naming
+
+Files are named \`{sourcePhase}-{targetPhase}-{timestamp}.json\`.
+
+## Indexing
+
+An FTS5 SQLite index (\`.index.db\`) is maintained alongside these files.
+It is rebuilt by \`syncContractIndex()\` and queried via \`searchMemory({ scope: "contracts" })\`.
+
+## Cold Start
+
+This directory starts empty. Patterns accumulate from successful Mind-to-Mind handoffs.
+The first search returns no results — drones proceed without context until patterns exist.
+`;
+
+/**
+ * Provisions the shared contract data directory.
+ * Idempotent: skips if directory + README already exist.
+ *
+ * @returns The path to the provisioned directory.
+ */
+export async function provisionContractDir(): Promise<string> {
+  const dir = contractDataDir();
+
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  const readmePath = join(dir, "README.md");
+  if (!existsSync(readmePath)) {
+    writeFileSync(readmePath, CONTRACT_DATA_README, "utf8");
+  }
+
+  return dir;
 }
 
 const SEED_MEMORY_MD = `# {MIND_NAME} Mind — Curated Memory

@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { Database } from "bun:sqlite";
-import { memoryDir } from "./paths.js";
+import { memoryDir, contractDataDir, contractIndexPath } from "./paths.js";
 import type { EmbeddingProvider } from "./embeddings.js";
 
 /** Approximate tokens per word (heuristic: 1 word ≈ 1.3 tokens). */
@@ -258,5 +258,115 @@ export function _resetWarmState(mindName?: string): void {
     _warmedMinds.delete(mindName);
   } else {
     _warmedMinds.clear();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Contract index — separate FTS5 table scoped to minds/contracts/
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates (or ensures) the SQLite FTS5 index for the contracts scope.
+ * Schema mirrors the per-Mind chunks schema but lives at contractIndexPath().
+ * Idempotent: safe to call repeatedly.
+ */
+function createContractIndex(): void {
+  const dir = contractDataDir();
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  const db = new Database(contractIndexPath());
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS chunks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL,
+        start_line INTEGER NOT NULL,
+        end_line INTEGER NOT NULL,
+        content TEXT NOT NULL
+      );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+        content,
+        content='chunks',
+        content_rowid='id',
+        tokenize='porter ascii'
+      );
+
+      CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
+        INSERT INTO chunks_fts(rowid, content) VALUES (new.id, new.content);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
+        INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES ('delete', old.id, old.content);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON chunks BEGIN
+        INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES ('delete', old.id, old.content);
+        INSERT INTO chunks_fts(rowid, content) VALUES (new.id, new.content);
+      END;
+    `);
+
+    // Add embedding column idempotently for future vector support
+    try {
+      db.exec("ALTER TABLE chunks ADD COLUMN embedding BLOB");
+    } catch (err: any) {
+      if (!err.message?.includes("duplicate column name")) {
+        throw new Error(`createContractIndex: failed to add embedding column: ${err.message}`);
+      }
+    }
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Re-indexes all JSON files in the contracts data directory into the
+ * contracts-scoped SQLite FTS5 table.
+ *
+ * Each JSON file is indexed as a single chunk using its full serialized content
+ * as the searchable text. The path is stored for result attribution.
+ *
+ * Skips non-.json files (e.g. README.md, .index.db).
+ *
+ * @param provider - Optional embedding provider for vector indexing (future use).
+ */
+export async function syncContractIndex(provider?: EmbeddingProvider): Promise<void> {
+  const dir = contractDataDir();
+
+  // Ensure index schema exists
+  createContractIndex();
+
+  const db = new Database(contractIndexPath());
+  try {
+    const files = readdirSync(dir).filter((f) => f.endsWith(".json"));
+
+    for (const file of files) {
+      const filePath = join(dir, file);
+      const text = readFileSync(filePath, "utf8");
+
+      // Re-index: clear existing chunks for this file then re-insert
+      db.run("DELETE FROM chunks WHERE path = ?", [filePath]);
+
+      // Each JSON pattern is a single chunk (they're small, self-contained objects)
+      const embeddingBlob: Buffer | null = null; // vector support deferred
+
+      if (provider) {
+        const vecs = await provider.embedBatch([text]);
+        const blob = embeddingToBlob(vecs[0]);
+        db.run(
+          "INSERT INTO chunks (path, start_line, end_line, content, embedding) VALUES (?, ?, ?, ?, ?)",
+          [filePath, 1, text.split("\n").length, text, blob]
+        );
+      } else {
+        db.run(
+          "INSERT INTO chunks (path, start_line, end_line, content, embedding) VALUES (?, ?, ?, ?, ?)",
+          [filePath, 1, text.split("\n").length, text, embeddingBlob]
+        );
+      }
+    }
+  } finally {
+    db.close();
   }
 }
