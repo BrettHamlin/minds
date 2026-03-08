@@ -235,11 +235,77 @@ function spawnBridge(
 }
 
 // ---------------------------------------------------------------------------
+// ensureAggregator
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure the status-aggregator is running. If not, spawn it as a detached
+ * background process. The aggregator has its own singleton check — if already
+ * running it exits immediately with AGGREGATOR_EXISTING.
+ *
+ * Returns the port the aggregator is listening on.
+ */
+export async function ensureAggregator(repoRoot: string): Promise<number> {
+  const portFile = path.join(repoRoot, ".collab", "aggregator-port");
+
+  // Check if already running
+  try {
+    const raw = await fs.readFile(portFile, "utf-8");
+    const port = parseInt(raw.trim(), 10);
+    if (!isNaN(port) && port > 0) {
+      const resp = await fetch(`http://localhost:${port}/status`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (resp.ok) return port;
+    }
+  } catch {
+    // Not running or stale port file
+  }
+
+  // Spawn aggregator
+  const aggregatorPath = path.join(path.dirname(new URL(import.meta.url).pathname), "status-aggregator.ts");
+  const proc = spawn("bun", [aggregatorPath, "--port", "0"], {
+    cwd: repoRoot,
+    stdio: ["ignore", "pipe", "ignore"],
+    detached: true,
+  });
+  proc.unref();
+
+  // Wait for AGGREGATOR_READY
+  return new Promise<number>((resolve, reject) => {
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      reject(new Error("Aggregator startup timeout (5s)"));
+    }, 5000);
+
+    proc.stdout!.on("data", (data: Buffer) => {
+      if (resolved) return;
+      const match = data.toString().match(/AGGREGATOR_(?:READY|EXISTING) port=(\d+)/);
+      if (match) {
+        resolved = true;
+        clearTimeout(timeout);
+        resolve(parseInt(match[1], 10));
+      }
+    });
+
+    proc.on("error", (err) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      reject(new Error(`Aggregator spawn error: ${err.message}`));
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // startMindsBus
 // ---------------------------------------------------------------------------
 
 /**
  * Start the bus server and signal bridge for a Minds ticket.
+ * Also ensures the status-aggregator is running so it can pick up events.
  *
  * Uses channel `minds-{ticketId}` so that Minds traffic stays separate from
  * the collab pipeline channel (`pipeline-{ticketId}`).
@@ -254,6 +320,10 @@ export async function startMindsBus(
   orchestratorPane: string,
   ticketId: string,
 ): Promise<MindsBusLifecycleInfo> {
+  // Ensure aggregator is running before starting the bus — otherwise events
+  // emitted before the aggregator connects would be missed.
+  await ensureAggregator(repoRoot);
+
   const thisDir = path.dirname(new URL(import.meta.url).pathname);
   const serverPath = path.join(thisDir, "bus-server.ts");
   const bridgePath = path.join(thisDir, "bus-signal-bridge.ts");
