@@ -1,3 +1,2 @@
-// Re-exports from minds/cli/utils/version
-export { readVersion, writeVersion } from "../../../minds/cli/utils/version";
-export type { CollabVersion } from "../../../minds/cli/utils/version";
+export { readVersion, writeVersion } from "../../../cli/src/utils/version";
+export type { CollabVersion } from "../../../cli/src/utils/version";
