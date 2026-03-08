@@ -29,6 +29,71 @@ import { execSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { basename, resolve } from "path";
 
+// ─── CLAUDE.md assembly ───────────────────────────────────────────────────────
+
+function assembleClaudeContent(repoRoot: string, mindName: string, ticketId: string): string {
+  // Load minds.json and find entry for this mind
+  const mindsJsonPath = resolve(repoRoot, ".collab", "minds.json");
+  let domain = "";
+  let ownsFiles: string[] = [];
+
+  if (existsSync(mindsJsonPath)) {
+    try {
+      const minds = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{
+        name: string;
+        domain?: string;
+        owns_files?: string[];
+      }>;
+      const entry = minds.find((m) => m.name === mindName);
+      if (entry) {
+        domain = entry.domain ?? "";
+        ownsFiles = entry.owns_files ?? [];
+      }
+    } catch {
+      // If parse fails, continue with empty values
+    }
+  }
+
+  // Load STANDARDS.md
+  const standardsPath = resolve(repoRoot, "minds", "STANDARDS.md");
+  const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
+
+  // Load MIND.md (optional)
+  const mindMdPath = resolve(repoRoot, "minds", mindName, "MIND.md");
+  const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
+
+  const ownsFilesSection =
+    ownsFiles.length > 0
+      ? ownsFiles.map((f) => `- ${f}`).join("\n")
+      : "(no file boundaries defined)";
+
+  const domainLine = domain ? `Domain: ${domain}` : "";
+
+  const mindProfileSection = mindMd
+    ? `## Mind Profile (@${mindName})\n${mindMd}`
+    : "";
+
+  return [
+    `## Mind Identity`,
+    ``,
+    `You are the @${mindName} drone for ticket ${ticketId}.`,
+    domainLine,
+    ``,
+    `Your file boundary (only touch files in these paths):`,
+    ownsFilesSection,
+    ``,
+    `## Engineering Standards`,
+    standards,
+    mindProfileSection,
+    `## Active Task`,
+    `Your current task brief is in DRONE-BRIEF.md at the worktree root.`,
+    `If you've compacted or lost context, re-read that file.`,
+  ]
+    .filter((line) => line !== null)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function run(cmd: string): string {
@@ -153,7 +218,7 @@ mkdirSync(claudeDir, { recursive: true });
 
 const claudeContent = claudeFile && existsSync(claudeFile)
   ? readFileSync(claudeFile, "utf-8")
-  : `## Mind Identity\n\nYou are the @${mindName} drone for ticket ${ticketId}.\n\nYour task brief is in DRONE-BRIEF.md at the worktree root.\nIf you've compacted or lost context, re-read that file.\n`;
+  : assembleClaudeContent(repoRoot, mindName!, ticketId!);
 
 writeFileSync(resolve(claudeDir, "CLAUDE.md"), claudeContent);
 
