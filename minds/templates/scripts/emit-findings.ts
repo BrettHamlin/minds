@@ -43,7 +43,7 @@ import { execSync } from "child_process";
 
 import type { Finding, FindingsBatch } from "../lib/pipeline/questions";
 import { findingsPath } from "../lib/pipeline/paths";
-import { getRepoRoot } from "../lib/pipeline/repo";
+import { getRepoRoot } from "../lib/pipeline/utils";
 
 // ── Input types ──────────────────────────────────────────────────────────────
 

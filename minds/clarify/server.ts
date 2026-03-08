@@ -102,7 +102,7 @@ export default createMind({
     "pipeline_core/findingsPath",
     "pipeline_core/resolutionsPath",
     "pipeline_core/loadPipelineForTicket",
-    "signals/emit-question-signal",
+    "signals/emit-signal",
   ],
   handle,
 });

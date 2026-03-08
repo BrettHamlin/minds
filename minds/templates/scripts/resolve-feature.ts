@@ -5,7 +5,7 @@
  * Replaces: check-prerequisites.sh, setup-plan.sh, common.sh
  *
  * Usage:
- *   bun src/scripts/resolve-feature.ts [TICKET_ID] [--require-tasks] [--include-tasks] [--setup-plan]
+ *   bun .collab/scripts/resolve-feature.ts [--require-tasks] [--include-tasks] [--setup-plan]
  *
  * Output: JSON to stdout
  */
@@ -16,13 +16,12 @@ import { execSync } from "child_process";
 import { findFeatureDir } from "../lib/pipeline/utils";
 
 // --- Argument parsing ---
-const argv = process.argv.slice(2);
-const args = new Set(argv);
+const args = new Set(process.argv.slice(2));
 const requireTasks = args.has("--require-tasks");
 const includeTasks = args.has("--include-tasks");
 const setupPlan = args.has("--setup-plan");
-// Positional ticket ID: first arg matching ABC-123 pattern
-const positionalTicketId = argv.find(a => /^[A-Z]+-\d+$/.test(a)) ?? "";
+// Positional ticket ID arg (e.g., BRE-443) — allows running on main/non-feature branches
+const argTicketId = process.argv.slice(2).find(a => !a.startsWith("--") && /^[A-Z]+-\d+$/.test(a)) ?? null;
 
 function fail(message: string): never {
   process.stderr.write(JSON.stringify({ error: message }) + "\n");
@@ -77,18 +76,22 @@ const prefixMatch = branch.match(/^(\d{3})-/);
 // Match ticket ID patterns: ABC-123, BRE-418, PROJ-1234 (at start of branch name)
 const ticketMatch = !prefixMatch ? branch.match(/^([A-Z]+-\d+)/) : null;
 
-if (!prefixMatch && !ticketMatch && !positionalTicketId) {
+if (!prefixMatch && !ticketMatch && !argTicketId) {
   fail(`Not on a feature branch. Current branch: ${branch}\nFeature branches should be named like: 001-feature-name or BRE-123-description`);
 }
 
 // --- 4. Find FEATURE_DIR ---
 let featureDir: string;
 
-// Use positional arg, branch ticket match, or prefix — in that order
-const lookupId = positionalTicketId || (prefixMatch ? prefixMatch[1] : ticketMatch![1]);
+// Use findFeatureDir for consolidated resolution (supports branch prefix + ticket ID)
+const lookupId = prefixMatch ? prefixMatch[1] : (ticketMatch ? ticketMatch![1] : argTicketId!);
 const resolved = findFeatureDir(repoRoot, lookupId, { branch });
-const fallback = positionalTicketId ? join(specsDir, positionalTicketId) : join(specsDir, branch);
-featureDir = resolved ?? fallback;
+featureDir = resolved ?? join(specsDir, argTicketId ?? branch);
+
+// When ticket ID comes from positional arg (non-feature branch), auto-create specs dir
+if (argTicketId && !prefixMatch && !ticketMatch && !existsSync(featureDir)) {
+  mkdirSync(featureDir, { recursive: true });
+}
 
 // --- 5. Derive paths ---
 const featureSpec = join(featureDir, "spec.md");
@@ -96,11 +99,6 @@ const implPlan = join(featureDir, "plan.md");
 const tasks = join(featureDir, "tasks.md");
 
 // --- 6. Validation ---
-// Auto-create specs/{TICKET_ID}/ when positional ticket ID is provided and dir doesn't exist
-if (positionalTicketId && !existsSync(featureDir)) {
-  mkdirSync(featureDir, { recursive: true });
-}
-
 if (!setupPlan && !existsSync(featureDir)) {
   // Print sentinel to stdout and exit 0 so callers can check output without it looking like a failure.
   // Only use exit 1 for actual errors (e.g., invalid ticket ID format, which fails earlier via fail()).
@@ -155,16 +153,18 @@ if (includeTasks && existsSync(tasks)) {
 }
 
 // --- 9. Resolve TICKET_ID from metadata.json ---
-let ticketId = positionalTicketId;
+let ticketId = "";
 const metadataPath = join(featureDir, "metadata.json");
 if (existsSync(metadataPath)) {
   try {
     const meta = JSON.parse(readFileSync(metadataPath, "utf-8"));
-    ticketId = meta.ticket_id ?? ticketId;
+    ticketId = meta.ticket_id ?? "";
   } catch {
-    // non-fatal — ticketId stays as positionalTicketId or empty
+    // non-fatal — ticketId stays empty
   }
 }
+// Fall back to positional arg if metadata not yet written
+if (!ticketId && argTicketId) ticketId = argTicketId;
 
 // --- 10. Output JSON ---
 const output = {

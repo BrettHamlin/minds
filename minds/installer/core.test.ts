@@ -42,6 +42,7 @@ function buildFullInstall(repoRoot: string): void {
     path.join(repoRoot, ".collab/memory/constitution.md"),
     "# Constitution\n"
   );
+  fs.writeFileSync(path.join(repoRoot, ".collab/minds.json"), "[]\n");
 
   // A script in each executable dir, with exec permissions
   const scriptTargets: Array<[string, string]> = [

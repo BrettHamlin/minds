@@ -93,7 +93,7 @@ interface RollbackState {
 /**
  * Resolves the absolute path to a transport script file.
  * Checks installed location (.collab/transport/) first (for production use
- * after `collab.install.ts` is run), falls back to development location
+ * after `collab init` is run), falls back to development location
  * (transport/ at repo root, used during collab development).
  */
 export function resolveTransportFile(repoRoot: string, filename: string): string {

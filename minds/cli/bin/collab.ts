@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 import { program } from "commander";
-import { initCommand } from "../../../cli/src/commands/init";
 import { updateCommand } from "../../../cli/src/commands/update";
 import { statusCommand } from "../../../cli/src/commands/status";
 import { repoResolve, repoAdd, repoList, repoRemove } from "../../../cli/src/commands/repo";
 import { doctorCommand } from "../commands/doctor";
+import { runCollabInit } from "../commands/collab-init.js";
 
 program
   .name("collab")
@@ -13,11 +13,13 @@ program
 
 program
   .command("init")
-  .description("Initialize collab in the current git repo")
-  .option("--force", "Overwrite existing installation")
-  .option("--skip-verify", "Skip post-installation verification")
+  .description("Install collab into the current git repo")
+  .option("--branch <name>", "Git branch to install from", "main")
+  .option("--force", "Overwrite existing files")
   .option("--quiet", "Minimal output")
-  .action(initCommand);
+  .action(async (options: { branch?: string; force?: boolean; quiet?: boolean }) => {
+    await runCollabInit(options);
+  });
 
 program
   .command("update")

@@ -61,7 +61,7 @@ Only write `coordination.json` for tickets with real dependencies. Tickets with 
 
 Where:
 - `first_ticket_id` = the first ticket from `$ARGUMENTS`
-- `nonce` = read from `.collab/state/pipeline-registry/{first_ticket_id}.json`
+- `nonce` = read from registry: `REGISTRY=$(bun .collab/scripts/orchestrator/resolve-path.ts {first_ticket_id} registry) && jq -r '.nonce' "$REGISTRY"`
 - `N` = total ticket count
 - `M` = number of coordination.json files written
 

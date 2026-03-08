@@ -21,7 +21,7 @@ set of questions (findings), routes them through the orchestrator, receives answ
 | `minds/clarify/lib/memory-query.ts` | Memory search wrapper for ambiguity matching (`queryMemoryForAmbiguity()`) |
 | `minds/pipeline_core/questions.ts` | Shared Q&A protocol: `Finding`, `FindingsBatch`, `QuestionCollector`, `resolveMode()` |
 | `minds/pipeline_core/paths.ts` | `findingsPath()`, `resolutionsPath()` — deterministic file paths |
-| `minds/signals/emit-question-signal.ts` | Emits `CLARIFY_QUESTION` / `CLARIFY_COMPLETE` signals |
+| `minds/signals/emit-signal.ts` | Generic phase-aware signal emitter — reads current phase from registry |
 | `minds/signals/emit-findings.ts` | Writes FindingsBatch + emits batch signal |
 | `minds/memory/lib/search-cli.ts` | CLI for hybrid memory search (consumed, not owned) |
 | `minds/memory/lib/write-cli.ts` | CLI for writing to daily log (consumed, not owned) |

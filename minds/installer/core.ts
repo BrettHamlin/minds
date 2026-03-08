@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, chmodSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, chmodSync, readFileSync, writeFileSync } from "fs";
 import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 
@@ -82,6 +82,7 @@ export const INSTALL_DIRS = [
   ".collab/config/gates",
   ".collab/lib/pipeline",
   ".collab/hooks",
+  ".collab/transport",
   ".specify/scripts/bash",
   ".specify/templates",
 ] as const;
@@ -169,6 +170,9 @@ export function installTemplates(
   // Hooks (always overwrite — Claude Code settings.json references these)
   copyTemplateDir("hooks", ".collab/hooks");
 
+  // Transport (always overwrite — bus server + helpers)
+  copyTemplateDir("transport", ".collab/transport");
+
   // Top-level scripts
   const scriptsDir = join(templateDir, "scripts");
   if (existsSync(scriptsDir)) {
@@ -200,6 +204,15 @@ export function installTemplates(
       copyFileSync(settingsTemplate, settingsDest);
       result.copied.push(".claude/settings.json");
     }
+  }
+
+  // minds.json — placeholder so /minds.tasks finds the file without erroring (skip if exists)
+  const mindsJsonDest = join(repoRoot, ".collab/minds.json");
+  if (!existsSync(mindsJsonDest) || force) {
+    writeFileSync(mindsJsonDest, "[]\n");
+    result.copied.push(".collab/minds.json");
+  } else {
+    result.skipped.push(".collab/minds.json");
   }
 
   // Constitution (skip if exists)
@@ -240,6 +253,7 @@ export function installTemplates(
 const INSTALL_FILES = [
   ".claude/settings.json",
   ".collab/memory/constitution.md",
+  ".collab/minds.json",
 ];
 
 /**

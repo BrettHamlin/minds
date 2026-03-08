@@ -26,6 +26,7 @@ import { init } from "./commands/pipeline/init.js";
 import { validate } from "./commands/pipeline/validate.js";
 import { repo } from "./commands/repo/index.js";
 import { doctorCommand, printDoctorHelp } from "./commands/doctor.js";
+import { runCollabInit } from "./commands/collab-init.js";
 
 const VERSION = "0.1.0";
 
@@ -35,6 +36,7 @@ function printHelp(): void {
   console.log(`collab v${VERSION} — Pipeline package manager
 
 Usage:
+  collab init [--branch <name>] [--force]  Install collab into the current git repo
   collab pipelines                         Browse available packs + pipelines
   collab pipelines install <name...>       Install pipeline(s) + their deps
   collab pipelines list                    List installed pipelines
@@ -52,6 +54,7 @@ Global flags:
   --registry <url>    Override registry URL (default: COLLAB_REGISTRY env var)
   --state <path>      Override state file path
   --lock <path>       Override lockfile path
+  --branch <name>     Git branch to install from (default: main, used by init)
   --json              Output JSON instead of human-readable text
   --yes, -y           Skip confirmation prompts
   --force             Overwrite existing files
@@ -111,6 +114,24 @@ async function main(): Promise<void> {
   const json = flags.json === true;
   const yes = flags.yes === true || flags.y === true;
   const force = flags.force === true;
+
+  // ─── collab init ──────────────────────────────────────────────────────────
+  if (subcommand === "init") {
+    if (flags.help || flags.h) {
+      console.log("Usage: collab init [--branch <name>] [--force]");
+      console.log("");
+      console.log("Install collab into the current git repository.");
+      console.log("");
+      console.log("Options:");
+      console.log("  --branch <name>   Git branch to install from (default: main)");
+      console.log("  --force           Overwrite existing files");
+      return;
+    }
+
+    const branch = typeof flags.branch === "string" ? flags.branch : "main";
+    await runCollabInit({ branch, force });
+    return;
+  }
 
   // ─── collab pipelines ─────────────────────────────────────────────────────
   if (subcommand === "pipelines") {

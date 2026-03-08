@@ -138,12 +138,29 @@ Both modes share the same analysis and resolution-application code.
 
    Mark each: Clear / Partial / Missing
 
+6b. **Memory Query** (before generating questions)
+
+   For each ambiguity detected in step 6, before generating a question, check prior decisions:
+
+   ```bash
+   bun minds/memory/lib/search-cli.ts --mind clarify --query "<ambiguity description>"
+   ```
+
+   Parse the output and apply the following rules:
+   - **High score (> 0.7) + content contains `Q:` and `A:` matching the ambiguity** → **Skip the question.** Cite the prior decision in the spec update instead (e.g., "Prior decision (BRE-XXX): Q: ... → A: ...").
+   - **Moderate score (0.3–0.7)** → **Keep the question** but use the memory content as evidence to strengthen the recommendation. Reference it in the option description.
+   - **No results or score < 0.3** → Proceed as before (codebase-grounded recommendation from `CODEBASE_CONTEXT`).
+
+   This step reduces redundant questions across pipeline runs.
+
 7. **Generate Questions** (max 3 for orchestrated mode)
 
-   For each critical ambiguity:
+   For each critical ambiguity (not skipped in step 6b):
    - Create 2-4 distinct options
-   - **Ground the recommended option in `CODEBASE_CONTEXT`:** If the repo already has a convention for this decision, the recommendation MUST follow it. Cite the evidence (e.g., "This repo uses Zod for validation — see `src/middleware/validate.ts`").
-   - Only fall back to generic best practices when no project convention exists for the decision.
+   - **Ground the recommended option using this priority order:**
+     1. **Prior clarification decision from memory** (strongest — explicit human choice from a prior run; cite the source decision)
+     2. **Codebase convention from scan** (current — pattern observed in `CODEBASE_CONTEXT`; cite the file/line)
+     3. **Generic best practice** (weakest — fallback only when no project-specific evidence exists)
    - For **Refactor** tickets: recommendations should preserve existing patterns unless the ticket explicitly calls for changing them.
    - For **New Feature** tickets: recommendations should extend the patterns found in analogous features.
    - Make recommendation the first option
@@ -253,6 +270,16 @@ Both modes share the same analysis and resolution-application code.
    - Append: `- Q: <question> → A: <answer>`
    - Update relevant sections (e.g., add enum to Database Schema)
    - **Save spec file immediately** (atomic write)
+
+9b. **Memory Write** (after integrating each answer)
+
+   For each answered question, write the decision to the clarify Mind's daily log:
+
+   ```bash
+   bun minds/memory/lib/write-cli.ts --mind clarify --content "{TICKET_ID}: Q: <question> → A: <answer>. Reasoning: <why>. Codebase evidence: <files cited>."
+   ```
+
+   This enables future pipeline runs to skip redundant questions by finding prior decisions in step 6b.
 
 10. **Validation**
    - One bullet per answer in Clarifications section

@@ -40,7 +40,21 @@ You do not need to wait for step 10. Any time your response represents "this pha
    - `phase:1-4` → execute Phases 1 through 4 from tasks.md
    - No phase argument → execute ALL phases (default, backwards compatible)
    - Phase numbers correspond to the `## Phase N:` headers in tasks.md
-   - Store the phase scope; it constrains steps 5, 6, and 10
+   - Store the phase scope; it constrains steps 5 and 6 (task filtering and execution)
+   - **Note**: Do NOT pass the scope to the verify script in step 10 — it auto-detects from the registry
+
+1c. **Load Phase Structure** (deterministic — do this before step 5):
+
+   Where `{ticket_id}` is extracted from `$ARGUMENTS` or the current branch name.
+
+   ```bash
+   PHASE_DATA=$(bun .collab/scripts/analyze-task-phases.ts {ticket_id})
+   ```
+
+   Parse JSON to get `totalPhases`, `phases[]`, and `nextIncompletePhase`.
+   - Use `totalPhases` to understand the overall scope
+   - If no phase scope from step 1b, use `nextIncompletePhase` to determine which phase to resume
+   - Each phase entry provides `number`, `title`, `total`, `complete`, `incomplete` counts without LLM parsing
 
 2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
    - Scan all checklist files in the checklists/ directory
@@ -166,21 +180,15 @@ You do not need to wait for step 10. Any time your response represents "this pha
     Run the verification script to confirm tasks are complete and automatically emit the completion signal:
 
     ```bash
-    # If phase scope is active (e.g., phase:2):
-    bun .collab/scripts/verify-and-complete.ts implement "Phase 2 implementation complete" 2
-
-    # If phase scope is a range (e.g., phase:1-4):
-    bun .collab/scripts/verify-and-complete.ts implement "Phases 1-4 implementation complete" 1-4
-
-    # If no phase scope (all phases):
     bun .collab/scripts/verify-and-complete.ts implement "Implementation phase finished"
     ```
 
     This script will:
-    - Verify tasks in the specified phase(s) are marked complete [X] (or all tasks if no scope)
+    - Auto-detect the current phase scope from the registry (when running in an orchestrated pipeline)
+    - Verify tasks in the scoped phase are marked complete [X] (or all tasks if no scope)
     - Automatically emit the IMPLEMENT_COMPLETE signal to the orchestrator
     - Exit with error if any scoped tasks remain incomplete
-    
+
     **CRITICAL**: This step is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 
     **If the orchestrator sends a rejection (⛔ NO EXCUSES):** Fix all identified issues, re-run the full test suite to confirm 0 failures, then run the verification script again to re-emit the signal. Do NOT consider the task done until you have successfully run the verification script after fixing.

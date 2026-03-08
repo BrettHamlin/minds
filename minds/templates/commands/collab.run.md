@@ -213,10 +213,14 @@ Before routing any input, check `.collab/state/signal-queue/` for pending signal
 ls .collab/state/signal-queue/*.json 2>/dev/null
 ```
 
-For each file found:
-1. Read the file: `cat .collab/state/signal-queue/{ticket_id}.json` — extract the `signal` field.
-2. Process the signal through **Signal Processing** below exactly as if it had arrived via tmux.
-3. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm .collab/state/signal-queue/{filename}`
+For each file found (each file is named `{ticket_id}.json`):
+1. Parse `{ticket_id}` from the filename. Get the canonical path:
+   ```bash
+   SIGNAL_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} signal-queue)
+   ```
+2. Read the file: `cat "$SIGNAL_PATH"` — extract the `signal` field.
+3. Process the signal through **Signal Processing** below exactly as if it had arrived via tmux.
+4. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm "$SIGNAL_PATH"`
 
 Then proceed to Input Routing for the current input.
 
@@ -230,10 +234,14 @@ Run this **before every END RESPONSE** to process any signals that arrived durin
 ls .collab/state/signal-queue/*.json 2>/dev/null
 ```
 
-For each file found:
-1. Read the file: `cat .collab/state/signal-queue/{filename}` — extract the `signal` field.
-2. Process the signal through **Signal Processing** above exactly as if it had arrived via tmux.
-3. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm .collab/state/signal-queue/{filename}`
+For each file found (each file is named `{ticket_id}.json`):
+1. Parse `{ticket_id}` from the filename. Get the canonical path:
+   ```bash
+   SIGNAL_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} signal-queue)
+   ```
+2. Read the file: `cat "$SIGNAL_PATH"` — extract the `signal` field.
+3. Process the signal through **Signal Processing** above exactly as if it had arrived via tmux.
+4. Delete ONLY this file after processing — do NOT batch-delete other queue files: `rm "$SIGNAL_PATH"`
 
 If no files remain, end the response normally.
 
@@ -402,7 +410,7 @@ Procedure:
 
 1. Read global and per-phase code review config:
    ```bash
-   eval "$(bun .collab/scripts/orchestrator/commands/pipeline-config-read.ts codereview --phase {current_step})"
+   eval "$(bun .collab/scripts/orchestrator/commands/pipeline-config-read.ts {ticket_id} codereview --phase {current_step})"
    ```
    This sets `CR_ENABLED`, `CR_MODEL`, `CR_MAX`, `CR_FILE`, and `PHASE_CR` from `.collab/config/pipeline.json`.
    If `CR_ENABLED == "false"`: skip to step b.
@@ -462,7 +470,7 @@ Read `phases[current_step].orchestrator_context` from the pipeline config (use v
 ##### c. Resolve transition (deterministic + conditional)
 
 ```bash
-TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {current_step} {signal_type} --pipeline {PIPELINE[TICKET_ID]})
+TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {ticket_id} {current_step} {signal_type})
 ```
 
 Parse `to`, `gate`, `if`, and `conditional` from output. Exit 2 means no match: log "No transition found for {current_step} → {signal_type}", **END RESPONSE.**
@@ -480,28 +488,40 @@ Supported conditions:
   - If `current_impl_phase < total_phases`: condition is **TRUE** → use the conditional `to`.
   - If `current_impl_phase >= total_phases` OR `implement_phase_plan` is absent/empty: condition is **FALSE** → re-resolve with `--plain`:
     ```bash
-    TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {current_step} {signal_type} --plain --pipeline {PIPELINE[TICKET_ID]})
+    TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {ticket_id} {current_step} {signal_type} --plain)
     ```
     Re-parse `to` and `gate` from the new result.
 
 If `gate != null`: proceed to step **d. Gate Evaluation**.
 If `to != null`: skip to step **e. Goal Gate Check**.
 
-##### d. Gate evaluation (AI logic)
+##### d. Gate evaluation (deterministic infrastructure + AI judgment)
 
-*AI LOGIC: Requires full judgment to evaluate gate prompt.*
+1. **Resolve gate prompt (deterministic):**
+   ```bash
+   GATE_DATA=$(bun .collab/scripts/orchestrator/evaluate-gate.ts {ticket_id} {gate_name})
+   ```
+   Parse `prompt` and `validKeywords` from JSON output.
+   - Exit 0: `prompt` contains the fully resolved gate prompt (tokens + file contents substituted). `validKeywords` lists the allowed verdict keywords.
+   - Exit 3: gate not found — fall back to evaluating phase artifacts directly against the ticket acceptance criteria (ad-hoc review). Use `gate.on` keys from pipeline config as valid keywords if available.
 
-1. Load `gates[gate_name]` from the pipeline config (variant first: `.collab/config/pipeline-variants/{PIPELINE[TICKET_ID]}.json`, fallback: `.collab/config/pipeline.json`).
-2. Read the gate prompt file at `gates[gate_name].prompt`. Resolve `${TOKEN}` expressions for context variables in the prompt's YAML front matter. If the gate or prompt file is missing, evaluate the phase artifacts directly against the ticket acceptance criteria (ad-hoc review).
-3. Evaluate using: Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, analysis.md if present, etc.).
-4. Your response must contain exactly one keyword from `gates[gate_name].on`. Match it.
-5. Record gate decision (non-fatal — if exit 2/3, log and continue):
+2. **Evaluate (AI judgment):** Read the resolved `prompt`. Use Linear ticket context (stored from Setup step 4) + current phase artifacts (spec.md, plan.md, tasks.md, analysis.md if present). Your verdict must be exactly one keyword from `validKeywords`.
+
+3. **Validate verdict and get routing (deterministic):**
+   ```bash
+   GATE_RESPONSE=$(bun .collab/scripts/orchestrator/evaluate-gate.ts {ticket_id} {gate_name} --verdict {keyword})
+   ```
+   - Exit 0: parse `response` from JSON. Contains routing instructions (`to`, `feedback`, `maxRetries`, etc.).
+   - Exit 2: invalid keyword — re-read `validKeywords` from step 1 output and pick again.
+
+4. **Record gate decision** (non-fatal — if exit 2/3, log and continue):
    ```bash
    bun .collab/scripts/orchestrator/record-gate.ts {ticket_id} {gate_name} {keyword}
    ```
-6. Look up the matched response: `bun .collab/scripts/orchestrator/transition-resolve.ts --gate {gate_name} {keyword} --pipeline {PIPELINE[TICKET_ID]}`
-7. **Feedback**: If matched response has `"feedback": true`, relay your full evaluation to the agent before routing.
-8. **Route**:
+
+5. **Feedback**: If `response.feedback` is set, relay your full evaluation to the agent before routing.
+
+6. **Route**:
    - Response has `to`: set `NEXT={to}`, proceed to **e. Goal Gate Check**.
    - Response has no `to` (retry): increment `retry_count` in registry. Check `on_exhaust` if `retry_count >= max_retries`. Then re-dispatch:
      ```bash
@@ -657,7 +677,11 @@ For signals that do not match any suffix above (e.g., `VERIFY_PASS`, `VERIFY_FAI
 
 ### [CMD:remove {ticket_id}]
 
-Validate. `rm .collab/state/pipeline-registry/{ticket_id}.json`. `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+Validate. Remove the registry file:
+```bash
+rm $(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)
+```
+`bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
 
 ### Unknown
 
@@ -689,7 +713,7 @@ System nodes — all are non-fatal (exit 2 or 3 = log warning and continue):
 Cleanup:
 4c. Release dependency holds (run before registry deletion so other held tickets can detect completion):
    `bun .collab/scripts/orchestrator/held-release-scan.ts {ticket_id}`
-5. `rm .collab/state/pipeline-registry/{ticket_id}.json`
+5. `rm "$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)"`
 6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
 7. `.collab/scripts/webhook-notify.ts {ticket_id} {current_step} done complete`
 8. Other agents running -> wait. None remain -> "All pipelines complete."

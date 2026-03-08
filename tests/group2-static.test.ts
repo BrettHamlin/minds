@@ -870,23 +870,10 @@ describe("emit-code-review-signal.ts handler", () => {
 });
 
 // ===========================================================================
-// collab.install.ts installer tests (6 tests)
+// installer defaults tests (3 tests — collab-install.ts removed in BRE-442)
 // ===========================================================================
 
-describe("collab.install.ts installer updates", () => {
-  test("77. collab.install.ts contains pipeline-variants copy section", () => {
-    const content = readSourceFile("minds/installer/collab-install.ts");
-    expect(content).toContain("pipeline-variants");
-    expect(content).toContain("variantsDir");
-  });
-
-  test("78. collab.install.ts contains command config scaffold section", () => {
-    const content = readSourceFile("minds/installer/collab-install.ts");
-    expect(content).toContain("commandConfigs");
-    expect(content).toContain("configScaffoldCount");
-    expect(content).toContain("scaffold");
-  });
-
+describe("installer defaults", () => {
   test("79. minds/templates/defaults/run-tests.json exists and is valid JSON", () => {
     const fullPath = path.join(REPO_ROOT, "minds/templates/defaults/run-tests.json");
     expect(fs.existsSync(fullPath)).toBe(true);
@@ -911,14 +898,6 @@ describe("collab.install.ts installer updates", () => {
     expect(content.smokeRoutes).toEqual(["/"]);
   });
 
-  test("82. collab.install.ts lists all 5 new commands in Available Commands", () => {
-    const content = readSourceFile("minds/installer/collab-install.ts");
-    expect(content).toContain("/collab.run-tests");
-    expect(content).toContain("/collab.visual-verify");
-    expect(content).toContain("/collab.verify-execute");
-    expect(content).toContain("/collab.pre-deploy-confirm");
-    expect(content).toContain("/collab.deploy-verify");
-  });
 });
 
 // ===========================================================================

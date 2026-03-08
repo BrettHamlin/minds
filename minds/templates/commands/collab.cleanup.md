@@ -128,8 +128,9 @@ if (!MERGED) {
 SCRIPTS=.collab/scripts/orchestrator
 
 # Find agent pane from registry
-if [ -f ".collab/state/pipeline-registry/${TICKET_ID}.json" ]; then
-    AGENT_PANE=$(jq -r '.agent_pane_id' ".collab/state/pipeline-registry/${TICKET_ID}.json" 2>/dev/null)
+REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts ${TICKET_ID} registry)
+if [ -f "$REGISTRY_PATH" ]; then
+    AGENT_PANE=$(jq -r '.agent_pane_id' "$REGISTRY_PATH" 2>/dev/null)
 
     if [ -n "$AGENT_PANE" ]; then
         tmux kill-pane -t "$AGENT_PANE" 2>/dev/null && echo "✅ Killed pane $AGENT_PANE" || echo "⚠️  Pane not found"
@@ -179,8 +180,9 @@ fi
 
 ```bash
 # Remove pipeline registry
-if [ -f ".collab/state/pipeline-registry/${TICKET_ID}.json" ]; then
-    rm -f ".collab/state/pipeline-registry/${TICKET_ID}.json"
+REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts ${TICKET_ID} registry)
+if [ -f "$REGISTRY_PATH" ]; then
+    rm -f "$REGISTRY_PATH"
     echo "✅ Removed registry"
 fi
 
