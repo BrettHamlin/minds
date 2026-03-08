@@ -134,13 +134,20 @@ export function injectBusEnv(spawnCmd: string, busUrl: string): string {
 
 /**
  * Spawn bus-server.ts as a detached background process.
- * Resolves with { pid, url } once BUS_READY is printed to stdout.
+ * Resolves with { pid, url } once BUS_READY is detected via stdout or bus-port file.
+ *
+ * Uses two detection strategies in parallel:
+ * 1. stdout pipe — catches BUS_READY immediately (works in direct terminal)
+ * 2. bus-port file poll — fallback for environments where stdout buffering
+ *    prevents the pipe from delivering (e.g. inside Claude Code's Bash tool)
  */
 function spawnBusServer(
   serverPath: string,
   cwd: string,
 ): Promise<{ pid: number; url: string }> {
   return new Promise((resolve, reject) => {
+    let resolved = false;
+
     const proc = spawn("bun", [serverPath], {
       cwd,
       stdio: ["ignore", "pipe", "inherit"],
@@ -149,26 +156,59 @@ function spawnBusServer(
     proc.unref();
 
     const timeout = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
       try { process.kill(proc.pid!, "SIGTERM"); } catch { /* ignore */ }
       reject(new Error("Minds bus server startup timeout (5s)"));
     }, 5000);
 
+    // Strategy 1: stdout pipe
     proc.stdout!.on("data", (data: Buffer) => {
+      if (resolved) return;
       const match = data.toString().match(/BUS_READY port=(\d+)/);
       if (match) {
+        resolved = true;
         clearTimeout(timeout);
         const port = parseInt(match[1], 10);
         resolve({ pid: proc.pid!, url: `http://localhost:${port}` });
       }
     });
 
+    // Strategy 2: poll .collab/bus-port file (bus-server.ts writes this before BUS_READY)
+    const portFile = path.join(cwd, ".collab", "bus-port");
+    const pollInterval = setInterval(async () => {
+      if (resolved) { clearInterval(pollInterval); return; }
+      try {
+        const content = await fs.readFile(portFile, "utf-8");
+        const port = parseInt(content.trim(), 10);
+        if (!isNaN(port) && port > 0) {
+          // Verify the server is actually responding
+          try {
+            const resp = await fetch(`http://localhost:${port}/status`);
+            if (resp.ok) {
+              resolved = true;
+              clearTimeout(timeout);
+              clearInterval(pollInterval);
+              resolve({ pid: proc.pid!, url: `http://localhost:${port}` });
+            }
+          } catch { /* server not ready yet */ }
+        }
+      } catch { /* file not created yet */ }
+    }, 200);
+
     proc.on("error", (err) => {
+      if (resolved) return;
+      resolved = true;
       clearTimeout(timeout);
+      clearInterval(pollInterval);
       reject(new Error(`Minds bus server spawn error: ${err.message}`));
     });
 
     proc.on("exit", (code) => {
+      if (resolved) return;
+      resolved = true;
       clearTimeout(timeout);
+      clearInterval(pollInterval);
       reject(new Error(`Minds bus server exited unexpectedly (code ${code})`));
     });
   });
