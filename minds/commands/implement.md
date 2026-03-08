@@ -1,5 +1,5 @@
 ---
-description: Dispatch Mind-aware tasks to Mind+Drone pairs for collab development. Reads the @mind-tagged tasks.md, builds per-Mind briefs, and sends each to its own drone pane via tmux.
+description: Dispatch Mind-aware tasks to Mind+Drone pairs for collab development. Reads the @mind-tagged tasks.md, builds per-Mind briefs, and dispatches each to a dedicated drone.
 ---
 
 > **IMPORTANT:** Execute these steps directly and sequentially. Do NOT wrap this workflow in PAI Algorithm phases, ISC criteria, capability selection, or any other meta-framework. Follow the numbered steps exactly as written.
@@ -159,7 +159,7 @@ This command executes implementation for the **collab repo itself**, where work 
 
       Store the mapping: `{ mindName -> { dronePaneId, worktree } }`.
 
-      `drone.launch` handles: worktree creation, tmux split, drone identity/standards/profile in the drone's private CLAUDE.md, and DRONE-BRIEF.md git exclusion. The Mind does not need to do any of that.
+      `drone-pane.ts` handles all setup. The Mind does not need to do any of that.
 
    b. **Write task-specific brief to DRONE-BRIEF.md**:
 
@@ -209,7 +209,7 @@ This command executes implementation for the **collab repo itself**, where work 
       bun minds/transport/minds-publish.ts --channel minds-{ticket_id} --type DRONE_COMPLETE --payload '{"mindName":"{mind_name}"}'
       ```
 
-      The bus URL is resolved automatically from `BUS_URL` env var or `.collab/bus-port`. Do NOT use tmux-send for this signal — use the bus publish command above.
+      The bus URL is resolved automatically from `BUS_URL` env var or `.collab/bus-port`.
       EOF
       ```
 
@@ -255,11 +255,10 @@ This command executes implementation for the **collab repo itself**, where work 
    bun minds/lib/cleanup.ts all {worktree_path}
    ```
 
-8. **Handle failures**: If a drone emits an error or goes silent:
+8. **Handle failures**: If a drone reports an error instead of DRONE_COMPLETE:
 
-   - Capture the last 50 lines from its pane
-   - Report the failure with context
-   - Offer the option to retry (re-send the brief) or skip the Mind
+   - Report the failure
+   - Re-send the brief to retry, or skip the Mind
    - Do not advance to the next wave if a dependency Mind failed
 
 9. **Verify completion**: After all waves complete, verify:
@@ -328,7 +327,7 @@ This command executes implementation for the **collab repo itself**, where work 
        ```
 
        Then run real-world verification appropriate to the feature:
-       - **Pipeline/collab flows**: Spawn a new tmux window, launch Claude Code in dangerous mode, run the flow end-to-end (e.g., `/collab.run`), monitor for completion
+       - **Pipeline/collab flows**: Run the flow end-to-end (e.g., `/collab.run`)
        - **Web features**: Use the Playwright/Browser skill to test in a real browser
        - **iOS features**: Use the iOS simulator skill to verify on-device
        - **CLI commands**: Actually run the command and verify the output
