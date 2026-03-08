@@ -121,6 +121,18 @@ This command executes implementation for the **collab repo itself**, where work 
 
     If there are only warnings, display them but proceed with dispatch.
 
+5c. **Start bus lifecycle**: Start the Minds message bus before dispatching any drones.
+
+    ```bash
+    BUS_INFO=$(bun minds/transport/minds-bus-lifecycle.ts start --ticket {ticket_id} --pane $TMUX_PANE)
+    BUS_URL=$(echo "$BUS_INFO" | jq -r '.busUrl')
+    BUS_SERVER_PID=$(echo "$BUS_INFO" | jq -r '.busServerPid')
+    BUS_BRIDGE_PID=$(echo "$BUS_INFO" | jq -r '.bridgePid')
+    export BUS_URL
+    ```
+
+    Store `BUS_URL`, `BUS_SERVER_PID`, and `BUS_BRIDGE_PID` for use throughout steps 6–11.
+
 6. **For each wave, for each Mind in the wave**:
 
    a. **Create Mind+Drone pair** using `/drone.launch`:
@@ -183,13 +195,13 @@ This command executes implementation for the **collab repo itself**, where work 
 
       Do NOT commit your changes. The Mind will handle committing and merging after review passes.
 
-      When all tasks are complete and the checklist passes, send completion signal to the Mind:
+      When all tasks are complete and the checklist passes, send completion signal via the bus:
 
       ```bash
-      bun minds/lib/tmux-send.ts {mind_pane_id} "DRONE_COMPLETE @{mind_name} {ticket_id}"
+      bun minds/transport/minds-publish.ts --channel minds-{ticket_id} --type DRONE_COMPLETE --payload '{"mindName":"{mind_name}"}'
       ```
 
-      This sends the signal directly to the Mind's pane. Do NOT just type the signal — you must run this command.
+      The bus URL is resolved automatically from `BUS_URL` env var or `.collab/bus-port`. Do NOT use tmux-send for this signal — use the bus publish command above.
       EOF
       ```
 
@@ -281,11 +293,11 @@ This command executes implementation for the **collab repo itself**, where work 
        After the citation block, provide a verdict: PASS (proceed to merge) or FAIL (list violations, send feedback to drone).
 
        The Mind NEVER modifies code directly. If issues are found:
-       - Send the specific violation citations to the drone via tmux-send
+       - Send the specific violation citations to the drone via bus publish
          ```bash
-         bun minds/lib/tmux-send.ts {drone_pane} "REVIEW FEEDBACK: {violation details}"
+         bun minds/transport/minds-publish.ts --channel minds-{ticket_id} --type DRONE_REVIEW_FAIL --payload '{"mindName":"{mind_name}","feedback":"{violation details}"}'
          ```
-       - Wait for the drone to fix and re-report DRONE_COMPLETE
+       - Wait for the drone to fix and re-report DRONE_COMPLETE on the bus
        - Re-review after fixes (repeating this full citation-based review step)
 
    - Run `bun test` from the repo root — all tests must pass
@@ -342,6 +354,12 @@ This command executes implementation for the **collab repo itself**, where work 
     ```
 
 11. **Teardown cleanup**: After final verification passes, clean up all compaction-resilience artifacts.
+
+    Tear down the Minds bus:
+
+    ```bash
+    bun minds/transport/minds-bus-lifecycle.ts teardown --bus-pid $BUS_SERVER_PID --bridge-pid $BUS_BRIDGE_PID
+    ```
 
     Remove the `## Active Mind Review` section from the Mind's private CLAUDE.md:
 

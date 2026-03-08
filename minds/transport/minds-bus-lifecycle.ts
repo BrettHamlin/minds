@@ -7,6 +7,10 @@
 // directly so the bridge subscribes to `minds-{ticketId}` — BusTransport.start()
 // hardcodes the `pipeline-` prefix and cannot produce a `minds-` channel without
 // this layer.
+//
+// CLI usage:
+//   bun minds/transport/minds-bus-lifecycle.ts start --ticket BRE-444 [--pane %123]
+//   bun minds/transport/minds-bus-lifecycle.ts teardown --bus-pid 123 --bridge-pid 456
 
 import { BusTransport } from "./BusTransport.ts";
 import * as path from "path";
@@ -139,4 +143,73 @@ export async function teardownMindsBus(pids: {
     bridgePid: pids.bridgePid,
   });
   await transport.teardown();
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry point
+// ---------------------------------------------------------------------------
+
+if (import.meta.main) {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  function getArg(flag: string): string | undefined {
+    const idx = args.indexOf(flag);
+    return idx !== -1 ? args[idx + 1] : undefined;
+  }
+
+  if (command === "start") {
+    const ticket = getArg("--ticket");
+    const pane = getArg("--pane") ?? process.env.TMUX_PANE ?? "";
+
+    if (!ticket) {
+      console.error(
+        JSON.stringify({
+          error: "Usage: minds-bus-lifecycle.ts start --ticket <id> [--pane <pane-id>]",
+        })
+      );
+      process.exit(1);
+    }
+
+    try {
+      const info = await startMindsBus(process.cwd(), pane, ticket);
+      console.log(JSON.stringify(info));
+    } catch (err) {
+      console.error(JSON.stringify({ error: String(err) }));
+      process.exit(1);
+    }
+  } else if (command === "teardown") {
+    const busPidStr = getArg("--bus-pid");
+    const bridgePidStr = getArg("--bridge-pid");
+
+    if (!busPidStr || !bridgePidStr) {
+      console.error(
+        JSON.stringify({
+          error: "Usage: minds-bus-lifecycle.ts teardown --bus-pid <pid> --bridge-pid <pid>",
+        })
+      );
+      process.exit(1);
+    }
+
+    const busServerPid = parseInt(busPidStr, 10);
+    const bridgePid = parseInt(bridgePidStr, 10);
+
+    if (isNaN(busServerPid) || isNaN(bridgePid)) {
+      console.error(JSON.stringify({ error: "PIDs must be integers" }));
+      process.exit(1);
+    }
+
+    try {
+      await teardownMindsBus({ busServerPid, bridgePid });
+      console.log(JSON.stringify({ ok: true }));
+    } catch (err) {
+      console.error(JSON.stringify({ error: String(err) }));
+      process.exit(1);
+    }
+  } else {
+    console.error(
+      JSON.stringify({ error: "Usage: minds-bus-lifecycle.ts [start|teardown] ..." })
+    );
+    process.exit(1);
+  }
 }
