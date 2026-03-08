@@ -176,6 +176,16 @@ try {
   fail(`Failed to create worktree at ${worktreePath}: ${err}`);
 }
 
+// ─── Install dependencies ─────────────────────────────────────────────────────
+
+// node_modules is gitignored and never present in fresh worktrees
+try {
+  run(`bun install --cwd "${worktreePath}"`);
+} catch (err) {
+  // Non-fatal: some Minds don't need node_modules
+  process.stderr.write(`Warning: bun install failed: ${err}\n`);
+}
+
 // ─── Write .git/info/exclude (worktree-safe) ─────────────────────────────────
 
 // In a worktree, .git is a FILE containing "gitdir: /path/to/real/gitdir"
