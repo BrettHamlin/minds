@@ -40,8 +40,7 @@ const INSTALL_MAPPINGS: InstallMapping[] = [
   { srcDir: "minds/templates/orchestrator", destDir: ".collab/scripts/orchestrator", recursive: true },
   { srcDir: "minds/templates/scripts", destDir: ".collab/scripts", recursive: false },
   { srcDir: "minds/templates/lib-pipeline", destDir: ".collab/lib/pipeline", recursive: false },
-  { srcDir: "minds/templates/dashboard", destDir: ".collab/dashboard", recursive: true },
-  { srcDir: "minds/transport", destDir: ".collab/transport", recursive: false, exclude: ["server.ts"] },
+  { srcDir: "minds/transport", destDir: ".collab/transport", recursive: false, exclude: ["server.ts", "status-aggregator.ts"] },
 ];
 
 // ── Extract imports from a TypeScript file ─────────────────────────────────

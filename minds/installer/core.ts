@@ -83,8 +83,6 @@ export const INSTALL_DIRS = [
   ".collab/lib/pipeline",
   ".collab/hooks",
   ".collab/transport",
-  ".collab/dashboard",
-  ".collab/dashboard/dist",
   ".specify/scripts/bash",
   ".specify/templates",
 ] as const;
@@ -174,9 +172,6 @@ export function installTemplates(
 
   // Transport (always overwrite — bus server + helpers)
   copyTemplateDir("transport", ".collab/transport");
-
-  // Dashboard (always overwrite — Minds live dashboard SPA + state tracker)
-  copyTemplateDir("dashboard", ".collab/dashboard");
 
   // Top-level scripts
   const scriptsDir = join(templateDir, "scripts");
