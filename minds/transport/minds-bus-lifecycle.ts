@@ -286,7 +286,9 @@ export async function ensureAggregator(repoRoot: string): Promise<number> {
       if (match) {
         resolved = true;
         clearTimeout(timeout);
-        resolve(parseInt(match[1], 10));
+        const port = parseInt(match[1], 10);
+        console.log(`Dashboard running on http://localhost:${port}/minds`);
+        resolve(port);
       }
     });
 

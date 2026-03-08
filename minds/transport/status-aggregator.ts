@@ -471,6 +471,7 @@ if (import.meta.main) {
 
   // Signal readiness
   process.stdout.write(`AGGREGATOR_READY port=${server.port}\n`);
+  console.log(`Dashboard running on http://localhost:${server.port}/minds`);
 
   // Graceful shutdown
   const shutdown = () => {
