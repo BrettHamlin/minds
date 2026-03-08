@@ -50,12 +50,19 @@ export class StatusAggregator {
   private seqCounter = 0;
   private readonly registryDir: string;
   private watcher: FSWatcher | null = null;
+  private mindsWatcher: FSWatcher | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private mindsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly startTime = Date.now();
   mindsTracker: MindsStateTracker | null = null;
 
   constructor(registryDir: string) {
     this.registryDir = registryDir;
+  }
+
+  /** The .collab/state/ dir — one level up from the pipeline-registry dir. */
+  private get stateDir(): string {
+    return join(this.registryDir, "..");
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -67,14 +74,23 @@ export class StatusAggregator {
       mkdirSync(this.registryDir, { recursive: true });
     }
 
-    // Initial scan
+    // Initial scans
     this.scanRegistries();
+    this.scanMindsBusStates();
 
-    // Watch for changes with debounce
+    // Watch pipeline-registry dir for changes with debounce
     this.watcher = watch(this.registryDir, () => {
       if (this.debounceTimer) clearTimeout(this.debounceTimer);
       this.debounceTimer = setTimeout(() => {
         this.scanRegistries();
+      }, DEBOUNCE_MS);
+    });
+
+    // Watch state dir for minds-bus-*.json changes with debounce
+    this.mindsWatcher = watch(this.stateDir, () => {
+      if (this.mindsDebounceTimer) clearTimeout(this.mindsDebounceTimer);
+      this.mindsDebounceTimer = setTimeout(() => {
+        this.scanMindsBusStates();
       }, DEBOUNCE_MS);
     });
   }
@@ -86,9 +102,19 @@ export class StatusAggregator {
       this.debounceTimer = null;
     }
 
+    if (this.mindsDebounceTimer) {
+      clearTimeout(this.mindsDebounceTimer);
+      this.mindsDebounceTimer = null;
+    }
+
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
+    }
+
+    if (this.mindsWatcher) {
+      this.mindsWatcher.close();
+      this.mindsWatcher = null;
     }
 
     // Abort all bus connections
@@ -153,11 +179,65 @@ export class StatusAggregator {
       }
     }
 
-    // Remove connections for deleted pipeline registry files
+    // Remove connections for deleted pipeline registry files.
+    // Minds-prefixed keys are managed by scanMindsBusStates() — skip them here.
     for (const [ticketId, conn] of this.connections) {
-      if (!activeTickets.has(ticketId)) {
+      if (!ticketId.startsWith("minds-") && !activeTickets.has(ticketId)) {
         conn.abortController.abort();
         this.connections.delete(ticketId);
+      }
+    }
+  }
+
+  /**
+   * Scan .collab/state/minds-bus-*.json files and connect to any Minds bus
+   * servers not yet connected. Uses "minds-{ticketId}" as the connection key
+   * to coexist with pipeline registry connections in the same map.
+   */
+  scanMindsBusStates(): void {
+    let files: string[] = [];
+    try {
+      files = readdirSync(this.stateDir).filter((f) =>
+        /^minds-bus-.+\.json$/.test(f),
+      );
+    } catch {
+      return; // State dir unreadable — no-op
+    }
+
+    const activeMindsKeys = new Set<string>();
+
+    for (const file of files) {
+      try {
+        const raw = readFileSync(join(this.stateDir, file), "utf8");
+        const state = JSON.parse(raw) as Record<string, unknown>;
+        const busUrl = state.busUrl as string | undefined;
+        const ticketId = state.ticketId as string | undefined;
+
+        if (!busUrl || !ticketId) continue;
+
+        const key = `minds-${ticketId}`;
+        activeMindsKeys.add(key);
+
+        if (!this.connections.has(key)) {
+          this.connectToBus(key, busUrl);
+        } else {
+          const existing = this.connections.get(key)!;
+          if (existing.busUrl !== busUrl) {
+            existing.abortController.abort();
+            this.connections.delete(key);
+            this.connectToBus(key, busUrl);
+          }
+        }
+      } catch {
+        // Corrupt or unparseable file — skip
+      }
+    }
+
+    // Remove connections for deleted minds-bus state files
+    for (const [key, conn] of this.connections) {
+      if (key.startsWith("minds-") && !activeMindsKeys.has(key)) {
+        conn.abortController.abort();
+        this.connections.delete(key);
       }
     }
   }
