@@ -23,6 +23,7 @@ export interface ClassifyRunResult {
   runId: string;
   autonomous: boolean;
   interventionCount: number;
+  durationMs: number | null;
 }
 
 // ============================================================================
@@ -39,16 +40,22 @@ export interface ClassifyRunResult {
  * Idempotent: re-classifying a run overwrites the previous verdict.
  */
 export function classifyRun(db: Database, runId: string): ClassifyRunResult {
-  const row = db
+  const interventionRow = db
     .query("SELECT COUNT(*) as count FROM interventions WHERE run_id = ?")
     .get(runId) as { count: number } | null;
 
-  const interventionCount = row?.count ?? 0;
+  const interventionCount = interventionRow?.count ?? 0;
   const autonomous = interventionCount === 0;
 
   db
     .query("UPDATE runs SET autonomous = ?, intervention_count = ? WHERE id = ?")
     .run(autonomous ? 1 : 0, interventionCount, runId);
 
-  return { runId, autonomous, interventionCount };
+  const runRow = db
+    .query("SELECT duration_ms FROM runs WHERE id = ?")
+    .get(runId) as { duration_ms: number | null } | null;
+
+  const durationMs = runRow?.duration_ms ?? null;
+
+  return { runId, autonomous, interventionCount, durationMs };
 }
