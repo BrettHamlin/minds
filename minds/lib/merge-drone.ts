@@ -3,7 +3,7 @@
  * Commit and merge a drone's worktree branch into a target branch.
  *
  * CLI usage:
- *   bun minds/lib/merge-drone.ts <worktree-path> <target-branch> [--message 'commit msg']
+ *   bun minds/lib/merge-drone.ts <worktree-path> <target-branch> [--message 'commit msg'] [--log-content 'text']
  */
 
 export interface MergeResult {
@@ -60,8 +60,9 @@ export async function mergeDrone(options: {
   targetBranch: string;
   commitMessage?: string;
   repoRoot?: string;
+  logContent?: string;
 }): Promise<MergeResult> {
-  const { worktreePath, targetBranch, commitMessage } = options;
+  const { worktreePath, targetBranch, commitMessage, logContent } = options;
   const repoRoot = options.repoRoot ?? process.cwd();
 
   // b. Get the drone's branch name.
@@ -81,6 +82,9 @@ export async function mergeDrone(options: {
       error: "Worktree is in detached HEAD state — cannot determine branch",
     };
   }
+
+  // Parse mind name once — reused for auto-commit message and log writing.
+  const parsed = extractMindAndTicket(droneBranch);
 
   // a. Check for uncommitted changes.
   const statusResult = await git(worktreePath, "status", "--porcelain");
@@ -106,9 +110,8 @@ export async function mergeDrone(options: {
     // Build commit message.
     let msg = commitMessage;
     if (!msg) {
-      const extracted = extractMindAndTicket(droneBranch);
-      msg = extracted
-        ? `feat: @${extracted.mindName} drone work for ${extracted.ticketId}`
+      msg = parsed
+        ? `feat: @${parsed.mindName} drone work for ${parsed.ticketId}`
         : `feat: drone work on ${droneBranch}`;
     }
 
@@ -168,6 +171,13 @@ export async function mergeDrone(options: {
 
   // e. Capture the merge commit hash.
   const hashResult = await git(repoRoot, "rev-parse", "HEAD");
+
+  // f. Write learning entry to daily log if provided.
+  if (logContent && parsed) {
+    const { appendDailyLog } = await import("../memory/lib/write.js");
+    await appendDailyLog(parsed.mindName, logContent);
+  }
+
   return {
     success: true,
     branch: droneBranch,
@@ -189,7 +199,7 @@ async function main(): Promise<void> {
 
   if (args.length < 2) {
     console.error(
-      "Usage: bun merge-drone.ts <worktree-path> <target-branch> [--message 'commit msg']"
+      "Usage: bun merge-drone.ts <worktree-path> <target-branch> [--message 'commit msg'] [--log-content 'text']"
     );
     process.exit(1);
   }
@@ -200,10 +210,14 @@ async function main(): Promise<void> {
   const msgIdx = args.indexOf("--message");
   const commitMessage = msgIdx !== -1 ? args[msgIdx + 1] : undefined;
 
+  const logIdx = args.indexOf("--log-content");
+  const logContent = logIdx !== -1 ? args[logIdx + 1] : undefined;
+
   const result = await mergeDrone({
     worktreePath,
     targetBranch,
     commitMessage,
+    logContent,
   });
 
   if (result.success) {

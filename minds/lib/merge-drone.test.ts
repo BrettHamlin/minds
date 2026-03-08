@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { mergeDrone } from "./merge-drone";
+import { dailyLogPath } from "../memory/lib/paths.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -182,6 +183,69 @@ describe("mergeDrone", () => {
 
     const log = await runGit(repoPath, "log", "--oneline", "-5");
     expect(log.stdout).toContain("custom commit message for test");
+  });
+
+  it("writes a daily log entry when logContent is provided and merge succeeds", async () => {
+    const repoPath = tmpPath("repo-logcontent");
+    const worktreePath = tmpPath("wt-logcontent");
+    await initRepo(repoPath);
+    await addWorktree(repoPath, worktreePath, "BRE-104-memory");
+
+    writeFileSync(join(worktreePath, "log-test.ts"), "export {};\n");
+
+    const logFile = dailyLogPath("memory");
+    // Ensure clean state before test
+    if (existsSync(logFile)) rmSync(logFile);
+
+    const logContent = "Confirmed appendDailyLog path resolution is correct.";
+    const result = await mergeDrone({
+      worktreePath,
+      targetBranch: "minds/main",
+      repoRoot: repoPath,
+      logContent,
+    });
+
+    expect(result.success).toBe(true);
+
+    try {
+      expect(existsSync(logFile)).toBe(true);
+      const contents = await Bun.file(logFile).text();
+      expect(contents).toContain(logContent);
+    } finally {
+      if (existsSync(logFile)) rmSync(logFile);
+    }
+  });
+
+  it("does not write a daily log entry when merge fails due to conflicts", async () => {
+    const repoPath = tmpPath("repo-logconflict");
+    const worktreePath = tmpPath("wt-logconflict");
+    await initRepo(repoPath);
+    await addWorktree(repoPath, worktreePath, "BRE-105-memory");
+
+    // Drone modifies shared.ts
+    writeFileSync(join(worktreePath, "shared-conflict.ts"), "export const v = 'drone';\n");
+    await runGit(worktreePath, "add", "-A");
+    await runGit(worktreePath, "commit", "-m", "feat: drone version");
+
+    // Main also modifies shared-conflict.ts (diverging)
+    writeFileSync(join(repoPath, "shared-conflict.ts"), "export const v = 'main';\n");
+    await runGit(repoPath, "add", "-A");
+    await runGit(repoPath, "commit", "-m", "feat: main version");
+
+    const logFile = dailyLogPath("memory");
+    // Ensure clean state before test (guards against leaked state from Test A)
+    if (existsSync(logFile)) rmSync(logFile);
+
+    const logContent = "Should not be written on conflict.";
+    const result = await mergeDrone({
+      worktreePath,
+      targetBranch: "minds/main",
+      repoRoot: repoPath,
+      logContent,
+    });
+
+    expect(result.success).toBe(false);
+    expect(existsSync(logFile)).toBe(false);
   });
 
   it("extracts mind name and ticket from branch name for auto-commit message", async () => {
