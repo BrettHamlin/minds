@@ -16,7 +16,7 @@ You **MUST** consider the user input before proceeding (if not empty). If `$ARGU
 
 ## Purpose
 
-This command executes implementation for the **collab repo itself**, where work is distributed across Minds. Unlike `collab.implement.md` (which executes tasks directly in the current repo), this command is Mind-aware: it dispatches each Mind's tasks to a dedicated Mind+Drone pair running in a worktree, then monitors completion.
+This command executes implementation for the **collab repo itself**, where work is distributed across Minds. Unlike `collab.implement.md` (which executes tasks directly in the current repo), this command is Mind-aware: it dispatches each Mind's tasks to a dedicated Mind+Drone pair running in a worktree, then waits for completion signals.
 
 ## Outline
 
@@ -242,17 +242,11 @@ This command executes implementation for the **collab repo itself**, where work 
       bun minds/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review' --content-file /tmp/active-mind-review.md
       ```
 
-7. **Wait for drone completion signals**: After dispatching all Minds in a wave, each drone will send `DRONE_COMPLETE @{mind_name} {ticket_id}` directly to this pane when done.
+7. **Wait for drone completion signals**: After dispatching all Minds in a wave, **end your response**. Do not run any more commands. Do not sleep. Do not poll. Do not capture drone panes. Just stop.
 
-   Do not poll or capture drone panes. The drone sends the signal to you via `bun minds/lib/tmux-send.ts`.
+   The drone will send `DRONE_COMPLETE` to this pane when done. When you see it, continue to the next step.
 
-   Track which Minds have reported completion. Do not start Wave N+1 until all Minds in Wave N have sent their DRONE_COMPLETE signal.
-
-   If a drone has not reported within 10 minutes, check its pane for issues:
-
-   ```bash
-   tmux capture-pane -t {pane_id} -p -S -50
-   ```
+   Track which Minds have reported completion. Do not start Wave N+1 until all Minds in Wave N have reported.
 
 7b. **Between-waves cleanup**: After all drones in a wave complete, BEFORE launching the next wave, for each drone in the wave:
 
