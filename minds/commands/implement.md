@@ -16,6 +16,34 @@ This command executes implementation for the **collab repo itself**, where work 
 
 ## Outline
 
+0. **Cleanup stale context from previous runs**: Before doing anything else, scan for orphaned drone directories left by crashed or incomplete previous runs.
+
+   ```bash
+   # Find all private CLAUDE.md dirs for collab worktrees
+   ls ~/.claude/projects/ | grep -E '\-collab-worktrees-|\-collab-dev'
+   ```
+
+   For each matching directory, check whether the corresponding worktree still exists:
+
+   ```bash
+   git worktree list --porcelain
+   ```
+
+   If the worktree path no longer appears in `git worktree list`, delete the orphaned directory:
+
+   ```bash
+   rm -rf ~/.claude/projects/{encoded-path}/
+   ```
+
+   Also check this Mind's own private CLAUDE.md for a stale `## Active Mind Review` section. The Mind's private CLAUDE.md path is:
+   `~/.claude/projects/$(echo {collab-repo-absolute-path} | tr '/' '-' | sed 's/^-//')/CLAUDE.md`
+
+   If that file exists and contains `## Active Mind Review`, remove that section:
+
+   ```bash
+   bun minds/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review'
+   ```
+
 1. **Load Mind registry**: Read `.collab/minds.json` from the repo root.
 
    ```bash
@@ -84,15 +112,15 @@ This command executes implementation for the **collab repo itself**, where work 
       /dev.pane {ticket_id}-{mind_name}
       ```
 
-      This creates a worktree and tmux split with a Sonnet drone in the right pane. Capture the drone pane ID immediately after:
+      This creates a worktree and tmux split with a Sonnet drone in the right pane, and outputs JSON. Parse the `drone_pane` field from that JSON output:
 
-      ```bash
-      PANE_ID=$(tmux display-message -p '#{pane_id}')
+      ```
+      DRONE_PANE_ID = <json_output>.drone_pane
       ```
 
-      Store the mapping: `{ mindName -> paneId }`.
+      Store the mapping: `{ mindName -> dronePaneId }`.
 
-   b. **Build the Mind brief**: Compose a scoped instruction block for this Mind's drone.
+   b. **Build the Mind brief and write compaction-resilient context**: Compose a scoped instruction block for this Mind's drone, then persist it to files that survive compaction.
 
       First, load the profile documents:
 
@@ -114,9 +142,41 @@ This command executes implementation for the **collab repo itself**, where work 
       - **Mind profile**: The full content of `minds/{mind_name}/MIND.md` (if it exists)
       - **Acceptance criteria**: Derived from the task descriptions — each task's file path and behavior expectation
 
-      Brief format:
+      **Write the drone's private CLAUDE.md** (survives compaction — auto-reloaded by Claude Code):
 
+      The drone's private CLAUDE.md path is:
+      `~/.claude/projects/$(echo {worktree_absolute_path} | tr '/' '-' | sed 's/^-//')/CLAUDE.md`
+
+      Create the directory and write:
+
+      ```bash
+      DRONE_CLAUDE_DIR=~/.claude/projects/$(echo {worktree_absolute_path} | tr '/' '-' | sed 's/^-//')
+      mkdir -p "$DRONE_CLAUDE_DIR"
+      cat > "$DRONE_CLAUDE_DIR/CLAUDE.md" << 'EOF'
+      ## Mind Identity
+
+      You are the @{mind_name} drone for ticket {ticket_id}.
+      Domain: {domain from minds.json}
+
+      Your file boundary (only touch files in these paths):
+      {owns_files list}
+
+      ## Engineering Standards
+      {full content of minds/STANDARDS.md}
+
+      ## Mind Profile (@{mind_name})
+      {full content of minds/{mind_name}/MIND.md, if it exists — omit section if file not found}
+
+      ## Active Task
+      Your current task brief is in DRONE-BRIEF.md at the worktree root.
+      If you've compacted or lost context, re-read that file.
+      EOF
       ```
+
+      **Write the task brief to DRONE-BRIEF.md** in the worktree root:
+
+      ```bash
+      cat > {worktree_absolute_path}/DRONE-BRIEF.md << 'EOF'
       You are the @{mind_name} drone for ticket {ticket_id}.
 
       Domain: {domain from minds.json}
@@ -143,7 +203,7 @@ This command executes implementation for the **collab repo itself**, where work 
       - `bun test` passes with no failures
       - No files modified outside your owned paths
 
-      Review checklist (verify before reporting MIND_COMPLETE):
+      Review checklist (verify before reporting DRONE_COMPLETE):
       - [ ] All tasks marked [X]
       - [ ] No files modified outside owns_files
       - [ ] No duplicated logic (check against existing codebase)
@@ -154,33 +214,58 @@ This command executes implementation for the **collab repo itself**, where work 
       - [ ] No hardcoded values that should be config
       - [ ] Error messages include context (not just "failed")
 
-      When all tasks are complete and the checklist passes, report: "MIND_COMPLETE @{mind_name} {ticket_id}"
+      Do NOT commit your changes. The Mind will handle committing and merging after review passes.
+
+      When all tasks are complete and the checklist passes, report: "DRONE_COMPLETE @{mind_name} {ticket_id}"
+      EOF
+      ```
+
+      **Exclude DRONE-BRIEF.md from git** (per-worktree, never committed):
+
+      ```bash
+      echo "DRONE-BRIEF.md" >> {worktree_absolute_path}/.git/info/exclude
       ```
 
    c. **Send brief to drone pane**:
 
       ```bash
-      bun ~/.claude/bin/tmux-send.ts {pane_id} "{brief}"
+      bun ~/.claude/bin/tmux-send.ts {pane_id} "Read DRONE-BRIEF.md and execute the tasks described."
       ```
 
-      For long briefs, write to a temp file first and reference it:
+   d. **After dispatching all Minds in the wave**, write the Mind's own review context to its private CLAUDE.md so the Mind retains it after compaction.
+
+      The Mind's private CLAUDE.md path is:
+      `~/.claude/projects/$(echo {collab-repo-absolute-path} | tr '/' '-' | sed 's/^-//')/CLAUDE.md`
+
+      Append (or replace existing) `## Active Mind Review` section:
 
       ```bash
-      echo "{brief}" > /tmp/mind-brief-{mind_name}.md
-      bun ~/.claude/bin/tmux-send.ts {pane_id} "Read /tmp/mind-brief-{mind_name}.md and execute the tasks described."
+      MIND_CLAUDE=~/.claude/projects/$(echo {collab-repo-absolute-path} | tr '/' '-' | sed 's/^-//')/CLAUDE.md
+
+      cat > /tmp/active-mind-review.md << 'EOF'
+      ## Active Mind Review
+      Currently reviewing: @{mind_name_1}, @{mind_name_2}, ... for ticket {ticket_id}.
+      Before reviewing each drone's work, re-read from disk:
+      - minds/STANDARDS.md
+      - minds/{mind_name}/MIND.md
+      The Mind NEVER makes code changes directly. Review only. Send feedback to the drone if changes are needed.
+      If the drone is struggling, analyze the problem and send guidance, but the drone does the implementation.
+      EOF
+
+      bun minds/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review' --content-file /tmp/active-mind-review.md
       ```
 
-7. **Monitor wave completion**: After dispatching all Minds in a wave, poll each drone pane for the `MIND_COMPLETE @{mind_name}` signal.
+7. **Monitor wave completion**: After dispatching all Minds in a wave, poll each drone pane for the `DRONE_COMPLETE @{mind_name}` signal.
 
    ```bash
    # Poll loop — check every 30 seconds
    while true; do
-     tmux capture-pane -t {pane_id} -p | grep "MIND_COMPLETE @{mind_name}" && break
+     tmux capture-pane -t {pane_id} -p | grep "DRONE_COMPLETE @{mind_name}" && break
      sleep 30
    done
    ```
 
-   Do not start Wave N+1 until all Minds in Wave N have emitted `MIND_COMPLETE`.
+   Do not start Wave N+1 until all Minds in Wave N have emitted `DRONE_COMPLETE`.
 
    If a drone has been idle for more than 5 minutes without completing, check its pane output and intervene if it appears blocked:
 
@@ -197,9 +282,33 @@ This command executes implementation for the **collab repo itself**, where work 
 
 9. **Verify completion**: After all waves complete, verify:
 
+   9a. **Re-read standards and profiles**: Before reviewing any drone's output:
+       - Read `minds/STANDARDS.md` from disk
+       - Read `minds/{mind_name}/MIND.md` from disk for each Mind being reviewed
+       - Review the drone's `git diff` against both documents
+       - Check for anti-patterns listed in the Mind profile
+       - Verify conventions from the Mind profile were followed
+
+       The Mind NEVER modifies code directly. If issues are found:
+       - Send specific feedback to the drone via tmux-send
+       - Wait for the drone to fix and re-report DRONE_COMPLETE
+       - Re-review after fixes (repeating this re-read step)
+
    - Run `bun test` from the repo root — all tests must pass
    - Check that tasks.md has all tasks marked `[X]`
    - Confirm no files were created outside any Mind's `owns_files` boundary (cross-check with `git status`)
+
+   9b. **Commit and merge**: After review passes for each drone (including any fix cycles), merge the drone's branch into the target branch:
+
+       ```bash
+       bun minds/lib/merge-drone.ts {worktree_path} {target_branch}
+       ```
+
+       Parse the JSON output:
+       - If `hasConflicts` is `true`: report the conflict details to the user and **stop** — do not proceed to the next drone or step 10 until resolved manually.
+       - If `ok` is `true`: log the `commitHash` and proceed to the next drone.
+
+       Run this per-drone, in the same order as review (Wave 1 drones before Wave 2, etc.).
 
 10. **Report**: Output final status:
 
@@ -215,6 +324,27 @@ This command executes implementation for the **collab repo itself**, where work 
     Tests: PASS (N passing)
     Tasks: N/N complete
     ```
+
+11. **Teardown cleanup**: After final verification passes, clean up all compaction-resilience artifacts.
+
+    Remove the `## Active Mind Review` section from the Mind's private CLAUDE.md:
+
+    ```bash
+    MIND_CLAUDE=~/.claude/projects/$(echo {collab-repo-absolute-path} | tr '/' '-' | sed 's/^-//')/CLAUDE.md
+    bun minds/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review'
+    ```
+
+    For each drone worktree that was created during this run:
+
+    ```bash
+    # Delete DRONE-BRIEF.md from the worktree
+    rm -f {worktree_absolute_path}/DRONE-BRIEF.md
+
+    # Delete the drone's private CLAUDE.md directory entirely
+    rm -rf ~/.claude/projects/$(echo {worktree_absolute_path} | tr '/' '-' | sed 's/^-//')/
+    ```
+
+    Note: If the Mind crashes before reaching this step, the startup cleanup in step 0 handles orphaned directories on the next run.
 
 ## Task Grouping Rules
 
