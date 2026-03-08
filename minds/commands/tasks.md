@@ -105,6 +105,35 @@ When tasks cross Mind boundaries, add explicit contract notes:
 - [ ] T007 @execution Use resolveVariant in phase-advance — consumes: pipeline_core/resolveVariant
 ```
 
+### Annotation Format (parsed by deterministic linter)
+
+Task descriptions use inline annotations that the contract linter (`minds/lib/contracts.ts`) parses deterministically:
+
+**Produces** — this task creates an interface for other Minds:
+```
+- [ ] T001 @pipeline_core Add resolveVariant() — produces: resolveVariant() at minds/pipeline_core/utils.ts
+```
+
+**Consumes** — this task uses an interface from another Mind's domain:
+```
+- [ ] T005 @execution Use resolveVariant in phase-advance — consumes: resolveVariant() from minds/pipeline_core/utils.ts
+```
+
+Rules:
+- `produces:` must include the interface name and the file path where it's exported
+- `consumes:` must include the interface name and the import path (the path, not the Mind name)
+- Do NOT reference other Minds by name in task descriptions — only the import path is allowed
+- The contract linter validates all annotations before dispatch begins
+
+### Anti-Leakage (MANDATORY)
+
+Each Mind's tasks must be self-contained. A task description must NEVER:
+- Reference another Mind by name (e.g., "after @signals creates..." — WRONG)
+- Describe what another Mind is doing or will do
+- Include details about another Mind's internal implementation
+
+The ONLY external reference allowed is the import path in a `consumes:` annotation. The drone does not need to know who produces the interface — only where to import it from.
+
 ### Dependencies
 
 - Tasks within the same Mind: sequential by default, `[P]` if independent
