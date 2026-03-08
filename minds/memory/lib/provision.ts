@@ -1,0 +1,110 @@
+/**
+ * provision.ts — Idempotent per-Mind memory directory provisioning.
+ *
+ * Scans minds/ directory, creates memory/ dir + seeds MEMORY.md for any
+ * Mind that doesn't have one yet. Safe to call repeatedly.
+ */
+
+import { join } from "path";
+import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync } from "fs";
+import { memoryDir, memoryMdPath } from "./paths.js";
+
+/** Result of provisioning a single Mind. */
+export interface ProvisionResult {
+  mindName: string;
+  status: "created" | "already_exists";
+  memoryDir: string;
+}
+
+/** Result of provisioning all Minds. */
+export interface ProvisionAllResult {
+  provisioned: ProvisionResult[];
+  skipped: string[];
+}
+
+const SEED_MEMORY_MD = `# {MIND_NAME} Mind — Curated Memory
+
+## Architecture Decisions
+
+<!-- Add curated learnings here after review cycles. -->
+
+## Key Conventions
+
+<!-- Add stable conventions and patterns here. -->
+`;
+
+/**
+ * Provisions memory directory for a single Mind.
+ * Idempotent: skips if memory dir + MEMORY.md already exist.
+ *
+ * @param mindName - Name of the Mind (e.g. "pipeline_core")
+ * @returns ProvisionResult with status "created" or "already_exists"
+ */
+export async function provisionMind(mindName: string): Promise<ProvisionResult> {
+  const dir = memoryDir(mindName);
+  const mdPath = memoryMdPath(mindName);
+
+  if (existsSync(dir) && existsSync(mdPath)) {
+    return { mindName, status: "already_exists", memoryDir: dir };
+  }
+
+  mkdirSync(dir, { recursive: true });
+
+  if (!existsSync(mdPath)) {
+    const content = SEED_MEMORY_MD.replace("{MIND_NAME}", mindName);
+    writeFileSync(mdPath, content, "utf8");
+  }
+
+  return { mindName, status: "created", memoryDir: dir };
+}
+
+/**
+ * Provisions memory directories for all Minds found in the minds/ directory.
+ * Dynamically discovers Minds by scanning directory entries.
+ * Skips non-Mind entries (no server.ts) and the memory Mind itself (already handled).
+ *
+ * @param mindsDir - Optional override for the minds/ directory path.
+ * @returns ProvisionAllResult listing what was created or skipped.
+ */
+export async function provisionAllMinds(mindsDir?: string): Promise<ProvisionAllResult> {
+  const resolvedMindsDir = mindsDir ?? join(import.meta.dir, "..", "..");
+
+  let entries: string[];
+  try {
+    entries = readdirSync(resolvedMindsDir);
+  } catch (err: any) {
+    throw new Error(`provisionAllMinds: cannot read minds directory at "${resolvedMindsDir}": ${err.message}`);
+  }
+
+  const results: ProvisionResult[] = [];
+  const skipped: string[] = [];
+
+  for (const entry of entries) {
+    const entryPath = join(resolvedMindsDir, entry);
+
+    // Must be a directory
+    let stat: ReturnType<typeof statSync>;
+    try {
+      stat = statSync(entryPath);
+    } catch {
+      skipped.push(entry);
+      continue;
+    }
+    if (!stat.isDirectory()) {
+      skipped.push(entry);
+      continue;
+    }
+
+    // Must have a server.ts (is a Mind)
+    const serverFile = join(entryPath, "server.ts");
+    if (!existsSync(serverFile)) {
+      skipped.push(entry);
+      continue;
+    }
+
+    const result = await provisionMind(entry);
+    results.push(result);
+  }
+
+  return { provisioned: results, skipped };
+}

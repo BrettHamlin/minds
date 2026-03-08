@@ -1,46 +1,76 @@
-# Drone Brief: @clarify for BRE-437
+# Drone Brief: @memory for BRE-438
 
-Mind pane ID (for sending completion signal): %29523
+Mind pane ID (for sending completion signal): %28675
 
 ## Tasks assigned to you
 
-- [ ] T003 @clarify Create Clarify Mind server — create `minds/clarify/server.ts` following the `createMind()` pattern from `minds/signals/server.ts`. Domain: pipeline clarify stage Q&A protocol, findings emission, resolution handling. `owns_files` must include both `minds/clarify/` and `src/commands/collab.clarify.md`. Capabilities: run clarify phase, group batch questions, apply resolutions. Consumes existing exports: `pipeline_core/findingsPath`, `pipeline_core/resolutionsPath`, `pipeline_core/loadPipelineForTicket`, `signals/emit-question-signal` — consumes: clarify phase types from minds/pipeline_core/types.ts, clarify signal constants from minds/signals/pipeline-signal.ts
-- [ ] T004 @clarify Create MIND.md domain profile — create `minds/clarify/MIND.md` documenting the clarify stage domain knowledge: Q&A protocol, findings/resolutions flow, interactive vs batch modes, key files (`src/commands/collab.clarify.md`, `minds/pipeline_core/questions.ts`), review focus (schema compliance, round numbering, signal emission), anti-patterns (inline path construction, hardcoded signal names)
-- [ ] T005 @clarify Register Clarify Mind in generate-registry — update `minds/generate-registry.ts` discovery so it finds `minds/clarify/server.ts` (should happen automatically via `findChildServerFiles` if following the `server.ts` convention; verify 12→13 Minds in output)
-- [ ] T006 @clarify Add clarify-specific batch question grouping utility — create `minds/clarify/group-questions.ts` with logic to group related findings by topic/section before emission (if not already implemented in `questions.ts`). Export `groupFindings(findings: Finding[]): GroupedFindings[]` — produces: groupFindings() at minds/clarify/group-questions.ts
-- [ ] T007 @clarify Write tests for Clarify Mind — create `minds/clarify/server.test.ts` testing: describe() returns correct MindDescription with `owns_files` including `src/commands/collab.clarify.md`; handle() routes "run clarify phase" intent; handle() returns escalate for unknown intents. Create `minds/clarify/group-questions.test.ts` testing grouping logic
+### Phase 1: Mind Bootstrap
+- [ ] T001 @memory Create minds/memory/MIND.md — domain profile for the Memory Mind (memory provisioning, search, write, hygiene, indexing)
+- [ ] T002 @memory Create minds/memory/server.ts — MCP server with describe() exposing capabilities (provision, search, write, hygiene) so generate-registry.ts discovers it
+- [ ] T003 @memory Create minds/memory/memory/MEMORY.md — seed the Memory Mind's own memory directory (eats its own dog food)
+
+### Phase 2: Core Library
+- [ ] T004 @memory Create minds/memory/lib/paths.ts — deterministic path resolution for per-Mind memory dirs: memoryDir(mindName), memoryMdPath(mindName), dailyLogPath(mindName, date) — produces: memoryDir(), memoryMdPath(), dailyLogPath() at minds/memory/lib/paths.ts
+- [ ] T005 @memory Create minds/memory/lib/paths.test.ts — unit tests for all path resolution functions
+- [ ] T006 @memory Create minds/memory/lib/provision.ts — scan minds/ directory, create memory/ dir + seed MEMORY.md for any Mind missing one, idempotent — produces: provisionMind(), provisionAllMinds() at minds/memory/lib/provision.ts
+- [ ] T007 @memory Create minds/memory/lib/provision.test.ts — unit tests: provision new Mind, skip already-provisioned, provision all, idempotent re-run
+- [ ] T008 @memory Create minds/memory/lib/write.ts — appendDailyLog(mindName, content) appends to YYYY-MM-DD.md, updateMemoryMd(mindName, content) for curated updates — produces: appendDailyLog(), updateMemoryMd() at minds/memory/lib/write.ts
+- [ ] T009 @memory Create minds/memory/lib/write.test.ts — unit tests: append creates file if missing, appends to existing, date stamp correctness, MEMORY.md update
+- [ ] T010 @memory Create minds/memory/lib/index.ts — SQLite index management per Mind: createIndex(mindName), syncIndex(mindName), chunk markdown into ~400 token segments with 80-token overlap, store in SQLite with FTS5 — produces: createIndex(), syncIndex() at minds/memory/lib/index.ts
+- [ ] T011 @memory Create minds/memory/lib/index.test.ts — unit tests: create index, sync after file change, chunking correctness, FTS5 availability
+- [ ] T012 @memory Create minds/memory/lib/search.ts — searchMemory(mindName, query, opts?) with hybrid BM25 keyword + vector search, scoped to Mind's memory dir, returns ranked snippets with path + line range — produces: searchMemory() at minds/memory/lib/search.ts
+- [ ] T013 @memory Create minds/memory/lib/search.test.ts — unit tests: keyword match, empty results, score filtering, maxResults, scoping to correct Mind
+- [ ] T014 @memory Create minds/memory/lib/hygiene.ts — promoteToMemoryMd(mindName, entries) moves durable insights from daily logs to MEMORY.md, pruneStaleEntries(mindName) removes outdated entries — produces: promoteToMemoryMd(), pruneStaleEntries() at minds/memory/lib/hygiene.ts
+- [ ] T015 @memory Create minds/memory/lib/hygiene.test.ts — unit tests: promote adds to MEMORY.md, prune removes, idempotent
+
+### Phase 3: CLI Entry Points
+- [ ] T016 @memory Create minds/memory/lib/provision-cli.ts — CLI wrapper: `bun minds/memory/lib/provision-cli.ts [--mind <name>]` provisions one or all Minds
+- [ ] T017 @memory Create minds/memory/lib/search-cli.ts — CLI wrapper: `bun minds/memory/lib/search-cli.ts --mind <name> --query <text>`
+- [ ] T018 @memory Create minds/memory/lib/write-cli.ts — CLI wrapper: `bun minds/memory/lib/write-cli.ts --mind <name> --content <text>` appends to daily log
+
+### Phase 4: Integration (Mind-only — drones do NOT get memory access)
+- [ ] T019 @memory Update minds/STANDARDS.md — add "Memory Flush on Completion" section: after a Mind completes its review cycle, it writes learnings to its own daily log via `bun minds/memory/lib/write-cli.ts`. This is a Mind responsibility, not a drone responsibility.
+- [ ] T020 @memory Run provisionAllMinds() to create memory/ directories for all existing Minds (scans minds/ directory dynamically, skips already-provisioned)
+
+## Key design context
+
+This is a NEW Mind — all code is new. Based on OpenClaw memory architecture:
+- **Per-Mind memory structure**: Each Mind gets `minds/{name}/memory/MEMORY.md` (curated truths, always loaded) + `minds/{name}/memory/YYYY-MM-DD.md` (daily append-only logs)
+- **Memory Mind owns ALL code**: All memory logic lives in `minds/memory/lib/`. Other Minds just get data directories.
+- **Memory is Mind-only**: Drones do NOT get memory access. Mind has institutional knowledge. Drones are ephemeral.
+- **Hybrid search**: BM25 keyword (FTS5) + vector embeddings, scoped per Mind, SQLite-backed
+- **Save trigger**: Mind-level flush after review cycle completion (not token-threshold based)
+- **Provisioning**: Create memory/ dir + seed MEMORY.md for any Mind, idempotent, dynamic Mind discovery (scan minds/ dir)
+
+## Reference: Existing Mind patterns
+
+Look at other Minds for patterns:
+- `minds/pipeline_core/server.ts` — example MCP server with describe()
+- `minds/pipeline_core/MIND.md` — example domain profile structure
+- `minds/STANDARDS.md` — engineering standards all Minds follow
+- `minds/lib/` — shared Mind utilities (NOT your code — your code goes in minds/memory/lib/)
 
 ## Interface contracts
 
-- Produces: groupFindings() at minds/clarify/group-questions.ts
-- Consumes:
-  - clarify phase types from minds/pipeline_core/types.ts (already merged from Wave 1)
-  - clarify signal constants from minds/signals/pipeline-signal.ts (already merged from Wave 1)
-  - findingsPath() from minds/pipeline_core/paths.ts (existing)
-  - resolutionsPath() from minds/pipeline_core/paths.ts (existing)
-  - loadPipelineForTicket() from minds/pipeline_core/pipeline.ts (existing)
-
-## Key references (read these to understand the domain)
-
-- `minds/signals/server.ts` — follow this pattern for createMind()
-- `minds/pipeline_core/questions.ts` — shared Q&A protocol (Finding, FindingsBatch types)
-- `src/commands/collab.clarify.md` — the pipeline clarify command (you own this file)
-- `minds/signals/emit-question-signal.ts` — clarify signal emission
-- `minds/signals/emit-findings.ts` — findings batch emission
+- Produces: memoryDir(), memoryMdPath(), dailyLogPath() at minds/memory/lib/paths.ts
+- Produces: provisionMind(), provisionAllMinds() at minds/memory/lib/provision.ts
+- Produces: searchMemory() at minds/memory/lib/search.ts
+- Produces: appendDailyLog(), updateMemoryMd() at minds/memory/lib/write.ts
+- Produces: promoteToMemoryMd(), pruneStaleEntries() at minds/memory/lib/hygiene.ts
+- Produces: createIndex(), syncIndex() at minds/memory/lib/index.ts
+- Consumes: nothing external (self-contained new Mind)
 
 ## Acceptance criteria
 
-- All tasks marked [X]
-- `minds/clarify/server.ts` exists with `owns_files` including `src/commands/collab.clarify.md`
-- `minds/clarify/MIND.md` documents the clarify domain
-- `bun minds/generate-registry.ts` outputs 13 Minds (was 12)
-- `bun test` passes with no new failures
-- No files modified outside your owned paths (minds/clarify/)
+- All tasks marked [X] in tasks.md
+- All produced interfaces exported at their declared paths
+- `bun test` passes with no failures
+- No files modified outside minds/memory/
 
 ## Review checklist (verify before reporting DRONE_COMPLETE)
 
-- [ ] All tasks complete
-- [ ] No files modified outside owns_files (minds/clarify/)
+- [ ] All tasks marked [X]
+- [ ] No files modified outside owns_files (minds/memory/)
 - [ ] No duplicated logic (check against existing codebase)
 - [ ] All new functions have tests
 - [ ] All tests pass (`bun test`)
@@ -48,14 +78,13 @@ Mind pane ID (for sending completion signal): %29523
 - [ ] Interface contracts honored (produces/consumes match declarations)
 - [ ] No hardcoded values that should be config
 - [ ] Error messages include context (not just "failed")
-- [ ] `import type` for type-only imports
 
 Do NOT commit your changes. The Mind will handle committing and merging after review passes.
 
 When all tasks are complete and the checklist passes, send completion signal to the Mind:
 
 ```bash
-bun minds/lib/tmux-send.ts %29523 "DRONE_COMPLETE @clarify BRE-437"
+bun minds/lib/tmux-send.ts %28675 "DRONE_COMPLETE @memory BRE-438"
 ```
 
 This sends the signal directly to the Mind's pane. Do NOT just type the signal — you must run this command.

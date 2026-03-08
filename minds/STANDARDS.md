@@ -73,6 +73,32 @@ Deterministic code is testable, produces exact repeatable outcomes, and is the f
 
 ---
 
+## Memory Flush on Completion
+
+After a Mind completes its review cycle, it writes learnings to its own daily log via the Memory Mind CLI:
+
+```bash
+bun minds/memory/lib/write-cli.ts --mind <name> --content "<insight text>"
+```
+
+**Rules:**
+- This is a **Mind responsibility**, not a drone responsibility. Drones are ephemeral and do not have memory access.
+- Write concrete, durable insights: architectural decisions, pattern violations found, DRY opportunities identified, edge cases discovered.
+- Do NOT write in-progress state or session context — only stable learnings worth preserving across future review cycles.
+- Flush after every review cycle that produces at least one reviewable finding or decision.
+- For multi-finding reviews, a single write call with all insights concatenated is acceptable.
+
+**When to flush:**
+- After passing a Drone's code changes through the review checklist.
+- After identifying a violation that required re-dispatch.
+- After discovering a contract gap or cross-Mind dependency issue.
+
+**When NOT to flush:**
+- Trivial passes with nothing new (boilerplate, no decisions made).
+- Session-specific context that won't apply to future reviews.
+
+---
+
 ## Review Checklist
 
 The Mind uses this checklist when reviewing Drone output before accepting it.
