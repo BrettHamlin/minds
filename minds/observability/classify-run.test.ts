@@ -124,7 +124,7 @@ describe("classifyRun — with interventions", () => {
 // ============================================================================
 
 describe("classifyRun — durationMs", () => {
-  test("returns durationMs when duration_ms is set on the runs row", () => {
+  test("preserves existing duration_ms when already set", () => {
     const db: Database = openInMemoryMetricsDb();
     ensureRun(db, "DR-1");
     db.query("UPDATE runs SET duration_ms = 4200 WHERE id = 'DR-1'").run();
@@ -132,17 +132,63 @@ describe("classifyRun — durationMs", () => {
     const result = classifyRun(db, "DR-1");
 
     expect(result.durationMs).toBe(4200);
+    // Verify it didn't recompute — DB still has original value
+    const row = db.query("SELECT duration_ms FROM runs WHERE id = 'DR-1'").get() as any;
+    expect(row.duration_ms).toBe(4200);
     db.close();
   });
 
-  test("returns durationMs=null when duration_ms is null on the runs row", () => {
+  test("computes duration from started_at when duration_ms is NULL and completed_at is set", () => {
     const db: Database = openInMemoryMetricsDb();
     ensureRun(db, "DR-2");
-    // duration_ms not set — remains NULL
+    const startedAt = "2026-03-07T10:00:00.000Z";
+    const completedAt = "2026-03-07T10:05:00.000Z"; // 5 minutes = 300000ms
+    db.query("UPDATE runs SET started_at = ?, completed_at = ? WHERE id = 'DR-2'").run(startedAt, completedAt);
 
     const result = classifyRun(db, "DR-2");
 
-    expect(result.durationMs).toBeNull();
+    expect(result.durationMs).toBe(300_000);
+    db.close();
+  });
+
+  test("computes duration from started_at and now when duration_ms is NULL and completed_at is NULL", () => {
+    const db: Database = openInMemoryMetricsDb();
+    ensureRun(db, "DR-3");
+    const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+    db.query("UPDATE runs SET started_at = ? WHERE id = 'DR-3'").run(fiveSecondsAgo);
+
+    const result = classifyRun(db, "DR-3");
+
+    // Should be approximately 5000ms (allow some tolerance for test execution time)
+    expect(result.durationMs).not.toBeNull();
+    expect(result.durationMs!).toBeGreaterThanOrEqual(4500);
+    expect(result.durationMs!).toBeLessThan(10_000);
+    db.close();
+  });
+
+  test("stamps computed duration_ms on the runs row in the DB", () => {
+    const db: Database = openInMemoryMetricsDb();
+    ensureRun(db, "DR-4");
+    const startedAt = "2026-03-07T10:00:00.000Z";
+    const completedAt = "2026-03-07T10:02:30.000Z"; // 2.5 minutes = 150000ms
+    db.query("UPDATE runs SET started_at = ?, completed_at = ? WHERE id = 'DR-4'").run(startedAt, completedAt);
+
+    classifyRun(db, "DR-4");
+
+    const row = db.query("SELECT duration_ms FROM runs WHERE id = 'DR-4'").get() as any;
+    expect(row.duration_ms).toBe(150_000);
+    db.close();
+  });
+
+  test("returns non-null duration for run with no duration_ms and no completed_at (uses now)", () => {
+    const db: Database = openInMemoryMetricsDb();
+    // ensureRun always sets started_at (NOT NULL column), so duration computes from started_at to now
+    ensureRun(db, "DR-5");
+
+    const result = classifyRun(db, "DR-5");
+
+    expect(result.durationMs).not.toBeNull();
+    expect(result.durationMs!).toBeGreaterThanOrEqual(0);
     db.close();
   });
 });
