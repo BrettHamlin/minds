@@ -104,6 +104,19 @@ This command executes implementation for the **collab repo itself**, where work 
 
    Pause and confirm with the user before dispatching if `$ARGUMENTS` does not include `--yes` or `--auto`.
 
+5b. **Lint contracts**: Run the deterministic contract linter before dispatching any drones:
+
+    ```bash
+    bun minds/lib/contracts.ts lint {FEATURE_DIR}/tasks.md .collab/minds.json
+    ```
+
+    Parse the JSON output. If there are errors:
+    - Display each error with its task ID and message
+    - Do NOT proceed to dispatch — fix the tasks.md first
+    - Common fixes: add missing `produces:` annotations, fix file paths to match `owns_files`, remove references to other Minds from task descriptions
+
+    If there are only warnings, display them but proceed with dispatch.
+
 6. **For each wave, for each Mind in the wave**:
 
    a. **Create Mind+Drone pair** using `/dev.pane`:
