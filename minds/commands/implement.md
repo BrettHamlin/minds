@@ -2,6 +2,8 @@
 description: Dispatch Mind-aware tasks to Mind+Drone pairs for collab development. Reads the @mind-tagged tasks.md, builds per-Mind briefs, and sends each to its own drone pane via tmux.
 ---
 
+> **IMPORTANT:** Execute these steps directly and sequentially. Do NOT wrap this workflow in PAI Algorithm phases, ISC criteria, capability selection, or any other meta-framework. Follow the numbered steps exactly as written.
+
 ## User Input
 
 ```text
@@ -235,8 +237,16 @@ This command executes implementation for the **collab repo itself**, where work 
 
       **Exclude DRONE-BRIEF.md from git** (per-worktree, never committed):
 
+      In a worktree, `.git` is a **file** (not a directory) containing `gitdir: /path/to/real/gitdir`. Read it to find the real gitdir, then write to its `info/exclude`:
+
       ```bash
-      echo "DRONE-BRIEF.md" >> {worktree_absolute_path}/.git/info/exclude
+      # Read the gitdir pointer from the worktree's .git file
+      GITDIR_LINE=$(cat {worktree_absolute_path}/.git)
+      # Extract the path after "gitdir: "
+      REAL_GITDIR="${GITDIR_LINE#gitdir: }"
+      # Write the exclude entry
+      mkdir -p "${REAL_GITDIR}/info"
+      echo "DRONE-BRIEF.md" >> "${REAL_GITDIR}/info/exclude"
       ```
 
    c. **Send brief to drone pane**:
@@ -295,17 +305,40 @@ This command executes implementation for the **collab repo itself**, where work 
 
 9. **Verify completion**: After all waves complete, verify:
 
-   9a. **Re-read standards and profiles**: Before reviewing any drone's output:
+   9a. **Re-read standards and profiles and produce a citation-based review**: Before reviewing any drone's output:
        - Read `minds/STANDARDS.md` from disk
        - Read `minds/{mind_name}/MIND.md` from disk for each Mind being reviewed
-       - Review the drone's `git diff` against both documents
-       - Check for anti-patterns listed in the Mind profile
-       - Verify conventions from the Mind profile were followed
+       - Run `git diff` in the drone's worktree to get the exact diff
+
+       **For EVERY item in MIND.md's "Review Focus" section AND EVERY item in STANDARDS.md's review checklist**, produce an explicit citation entry in this format:
+
+       ```
+       MIND.md "Review Focus" — <item text>
+         → diff: <file>:<line> <quoted snippet> — PASS
+         OR
+         → NO corresponding code in diff — VIOLATION
+       ```
+
+       Example citation:
+       ```
+       MIND.md says: Every DB open has a matching close
+         → drone's classify-run.test.ts line 135: db.close() after assertion — PASS
+
+       STANDARDS.md checklist: No duplicated logic
+         → drone's emit-signal.ts line 47: calls resolveSignalName() (imported, not re-implemented) — PASS
+
+       MIND.md says: All registry writes go through registryPath()
+         → NO corresponding code in diff — VIOLATION: emit-handler.ts line 22 constructs path inline
+       ```
+
+       **Every review focus item must have a citation. "Looks fine" or checkbox ticks without evidence are not acceptable.** If an item has no corresponding code in the diff, that is automatically a VIOLATION — call it out explicitly.
+
+       After the citation block, provide a verdict: PASS (proceed to merge) or FAIL (list violations, send feedback to drone).
 
        The Mind NEVER modifies code directly. If issues are found:
-       - Send specific feedback to the drone via tmux-send
+       - Send the specific violation citations to the drone via tmux-send
        - Wait for the drone to fix and re-report DRONE_COMPLETE
-       - Re-review after fixes (repeating this re-read step)
+       - Re-review after fixes (repeating this full citation-based review step)
 
    - Run `bun test` from the repo root — all tests must pass
    - Check that tasks.md has all tasks marked `[X]`
@@ -372,11 +405,8 @@ This command executes implementation for the **collab repo itself**, where work 
     For each drone worktree that was created during this run:
 
     ```bash
-    # Delete DRONE-BRIEF.md from the worktree
-    rm -f {worktree_absolute_path}/DRONE-BRIEF.md
-
-    # Delete the drone's private CLAUDE.md directory entirely
-    rm -rf ~/.claude/projects/$(echo {worktree_absolute_path} | tr '/' '-' | sed 's/^-//')/
+    # Full cleanup: DRONE-BRIEF.md + private CLAUDE.md dir + worktree removal (--force for untracked files)
+    bun minds/lib/cleanup.ts all {worktree_absolute_path}
     ```
 
     Note: If the Mind crashes before reaching this step, the startup cleanup in step 0 handles orphaned directories on the next run.
