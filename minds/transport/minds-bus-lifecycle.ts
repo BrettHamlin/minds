@@ -334,6 +334,7 @@ if (import.meta.main) {
     try {
       const info = await startMindsBus(process.cwd(), pane, ticket);
       console.log(JSON.stringify(info));
+      process.exit(0);
     } catch (err) {
       console.error(JSON.stringify({ error: String(err) }));
       process.exit(1);
