@@ -29,3 +29,7 @@
 - `searchMemory(mindName, query, opts?)` → returns ranked snippets with path + line range
 - `promoteToMemoryMd(mindName, entries)` → moves insights from daily logs to MEMORY.md
 - `pruneStaleEntries(mindName)` → removes outdated entries from MEMORY.md
+
+<!-- PROMOTED ENTRIES START -->
+- [2026-03-08] BRE-440 test entry
+<!-- PROMOTED ENTRIES END -->
