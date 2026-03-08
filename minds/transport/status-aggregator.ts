@@ -18,6 +18,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "path";
 import { watch, type FSWatcher } from "fs";
 import { buildSnapshot, formatSnapshotEvent } from "./status-snapshot";
+import { MindsStateTracker } from "../dashboard/state-tracker.js";
+import { createMindsRouteHandler } from "../dashboard/route-handler.js";
+import type { MindsBusMessage } from "./minds-events.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +52,7 @@ export class StatusAggregator {
   private watcher: FSWatcher | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly startTime = Date.now();
+  mindsTracker: MindsStateTracker | null = null;
 
   constructor(registryDir: string) {
     this.registryDir = registryDir;
@@ -231,6 +235,21 @@ export class StatusAggregator {
             if (eventId) conn.lastEventId = eventId;
 
             if (dataLine) {
+              // Route minds events to the state tracker
+              if (this.mindsTracker) {
+                try {
+                  const parsed = JSON.parse(dataLine) as Record<string, unknown>;
+                  if (
+                    typeof parsed.channel === "string" &&
+                    parsed.channel.startsWith("minds-")
+                  ) {
+                    this.mindsTracker.applyEvent(parsed as unknown as MindsBusMessage);
+                  }
+                } catch {
+                  // Not JSON or no channel field — not a minds event
+                }
+              }
+
               // Relay event to aggregator subscribers with our own sequence ID
               const seq = ++this.seqCounter;
               let encoded: Uint8Array;
@@ -350,13 +369,18 @@ export class StatusAggregator {
 export function createAggregatorServer(opts: AggregatorConfig = {}): {
   server: ReturnType<typeof Bun.serve>;
   aggregator: StatusAggregator;
+  mindsTracker: MindsStateTracker;
 } {
   const port = opts.port ?? 0;
   const registryDir =
     opts.registryDir ??
     join(process.cwd(), ".collab/state/pipeline-registry");
 
+  const mindsTracker = new MindsStateTracker();
+  const mindsHandler = createMindsRouteHandler(mindsTracker);
+
   const aggregator = new StatusAggregator(registryDir);
+  aggregator.mindsTracker = mindsTracker;
   aggregator.start();
 
   const server = Bun.serve({
@@ -374,11 +398,14 @@ export function createAggregatorServer(opts: AggregatorConfig = {}): {
         return aggregator.handleStatus();
       }
 
+      const mindsResponse = mindsHandler(req);
+      if (mindsResponse) return mindsResponse;
+
       return new Response("Not Found", { status: 404 });
     },
   });
 
-  return { server, aggregator };
+  return { server, aggregator, mindsTracker };
 }
 
 // ── Standalone entry point ──────────────────────────────────────────────────
