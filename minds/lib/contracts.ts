@@ -7,6 +7,11 @@
  *   bun minds/lib/contracts.ts generate <tasks.md-path>
  */
 
+// TODO(BRE-455): Emit CONTRACT_FULFILLED bus event when a producer's interface is verified as
+// consumed successfully by its declared consumers. Deferred until contract verification becomes
+// deterministic — requires a runtime check that the consumer's build/tests passed with the
+// produced interface, not just static annotation matching.
+
 import type { MindDescription } from "../mind.ts";
 import { readFileSync } from "fs";
 

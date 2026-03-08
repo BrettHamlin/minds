@@ -37,6 +37,8 @@ export interface DispatchOptions {
   busUrl?: string;
   /** Ticket ID used to form the bus channel `minds-{ticketId}`. Required when busUrl is set. */
   ticketId?: string;
+  /** Wave identifier shared across all Minds dispatched in the same wave. */
+  waveId?: string;
 }
 
 export interface WaitOptions {
@@ -140,11 +142,13 @@ export async function dispatchToMind(
   // Publish DRONE_SPAWNED as a monitoring notification (non-critical — catch and ignore errors)
   if (options.busUrl && options.ticketId) {
     const channel = `minds-${options.ticketId}`;
-    try {
-      await mindsPublish(options.busUrl, channel, "DRONE_SPAWNED", { mindName, brief });
-    } catch {
-      // Non-critical notification — brief already delivered via tmux
-    }
+    mindsPublish(options.busUrl, channel, "DRONE_SPAWNED", {
+      waveId: options.waveId,
+      mindName,
+      paneId: paneResult.drone_pane,
+      worktree: paneResult.worktree,
+      branch: paneResult.branch,
+    }).catch(() => {});
   }
 
   return {
@@ -267,8 +271,14 @@ export async function dispatchWave(
   const ticketId = options.ticketId ?? options.dispatch?.ticketId ?? "unknown";
   const busUrl = options.dispatch?.busUrl;
   const channel = `minds-${ticketId}`;
+  const waveId = `wave-${Date.now()}`;
 
-  // Dispatch all in parallel
+  // T002: Publish WAVE_STARTED with waveId before dispatching
+  if (busUrl) {
+    mindsPublish(busUrl, channel, "WAVE_STARTED", { waveId }).catch(() => {});
+  }
+
+  // Dispatch all in parallel, passing waveId to each dispatchToMind call
   const dispatched = await Promise.all(
     mindNames.map(async (name) => {
       const brief = briefs[name];
@@ -278,6 +288,7 @@ export async function dispatchWave(
         repoRoot,
         busUrl,
         ticketId,
+        waveId,
       });
       return { name, result };
     })
@@ -295,5 +306,12 @@ export async function dispatchWave(
     })
   );
 
-  return Object.fromEntries(completions.map(({ name, completion }) => [name, completion]));
+  const results = Object.fromEntries(completions.map(({ name, completion }) => [name, completion]));
+
+  // T003: Publish WAVE_COMPLETE after all completions resolve
+  if (busUrl) {
+    mindsPublish(busUrl, channel, "WAVE_COMPLETE", { waveId }).catch(() => {});
+  }
+
+  return results;
 }
