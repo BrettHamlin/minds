@@ -310,6 +310,28 @@ This command executes implementation for the **collab repo itself**, where work 
 
        Run this per-drone, in the same order as review (Wave 1 drones before Wave 2, etc.).
 
+   9c. **Integration / E2E tests**: After ALL drones are merged, run real-world tests the way a user would use the feature. No fixtures, no mocks — actual execution.
+
+       ```bash
+       # Run all unit tests first (sanity check post-merge)
+       bun test
+       ```
+
+       Then run real-world verification appropriate to the feature:
+       - **Pipeline/collab flows**: Spawn a new tmux window, launch Claude Code in dangerous mode, run the flow end-to-end (e.g., `/collab.run`), monitor for completion
+       - **Web features**: Use the Playwright/Browser skill to test in a real browser
+       - **iOS features**: Use the iOS simulator skill to verify on-device
+       - **CLI commands**: Actually run the command and verify the output
+       - **API changes**: Make real HTTP requests against a running server
+
+       If integration tests fail:
+       - Identify which Mind's domain the failure is in
+       - Spin up a new drone for that Mind to fix the issue
+       - Re-merge and re-test
+       - Do NOT ship without passing real-world tests
+
+       Real-world test coverage is mandatory. Unit tests alone are not sufficient to ship.
+
 10. **Report**: Output final status:
 
     ```

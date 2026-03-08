@@ -4,6 +4,29 @@ All Minds inherit these standards. Include in every Drone brief. Drone output th
 
 ---
 
+## Deterministic First
+
+**If it CAN be deterministic TypeScript, it MUST be deterministic TypeScript.**
+
+Deterministic code is testable, produces exact repeatable outcomes, and is the foundation of a production system. LLMs (Minds and Drones) handle only what requires judgment — code review, design decisions, analysis, creative problem-solving.
+
+**Deterministic TypeScript handles:**
+- Git operations (commit, merge, branch management)
+- File manipulation (section updates, config reads, path resolution)
+- Signal names, phase transitions, validation, routing
+- Schema construction and validation
+- Pipeline config reading and interpretation
+- Retry counts, execution mode detection, dependency holds
+- Any value or operation that MUST be correct every time
+
+**LLM (Mind/Drone) handles ONLY:**
+- Code reviews, analysis, creative decisions — anything requiring judgment
+- Deciding pass/fail verdicts (the judgment call, not the format)
+- Writing implementation code, spec content, plan content
+- Problem diagnosis and guidance when drones are stuck
+
+**When in doubt, make it deterministic.** If something CAN be code, it SHOULD be code. Shell one-liners for non-trivial logic are a code smell — write a TypeScript utility with tests instead.
+
 ## Code Quality
 
 - **DRY** — no duplicated logic. If the function exists elsewhere in the codebase, import it. Before writing a utility, search for it.
@@ -14,11 +37,25 @@ All Minds inherit these standards. Include in every Drone brief. Drone output th
 
 ## Testing
 
+### Unit Tests (Drone responsibility)
 - Every new exported function gets at least one test.
 - Tests verify **behavior**, not implementation details — test what it returns, not how it does it.
 - Mock external dependencies (`Bun.spawn`, filesystem, HTTP) — do not mock internal modules.
 - Cover edge cases: empty input, missing files, invalid data, unknown phase names.
 - Test files live alongside source files: `foo.ts` → `foo.test.ts`.
+- All unit tests must pass before reporting DRONE_COMPLETE.
+
+### Integration / E2E Tests (post-merge, Mind responsibility)
+- Integration tests span multiple Minds' domains and run after all Minds' work is merged.
+- The Mind does NOT run integration tests during drone review — unit tests are sufficient for review.
+- Integration and E2E tests are a separate step that runs after all waves complete and merge.
+- **Tests must run the way a real user would run it. No fixtures, no mocks, no simulated environments.** Real-world execution:
+  - Web features → Playwright browser automation (the Browser/Playwright skill)
+  - iOS features → actual simulator (the iOS verify skill)
+  - Pipeline/collab flows → spawn a tmux window, launch Claude Code in dangerous mode, run the flow end-to-end, monitor for completion
+  - CLI commands → actually run the command and verify output
+- If integration tests fail, the issue is triaged back to the responsible Mind(s) for fixing.
+- **Every feature must have real-world test coverage.** Unit tests alone are not sufficient to ship.
 
 ## TypeScript / Bun Conventions
 
@@ -50,3 +87,4 @@ The Mind uses this checklist when reviewing Drone output before accepting it.
 - [ ] No hardcoded values that should come from config or registry
 - [ ] Error messages include context (not just "failed" or "error")
 - [ ] `import type` used for type-only imports
+- [ ] Deterministic-first: no shell one-liners for non-trivial logic — use TypeScript utilities with tests
