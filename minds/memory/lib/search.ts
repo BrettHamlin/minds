@@ -4,15 +4,23 @@
  * searchMemory: scoped to a single Mind's memory directory,
  * returns ranked snippets with path + line range.
  *
- * Phase 1: BM25 keyword search via SQLite FTS5.
- * Phase 2: Vector embeddings (placeholder, layered on when available).
+ * When an EmbeddingProvider is available (auto-created via createEmbeddingProvider):
+ *   - Runs FTS5 BM25 keyword search
+ *   - Runs vector cosine similarity against stored embeddings
+ *   - Merges results via mergeHybridResults() (default 70-30 weighting)
+ *
+ * When no provider is available:
+ *   - Falls back to BM25-only search (graceful degradation, no error)
  */
 
 import { existsSync } from "fs";
 import { Database } from "bun:sqlite";
-import { indexPath } from "./index.js";
-import { syncIndex } from "./index.js";
+import { indexPath, syncIndex, blobToEmbedding } from "./index.js";
 import { memoryDir } from "./paths.js";
+import { createEmbeddingProvider } from "./embeddings.js";
+import type { EmbeddingProvider } from "./embeddings.js";
+import { mergeHybridResults } from "./hybrid.js";
+import type { VectorSearchResult, BM25SearchResult } from "./hybrid.js";
 
 /** A single search result snippet. */
 export interface SearchResult {
@@ -20,7 +28,8 @@ export interface SearchResult {
   startLine: number;
   endLine: number;
   content: string;
-  /** BM25 rank score (lower = better match in SQLite FTS5). */
+  /** Merged hybrid score, or BM25 rank score when no provider available.
+   *  Higher = better match. */
   score: number;
 }
 
@@ -28,15 +37,17 @@ export interface SearchResult {
 export interface SearchOptions {
   /** Maximum number of results to return (default: 10). */
   maxResults?: number;
-  /** Minimum score threshold — results with score above this are filtered out.
-   *  Note: SQLite FTS5 BM25 scores are negative; more negative = better match.
-   *  Default: 0 (return all results, since scores are ≤ 0). */
+  /** Minimum score threshold — results with score below this are filtered out.
+   *  Default: 0 (return all results). */
   minScore?: number;
+  /** Explicit embedding provider (bypasses auto-creation, useful for testing). */
+  provider?: EmbeddingProvider | null;
 }
 
 /**
  * Searches a Mind's memory for content matching the query.
- * Uses SQLite FTS5 BM25 ranking. Auto-syncs the index if it doesn't exist.
+ * Runs hybrid BM25 + vector search when an embedding provider is available,
+ * otherwise falls back to BM25-only. Auto-syncs the index if it doesn't exist.
  *
  * Always scoped to a single Mind — never searches across Minds.
  *
@@ -63,11 +74,14 @@ export async function searchMemory(
     await syncIndex(mindName);
   }
 
+  // Resolve embedding provider (use explicit if provided, otherwise auto-create)
+  const provider: EmbeddingProvider | null =
+    opts?.provider !== undefined ? opts.provider : await createEmbeddingProvider();
+
   const db = new Database(dbPath, { readonly: true });
   try {
-    // FTS5 BM25 scores are negative (more negative = better match).
-    // We order by rank ascending (most negative = best).
-    const rows = db
+    // --- BM25 keyword search via FTS5 ---
+    const bm25Rows = db
       .query<{
         path: string;
         start_line: number;
@@ -84,21 +98,73 @@ export async function searchMemory(
         LIMIT ?
       `
       )
-      .all(query, maxResults);
+      .all(query, maxResults * 3); // over-fetch for hybrid merge
 
-    const results: SearchResult[] = rows.map((row) => ({
+    // --- Vector search (when provider available and embeddings exist) ---
+    if (provider && bm25Rows.length >= 0) {
+      const allChunks = db
+        .query<{ id: number; path: string; start_line: number; end_line: number; content: string; embedding: Buffer | null }>(
+          "SELECT id, path, start_line, end_line, content, embedding FROM chunks WHERE embedding IS NOT NULL"
+        )
+        .all();
+
+      if (allChunks.length > 0) {
+        // Embed the query and compute cosine similarity against all stored embeddings
+        const queryVec = await provider.embedQuery(query);
+
+        const vectorResults: VectorSearchResult[] = allChunks
+          .map((row) => {
+            const chunkVec = blobToEmbedding(row.embedding!);
+            const similarity = cosineSimilarity(queryVec, chunkVec);
+            return {
+              path: row.path,
+              startLine: row.start_line,
+              endLine: row.end_line,
+              content: row.content,
+              vectorScore: similarity,
+            };
+          })
+          .filter((r) => r.vectorScore > 0);
+
+        // Sort vector results by score descending for merge
+        vectorResults.sort((a, b) => b.vectorScore - a.vectorScore);
+
+        const bm25Results: BM25SearchResult[] = bm25Rows.map((row) => ({
+          path: row.path,
+          startLine: row.start_line,
+          endLine: row.end_line,
+          content: row.content,
+          bm25Rank: row.rank,
+        }));
+
+        const merged = mergeHybridResults(
+          vectorResults.slice(0, maxResults * 3),
+          bm25Results,
+          { maxResults }
+        );
+
+        // Apply minScore filter
+        if (opts?.minScore !== undefined) {
+          return merged.filter((r) => r.score >= opts.minScore!);
+        }
+        return merged;
+      }
+    }
+
+    // --- BM25-only fallback ---
+    // Reached when: no provider, no stored embeddings, or vector search skipped
+    const results: SearchResult[] = bm25Rows.slice(0, maxResults).map((row) => ({
       path: row.path,
       startLine: row.start_line,
       endLine: row.end_line,
       content: row.content,
-      score: row.rank,
+      // Convert BM25 rank (negative) to positive score for consistent interface
+      score: -row.rank,
     }));
 
-    // Apply minScore filter (score must be <= minScore since BM25 is negative)
     if (opts?.minScore !== undefined) {
-      return results.filter((r) => r.score <= opts.minScore!);
+      return results.filter((r) => r.score >= opts.minScore!);
     }
-
     return results;
   } catch (err: any) {
     // FTS5 throws on empty/invalid queries — return empty instead of crashing
@@ -109,4 +175,21 @@ export async function searchMemory(
   } finally {
     db.close();
   }
+}
+
+/**
+ * Computes cosine similarity between two L2-normalized vectors.
+ * For L2-normalized vectors, cosine similarity equals the dot product.
+ *
+ * @param a - L2-normalized vector
+ * @param b - L2-normalized vector
+ * @returns Similarity score in [-1, 1] (typically [0, 1] for non-negative embeddings)
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  let dot = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+  }
+  return dot;
 }

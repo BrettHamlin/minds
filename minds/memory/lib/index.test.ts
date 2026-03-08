@@ -7,7 +7,8 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { Database } from "bun:sqlite";
-import { chunkText, createIndex, syncIndex, indexPath } from "./index";
+import { chunkText, createIndex, syncIndex, indexPath, embeddingToBlob, blobToEmbedding } from "./index";
+import type { EmbeddingProvider } from "./embeddings";
 
 // We test createIndex/syncIndex against the real "memory" mind
 // (repo-relative paths from paths.ts), using a test-specific date marker
@@ -162,5 +163,100 @@ describe("syncIndex", () => {
     expect(count1).toBe(count2);
 
     if (existsSync(dbPath)) rmSync(dbPath);
+  });
+
+  test("syncIndex without provider leaves embedding column NULL for all rows", async () => {
+    const dbPath = indexPath(TEST_MIND);
+
+    await syncIndex(TEST_MIND); // no provider
+    const db = new Database(dbPath);
+    try {
+      const rows = db.query("SELECT embedding FROM chunks").all() as Array<{ embedding: null | Buffer }>;
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row.embedding).toBeNull();
+      }
+    } finally {
+      db.close();
+      if (existsSync(dbPath)) rmSync(dbPath);
+    }
+  });
+
+  test("syncIndex with provider stores embeddings as non-null BLOBs", async () => {
+    const dbPath = indexPath(TEST_MIND);
+
+    const stubProvider: EmbeddingProvider = {
+      embedQuery: async () => [0.1, 0.2, 0.3],
+      embedBatch: async (texts) => texts.map(() => [0.1, 0.2, 0.3]),
+    };
+
+    await syncIndex(TEST_MIND, stubProvider);
+    const db = new Database(dbPath);
+    try {
+      const rows = db.query("SELECT embedding FROM chunks").all() as Array<{ embedding: Buffer | null }>;
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row.embedding).not.toBeNull();
+      }
+    } finally {
+      db.close();
+      if (existsSync(dbPath)) rmSync(dbPath);
+    }
+  });
+});
+
+// ─── Embedding column ─────────────────────────────────────────────────────────
+
+describe("createIndex — embedding column", () => {
+  test("chunks table has embedding column after createIndex", () => {
+    createIndex(TEST_MIND);
+    const dbPath = indexPath(TEST_MIND);
+
+    const db = new Database(dbPath);
+    try {
+      const cols = db.query("PRAGMA table_info(chunks)").all() as Array<{ name: string }>;
+      const names = cols.map((c) => c.name);
+      expect(names).toContain("embedding");
+    } finally {
+      db.close();
+      if (existsSync(dbPath)) rmSync(dbPath);
+    }
+  });
+
+  test("calling createIndex twice does not throw (idempotent with embedding column)", () => {
+    expect(() => {
+      createIndex(TEST_MIND);
+      createIndex(TEST_MIND); // second call should handle duplicate column gracefully
+    }).not.toThrow();
+
+    const dbPath = indexPath(TEST_MIND);
+    if (existsSync(dbPath)) rmSync(dbPath);
+  });
+});
+
+// ─── embeddingToBlob / blobToEmbedding ───────────────────────────────────────
+
+describe("embeddingToBlob / blobToEmbedding", () => {
+  test("round-trips a float vector correctly", () => {
+    const original = [0.1, 0.2, 0.3, -0.5, 1.0];
+    const blob = embeddingToBlob(original);
+    const restored = blobToEmbedding(blob);
+
+    expect(restored).toHaveLength(original.length);
+    for (let i = 0; i < original.length; i++) {
+      expect(restored[i]).toBeCloseTo(original[i], 5);
+    }
+  });
+
+  test("round-trips an empty vector", () => {
+    const blob = embeddingToBlob([]);
+    const restored = blobToEmbedding(blob);
+    expect(restored).toHaveLength(0);
+  });
+
+  test("stored blob has correct byte size (4 bytes per float32)", () => {
+    const vec = [1.0, 2.0, 3.0];
+    const blob = embeddingToBlob(vec);
+    expect(blob.byteLength).toBe(vec.length * 4);
   });
 });
