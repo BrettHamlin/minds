@@ -333,8 +333,10 @@ if (import.meta.main) {
 
     try {
       const info = await startMindsBus(process.cwd(), pane, ticket);
-      console.log(JSON.stringify(info));
-      process.exit(0);
+      const output = JSON.stringify(info) + "\n";
+      process.stdout.write(output, () => process.exit(0));
+      // Fallback exit if write callback never fires
+      setTimeout(() => process.exit(0), 500);
     } catch (err) {
       console.error(JSON.stringify({ error: String(err) }));
       process.exit(1);

@@ -127,12 +127,19 @@ This command executes implementation for the **collab repo itself**, where work 
 
 5c. **Start bus lifecycle**: Start the Minds message bus before dispatching any drones.
 
+    Run the start command (fire-and-forget — it writes state to disk):
+
     ```bash
-    BUS_INFO=$(bun minds/transport/minds-bus-lifecycle.ts start --ticket {ticket_id} --pane $TMUX_PANE)
-    BUS_URL=$(echo "$BUS_INFO" | jq -r '.busUrl')
+    bun minds/transport/minds-bus-lifecycle.ts start --ticket {ticket_id} --pane $TMUX_PANE
     ```
 
-    Store `BUS_URL` for use throughout steps 6–11. Bus state (PIDs, URL) is automatically persisted to `.collab/state/minds-bus-{ticket_id}.json` by `startMindsBus` — no need to track PIDs in shell variables.
+    Then read the bus URL from the state file (the start command persists state automatically):
+
+    ```bash
+    cat .collab/state/minds-bus-{ticket_id}.json
+    ```
+
+    Parse `busUrl` from the JSON. Store `BUS_URL` for use throughout steps 6–11.
 
 6. **For each wave, for each Mind in the wave**:
 
