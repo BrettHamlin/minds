@@ -120,6 +120,12 @@ export const SIGNAL_SUFFIXES = {
   INFO: ["QUESTION", "QUESTIONS", "WAITING", "PROCESSING"],
 } as const;
 
+// Clarify phase signal name constants
+export const CLARIFY_COMPLETE = "CLARIFY_COMPLETE";
+export const CLARIFY_QUESTION = "CLARIFY_QUESTION";
+export const CLARIFY_ERROR = "CLARIFY_ERROR";
+export const CLARIFY_QUESTIONS = "CLARIFY_QUESTIONS";
+
 export function isSuccessSignal(signal: string): boolean {
   return (
     SIGNAL_SUFFIXES.SUCCESS.some((s) => signal.endsWith(s)) &&

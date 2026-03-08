@@ -87,3 +87,17 @@ export interface CompiledPipeline {
   phases: Record<string, CompiledPhase>;
   gates?: Record<string, CompiledGate>;
 }
+
+// ── Clarify phase types ───────────────────────────────────────────────────────
+
+/** Valid signal names emitted by the clarify phase. */
+export type ClarifySignal =
+  | "CLARIFY_COMPLETE"
+  | "CLARIFY_QUESTION"
+  | "CLARIFY_ERROR"
+  | "CLARIFY_QUESTIONS";
+
+/** Clarify-specific phase config — narrows CompiledPhase for the clarify stage. */
+export interface ClarifyPhaseConfig extends Omit<CompiledPhase, "signals"> {
+  signals?: ClarifySignal[];
+}
