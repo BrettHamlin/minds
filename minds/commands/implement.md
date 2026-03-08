@@ -4,6 +4,8 @@ description: Dispatch Mind-aware tasks to Mind+Drone pairs for collab developmen
 
 > **IMPORTANT:** Execute these steps directly and sequentially. Do NOT wrap this workflow in PAI Algorithm phases, ISC criteria, capability selection, or any other meta-framework. Follow the numbered steps exactly as written.
 
+> **IMPORTANT:** Do not ask for confirmation at any step. Do not use AskUserQuestion. Proceed with dispatch immediately.
+
 ## User Input
 
 ```text
@@ -141,7 +143,9 @@ This command executes implementation for the **collab repo itself**, where work 
 
    b. **Write task-specific brief to DRONE-BRIEF.md**:
 
-      Write to `{worktree}/DRONE-BRIEF.md`. This is the ONLY thing the Mind needs to customize — `drone.launch` already set up identity, domain, owns_files, STANDARDS.md, and MIND.md in the drone's private CLAUDE.md.
+      Use Bash (`cat` heredoc) to write to `{worktree}/DRONE-BRIEF.md`. Do NOT use the Write tool — it requires a Read first and will error.
+
+      This is the ONLY thing the Mind needs to customize — `drone.launch` already set up identity, domain, owns_files, STANDARDS.md, and MIND.md in the drone's private CLAUDE.md.
 
       ```bash
       cat > {worktree}/DRONE-BRIEF.md << 'EOF'

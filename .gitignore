@@ -47,3 +47,6 @@ temp/
 
 # Spec directories (project-specific)
 specs/
+
+# Drone work files (per-worktree, not for committing)
+DRONE-BRIEF.md
