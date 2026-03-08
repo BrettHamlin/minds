@@ -25,6 +25,7 @@ import { remove } from "./commands/pipelines/remove.js";
 import { init } from "./commands/pipeline/init.js";
 import { validate } from "./commands/pipeline/validate.js";
 import { repo } from "./commands/repo/index.js";
+import { doctorCommand, printDoctorHelp } from "./commands/doctor.js";
 
 const VERSION = "0.1.0";
 
@@ -45,6 +46,7 @@ Usage:
   collab repo add <repo-id> <path>         Register a repo ID with its local path
   collab repo list                         List all registered repos
   collab repo remove <repo-id>             Remove a registered repo
+  collab doctor [--json] [--path <dir>]    Check installation health
 
 Global flags:
   --registry <url>    Override registry URL (default: COLLAB_REGISTRY env var)
@@ -210,6 +212,17 @@ async function main(): Promise<void> {
   // ─── collab repo ─────────────────────────────────────────────────────────
   if (subcommand === "repo") {
     await repo(positional, flags);
+    return;
+  }
+
+  // ─── collab doctor ───────────────────────────────────────────────────────
+  if (subcommand === "doctor") {
+    if (flags.help || flags.h) {
+      printDoctorHelp();
+      return;
+    }
+    const repoRoot = typeof flags.path === "string" ? flags.path : undefined;
+    doctorCommand({ repoRoot, json });
     return;
   }
 

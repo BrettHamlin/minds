@@ -1,50 +1,58 @@
-# Drone Brief: @installer for BRE-433
+# Drone Brief: @cli for BRE-433
 
 Mind pane ID (for sending completion signal): %28679
 
 ## Tasks assigned to you
 
-- [ ] T001 @installer [P] Add `DoctorCheck` and `DoctorResult` types to `minds/installer/core.ts` — produces: `DoctorCheck` type at `minds/installer/core.ts`
-- [ ] T002 @installer [P] Add `DoctorResult` type to `minds/installer/core.ts` — produces: `DoctorResult` type at `minds/installer/core.ts`
-- [ ] T003 @installer Add `checkFilePresence()` function to `minds/installer/core.ts` that verifies all expected installed files exist (dirs list + template copy targets) — produces: `checkFilePresence()` at `minds/installer/core.ts`
-- [ ] T004 @installer Add `checkScriptPermissions()` function to `minds/installer/core.ts` that verifies installed scripts and handlers are executable (mode 0o755) using the dirs list from `installTemplates` — produces: `checkScriptPermissions()` at `minds/installer/core.ts`
-- [ ] T005 @installer Add `checkConfigSchema()` function to `minds/installer/core.ts` that validates installed pipeline config is parseable JSON with required fields — produces: `checkConfigSchema()` at `minds/installer/core.ts`
-- [ ] T006 @installer Add `runDoctorChecks(repoRoot: string): DoctorResult` function to `minds/installer/core.ts` that orchestrates T003-T005 checks and returns aggregated results — produces: `runDoctorChecks()` at `minds/installer/core.ts`
-- [ ] T007 @installer Add tests for `runDoctorChecks()` in `minds/installer/core.test.ts` covering: all-pass, missing files, bad permissions, invalid config JSON
+- [ ] T008 @cli Add `doctor` subcommand handler in `minds/cli/commands/doctor.ts` that imports and calls `runDoctorChecks()` — consumes: `runDoctorChecks()` from `minds/installer/core.ts`
+- [ ] T009 @cli Add `doctor` subcommand to compiled binary entry point at `minds/cli/index.ts` — route `collab doctor` to the handler in `minds/cli/commands/doctor.ts`
+- [ ] T010 @cli Add `doctor` subcommand to commander-based entry point at `minds/cli/bin/collab.ts` — route `collab doctor` to the same handler
+- [ ] T011 @cli Add `--json` flag support to doctor command output in `minds/cli/commands/doctor.ts` — human-readable table by default, JSON when `--json` passed
+- [ ] T012 @cli Add tests for doctor CLI subcommand in `minds/cli/commands/doctor.test.ts` covering: output formatting for passing and failing checks, `--json` flag, `--help` flag
 
 ## Interface contracts
 
+- Consumes:
+  - `runDoctorChecks(repoRoot: string): DoctorResult` from `minds/installer/core.ts`
+  - `DoctorCheck` type from `minds/installer/core.ts`
+  - `DoctorResult` type from `minds/installer/core.ts`
 - Produces:
-  - `DoctorCheck` type exported from `minds/installer/core.ts`
-  - `DoctorResult` type exported from `minds/installer/core.ts`
-  - `runDoctorChecks(repoRoot: string): DoctorResult` exported from `minds/installer/core.ts`
-- Consumes: nothing new (existing `ensureDir` from `../cli/utils/fs` already imported)
+  - `doctor` subcommand available via `collab doctor`
+  - `doctorCommand()` handler function at `minds/cli/commands/doctor.ts`
+
+## Important: Both CLI entry points
+
+Per MIND.md conventions, new subcommands MUST be added to BOTH entry points:
+1. `minds/cli/index.ts` — compiled binary (manual arg parsing)
+2. `minds/cli/bin/collab.ts` — npm package (commander-based)
 
 ## Acceptance criteria
 
 - All tasks marked [X] in tasks.md
-- All produced interfaces exported at their declared paths
+- `collab doctor` works from both entry points
+- Human-readable output by default, JSON with `--json`
 - `bun test` passes with no failures
-- No files modified outside your owned paths (`minds/installer/`)
+- No files modified outside your owned paths (`minds/cli/`)
 
 ## Review checklist (verify before reporting DRONE_COMPLETE)
 
 - [ ] All tasks marked [X]
-- [ ] No files modified outside owns_files (`minds/installer/`)
+- [ ] No files modified outside owns_files (`minds/cli/`)
 - [ ] No duplicated logic (check against existing codebase)
 - [ ] All new functions have tests
 - [ ] All tests pass (`bun test`)
 - [ ] No lint errors
-- [ ] Interface contracts honored (produces/consumes match declarations)
+- [ ] Interface contracts honored (import from `minds/installer/core.ts`, do NOT reimplement)
 - [ ] No hardcoded values that should be config
 - [ ] Error messages include context (not just "failed")
+- [ ] Both entry points updated (index.ts AND bin/collab.ts)
 
 Do NOT commit your changes. The Mind will handle committing and merging after review passes.
 
 When all tasks are complete and the checklist passes, send completion signal to the Mind:
 
 ```bash
-bun minds/lib/tmux-send.ts %28679 "DRONE_COMPLETE @installer BRE-433"
+bun minds/lib/tmux-send.ts %28679 "DRONE_COMPLETE @cli BRE-433"
 ```
 
 This sends the signal directly to the Mind's pane. Do NOT just type the signal — you must run this command.
