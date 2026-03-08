@@ -1,54 +1,123 @@
-# Drone Brief: @observability for BRE-432
+# Drone Brief: @dashboard for BRE-447
 
-Mind pane ID (for sending completion signal): %34064
+Mind pane ID (for sending completion signal): %34174
 
 ## Tasks assigned to you
 
-- [ ] T001 @observability Add `durationFormatted` field to `ClassifyRunResult` in `minds/observability/classify-run-lib.ts` — produces: `durationFormatted` field on `ClassifyRunResult` at `minds/observability/classify-run-lib.ts`
-- [ ] T002 @observability Add `formatDuration()` helper to `minds/observability/classify-run-lib.ts` that converts ms to human-readable string (e.g., "2m 30s", "1h 5m") — produces: `formatDuration()` at `minds/observability/classify-run-lib.ts`
-- [ ] T003 @observability Update `classifyRun()` in `minds/observability/classify-run-lib.ts` to populate `durationFormatted` using `formatDuration()`
-- [ ] T004 @observability Add unit tests for `formatDuration()` in `minds/observability/classify-run.test.ts` — edge cases: null, 0, sub-second, seconds, minutes, hours
-- [ ] T005 @observability Add unit test verifying `classifyRun()` returns `durationFormatted` string in `minds/observability/classify-run.test.ts`
-- [ ] T006 @observability Update CLI integration test in `minds/observability/classify-run.test.ts` to assert `durationFormatted` is present in JSON output
-- [ ] T007 @observability Verify all existing tests pass with `bun test minds/observability/`
+- [ ] T001 @dashboard Create `minds/dashboard/MIND.md` with full domain profile: BRE-445 architecture (aggregator → SSE → React SPA), tech stack (React + TypeScript + Tailwind CSS v3 + Lucide React), design reference (Magic Patterns `3er2jlzffejsecvcdqq4ni`), visual rules (dark theme, violet accent `#8b5cf6`, hover-only arrows, status colors), UI component inventory (TopNav, TicketHeader, StatsRow, WaveProgress, DroneGrid, ContractFlow), state model (MindsState, Wave, Drone, Contract), aggregator routes (GET /minds, /api/minds/active, /api/minds/waves, /api/minds/contracts, /subscribe/minds-status), event types consumed, anti-patterns, and review focus
+- [ ] T002 @dashboard Create `minds/dashboard/server.ts` following `createMind()` pattern from `minds/server-base.ts`. Import MindsEventType and MindsBusMessage from `minds/transport/minds-events.ts` (already exist). Capabilities: `build minds state from event`, `get minds state`, `serve dashboard`. Exposes: `MindsState types`, `MindsStateBuilder`. Name: `dashboard`, domain: dashboard description, owns_files: `minds/dashboard/`, keywords: `dashboard`, `minds`, `state`, `wave`, `drone`, `contract`, `sse`, `react`, `visualization`
+- [ ] T003 @dashboard Regenerate `minds.json` by running `bun minds/generate-registry.ts` — verify output contains 15 Minds (up from 14) and @dashboard entry has correct `owns_files`, `capabilities`, `exposes`, `consumes`
+- [ ] T004 @dashboard Verify `bun minds/dashboard/server.ts` starts without runtime errors (import resolution, type checks)
 
-## Context
+## Reference files (read these first)
 
-- `durationMs` computation already exists in `classify-run-lib.ts` (lines 54-70) — computes from `started_at`/`completed_at` timestamps
-- Dashboard already formats duration via `fmtDuration()` in `metrics-dashboard.ts` — do NOT duplicate that function; `formatDuration()` in classify-run-lib.ts is for the CLI output
-- Statusline already shows elapsed time for active pipelines via `formatElapsed()` in `statusline.ts`
-- `classify-run.ts` CLI output (line 56) already includes raw `durationMs` — this ticket adds `durationFormatted` alongside it
+- `minds/server-base.ts` — createMind() factory
+- `minds/mind.ts` — WorkUnit, WorkResult types
+- `minds/observability/server.ts` — reference Mind implementation
+- `minds/observability/MIND.md` — reference MIND.md format
+- `minds/transport/minds-events.ts` — MindsEventType, MindsBusMessage (import from here)
+- `minds/transport/status-aggregator.ts` — aggregator server (dashboard routes will be added in BRE-445, not this ticket)
 
-## Interface contracts
+## MIND.md content requirements
 
-- Produces: `durationFormatted` field on `ClassifyRunResult`, `formatDuration()` at `minds/observability/classify-run-lib.ts`
-- Consumes: nothing (no cross-Mind dependencies)
+The MIND.md must include all of the following sections:
+
+### Domain
+Dashboard owns the Minds Live Dashboard: React SPA for visualizing Mind+Drone execution, state aggregation from bus events, and aggregator route extensions for Minds-specific data.
+
+### Architecture
+- Aggregator (existing in `minds/transport/status-aggregator.ts`) receives bus events from all pipelines
+- Dashboard adds Minds-specific routes to the aggregator: `GET /minds` (SPA), `/api/minds/active`, `/api/minds/waves`, `/api/minds/contracts`, `/subscribe/minds-status` (SSE)
+- React SPA built to `minds/dashboard/dist/`, served as static assets from aggregator
+- State model built from `MindsEventType` events: WAVE_STARTED, WAVE_COMPLETE, DRONE_SPAWNED, DRONE_COMPLETE, DRONE_REVIEWING, DRONE_REVIEW_PASS, DRONE_REVIEW_FAIL, DRONE_MERGING, DRONE_MERGED, CONTRACT_FULFILLED
+
+### Tech Stack
+- React + TypeScript + Tailwind CSS v3 + Lucide React
+- No extra bundler — Bun builds
+
+### Design Reference
+- Magic Patterns mock: editor ID `3er2jlzffejsecvcdqq4ni`
+- Dark theme, violet accent (#8b5cf6)
+- Hover-only dependency arrows (no spiderweb)
+- Status colors: green=complete, violet=active, gray=pending, red=failed
+- Straight lines with arrowheads for dependencies
+
+### UI Components
+- TopNav: ticket ID, pipeline status
+- TicketHeader: ticket summary, overall progress
+- StatsRow: wave count, drone count, contract count, elapsed time
+- WaveProgress: columns per wave, spinner on active wave
+- DroneGrid: Mind cards within each wave column showing status
+- ContractFlow: hover-triggered dependency arrows between Mind cards
+
+### State Model
+- `MindsState`: top-level state container
+- `Wave`: { id, status, drones[], startedAt, completedAt }
+- `Drone`: { mindName, status, paneId, worktree, startedAt, completedAt }
+- `Contract`: { producer, consumer, interface, status }
+
+### Aggregator Routes
+- `GET /minds` — serves the React SPA (index.html from dist/)
+- `GET /api/minds/active` — JSON: current MindsState
+- `GET /api/minds/waves` — JSON: wave details
+- `GET /api/minds/contracts` — JSON: contract status
+- `GET /subscribe/minds-status` — SSE: real-time MindsState updates
+
+### Events Consumed
+Import from `minds/transport/minds-events.ts`:
+- `MindsEventType` enum
+- `MindsBusMessage` interface
+
+### Anti-Patterns
+- Do NOT import transport internals (bus-server, bridges) — only the event types
+- Do NOT create a separate HTTP server — routes are added to the existing aggregator
+- Do NOT hardcode ticket IDs or bus URLs
+- Do NOT store state in files — state is in-memory, rebuilt from events
+
+### Review Focus
+- All imports from `minds/transport/minds-events.ts`, never transport internals
+- server.ts follows createMind() pattern exactly (name, domain, keywords, owns_files, capabilities, exposes, consumes, handle function)
+- State types match the event types from MindsEventType
+- No runtime imports of modules outside `minds/dashboard/` and `minds/transport/minds-events.ts`
+
+## server.ts requirements
+
+Follow the exact pattern from `minds/observability/server.ts`:
+1. Import `createMind` from `../server-base.js`
+2. Import `WorkUnit`, `WorkResult` from `../mind.js`
+3. Import `MindsEventType`, `MindsBusMessage` from `../transport/minds-events.js`
+4. Define `handle(workUnit: WorkUnit): Promise<WorkResult>` with switch on `workUnit.intent`
+5. Intents: `build minds state from event`, `get minds state`, `serve dashboard`
+6. For now, handle functions can return stub results — the actual implementation comes in BRE-445
+7. Export default `createMind({ name, domain, keywords, owns_files, capabilities, exposes, consumes, handle })`
+8. `consumes` array: `["transport/MindsEventType", "transport/MindsBusMessage"]`
 
 ## Acceptance criteria
 
 - All tasks marked [X] in tasks.md
-- All produced interfaces exported at their declared paths
-- `bun test` passes with no failures
-- No files modified outside your owned paths (`minds/observability/`)
+- `minds/dashboard/MIND.md` exists with all sections above
+- `minds/dashboard/server.ts` follows createMind() pattern
+- `bun minds/generate-registry.ts` outputs 15 Minds
+- `bun minds/dashboard/server.ts` runs without errors
+- No files modified outside `minds/dashboard/`
 
 ## Review checklist (verify before reporting DRONE_COMPLETE)
 
 - [ ] All tasks marked [X]
-- [ ] No files modified outside owns_files
-- [ ] No duplicated logic (check against existing codebase)
-- [ ] All new functions have tests
-- [ ] All tests pass (`bun test`)
+- [ ] No files modified outside minds/dashboard/
+- [ ] server.ts follows createMind() pattern exactly
+- [ ] MIND.md has all required sections
+- [ ] All imports use .js extension (Bun ESM convention)
+- [ ] bun minds/generate-registry.ts shows 15 Minds
+- [ ] bun minds/dashboard/server.ts starts without errors
 - [ ] No lint errors
-- [ ] Interface contracts honored (produces/consumes match declarations)
-- [ ] No hardcoded values that should be config
-- [ ] Error messages include context (not just "failed")
 
 Do NOT commit your changes. The Mind will handle committing and merging after review passes.
 
 When all tasks are complete and the checklist passes, send completion signal via the bus:
 
 ```bash
-bun minds/transport/minds-publish.ts --channel minds-BRE-432 --type DRONE_COMPLETE --payload '{"mindName":"observability"}'
+bun minds/transport/minds-publish.ts --channel minds-BRE-447 --type DRONE_COMPLETE --payload '{"mindName":"dashboard"}'
 ```
 
 The bus URL is resolved automatically from `BUS_URL` env var or `.collab/bus-port`.
