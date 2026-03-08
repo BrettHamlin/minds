@@ -54,6 +54,8 @@ Launch a dedicated drone pane for a specific Mind+ticket pair. Unlike `/dev.pane
    You are the @{MIND_NAME} drone for ticket {TICKET_ID}.
    Domain: {domain from minds.json}
 
+   Mind pane ID (for sending completion signal): {MIND_PANE_ID from $TMUX_PANE}
+
    Your file boundary (only touch files in these paths):
    {owns_files list from minds.json}
 
@@ -88,7 +90,7 @@ Launch a dedicated drone pane for a specific Mind+ticket pair. Unlike `/dev.pane
    When tasks arrive:
    - Read DRONE-BRIEF.md (this file will be updated)
    - Implement only files within your owned paths
-   - Report DRONE_COMPLETE @{MIND_NAME} {TICKET_ID} when done
+   - When done, send completion: `bun minds/lib/tmux-send.ts {MIND_PANE_ID} "DRONE_COMPLETE @{MIND_NAME} {TICKET_ID}"`
    EOF
    ```
 
@@ -102,6 +104,7 @@ Launch a dedicated drone pane for a specific Mind+ticket pair. Unlike `/dev.pane
      --mind ${MIND_NAME} \
      --ticket ${TICKET_ID} \
      --pane $TMUX_PANE \
+     --mind-pane $TMUX_PANE \
      --claude-file /tmp/drone-claude-${TICKET_ID}-${MIND_NAME}.md \
      --brief-file /tmp/drone-brief-${TICKET_ID}-${MIND_NAME}.md
    ```
@@ -112,6 +115,7 @@ Launch a dedicated drone pane for a specific Mind+ticket pair. Unlike `/dev.pane
    - `branch` — branch name (`minds/{TICKET_ID}-{MIND_NAME}`)
    - `base` — base branch
    - `claude_dir` — path to the drone's private ~/.claude/projects/ dir
+   - `mind_pane` — tmux pane ID of the Mind (for drone completion signals)
 
 6. **Wait and verify**: Wait 5 seconds, then capture the drone pane to confirm Claude started.
 
@@ -124,17 +128,18 @@ Launch a dedicated drone pane for a specific Mind+ticket pair. Unlike `/dev.pane
    ```
    🛸 Drone launched
 
-   Mind:     @{MIND_NAME}
-   Ticket:   {TICKET_ID}
-   Pane:     <drone_pane>
-   Worktree: <worktree>
+   Mind:      @{MIND_NAME}
+   Ticket:    {TICKET_ID}
+   Pane:      <drone_pane>
+   Mind Pane: <mind_pane>
+   Worktree:  <worktree>
    Branch:   <branch>
 
    CLAUDE.md written to: <claude_dir>/CLAUDE.md
    DRONE-BRIEF.md written to: <worktree>/DRONE-BRIEF.md
 
    To send the brief:
-     bun ~/.claude/bin/tmux-send.ts <drone_pane> "Read DRONE-BRIEF.md and execute the tasks described."
+     bun minds/lib/tmux-send.ts <drone_pane> "Read DRONE-BRIEF.md and execute the tasks described."
    ```
 
 ## Sending messages to the drone
@@ -142,7 +147,7 @@ Launch a dedicated drone pane for a specific Mind+ticket pair. Unlike `/dev.pane
 Always use `tmux-send.ts`:
 
 ```bash
-bun ~/.claude/bin/tmux-send.ts <drone_pane> "your prompt text"
+bun minds/lib/tmux-send.ts <drone_pane> "your prompt text"
 ```
 
 Never use raw `tmux send-keys` directly.

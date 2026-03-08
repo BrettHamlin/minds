@@ -121,16 +121,17 @@ This command executes implementation for the **collab repo itself**, where work 
 
 6. **For each wave, for each Mind in the wave**:
 
-   a. **Create Mind+Drone pair** using `/dev.pane`:
+   a. **Create Mind+Drone pair** using `/drone.launch`:
 
       ```
-      /dev.pane {ticket_id}-{mind_name}
+      /drone.launch {mind_name} {ticket_id}
       ```
 
       This creates a worktree and tmux split with a Sonnet drone in the right pane, and outputs JSON. Parse the `drone_pane` field from that JSON output:
 
       ```
       DRONE_PANE_ID = <json_output>.drone_pane
+      MIND_PANE_ID = $TMUX_PANE
       ```
 
       Store the mapping: `{ mindName -> dronePaneId }`.
@@ -196,6 +197,8 @@ This command executes implementation for the **collab repo itself**, where work 
 
       Domain: {domain from minds.json}
 
+      Mind pane ID (for sending completion signal): {mind_pane_id}
+
       Your file boundary (only touch files in these paths):
       {owns_files list}
 
@@ -231,7 +234,13 @@ This command executes implementation for the **collab repo itself**, where work 
 
       Do NOT commit your changes. The Mind will handle committing and merging after review passes.
 
-      When all tasks are complete and the checklist passes, report: "DRONE_COMPLETE @{mind_name} {ticket_id}"
+      When all tasks are complete and the checklist passes, send completion signal to the Mind:
+
+      ```bash
+      bun minds/lib/tmux-send.ts {mind_pane_id} "DRONE_COMPLETE @{mind_name} {ticket_id}"
+      ```
+
+      This sends the signal directly to the Mind's pane. Do NOT just type the signal — you must run this command.
       EOF
       ```
 
@@ -252,7 +261,7 @@ This command executes implementation for the **collab repo itself**, where work 
    c. **Send brief to drone pane**:
 
       ```bash
-      bun ~/.claude/bin/tmux-send.ts {pane_id} "Read DRONE-BRIEF.md and execute the tasks described."
+      bun minds/lib/tmux-send.ts {pane_id} "Read DRONE-BRIEF.md and execute the tasks described."
       ```
 
    d. **After dispatching all Minds in the wave**, write the Mind's own review context to its private CLAUDE.md so the Mind retains it after compaction.
@@ -278,19 +287,13 @@ This command executes implementation for the **collab repo itself**, where work 
       bun minds/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review' --content-file /tmp/active-mind-review.md
       ```
 
-7. **Monitor wave completion**: After dispatching all Minds in a wave, poll each drone pane for the `DRONE_COMPLETE @{mind_name}` signal.
+7. **Wait for drone completion signals**: After dispatching all Minds in a wave, each drone will send `DRONE_COMPLETE @{mind_name} {ticket_id}` directly to this pane when done.
 
-   ```bash
-   # Poll loop — check every 30 seconds
-   while true; do
-     tmux capture-pane -t {pane_id} -p | grep "DRONE_COMPLETE @{mind_name}" && break
-     sleep 30
-   done
-   ```
+   Do not poll or capture drone panes. The drone sends the signal to you via `bun minds/lib/tmux-send.ts`.
 
-   Do not start Wave N+1 until all Minds in Wave N have emitted `DRONE_COMPLETE`.
+   Track which Minds have reported completion. Do not start Wave N+1 until all Minds in Wave N have sent their DRONE_COMPLETE signal.
 
-   If a drone has been idle for more than 5 minutes without completing, check its pane output and intervene if it appears blocked:
+   If a drone has not reported within 10 minutes, check its pane for issues:
 
    ```bash
    tmux capture-pane -t {pane_id} -p -S -50
@@ -337,6 +340,9 @@ This command executes implementation for the **collab repo itself**, where work 
 
        The Mind NEVER modifies code directly. If issues are found:
        - Send the specific violation citations to the drone via tmux-send
+         ```bash
+         bun minds/lib/tmux-send.ts {drone_pane} "REVIEW FEEDBACK: {violation details}"
+         ```
        - Wait for the drone to fix and re-report DRONE_COMPLETE
        - Re-review after fixes (repeating this full citation-based review step)
 

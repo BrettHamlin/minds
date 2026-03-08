@@ -16,12 +16,13 @@
  *     --mind <mind_name> \
  *     --ticket <ticket_id> \
  *     [--pane <pane_id>]              # caller's tmux pane (default: $TMUX_PANE)
+ *     [--mind-pane <pane_id>]        # Mind's pane ID for drone completion signals (default: same as --pane)
  *     [--base <branch>]              # base branch to fork from (default: current branch)
  *     [--claude-file <path>]         # file whose content to write as drone's private CLAUDE.md
  *     [--brief-file <path>]          # file whose content to write as DRONE-BRIEF.md
  *
  * Output: JSON to stdout
- *   { drone_pane, worktree, branch, base, claude_dir }
+ *   { drone_pane, worktree, branch, base, claude_dir, mind_pane }
  */
 
 import { execSync } from "child_process";
@@ -66,6 +67,8 @@ const callerPane =
   getArg("--pane") ??
   process.env.TMUX_PANE ??
   run("tmux display-message -p '#{pane_id}'");
+
+const mindPane = getArg("--mind-pane") ?? callerPane;
 
 const claudeFile = getArg("--claude-file");
 const briefFile = getArg("--brief-file");
@@ -187,5 +190,6 @@ console.log(
     branch: branchName,
     base: baseBranch,
     claude_dir: claudeDir,
+    mind_pane: mindPane,
   })
 );
