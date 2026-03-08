@@ -7,22 +7,48 @@ export function ensureDir(dir: string): void {
 
 export function countFiles(dir: string, pattern?: RegExp): number {
   if (!existsSync(dir)) return 0;
-  return readdirSync(dir).filter(f => (pattern ? pattern.test(f) : true)).length;
+  let count = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      count += countFiles(join(dir, entry.name), pattern);
+    } else if (!pattern || pattern.test(entry.name)) {
+      count++;
+    }
+  }
+  return count;
 }
 
 export interface CopyResult {
   copied: string[];
   skipped: string[];
+  errors: string[];
 }
 
 export function copyRecursive(
   src: string,
   dest: string,
-  options: { force?: boolean } = {}
+  options: { force?: boolean; skipIfExists?: boolean } = {}
 ): CopyResult {
-  const result: CopyResult = { copied: [], skipped: [] };
-  if (!existsSync(src)) return result;
+  const result: CopyResult = { copied: [], skipped: [], errors: [] };
+  if (!existsSync(src)) {
+    result.errors.push(`source not found: ${src}`);
+    return result;
+  }
 
+  const srcStat = statSync(src);
+
+  // Handle single-file source
+  if (srcStat.isFile()) {
+    if (existsSync(dest) && (options.skipIfExists || (!options.force && existsSync(dest)))) {
+      result.skipped.push(dest);
+    } else {
+      copyFileSync(src, dest);
+      result.copied.push(dest);
+    }
+    return result;
+  }
+
+  // Handle directory source
   mkdirSync(dest, { recursive: true });
 
   for (const entry of readdirSync(src, { withFileTypes: true })) {
@@ -33,8 +59,9 @@ export function copyRecursive(
       const sub = copyRecursive(srcPath, destPath, options);
       result.copied.push(...sub.copied);
       result.skipped.push(...sub.skipped);
+      result.errors.push(...sub.errors);
     } else {
-      if (existsSync(destPath) && !options.force) {
+      if (existsSync(destPath) && (options.skipIfExists || !options.force)) {
         result.skipped.push(destPath);
       } else {
         copyFileSync(srcPath, destPath);

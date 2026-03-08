@@ -9,6 +9,10 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "bun test tests/",
+    "test:minds": "bun test minds/",
+    "test:all": "bun test",
+    "test:unit": "bun test tests/unit/ minds/*/lib/ minds/lib/",
+    "test:fast": "bun test tests/unit/ minds/*/lib/ minds/lib/",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts"
   },
