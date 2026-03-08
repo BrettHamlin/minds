@@ -230,6 +230,20 @@ This command executes implementation for the **collab repo itself**, where work 
    tmux capture-pane -t {pane_id} -p -S -50
    ```
 
+7b. **Between-waves cleanup**: After all drones in a wave report DRONE_COMPLETE, BEFORE launching the next wave, clean up each completed drone's pane and worktree:
+
+   For each completed drone in the wave:
+
+   ```bash
+   # Kill the drone's tmux pane (no longer needed)
+   tmux kill-pane -t {drone_pane}
+
+   # Clean up the worktree (DRONE-BRIEF.md + private CLAUDE.md dir + worktree removal)
+   bun minds/lib/cleanup.ts all {worktree_path}
+   ```
+
+   This prevents stale panes from accumulating across waves. Do not skip this step even if launching the next wave immediately.
+
 8. **Handle failures**: If a drone emits an error or goes silent:
 
    - Capture the last 50 lines from its pane
