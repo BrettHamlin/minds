@@ -20,7 +20,11 @@ This command executes implementation for the **collab repo itself**, where work 
 
 ## Outline
 
-0. **Cleanup stale context from previous runs**: Before doing anything else, scan for orphaned drone directories left by crashed or incomplete previous runs.
+0. **Cleanup stale context from previous runs**: Before doing anything else, clean up orphaned bus processes and drone directories left by crashed or incomplete previous runs.
+
+   ```bash
+   bun minds/transport/minds-teardown.ts --cleanup-orphans
+   ```
 
    ```bash
    # Find all private CLAUDE.md dirs for collab worktrees
@@ -126,12 +130,9 @@ This command executes implementation for the **collab repo itself**, where work 
     ```bash
     BUS_INFO=$(bun minds/transport/minds-bus-lifecycle.ts start --ticket {ticket_id} --pane $TMUX_PANE)
     BUS_URL=$(echo "$BUS_INFO" | jq -r '.busUrl')
-    BUS_SERVER_PID=$(echo "$BUS_INFO" | jq -r '.busServerPid')
-    BUS_BRIDGE_PID=$(echo "$BUS_INFO" | jq -r '.bridgePid')
-    export BUS_URL
     ```
 
-    Store `BUS_URL`, `BUS_SERVER_PID`, and `BUS_BRIDGE_PID` for use throughout steps 6–11.
+    Store `BUS_URL` for use throughout steps 6–11. Bus state (PIDs, URL) is automatically persisted to `.collab/state/minds-bus-{ticket_id}.json` by `startMindsBus` — no need to track PIDs in shell variables.
 
 6. **For each wave, for each Mind in the wave**:
 
@@ -357,10 +358,10 @@ This command executes implementation for the **collab repo itself**, where work 
 
 11. **Teardown cleanup**: After final verification passes, clean up all compaction-resilience artifacts.
 
-    Tear down the Minds bus:
+    Tear down the Minds bus (reads PIDs from state file, kills them, clears state):
 
     ```bash
-    bun minds/transport/minds-bus-lifecycle.ts teardown --bus-pid $BUS_SERVER_PID --bridge-pid $BUS_BRIDGE_PID
+    bun minds/transport/minds-teardown.ts --ticket {ticket_id}
     ```
 
     Remove the `## Active Mind Review` section from the Mind's private CLAUDE.md:
