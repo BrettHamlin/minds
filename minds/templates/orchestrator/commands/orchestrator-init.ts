@@ -46,7 +46,7 @@ import {
   handleError,
 } from "../../../lib/pipeline";
 import type { CompiledPipeline } from "../../../lib/pipeline";
-import { resolveTransportPath } from "../../../lib/resolve-transport";
+import { resolveTransportPath } from "../../../transport/resolve-transport";
 import { resolveRepoPath } from "../../../lib/pipeline/repo-registry";
 
 // ---------------------------------------------------------------------------
