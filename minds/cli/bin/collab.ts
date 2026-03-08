@@ -4,6 +4,7 @@ import { initCommand } from "../../../cli/src/commands/init";
 import { updateCommand } from "../../../cli/src/commands/update";
 import { statusCommand } from "../../../cli/src/commands/status";
 import { repoResolve, repoAdd, repoList, repoRemove } from "../../../cli/src/commands/repo";
+import { doctorCommand } from "../commands/doctor";
 
 program
   .name("collab")
@@ -53,5 +54,14 @@ repo
   .command("remove <repo-id>")
   .description("Remove a registered repo")
   .action(repoRemove);
+
+program
+  .command("doctor")
+  .description("Check installation health for the current collab-enabled repository")
+  .option("--json", "Output results as JSON")
+  .option("--path <dir>", "Path to repo root (default: current directory)")
+  .action((options: { json?: boolean; path?: string }) => {
+    doctorCommand({ json: options.json, repoRoot: options.path });
+  });
 
 program.parse();
