@@ -2,6 +2,8 @@
 description: Generate Mind-aware tasks for collab development. Decomposes work along Mind boundaries — each task stays within one Mind's domain. Cross-Mind work becomes separate tasks with interface contracts.
 ---
 
+> **IMPORTANT:** Execute these steps directly and sequentially. Do NOT wrap this workflow in PAI Algorithm phases, ISC criteria, capability selection, or any other meta-framework. Follow the numbered steps exactly as written.
+
 ## User Input
 
 ```text

@@ -93,7 +93,10 @@ const tasks = join(featureDir, "tasks.md");
 
 // --- 6. Validation ---
 if (!setupPlan && !existsSync(featureDir)) {
-  fail(`Feature directory not found: ${featureDir}\nRun /collab.specify first to create the feature structure.`);
+  // Print sentinel to stdout and exit 0 so callers can check output without it looking like a failure.
+  // Only use exit 1 for actual errors (e.g., invalid ticket ID format, which fails earlier via fail()).
+  process.stdout.write("NO_FEATURE_DIR\n");
+  process.exit(0);
 }
 
 if (requireTasks && !existsSync(tasks)) {
