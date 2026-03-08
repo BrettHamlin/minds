@@ -12,8 +12,6 @@ import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import type { MindDescription } from "./mind.js";
 import { mindsPublish } from "./transport/minds-publish.ts";
-import { startMindsBus, teardownMindsBus } from "./transport/minds-bus-lifecycle.ts";
-import type { MindsBusLifecycleInfo } from "./transport/minds-bus-lifecycle.ts";
 import { BusTransport } from "./transport/BusTransport.ts";
 import type { Message } from "./transport/Transport.ts";
 
@@ -71,10 +69,10 @@ export function loadMindsRegistry(registryPath: string): MindDescription[] {
  * Dispatch a task brief to a named Mind's Drone.
  *
  * 1. Looks up the Mind in .collab/minds.json
- * 2. Creates a worktree + tmux split via dev-pane.ts
+ * 2. Creates a worktree + tmux split via drone-pane.ts (with --mind, --ticket, optionally --bus-url)
  * 3. Writes the brief to /tmp/mind-brief-{mindName}.md
- * 4a. When busUrl + ticketId provided: publishes DRONE_SPAWNED event over bus
- * 4b. Otherwise: sends brief message to drone pane via tmux-send.ts (legacy)
+ * 4. Sends brief to drone pane via tmux-send.ts (always — bus carries signals, tmux carries brief text)
+ * 5. When busUrl + ticketId provided: publishes DRONE_SPAWNED as a monitoring notification (non-critical)
  *
  * Returns { paneId, worktree, branch } for monitoring.
  */
@@ -92,54 +90,60 @@ export async function dispatchToMind(
     throw new Error(`Mind not found in registry: "${mindName}"`);
   }
 
-  // Build dev-pane.ts command
+  // Build drone-pane.ts command
   const home = process.env.HOME ?? "/root";
-  const devPaneCmd = ["bun", `${home}/.claude/bin/dev-pane.ts`];
-  if (options.branch) devPaneCmd.push("--branch", options.branch);
-  if (options.base) devPaneCmd.push("--base", options.base);
+  const dronePaneCmd = [
+    "bun",
+    resolve(repoRoot, "minds/lib/drone-pane.ts"),
+    "--mind", mindName,
+    "--ticket", options.ticketId ?? "",
+  ];
+  if (options.busUrl) dronePaneCmd.push("--bus-url", options.busUrl);
+  if (options.branch) dronePaneCmd.push("--branch", options.branch);
+  if (options.base) dronePaneCmd.push("--base", options.base);
 
   // Create worktree + drone pane
-  const devPaneProc = Bun.spawn(devPaneCmd, { stdout: "pipe", stderr: "pipe" });
-  const exitCode = await devPaneProc.exited;
+  const dronePaneProc = Bun.spawn(dronePaneCmd, { stdout: "pipe", stderr: "pipe" });
+  const exitCode = await dronePaneProc.exited;
   if (exitCode !== 0) {
-    const stderr = await new Response(devPaneProc.stderr as ReadableStream).text();
-    throw new Error(`dev-pane.ts failed (exit ${exitCode}): ${stderr}`);
+    const stderr = await new Response(dronePaneProc.stderr as ReadableStream).text();
+    throw new Error(`drone-pane.ts failed (exit ${exitCode}): ${stderr}`);
   }
 
-  const rawStdout = await new Response(devPaneProc.stdout as ReadableStream).text();
+  const rawStdout = await new Response(dronePaneProc.stdout as ReadableStream).text();
   let paneResult: { drone_pane: string; worktree: string; branch: string };
   try {
     paneResult = JSON.parse(rawStdout.trim());
   } catch {
-    throw new Error(`dev-pane.ts returned invalid JSON: ${rawStdout}`);
+    throw new Error(`drone-pane.ts returned invalid JSON: ${rawStdout}`);
   }
 
   if (!paneResult.drone_pane) {
-    throw new Error(`dev-pane.ts did not return drone_pane: ${rawStdout}`);
+    throw new Error(`drone-pane.ts did not return drone_pane: ${rawStdout}`);
   }
 
-  // Write brief to temp file
+  // Write brief to temp file and deliver via tmux-send (always — bus carries signals, not briefs)
   const briefPath = `/tmp/mind-brief-${mindName}.md`;
   writeFileSync(briefPath, brief, "utf-8");
 
+  const message = `Read ${briefPath} and execute the tasks described.`;
+  const sendProc = Bun.spawn(
+    ["bun", `${home}/.claude/bin/tmux-send.ts`, paneResult.drone_pane, message],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+  const sendExit = await sendProc.exited;
+  if (sendExit !== 0) {
+    const stderr = await new Response(sendProc.stderr as ReadableStream).text();
+    throw new Error(`tmux-send.ts failed (exit ${sendExit}): ${stderr}`);
+  }
+
+  // Publish DRONE_SPAWNED as a monitoring notification (non-critical — catch and ignore errors)
   if (options.busUrl && options.ticketId) {
-    // Publish DRONE_SPAWNED event over bus
     const channel = `minds-${options.ticketId}`;
-    await mindsPublish(options.busUrl, channel, "DRONE_SPAWNED", {
-      mindName,
-      brief,
-    });
-  } else {
-    // Legacy: send brief to drone pane via tmux-send.ts
-    const message = `Read ${briefPath} and execute the tasks described.`;
-    const sendProc = Bun.spawn(
-      ["bun", `${home}/.claude/bin/tmux-send.ts`, paneResult.drone_pane, message],
-      { stdout: "pipe", stderr: "pipe" }
-    );
-    const sendExit = await sendProc.exited;
-    if (sendExit !== 0) {
-      const stderr = await new Response(sendProc.stderr as ReadableStream).text();
-      throw new Error(`tmux-send.ts failed (exit ${sendExit}): ${stderr}`);
+    try {
+      await mindsPublish(options.busUrl, channel, "DRONE_SPAWNED", { mindName, brief });
+    } catch {
+      // Non-critical notification — brief already delivered via tmux
     }
   }
 
@@ -245,8 +249,9 @@ async function waitForCompletionTmux(
 /**
  * Dispatch multiple Minds in parallel, wait for all to complete.
  *
- * Starts the Minds bus lifecycle before dispatching. If options.dispatch.busUrl
- * is already provided (e.g. in tests), skips lifecycle startup and uses that URL.
+ * Bus lifecycle is managed externally by the caller. If options.dispatch.busUrl
+ * is provided, drone-pane.ts receives the BUS_URL and bus completions are used.
+ * Otherwise, tmux polling fallback is used.
  *
  * @param mindNames - Array of Mind names to dispatch
  * @param briefs    - Map of mindName → brief text
@@ -260,51 +265,35 @@ export async function dispatchWave(
 ): Promise<Record<string, CompletionResult>> {
   const repoRoot = options.dispatch?.repoRoot ?? detectRepoRoot();
   const ticketId = options.ticketId ?? options.dispatch?.ticketId ?? "unknown";
-
-  // Start bus lifecycle unless a busUrl is already injected (e.g. in tests)
-  let lifecycle: MindsBusLifecycleInfo | undefined;
-  let busUrl = options.dispatch?.busUrl;
-
-  if (!busUrl) {
-    const orchestratorPane = process.env.TMUX_PANE ?? "";
-    lifecycle = await startMindsBus(repoRoot, orchestratorPane, ticketId);
-    busUrl = lifecycle.busUrl;
-  }
-
+  const busUrl = options.dispatch?.busUrl;
   const channel = `minds-${ticketId}`;
 
-  try {
-    // Dispatch all in parallel
-    const dispatched = await Promise.all(
-      mindNames.map(async (name) => {
-        const brief = briefs[name];
-        if (brief === undefined) throw new Error(`No brief provided for mind: "${name}"`);
-        const result = await dispatchToMind(name, brief, {
-          ...options.dispatch,
-          repoRoot,
-          busUrl,
-          ticketId,
-        });
-        return { name, result };
-      })
-    );
+  // Dispatch all in parallel
+  const dispatched = await Promise.all(
+    mindNames.map(async (name) => {
+      const brief = briefs[name];
+      if (brief === undefined) throw new Error(`No brief provided for mind: "${name}"`);
+      const result = await dispatchToMind(name, brief, {
+        ...options.dispatch,
+        repoRoot,
+        busUrl,
+        ticketId,
+      });
+      return { name, result };
+    })
+  );
 
-    // Wait for all completions in parallel
-    const completions = await Promise.all(
-      dispatched.map(async ({ name, result }) => {
-        const completion = await waitForCompletion(result.paneId, name, {
-          ...options.wait,
-          busUrl,
-          channel,
-        });
-        return { name, completion };
-      })
-    );
+  // Wait for all completions in parallel
+  const completions = await Promise.all(
+    dispatched.map(async ({ name, result }) => {
+      const completion = await waitForCompletion(result.paneId, name, {
+        ...options.wait,
+        busUrl,
+        channel,
+      });
+      return { name, completion };
+    })
+  );
 
-    return Object.fromEntries(completions.map(({ name, completion }) => [name, completion]));
-  } finally {
-    if (lifecycle) {
-      await teardownMindsBus(lifecycle);
-    }
-  }
+  return Object.fromEntries(completions.map(({ name, completion }) => [name, completion]));
 }
