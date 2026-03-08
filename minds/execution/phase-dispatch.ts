@@ -40,6 +40,8 @@ import type { CompiledPipeline, CompiledPhase, CompiledAction } from "../pipelin
 import { applyUpdates } from "../pipeline_core";
 import { resolveTransportPath } from "../transport/resolve-transport"; // CROSS-MIND
 import { resolveHooksForPhase } from "./dispatch-phase-hooks";
+import { searchMemory } from "../memory/lib/search.js";
+import type { SearchResult, SearchOptions } from "../memory/lib/search.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,6 +57,43 @@ export interface DispatchResult {
   received: boolean;
   paneId: string;
   command: string;
+}
+
+// ---------------------------------------------------------------------------
+// Contract pattern query
+// ---------------------------------------------------------------------------
+
+interface ContractQueryOpts {
+  /** Embedding provider. Pass null to skip vector search (BM25-only, faster). */
+  provider?: null;
+  /** Injectable search function for testing. Defaults to searchMemory. */
+  searchFn?: (mindName: string, query: string, opts?: SearchOptions) => Promise<SearchResult[]>;
+}
+
+/**
+ * Query the shared contract store for historical handoff patterns matching the
+ * given phase transition. Called before dispatching a phase so the drone has
+ * structural context about what a successful handoff looks like.
+ *
+ * Returns an empty array on cold start (no patterns recorded yet) or on
+ * search failure — never blocks dispatch.
+ */
+export async function queryContractPatterns(
+  sourcePhase: string,
+  targetPhase: string,
+  opts?: ContractQueryOpts
+): Promise<SearchResult[]> {
+  const query = `${sourcePhase} to ${targetPhase} handoff`;
+  const doSearch = opts?.searchFn ?? searchMemory;
+  try {
+    return await doSearch("_", query, {
+      scope: "contracts",
+      provider: opts?.provider ?? null,
+    });
+  } catch {
+    // Never block dispatch on search failure
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +432,15 @@ async function main(): Promise<void> {
       // Terminal or no-op phase
       console.log(`Phase '${phaseId}' has no dispatchable command (terminal or no-op).`);
       process.exit(0);
+    }
+
+    // --- Query contract patterns before dispatch ---
+    const phaseHistory = (registry.phase_history ?? []) as Array<{ phase: string; signal: string }>;
+    const lastCompleted = phaseHistory.filter((e) => e.signal.endsWith("_COMPLETE")).pop();
+    const sourcePhase = lastCompleted?.phase ?? "start";
+    const contractPatterns = await queryContractPatterns(sourcePhase, phaseId);
+    if (contractPatterns.length > 0) {
+      console.log(`[contracts] ${contractPatterns.length} historical pattern(s) for ${sourcePhase} → ${phaseId}`);
     }
 
     // --- Read transport from registry ---

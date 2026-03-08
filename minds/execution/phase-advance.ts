@@ -29,6 +29,8 @@ import {
   handleError,
 } from "../pipeline_core";
 import type { CompiledPipeline } from "../pipeline_core";
+import { writeContractPattern } from "../memory/lib/contract-store.js";
+import type { ContractPattern } from "../memory/lib/contract-types.js";
 
 /**
  * Get the next phase ID given the current phase.
@@ -77,7 +79,71 @@ export function isTerminalPhase(pipeline: CompiledPipeline, phaseId: string): bo
   return !!(phase as any).terminal;
 }
 
-function main(): void {
+// ---------------------------------------------------------------------------
+// Contract pattern recording
+// ---------------------------------------------------------------------------
+
+interface TransitionRecordOpts {
+  /** Injectable write function for testing. Defaults to writeContractPattern. */
+  writeFn?: (pattern: ContractPattern) => Promise<string>;
+}
+
+/**
+ * Build a ContractPattern from a known phase transition.
+ * Derives artifact shape from the source phase's signals in the pipeline config.
+ */
+export function buildContractPattern(
+  sourcePhase: string,
+  targetPhase: string,
+  pipeline: CompiledPipeline
+): ContractPattern {
+  const sourceConfig = (pipeline.phases[sourcePhase] as any) ?? {};
+  const signals: string[] = sourceConfig.signals ?? [];
+
+  return {
+    sourcePhase,
+    targetPhase,
+    artifactShape: `${sourcePhase} phase artifacts handed off to ${targetPhase} (signals: ${signals.join(", ") || "none"})`,
+    sections: signals.map((signal) => ({
+      name: signal,
+      required: true,
+      description: `Signal emitted by ${sourcePhase} phase on completion`,
+    })),
+    metadata: { domain: "pipeline" },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
+ * Record a phase transition as a ContractPattern in the shared contract store.
+ * Called after a successful phase advance so future dispatches can reference
+ * historical handoff shapes.
+ *
+ * Skips recording when targetPhase is "done" (no downstream consumer).
+ * Returns null on skip or failure — never blocks phase advance.
+ */
+export async function recordPhaseTransition(
+  sourcePhase: string,
+  targetPhase: string,
+  pipeline: CompiledPipeline,
+  opts?: TransitionRecordOpts
+): Promise<string | null> {
+  if (targetPhase === "done") return null;
+  try {
+    const pattern = buildContractPattern(sourcePhase, targetPhase, pipeline);
+    const doWrite = opts?.writeFn ?? writeContractPattern;
+    return await doWrite(pattern);
+  } catch {
+    // Never block phase advance on write failure
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   validateTicketIdArg(args, "phase-advance.ts");
 
@@ -105,6 +171,8 @@ function main(): void {
     } else {
       const nextPhase = getNextPhase(pipeline as CompiledPipeline, args[1]);
       console.log(nextPhase);
+      // Record handoff pattern after successful phase advance
+      await recordPhaseTransition(args[1], nextPhase, pipeline as CompiledPipeline);
     }
   } catch (err) {
     handleError(err);
