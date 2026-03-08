@@ -141,6 +141,12 @@ This command executes implementation for the **collab repo itself**, where work 
 
     Parse `busUrl` from the JSON. Store `BUS_URL` for use throughout steps 6–11.
 
+    Also generate a wave ID for this dispatch run (shared across all Minds in each wave):
+
+    ```bash
+    WAVE_ID="wave-$(date +%s)"
+    ```
+
 6. **For each wave, for each Mind in the wave**:
 
    a. **Create Mind+Drone pair** using `drone-pane.ts`:
@@ -206,7 +212,7 @@ This command executes implementation for the **collab repo itself**, where work 
       When all tasks are complete and the checklist passes, send completion signal via the bus:
 
       ```bash
-      bun minds/transport/minds-publish.ts --channel minds-{ticket_id} --type DRONE_COMPLETE --payload '{"mindName":"{mind_name}"}'
+      bun minds/transport/minds-publish.ts --channel minds-{ticket_id} --type DRONE_COMPLETE --payload '{"mindName":"{mind_name}","waveId":"{wave_id}"}'
       ```
 
       The bus URL is resolved automatically from `BUS_URL` env var or `.collab/bus-port`.
@@ -264,6 +270,13 @@ This command executes implementation for the **collab repo itself**, where work 
 9. **Verify completion**: After all waves complete, verify:
 
    9a. **Re-read standards and profiles and produce a citation-based review**: Before reviewing any drone's output:
+
+       First, publish `DRONE_REVIEWING` so the dashboard reflects the in-progress review:
+
+       ```bash
+       bun minds/lib/review-drone.ts start-review --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name}
+       ```
+
        - Read `minds/STANDARDS.md` from disk
        - Read `minds/{mind_name}/MIND.md` from disk for each Mind being reviewed
        - Run `git diff` in the drone's worktree to get the exact diff
@@ -294,10 +307,11 @@ This command executes implementation for the **collab repo itself**, where work 
        After the citation block, provide a verdict: PASS (proceed to merge) or FAIL (list violations, send feedback to drone).
 
        The Mind NEVER modifies code directly. If issues are found:
-       - Send the specific violation citations to the drone via bus publish
+       - Publish `DRONE_REVIEW_FAIL` deterministically:
          ```bash
-         bun minds/transport/minds-publish.ts --channel minds-{ticket_id} --type DRONE_REVIEW_FAIL --payload '{"mindName":"{mind_name}","feedback":"{violation details}"}'
+         bun minds/lib/review-drone.ts review-fail --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name} --violations {violation_count}
          ```
+       - Send the specific violation citations to the drone via tmux
        - Wait for the drone to fix and re-report DRONE_COMPLETE on the bus
        - Re-review after fixes (repeating this full citation-based review step)
 
@@ -305,10 +319,14 @@ This command executes implementation for the **collab repo itself**, where work 
    - Check that tasks.md has all tasks marked `[X]`
    - Confirm no files were created outside any Mind's `owns_files` boundary (cross-check with `git status`)
 
-   9b. **Commit and merge**: After review passes for each drone (including any fix cycles), merge the drone's branch into the target branch:
+   9b. **Commit and merge**: After review passes for each drone (including any fix cycles), publish `DRONE_REVIEW_PASS` then merge:
 
        ```bash
-       bun minds/lib/merge-drone.ts {worktree_path} {target_branch} --log-content "..."
+       bun minds/lib/review-drone.ts review-pass --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name}
+       ```
+
+       ```bash
+       bun minds/lib/merge-drone.ts {worktree_path} {target_branch} --log-content "..." --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name}
        ```
 
        The `--log-content` value should be a one-sentence summary of what was learned from the review in step 9a — patterns confirmed, violations caught, or decisions made (e.g., "All registry writes used registryPath(); no inline path construction found.").
