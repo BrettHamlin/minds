@@ -264,6 +264,25 @@ describe("lintTasks", () => {
     expect(extraWarn!.message).toContain("@config");
   });
 
+  it("does NOT flag boundary_violation when task mentions its own Mind's directory", () => {
+    // Regression: @observability task mentioning minds/observability/ was falsely flagged
+    // because the regex strips the trailing slash from the path before comparison.
+    const content = `
+## @observability Tasks
+- [ ] T001 @observability Add run duration computation to minds/observability/classify-run.ts
+`;
+    const registry = [
+      { name: "observability", owns_files: ["minds/observability/"] },
+    ];
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, registry as any);
+
+    const boundaryErrors = result.errors.filter(
+      (e) => e.type === "boundary_violation"
+    );
+    expect(boundaryErrors).toHaveLength(0);
+  });
+
   it("passes clean tasks with valid: true and no errors or warnings", () => {
     const content = `
 ## @pipeline_core Tasks

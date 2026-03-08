@@ -80,6 +80,14 @@ This command generates tasks for developing the **collab repo itself**, where wo
 
 7. **Write tasks.md**: Write the file to the feature directory.
 
+   **CRITICAL — feature directory naming**: The feature directory MUST be named `specs/{TICKET_ID}/` using the exact ticket ID (e.g., `specs/BRE-432/`). Do NOT use slugified descriptions (e.g., `specs/432-run-duration-metric/` is WRONG). If the directory does not exist, create it:
+
+   ```bash
+   mkdir -p specs/{TICKET_ID}
+   ```
+
+   Then write the file to `specs/{TICKET_ID}/tasks.md`.
+
 8. **Report**: Output summary:
    - Total task count
    - Tasks per Mind

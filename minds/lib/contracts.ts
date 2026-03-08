@@ -395,7 +395,12 @@ function topoSort(
 }
 
 function isWithinOwnedFiles(filePath: string, ownsFiles: string[]): boolean {
-  return ownsFiles.some((owned) => filePath.startsWith(owned));
+  return ownsFiles.some((owned) => {
+    // Normalize both to have a trailing slash so that "minds/foo" matches "minds/foo/"
+    const normalizedOwned = owned.endsWith("/") ? owned : owned + "/";
+    const normalizedPath = filePath.endsWith("/") ? filePath : filePath + "/";
+    return normalizedPath.startsWith(normalizedOwned);
+  });
 }
 
 /**

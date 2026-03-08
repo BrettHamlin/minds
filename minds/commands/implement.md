@@ -127,101 +127,46 @@ This command executes implementation for the **collab repo itself**, where work 
       /drone.launch {mind_name} {ticket_id}
       ```
 
-      This creates a worktree and tmux split with a Sonnet drone in the right pane, and outputs JSON. Parse the `drone_pane` field from that JSON output:
+      Parse the JSON output:
 
       ```
       DRONE_PANE_ID = <json_output>.drone_pane
+      WORKTREE     = <json_output>.worktree
       MIND_PANE_ID = $TMUX_PANE
       ```
 
-      Store the mapping: `{ mindName -> dronePaneId }`.
+      Store the mapping: `{ mindName -> { dronePaneId, worktree } }`.
 
-   b. **Build the Mind brief and write compaction-resilient context**: Compose a scoped instruction block for this Mind's drone, then persist it to files that survive compaction.
+      `drone.launch` handles: worktree creation, tmux split, drone identity/standards/profile in the drone's private CLAUDE.md, and DRONE-BRIEF.md git exclusion. The Mind does not need to do any of that.
 
-      First, load the profile documents:
+   b. **Write task-specific brief to DRONE-BRIEF.md**:
 
-      ```bash
-      # Shared standards — include in every brief
-      cat minds/STANDARDS.md
-
-      # Mind-specific profile — append if it exists
-      [ -f minds/{mind_name}/MIND.md ] && cat minds/{mind_name}/MIND.md
-      ```
-
-      The brief includes:
-      - **Identity**: Which Mind this drone is acting as, and its domain
-      - **Owned files**: The `owns_files` list from minds.json (the drone's file-system boundary)
-      - **Tasks**: The full task list for this Mind, verbatim from tasks.md
-      - **Contracts**: What this Mind produces (from `exposes`) and what it consumes (from `consumes`), filtered to only what's relevant to these tasks
-      - **Dependencies**: If this Mind depends on others, list the specific interfaces it should import and from where
-      - **Standards**: The full content of `minds/STANDARDS.md`
-      - **Mind profile**: The full content of `minds/{mind_name}/MIND.md` (if it exists)
-      - **Acceptance criteria**: Derived from the task descriptions — each task's file path and behavior expectation
-
-      **Write the drone's private CLAUDE.md** (survives compaction — auto-reloaded by Claude Code):
-
-      The drone's private CLAUDE.md path is:
-      `~/.claude/projects/$(echo {worktree_absolute_path} | tr '/' '-' | sed 's/^-//')/CLAUDE.md`
-
-      Create the directory and write:
+      Write to `{worktree}/DRONE-BRIEF.md`. This is the ONLY thing the Mind needs to customize — `drone.launch` already set up identity, domain, owns_files, STANDARDS.md, and MIND.md in the drone's private CLAUDE.md.
 
       ```bash
-      DRONE_CLAUDE_DIR=~/.claude/projects/$(echo {worktree_absolute_path} | tr '/' '-' | sed 's/^-//')
-      mkdir -p "$DRONE_CLAUDE_DIR"
-      cat > "$DRONE_CLAUDE_DIR/CLAUDE.md" << 'EOF'
-      ## Mind Identity
-
-      You are the @{mind_name} drone for ticket {ticket_id}.
-      Domain: {domain from minds.json}
-
-      Your file boundary (only touch files in these paths):
-      {owns_files list}
-
-      ## Engineering Standards
-      {full content of minds/STANDARDS.md}
-
-      ## Mind Profile (@{mind_name})
-      {full content of minds/{mind_name}/MIND.md, if it exists — omit section if file not found}
-
-      ## Active Task
-      Your current task brief is in DRONE-BRIEF.md at the worktree root.
-      If you've compacted or lost context, re-read that file.
-      EOF
-      ```
-
-      **Write the task brief to DRONE-BRIEF.md** in the worktree root:
-
-      ```bash
-      cat > {worktree_absolute_path}/DRONE-BRIEF.md << 'EOF'
-      You are the @{mind_name} drone for ticket {ticket_id}.
-
-      Domain: {domain from minds.json}
+      cat > {worktree}/DRONE-BRIEF.md << 'EOF'
+      # Drone Brief: @{mind_name} for {ticket_id}
 
       Mind pane ID (for sending completion signal): {mind_pane_id}
 
-      Your file boundary (only touch files in these paths):
-      {owns_files list}
+      ## Tasks assigned to you
 
-      Tasks assigned to you:
-      {task list verbatim from tasks.md}
+      {task list verbatim from tasks.md for this Mind}
 
-      Interface contracts:
+      ## Interface contracts
+
       - Produces: {exposes entries relevant to these tasks}
       - Consumes: {consumes entries — import from these paths, do not reimplement}
 
-      --- Engineering Standards ---
-      {full content of minds/STANDARDS.md}
+      ## Acceptance criteria
 
-      --- Mind Profile ---
-      {full content of minds/{mind_name}/MIND.md, if it exists — omit section if file not found}
-
-      Acceptance criteria:
       - All tasks marked [X] in tasks.md
       - All produced interfaces exported at their declared paths
       - `bun test` passes with no failures
       - No files modified outside your owned paths
 
-      Review checklist (verify before reporting DRONE_COMPLETE):
+      ## Review checklist (verify before reporting DRONE_COMPLETE)
+
       - [ ] All tasks marked [X]
       - [ ] No files modified outside owns_files
       - [ ] No duplicated logic (check against existing codebase)
@@ -244,24 +189,10 @@ This command executes implementation for the **collab repo itself**, where work 
       EOF
       ```
 
-      **Exclude DRONE-BRIEF.md from git** (per-worktree, never committed):
-
-      In a worktree, `.git` is a **file** (not a directory) containing `gitdir: /path/to/real/gitdir`. Read it to find the real gitdir, then write to its `info/exclude`:
-
-      ```bash
-      # Read the gitdir pointer from the worktree's .git file
-      GITDIR_LINE=$(cat {worktree_absolute_path}/.git)
-      # Extract the path after "gitdir: "
-      REAL_GITDIR="${GITDIR_LINE#gitdir: }"
-      # Write the exclude entry
-      mkdir -p "${REAL_GITDIR}/info"
-      echo "DRONE-BRIEF.md" >> "${REAL_GITDIR}/info/exclude"
-      ```
-
    c. **Send brief to drone pane**:
 
       ```bash
-      bun minds/lib/tmux-send.ts {pane_id} "Read DRONE-BRIEF.md and execute the tasks described."
+      bun minds/lib/tmux-send.ts {drone_pane} "Read DRONE-BRIEF.md and execute the tasks described."
       ```
 
    d. **After dispatching all Minds in the wave**, write the Mind's own review context to its private CLAUDE.md so the Mind retains it after compaction.
