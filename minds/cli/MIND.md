@@ -2,7 +2,7 @@
 
 ## Domain
 
-The `collab` binary: argument parsing, package registry, repo path management, semver resolution, lockfile, and integrity checking. This Mind owns both CLI entry points and all supporting lib/utils.
+The `gravitas` binary: argument parsing, package registry, repo path management, semver resolution, lockfile, and integrity checking. This Mind owns both CLI entry points and all supporting lib/utils.
 
 ## Conventions
 
