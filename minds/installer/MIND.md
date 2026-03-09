@@ -2,7 +2,7 @@
 
 ## Domain
 
-Collab distribution: copying template files into target repos, managing install paths, handling upgrade scenarios, and providing the runtime collab-install script. This Mind turns the collab source into a working `.collab/` installation in any repo.
+Gravitas distribution: copying template files into target repos, managing install paths, handling upgrade scenarios, and providing the runtime gravitas-install script. This Mind turns the gravitas source into a working `.gravitas/` installation in any repo.
 
 ## Conventions
 
