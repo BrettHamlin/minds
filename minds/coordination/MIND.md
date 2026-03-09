@@ -7,7 +7,7 @@ Multi-ticket coordination: dependency hold detection, group management, batch Q&
 ## Conventions
 
 - **Push-based Q&A** — agents emit a question signal and end their response. The orchestrator writes resolutions; agents detect them on re-entry. Never poll for answers in a loop.
-- Resolution files are read via `pipeline_core/resolutionsPath` — never construct `.collab/state/` paths inline.
+- Resolution files are read via `pipeline_core/resolutionsPath` — never construct `.gravitas/state/` paths inline.
 - Registry reads go through `pipeline_core/readJsonFile` — do not use `fs.readFileSync` directly for registry files.
 - Dependency cycles are detected by `coordination-check.ts` via `buildAdjacency` + `detectCycles` — never reimplement graph traversal.
 - Group IDs are UUIDs generated at creation time and stored in the groups directory.
@@ -25,7 +25,7 @@ Multi-ticket coordination: dependency hold detection, group management, batch Q&
 
 - Polling for Q&A resolutions (push-based protocol only — agent re-entry handles detection).
 - Writing to the registry directly instead of via pipeline_core path utilities.
-- Reimplementing path construction for `.collab/state/resolutions/` or `.collab/state/registry/`.
+- Reimplementing path construction for `.gravitas/state/resolutions/` or `.gravitas/state/registry/`.
 - Treating a dependency hold as an error — it is a normal "wait" state, not a failure.
 
 ## Review Focus
