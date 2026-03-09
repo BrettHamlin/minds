@@ -12,9 +12,9 @@ let savedBusUrl: string | undefined;
 
 beforeEach(() => {
   savedTransport = process.env["COLLAB_TRANSPORT"];
-  savedBusUrl = process.env["COLLAB_BUS_URL"];
+  savedBusUrl = process.env["MINDS_BUS_URL"];
   delete process.env["COLLAB_TRANSPORT"];
-  delete process.env["COLLAB_BUS_URL"];
+  delete process.env["MINDS_BUS_URL"];
 });
 
 afterEach(() => {
@@ -24,9 +24,9 @@ afterEach(() => {
     delete process.env["COLLAB_TRANSPORT"];
   }
   if (savedBusUrl !== undefined) {
-    process.env["COLLAB_BUS_URL"] = savedBusUrl;
+    process.env["MINDS_BUS_URL"] = savedBusUrl;
   } else {
-    delete process.env["COLLAB_BUS_URL"];
+    delete process.env["MINDS_BUS_URL"];
   }
 });
 
@@ -46,13 +46,13 @@ describe("resolveTransport: @debug directive (Level 1)", () => {
   test("does not trigger on a directive that contains @debug as substring", async () => {
     // "@debugMode" is not "@debug" — should fall through to auto-detect / fallback
     // (bus not running, so expects TmuxTransport from fallback)
-    process.env["COLLAB_BUS_URL"] = "http://localhost:1"; // refused immediately
+    process.env["MINDS_BUS_URL"] = "http://localhost:1"; // refused immediately
     const t = await resolveTransport(["@debugMode"]);
     expect(t).toBeInstanceOf(TmuxTransport); // fallback, not directive match
   });
 });
 
-// ── Level 2: COLLAB_TRANSPORT env var override ────────────────────────────────
+// ── Level 2: COLLAB_TRANSPORT env var override (uses MINDS_BUS_URL) ──────────
 // Overrides auto-detect but NOT @debug (Level 1 always wins).
 
 describe("resolveTransport: COLLAB_TRANSPORT env var override", () => {
@@ -82,16 +82,16 @@ describe("resolveTransport: COLLAB_TRANSPORT env var override", () => {
     expect(t).toBeInstanceOf(BusTransport);
   });
 
-  test("COLLAB_TRANSPORT=bus uses COLLAB_BUS_URL when set", async () => {
+  test("COLLAB_TRANSPORT=bus uses MINDS_BUS_URL when set", async () => {
     process.env["COLLAB_TRANSPORT"] = "bus";
-    process.env["COLLAB_BUS_URL"] = "http://mybus:9999";
+    process.env["MINDS_BUS_URL"] = "http://mybus:9999";
     const t = await resolveTransport([]);
     expect(t).toBeInstanceOf(BusTransport);
     // agentPrompt reveals which URL the transport was configured with
     expect(t.agentPrompt("agent1", "ch1")).toContain("http://mybus:9999");
   });
 
-  test("COLLAB_TRANSPORT=bus falls back to default URL when COLLAB_BUS_URL not set", async () => {
+  test("COLLAB_TRANSPORT=bus falls back to default URL when MINDS_BUS_URL not set", async () => {
     process.env["COLLAB_TRANSPORT"] = "bus";
     const t = await resolveTransport([]);
     expect(t).toBeInstanceOf(BusTransport);
@@ -104,13 +104,13 @@ describe("resolveTransport: COLLAB_TRANSPORT env var override", () => {
 describe("resolveTransport: TmuxTransport fallback (bus unreachable)", () => {
   test("falls back to TmuxTransport when no directives and bus not running", async () => {
     // Port 1 is always refused — connection error is caught immediately
-    process.env["COLLAB_BUS_URL"] = "http://localhost:1";
+    process.env["MINDS_BUS_URL"] = "http://localhost:1";
     const t = await resolveTransport([]);
     expect(t).toBeInstanceOf(TmuxTransport);
   });
 
   test("falls back to TmuxTransport with empty directive list and unreachable bus", async () => {
-    process.env["COLLAB_BUS_URL"] = "http://127.0.0.1:1";
+    process.env["MINDS_BUS_URL"] = "http://127.0.0.1:1";
     const t = await resolveTransport([]);
     expect(t).toBeInstanceOf(TmuxTransport);
   });

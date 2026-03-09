@@ -201,9 +201,9 @@ describe("mindsPublish — POST body construction", () => {
   });
 
   test("throws error with context when server returns non-ok status", async () => {
-    // Use a URL that doesn't exist to trigger a failure
+    // Publish to a non-existent path on the live server → 404 Not Found (non-ok status)
     await expect(
-      mindsPublish("http://localhost:1", "minds-BRE-444", "DRONE_COMPLETE", null),
+      mindsPublish(`${busUrl}/bad-endpoint`, "minds-BRE-444", "DRONE_COMPLETE", null),
     ).rejects.toThrow("mindsPublish failed");
   });
 });

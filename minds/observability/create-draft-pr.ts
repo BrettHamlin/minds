@@ -31,6 +31,7 @@ import {
   stampPrOnRun,
 } from "./metrics";
 import { createDraftPr } from "./draft-pr-lib";
+import { metricsDbPath } from "../shared/paths";
 
 function main(): void {
   const args = process.argv.slice(2);
@@ -59,7 +60,7 @@ function main(): void {
     const result = createDraftPr(ticketId, branch, { cwd: repoRoot });
 
     // Stamp DB
-    const db = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
+    const db = openMetricsDb(metricsDbPath());
     ensureRun(db, ticketId);
     stampPrOnRun(db, ticketId, result.prUrl, result.prNumber, result.prBranch);
     db.close();

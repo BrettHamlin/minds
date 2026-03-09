@@ -36,7 +36,7 @@ export function formatElapsed(ms: number): string {
 export function render(cachePath?: string): string {
   const resolvedPath =
     cachePath ||
-    join(process.env.COLLAB_ROOT || process.cwd(), ".collab/state/status-cache.json");
+    join(process.env.MINDS_ROOT || process.cwd(), ".collab/state/status-cache.json");
 
   if (!existsSync(resolvedPath)) return "collab: no status";
 

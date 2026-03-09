@@ -26,6 +26,7 @@ import { validateTicketIdArg } from "../pipeline_core/validation"; // CROSS-MIND
 import { exitIfMetricsDisabled } from "./metrics-guard";
 import { openMetricsDb } from "./metrics";
 import { updateGateAccuracy, getGateAccuracyReport } from "./gate-accuracy-lib";
+import { metricsDbPath } from "../shared/paths";
 
 function main(): void {
   const args = process.argv.slice(2);
@@ -44,8 +45,7 @@ function main(): void {
   exitIfMetricsDisabled(repoRoot);
 
   try {
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
+    const db = openMetricsDb(metricsDbPath());
 
     const updated = updateGateAccuracy(db, ticketId);
     const report = getGateAccuracyReport(db, ticketId);

@@ -27,6 +27,7 @@ import { exitIfMetricsDisabled } from "./metrics-guard";
 import { openMetricsDb } from "./metrics";
 import { classifyRun } from "./classify-run-lib";
 import { getAllAutonomyRates } from "./autonomy-rate";
+import { metricsDbPath } from "../shared/paths";
 
 function main(): void {
   const args = process.argv.slice(2);
@@ -45,8 +46,7 @@ function main(): void {
   exitIfMetricsDisabled(repoRoot);
 
   try {
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
+    const db = openMetricsDb(metricsDbPath());
 
     const result = classifyRun(db, ticketId);
     const autonomyRates = getAllAutonomyRates(db);

@@ -6,7 +6,7 @@
  * This is the single entry point for all external requests.
  *
  * Unlike child Minds, the Router does NOT use createMind() from server-base.ts.
- * It IS the root MCP server, running on a fixed port (COLLAB_MIND_PORT or 3100).
+ * It IS the root MCP server, running on a fixed port (MINDS_ROUTER_PORT or 3100).
  *
  * Startup sequence:
  *   1. Start Bun HTTP server on fixed port
@@ -33,7 +33,7 @@ import { MindRouter } from "../router.js";
 // Configuration
 // ---------------------------------------------------------------------------
 
-const PORT = parseInt(process.env.COLLAB_MIND_PORT ?? "3100", 10);
+const PORT = parseInt(process.env.MINDS_ROUTER_PORT ?? "3100", 10);
 const ROUTER_NAME = "router";
 
 // ---------------------------------------------------------------------------

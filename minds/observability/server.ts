@@ -12,6 +12,7 @@
 
 import { createMind } from "../server-base.js";
 import type { WorkUnit, WorkResult } from "../mind.js";
+import { metricsDbPath } from "../shared/paths.js";
 
 async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
@@ -28,8 +29,7 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
       if (!repoRoot || !ticketId || !gateName || !decision) {
         return { status: "handled", error: "Missing context: repoRoot, ticketId, gateName, decision" };
       }
-      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-      const db = openMetricsDb(dbPath);
+      const db = openMetricsDb(metricsDbPath());
       const id = insertGate(db, ticketId, gateName, decision, reasoning ?? null);
       db.close();
       return { status: "handled", result: { ticketId, gate: gateName, decision, id } };
@@ -55,8 +55,7 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
       if (!repoRoot || !ticketId || !outcome) {
         return { status: "handled", error: "Missing context: repoRoot, ticketId, outcome" };
       }
-      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-      const db = openMetricsDb(dbPath);
+      const db = openMetricsDb(metricsDbPath());
       completeRun(db, ticketId, outcome);
       db.close();
       return { status: "handled", result: { ticketId, outcome } };
@@ -71,8 +70,7 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
       if (!repoRoot || !ticketId) {
         return { status: "handled", error: "Missing context: repoRoot, ticketId" };
       }
-      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-      const db = openMetricsDb(dbPath);
+      const db = openMetricsDb(metricsDbPath());
       const result = classifyRun(db, ticketId);
       const rates = getAllAutonomyRates(db);
       db.close();
@@ -88,8 +86,7 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
       if (!repoRoot) {
         return { status: "handled", error: "Missing context.repoRoot" };
       }
-      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-      const db = openMetricsDb(dbPath);
+      const db = openMetricsDb(metricsDbPath());
       const { listRuns: listRunsFn } = await import("./dashboard-lib.js");
       const runs = listRunsFn(db, { last });
       db.close();
@@ -104,8 +101,7 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
       if (!repoRoot || !ticketId) {
         return { status: "handled", error: "Missing context: repoRoot, ticketId" };
       }
-      const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-      const db = openMetricsDb(dbPath);
+      const db = openMetricsDb(metricsDbPath());
       updateGateAccuracy(db, ticketId);
       const report = getGateAccuracyReport(db);
       db.close();
