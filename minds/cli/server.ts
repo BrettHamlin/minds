@@ -1,9 +1,8 @@
 /**
- * CLI Mind — collab binary, arg parsing, package registry, repo management.
+ * CLI Mind — minds binary, arg parsing, Minds installation.
  *
- * Owns: Both CLI entry points (src/cli/index.ts, cli/bin/collab.ts),
- * commands, lib (registry, resolver, integrity, lockfile, state, semver),
- * types, and CLI utilities (fs, git, version).
+ * Owns: CLI entry points (minds/cli/index.ts, minds/cli/bin/minds.ts),
+ * commands (minds-init).
  *
  * Leaf Mind: no children.
  */
@@ -15,29 +14,11 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
 
   switch (workUnit.intent) {
-    case "install package": {
-      const { install } = await import("./commands/pipelines/install.js");
-      const name = ctx.name as string | undefined;
-      if (!name) {
-        return { status: "handled", error: "Missing context.name" };
-      }
-      await install([name], {});
-      return { status: "handled", result: { ok: true } };
-    }
-
-    case "list packages": {
-      const { list } = await import("./commands/pipelines/list.js");
-      await list([], {});
-      return { status: "handled", result: { ok: true } };
-    }
-
-    case "resolve repo path": {
-      const { repo } = await import("./commands/repo/index.js");
-      const repoId = ctx.repoId as string | undefined;
-      if (!repoId) {
-        return { status: "handled", error: "Missing context.repoId" };
-      }
-      await repo(["resolve", repoId], {});
+    case "init minds": {
+      const { runMindsInit } = await import("./commands/minds-init.js");
+      const force = Boolean(ctx.force);
+      const quiet = Boolean(ctx.quiet);
+      await runMindsInit({ force, quiet });
       return { status: "handled", result: { ok: true } };
     }
 
@@ -48,15 +29,13 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
 
 export default createMind({
   name: "cli",
-  domain: "collab binary, arg parsing, package registry, repo management, and semver.",
-  keywords: ["cli", "collab", "install", "package", "pipeline", "repo", "registry", "semver", "browse", "list"],
+  domain: "Minds CLI binary, arg parsing, and installation commands.",
+  keywords: ["cli", "minds", "install", "init"],
   owns_files: ["minds/cli/"],
   capabilities: [
-    "install package",
-    "list packages",
-    "resolve repo path",
+    "init minds",
   ],
-  exposes: ["install package", "list packages", "resolve repo path", "ensureDir utility"],
+  exposes: ["init minds"],
   consumes: [],
   handle,
 });

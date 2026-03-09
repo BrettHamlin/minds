@@ -32,10 +32,10 @@ describe("Clarify Mind — describe()", () => {
     expect(desc.name).toBe("clarify");
   });
 
-  it("owns_files includes src/commands/collab.clarify.md", async () => {
+  it("owns_files includes minds/clarify/", async () => {
     const mind = await startClarifyMind();
     const desc = mind.describe();
-    expect(desc.owns_files).toContain("src/commands/collab.clarify.md");
+    expect(desc.owns_files).toContain("minds/clarify/");
   });
 
   it("owns_files includes minds/clarify/", async () => {

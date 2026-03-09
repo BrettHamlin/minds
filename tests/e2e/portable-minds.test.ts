@@ -1,11 +1,11 @@
 /**
  * tests/e2e/portable-minds.test.ts
  *
- * E2E validation: fresh repo → installPortableMinds → scaffoldMind → discover.
+ * E2E validation: fresh repo → installCoreMinds → scaffoldMind → discover.
  *
  * Flow:
  *   1. Create isolated temp directory with git init
- *   2. installPortableMinds() → .minds/ with all portable Minds
+ *   2. installCoreMinds() → .minds/ with all portable Minds
  *   3. Verify .minds/ structure and minds.json registry
  *   4. scaffoldMind("test-mind") → .minds/test-mind/
  *   5. Verify scaffold files and minds.json updated
@@ -18,7 +18,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
 
-import { installPortableMinds, getMindsSourceDir } from "../../minds/installer/core";
+import { installCoreMinds, getMindsSourceDir } from "../../minds/installer/core";
 import { scaffoldMind } from "../../minds/instantiate/lib/scaffold";
 import type { ScaffoldOptions } from "../../minds/instantiate/lib/scaffold";
 import { findChildServerFiles } from "../../minds/discovery";
@@ -52,7 +52,7 @@ beforeAll(() => {
 
   // Install portable Minds using the dev source directory
   const mindsSourceDir = getMindsSourceDir();
-  installPortableMinds(mindsSourceDir, tmpDir, { quiet: true });
+  installCoreMinds(mindsSourceDir, tmpDir, { quiet: true });
 });
 
 afterAll(() => {
@@ -65,7 +65,7 @@ afterAll(() => {
 // 1. .minds/ directory structure after install
 // ---------------------------------------------------------------------------
 
-describe("e2e/portable-minds: installPortableMinds", () => {
+describe("e2e/portable-minds: installCoreMinds", () => {
   test("1. .minds/ directory exists after install", () => {
     expect(existsSync(mindsDir)).toBe(true);
   });

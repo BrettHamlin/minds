@@ -15,7 +15,6 @@ set of questions (findings), routes them through the orchestrator, receives answ
 
 | File | Role |
 |------|------|
-| `src/commands/collab.clarify.md` | Pipeline clarify command — the agent's execution instructions |
 | `minds/clarify/server.ts` | Clarify Mind server — MCP capabilities for the clarify domain |
 | `minds/clarify/group-questions.ts` | Finding grouping utility (`groupFindings()`) |
 | `minds/clarify/lib/memory-query.ts` | Memory search wrapper for ambiguity matching (`queryMemoryForAmbiguity()`) |

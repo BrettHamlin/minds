@@ -1,7 +1,7 @@
 /**
- * Installer Mind — file mapping, distribution logic, install hooks, upgrade paths.
+ * Installer Mind — Minds architecture installation and distribution.
  *
- * Owns: installTemplates (core.ts), collab.install.ts runtime installer.
+ * Owns: installCoreMinds (core.ts) for portable Minds installation.
  *
  * Leaf Mind: no children.
  */
@@ -13,27 +13,25 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
 
   switch (workUnit.intent) {
-    case "run installer":
-    case "install collab scripts":
-    case "set up collab":
-    case "install pipeline": {
-      const { installTemplates, getTemplateDir } = await import("./core.js");
+    case "install minds":
+    case "set up minds": {
+      const { installCoreMinds, getMindsSourceDir } = await import("./core.js");
       const repoRoot = ctx.repoRoot as string | undefined;
       if (!repoRoot) {
         return { status: "handled", error: "Missing context.repoRoot" };
       }
-      const templateDir = getTemplateDir();
-      const result = installTemplates(templateDir, repoRoot, {
+      const mindsSourceDir = getMindsSourceDir();
+      const result = installCoreMinds(mindsSourceDir, repoRoot, {
         force: Boolean(ctx.force),
         quiet: Boolean(ctx.quiet),
       });
       return { status: "handled", result };
     }
 
-    case "get file mappings": {
-      const { getTemplateDir } = await import("./core.js");
-      const templateDir = getTemplateDir();
-      return { status: "handled", result: { templateDir } };
+    case "get minds source dir": {
+      const { getMindsSourceDir } = await import("./core.js");
+      const mindsSourceDir = getMindsSourceDir();
+      return { status: "handled", result: { mindsSourceDir } };
     }
 
     case "check for updates":
@@ -46,18 +44,16 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
 
 export default createMind({
   name: "installer",
-  domain: "File mapping, distribution logic, install hooks, and upgrade paths for collab installation.",
-  keywords: ["install", "installer", "template", "file", "mapping", "upgrade", "distribution", "copy"],
+  domain: "Minds architecture installation, distribution logic, and upgrade paths.",
+  keywords: ["install", "installer", "minds", "copy", "distribution", "upgrade"],
   owns_files: ["minds/installer/"],
   capabilities: [
-    "install pipeline",
-    "get file mappings",
+    "install minds",
+    "get minds source dir",
     "check for updates",
-    "run installer",
-    "install collab scripts",
-    "set up collab",
+    "set up minds",
   ],
-  exposes: ["install pipeline", "get file mappings", "check for updates"],
-  consumes: ["cli/ensureDir"],
+  exposes: ["install minds", "get minds source dir", "check for updates"],
+  consumes: [],
   handle,
 });
