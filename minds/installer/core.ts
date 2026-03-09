@@ -83,6 +83,7 @@ export interface MindsInstallResult {
   skipped: string[];
   errors: string[];
   bunVerified: boolean;
+  dashboardBuilt: boolean;
 }
 
 /**
@@ -98,15 +99,19 @@ export function installPortableMinds(
 ): MindsInstallResult {
   const { force = false, quiet = false } = options;
   const log = quiet ? (..._args: unknown[]) => {} : console.log;
-  const result: MindsInstallResult = { copied: [], skipped: [], errors: [], bunVerified: false };
+  const result: MindsInstallResult = { copied: [], skipped: [], errors: [], bunVerified: false, dashboardBuilt: false };
 
   const destMindsDir = join(repoRoot, ".minds");
   ensureDir(destMindsDir);
+
+  /** Dev artifacts that should never be copied from source into .minds/ */
+  const SKIP_COPY_NAMES = new Set(["node_modules", "dist", ".turbo", "bun.lock"]);
 
   // Helper: recursively copy a directory
   function copyDirRecursive(src: string, dest: string) {
     ensureDir(dest);
     for (const entry of readdirSync(src, { withFileTypes: true })) {
+      if (SKIP_COPY_NAMES.has(entry.name)) continue;
       const srcPath = join(src, entry.name);
       const destPath = join(dest, entry.name);
       if (entry.isDirectory()) {
@@ -190,6 +195,29 @@ export function installPortableMinds(
     log("  Bun runtime verified");
   } else {
     result.errors.push("Bun runtime not found. Install Bun: https://bun.sh");
+  }
+
+  // Build dashboard SPA
+  const dashboardDest = join(destMindsDir, "dashboard");
+  const dashboardPkgJson = join(dashboardDest, "package.json");
+  if (result.bunVerified && existsSync(dashboardPkgJson)) {
+    const stdio = quiet ? "ignore" : "inherit";
+    log("  Installing dashboard dependencies...");
+    const installProc = spawnSync("bun", ["install"], { cwd: dashboardDest, stdio });
+    if (installProc.status !== 0) {
+      result.errors.push("Dashboard build failed: bun install returned non-zero exit code");
+    } else {
+      log("  Building dashboard SPA...");
+      const buildProc = spawnSync("bun", ["run", "build.ts"], { cwd: dashboardDest, stdio });
+      if (buildProc.status !== 0) {
+        result.errors.push("Dashboard build failed: bun run build.ts returned non-zero exit code");
+      } else {
+        result.dashboardBuilt = true;
+        log("  Dashboard built successfully");
+      }
+    }
+  } else if (!result.bunVerified && existsSync(dashboardPkgJson)) {
+    result.errors.push("Dashboard not built: Bun runtime not available");
   }
 
   return result;

@@ -89,4 +89,9 @@ export async function runCollabInit(options: CollabInitOptions = {}): Promise<vo
   if (result.skipped.length + mindsResult.skipped.length > 0) {
     log(`  Skipped: ${result.skipped.length + mindsResult.skipped.length} files (already exist)`);
   }
+  if (mindsResult.dashboardBuilt) {
+    log("  Dashboard: built successfully");
+  } else if (mindsResult.errors.some((e) => e.toLowerCase().includes("dashboard"))) {
+    log("  Dashboard: build failed (see errors above)");
+  }
 }
