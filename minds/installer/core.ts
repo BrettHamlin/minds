@@ -164,6 +164,20 @@ export function installCoreMinds(
     }
   }
 
+  // Copy Claude Code skills into .claude/skills/
+  const skillsSrcDir = join(mindsSourceDir, "skills");
+  if (existsSync(skillsSrcDir)) {
+    const claudeSkillsDir = join(repoRoot, ".claude", "skills");
+    ensureDir(claudeSkillsDir);
+    for (const skillEntry of readdirSync(skillsSrcDir, { withFileTypes: true })) {
+      if (!skillEntry.isDirectory()) continue;
+      const skillSrc = join(skillsSrcDir, skillEntry.name);
+      const skillDest = join(claudeSkillsDir, skillEntry.name);
+      copyDirRecursive(skillSrc, skillDest);
+      log(`  Installed skill: .claude/skills/${skillEntry.name}`);
+    }
+  }
+
   // Generate/update tsconfig.json with @minds/* path alias
   const tsconfigPath = join(repoRoot, "tsconfig.json");
   try {
