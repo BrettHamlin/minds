@@ -12,6 +12,9 @@ export interface Drone {
   reviewAttempts?: number;
   violations?: number;
   branch?: string;
+  lastTool?: string;
+  toolCount?: number;
+  errors?: string[];
 }
 
 export interface Wave {
