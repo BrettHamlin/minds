@@ -134,6 +134,29 @@ export function installCoreMinds(
     }
   }
 
+  // Copy Claude Code slash commands into .claude/commands/
+  const claudeCommandsDir = join(repoRoot, ".claude", "commands");
+  ensureDir(claudeCommandsDir);
+  const CLAUDE_COMMANDS: Array<{ src: string; dest: string }> = [
+    { src: "tasks.md", dest: "minds.tasks.md" },
+    { src: "implement.md", dest: "minds.implement.md" },
+  ];
+  for (const { src: srcName, dest: destName } of CLAUDE_COMMANDS) {
+    const src = join(mindsSourceDir, "commands", srcName);
+    const dest = join(claudeCommandsDir, destName);
+    if (!existsSync(src)) {
+      if (!quiet) console.warn(`  Warning: Command file '${srcName}' not found at ${src}, skipping`);
+      continue;
+    }
+    if (!force && existsSync(dest)) {
+      result.skipped.push(relative(repoRoot, dest));
+    } else {
+      copyFileSync(src, dest);
+      result.copied.push(relative(repoRoot, dest));
+      log(`  Installed command: .claude/commands/${destName}`);
+    }
+  }
+
   // Generate/update tsconfig.json with @minds/* path alias
   const tsconfigPath = join(repoRoot, "tsconfig.json");
   try {
