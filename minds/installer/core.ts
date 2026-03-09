@@ -134,6 +134,13 @@ export function installCoreMinds(
     }
   }
 
+  // Copy orchestration lib
+  const libSrc = join(mindsSourceDir, "lib");
+  if (existsSync(libSrc)) {
+    copyDirRecursive(libSrc, join(destMindsDir, "lib"));
+    log("  Copied orchestration lib");
+  }
+
   // Copy Claude Code slash commands into .claude/commands/
   const claudeCommandsDir = join(repoRoot, ".claude", "commands");
   ensureDir(claudeCommandsDir);
