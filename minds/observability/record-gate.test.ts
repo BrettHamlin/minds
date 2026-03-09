@@ -10,7 +10,7 @@ import {
   ensureRun,
   insertGate,
 } from "./metrics";
-import { spawnCli } from "../execution/test-helpers"; // CROSS-MIND
+import { spawnCli } from "@minds/execution/test-helpers"; // CROSS-MIND
 
 const CLI_PATH = join(import.meta.dir, "record-gate.ts");
 

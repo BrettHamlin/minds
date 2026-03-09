@@ -41,9 +41,9 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { execSync } from "child_process";
 
-import type { Finding, FindingsBatch } from "../pipeline_core/questions"; // CROSS-MIND
-import { findingsPath } from "../pipeline_core/paths"; // CROSS-MIND
-import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import type { Finding, FindingsBatch } from "@minds/pipeline_core/questions"; // CROSS-MIND
+import { findingsPath } from "@minds/pipeline_core/paths"; // CROSS-MIND
+import { getRepoRoot } from "@minds/pipeline_core/repo"; // CROSS-MIND
 
 // ── Input types ──────────────────────────────────────────────────────────────
 

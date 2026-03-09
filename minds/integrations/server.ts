@@ -7,8 +7,8 @@
  * Leaf Mind: no children, no discoverChildren().
  */
 
-import { createMind } from "../server-base.js";
-import type { WorkUnit, WorkResult } from "../mind.js";
+import { createMind } from "@minds/server-base.js";
+import type { WorkUnit, WorkResult } from "@minds/mind.js";
 
 async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;

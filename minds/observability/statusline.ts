@@ -7,7 +7,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 // TODO(WD): Cross-Mind import — replace with parent escalation when Transport Mind is formalized.
-import type { PipelineSnapshot } from "../transport/status-snapshot"; // CROSS-MIND
+import type { PipelineSnapshot } from "@minds/transport/status-snapshot"; // CROSS-MIND
 
 export interface CachedStatus {
   pipelines: PipelineSnapshot[];

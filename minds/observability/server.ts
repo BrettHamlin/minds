@@ -10,9 +10,9 @@
  * Leaf Mind: no children.
  */
 
-import { createMind } from "../server-base.js";
-import type { WorkUnit, WorkResult } from "../mind.js";
-import { metricsDbPath } from "../shared/paths.js";
+import { createMind } from "@minds/server-base.js";
+import type { WorkUnit, WorkResult } from "@minds/mind.js";
+import { metricsDbPath } from "@minds/shared/paths.js";
 
 async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;

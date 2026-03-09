@@ -11,7 +11,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 // TODO(WD): Should be requested via parent escalation once Router Mind exists (Wave E).
-import { loadPipelineForTicket } from "../pipeline_core/pipeline"; // CROSS-MIND
+import { loadPipelineForTicket } from "@minds/pipeline_core/pipeline"; // CROSS-MIND
 
 // Detect repo root and use local state directory
 function getRepoRoot(): string {

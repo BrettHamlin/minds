@@ -15,7 +15,7 @@ import {
   StatusAggregator,
 } from "../status-aggregator";
 import { MindsEventType, type MindsBusMessage } from "../minds-events";
-import type { MindsStateTracker } from "../../dashboard/state-tracker";
+import type { MindsStateTracker } from "@minds/dashboard/state-tracker";
 
 // ── Mock SSE bus ─────────────────────────────────────────────────────────────
 

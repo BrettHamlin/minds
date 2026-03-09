@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { installTemplates, getTemplateDir } from "../../installer/core.js";
+import { installTemplates, getTemplateDir, getMindsSourceDir, installPortableMinds } from "../../installer/core.js";
 
 const COLLAB_REPO = "https://github.com/BrettHamlin/collab";
 
@@ -58,15 +58,35 @@ export async function runCollabInit(options: CollabInitOptions = {}): Promise<vo
   }
 
   if (result.errors.length > 0) {
-    console.error("\nInstallation completed with errors:");
+    console.error("\nTemplate installation completed with errors:");
     for (const e of result.errors) console.error(`  - ${e}`);
     process.exit(1);
     return;
   }
 
+  // Install portable Minds to .minds/
+  log("\nInstalling portable Minds (.minds/)...");
+  let mindsSourceDir: string;
+  try {
+    mindsSourceDir = getMindsSourceDir();
+  } catch {
+    // Fall back to the cloned repo's minds/ directory
+    mindsSourceDir = tempDir ? join(tempDir, "minds") : join(templateDir, "..");
+  }
+
+  const mindsResult = installPortableMinds(mindsSourceDir, repoRoot, { force, quiet });
+
+  if (!mindsResult.bunVerified) {
+    console.warn("\n⚠️  Warning: Bun runtime not found. Install Bun: https://bun.sh");
+  }
+  if (mindsResult.errors.filter((e) => !e.includes("Bun")).length > 0) {
+    console.error("\nMind installation completed with errors:");
+    for (const e of mindsResult.errors) console.error(`  - ${e}`);
+  }
+
   log("\nInstallation complete!");
-  log(`  Copied:  ${result.copied.length} files`);
-  if (result.skipped.length > 0) {
-    log(`  Skipped: ${result.skipped.length} files (already exist)`);
+  log(`  Copied:  ${result.copied.length + mindsResult.copied.length} files`);
+  if (result.skipped.length + mindsResult.skipped.length > 0) {
+    log(`  Skipped: ${result.skipped.length + mindsResult.skipped.length} files (already exist)`);
   }
 }

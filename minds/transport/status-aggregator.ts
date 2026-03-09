@@ -18,8 +18,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "path";
 import { watch, type FSWatcher } from "fs";
 import { buildSnapshot, formatSnapshotEvent } from "./status-snapshot";
-import { MindsStateTracker } from "../dashboard/state-tracker.js";
-import { createMindsRouteHandler } from "../dashboard/route-handler.js";
+import { MindsStateTracker } from "@minds/dashboard/state-tracker.js";
+import { createMindsRouteHandler } from "@minds/dashboard/route-handler.js";
 import type { MindsBusMessage } from "./minds-events.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { unlinkSync, existsSync } from "fs";
 import { MindsStateTracker } from "../state-tracker.js";
-import { MindsEventType, type MindsBusMessage } from "../../transport/minds-events.js";
+import { MindsEventType, type MindsBusMessage } from "@minds/transport/minds-events.js";
 
 const TEST_DB = "/tmp/minds-tracker-persist-test.sqlite";
 

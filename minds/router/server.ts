@@ -18,16 +18,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { resolve } from "path";
-import type { MindDescription, WorkUnit, WorkResult } from "../mind.js";
-import { validateWorkUnit } from "../mind.js";
+import type { MindDescription, WorkUnit, WorkResult } from "@minds/mind.js";
+import { validateWorkUnit } from "@minds/mind.js";
 import {
   findChildServerFiles,
   spawnChild,
   callDescribe,
   callHandle,
-} from "../discovery.js";
-import type { ChildProcess, SpawnedChild } from "../discovery.js";
-import { MindRouter } from "../router.js";
+} from "@minds/discovery.js";
+import type { ChildProcess, SpawnedChild } from "@minds/discovery.js";
+import { MindRouter } from "@minds/router.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -262,7 +262,7 @@ if (import.meta.main) {
   _state = await discoverSiblings();
 
   // Load embedding model for hybrid search (BM25 + vector)
-  const { loadEmbeddingModel } = await import("../embeddings.js");
+  const { loadEmbeddingModel } = await import("@minds/embeddings.js");
   const model = await loadEmbeddingModel();
   if (model) {
     _state.mindRouter.setModel(model);

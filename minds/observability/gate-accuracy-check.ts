@@ -21,12 +21,12 @@
  */
 
 // TODO(WD): getRepoRoot/validateTicketIdArg should be requested via parent escalation once Pipeline Core is a Mind.
-import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
-import { validateTicketIdArg } from "../pipeline_core/validation"; // CROSS-MIND
+import { getRepoRoot } from "@minds/pipeline_core/repo"; // CROSS-MIND
+import { validateTicketIdArg } from "@minds/pipeline_core/validation"; // CROSS-MIND
 import { exitIfMetricsDisabled } from "./metrics-guard";
 import { openMetricsDb } from "./metrics";
 import { updateGateAccuracy, getGateAccuracyReport } from "./gate-accuracy-lib";
-import { metricsDbPath } from "../shared/paths";
+import { metricsDbPath } from "@minds/shared/paths";
 
 function main(): void {
   const args = process.argv.slice(2);

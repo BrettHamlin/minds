@@ -17,7 +17,7 @@ import type { MindDescription } from "./mind.js";
 const gitProc = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], { stdout: "pipe" });
 const repoRoot = new TextDecoder().decode(gitProc.stdout).trim();
 
-// Parse --output arg
+// Parse CLI args
 const args = process.argv.slice(2);
 const outputFlagIdx = args.indexOf("--output");
 const outputPath =
@@ -25,9 +25,15 @@ const outputPath =
     ? resolve(args[outputFlagIdx + 1])
     : resolve(repoRoot, ".collab/minds.json");
 
+const mindsDirFlagIdx = args.indexOf("--minds-dir");
+const mindsDir =
+  mindsDirFlagIdx !== -1 && args[mindsDirFlagIdx + 1]
+    ? resolve(args[mindsDirFlagIdx + 1])
+    : undefined;
+
 // Find child server files, excluding the router itself
 const selfPath = resolve(import.meta.dir, "router/server.ts");
-const childFiles = findChildServerFiles(repoRoot).filter((p) => resolve(p) !== selfPath);
+const childFiles = findChildServerFiles(repoRoot, mindsDir).filter((p) => resolve(p) !== selfPath);
 
 // Spawn each child, call describe(), collect descriptions
 const descriptions: MindDescription[] = [];

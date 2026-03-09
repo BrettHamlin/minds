@@ -8,7 +8,7 @@
  */
 
 // TODO(WD): readJsonFile should be requested via parent escalation once Pipeline Core is a Mind.
-import { readJsonFile } from "../pipeline_core/json-io"; // CROSS-MIND
+import { readJsonFile } from "@minds/pipeline_core/json-io"; // CROSS-MIND
 
 /**
  * Check @metrics directive and exit 3 if metrics are disabled.

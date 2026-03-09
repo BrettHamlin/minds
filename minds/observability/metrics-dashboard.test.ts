@@ -13,7 +13,7 @@ import {
   stampPrOnRun,
 } from "./metrics";
 import { updateGateAccuracy } from "./gate-accuracy-lib";
-import { spawnCli } from "../execution/test-helpers"; // CROSS-MIND
+import { spawnCli } from "@minds/execution/test-helpers"; // CROSS-MIND
 import { classifyRun } from "./classify-run-lib";
 
 const CLI_PATH = join(import.meta.dir, "metrics-dashboard.ts");

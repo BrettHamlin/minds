@@ -13,7 +13,7 @@
 
 import { execSync } from "child_process";
 import * as fs from "fs";
-import { resolveTransportPath } from "../transport/resolve-transport"; // CROSS-MIND
+import { resolveTransportPath } from "@minds/transport/resolve-transport"; // CROSS-MIND
 
 function getRepoRoot(): string {
   try {

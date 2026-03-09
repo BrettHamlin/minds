@@ -3,8 +3,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { dispatchSignal } from "./emit-phase-signal";
-import { handleBusMessage } from "../transport/bus-signal-bridge"; // CROSS-MIND
-import { startBusServer, teardownBusServer } from "../execution/orchestrator-init"; // CROSS-MIND
+import { handleBusMessage } from "@minds/transport/bus-signal-bridge"; // CROSS-MIND
+import { startBusServer, teardownBusServer } from "@minds/execution/orchestrator-init"; // CROSS-MIND
 
 // __dirname = minds/signals → ../../ = repo root
 const REAL_REPO_ROOT = path.resolve(__dirname, "../../");

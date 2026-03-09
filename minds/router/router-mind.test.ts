@@ -12,10 +12,10 @@
  */
 
 import { describe, it, expect, beforeEach } from "bun:test";
-import { MindRouter } from "../router";
-import { validateMindDescription } from "../mind";
+import { MindRouter } from "@minds/router";
+import { validateMindDescription } from "@minds/mind";
 import { ROUTER_DESCRIPTION } from "./server";
-import type { MindDescription } from "../mind";
+import type { MindDescription } from "@minds/mind";
 
 // ---------------------------------------------------------------------------
 // All 12 sibling Mind descriptions (mirroring their actual domains/keywords)
