@@ -2,17 +2,6 @@
 
 Create a new Mind in the Minds infrastructure with all required artifacts.
 
-## Voice Notification
-
-```bash
-curl -s -X POST http://localhost:8888/notify \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Running the Scaffold workflow in the CreateMind skill to create a new Mind"}' \
-  > /dev/null 2>&1 &
-```
-
-Running the **Scaffold** workflow in the **CreateMind** skill to create a new Mind...
-
 ## Path Detection
 
 Determine the Minds source directory before running any commands. In installed repos everything lives under `.minds/`; in the dev repo it lives under `minds/`.
