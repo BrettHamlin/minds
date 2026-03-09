@@ -457,7 +457,7 @@ export function createAggregatorServer(opts: AggregatorConfig = {}): {
     opts.registryDir ??
     join(process.cwd(), ".collab/state/pipeline-registry");
 
-  const dbPath = join(registryDir, "..", "minds-dashboard.db");
+  const dbPath = join(registryDir, "minds-dashboard.db");
   const mindsTracker = new MindsStateTracker(dbPath);
   mindsTracker.loadFromDb();
   const mindsHandler = createMindsRouteHandler(mindsTracker);

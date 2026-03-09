@@ -278,14 +278,15 @@ if (import.meta.main) { (async () => {
   const hookScriptPath = resolve(repoRoot, "minds", "transport", "hooks", "send-event.ts");
   const hookCommand = `bun ${hookScriptPath} --source-app drone:${mindName}`;
 
-  const hookEntry = { type: "command", command: hookCommand };
+  // Claude Code hooks use matcher-based format: { matcher?: string, hooks: [{ type, command }] }
+  const hookWrapper = { hooks: [{ type: "command", command: hookCommand }] };
   const hooksConfig: Record<string, unknown[]> = {
-    SubagentStart: [hookEntry],
-    SubagentStop: [hookEntry],
-    PreToolUse: [hookEntry],
-    PostToolUse: [hookEntry],
-    PostToolUseFailure: [hookEntry],
-    Stop: [hookEntry],
+    SubagentStart: [hookWrapper],
+    SubagentStop: [hookWrapper],
+    PreToolUse: [hookWrapper],
+    PostToolUse: [hookWrapper],
+    PostToolUseFailure: [hookWrapper],
+    Stop: [hookWrapper],
   };
 
   let existingSettings: Record<string, unknown> = {};
