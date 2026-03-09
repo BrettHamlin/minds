@@ -165,6 +165,20 @@ export function installCoreMinds(
     }
   }
 
+  // Copy Claude Code skills into .claude/skills/
+  const skillsSrcDir = join(mindsSourceDir, "skills");
+  if (existsSync(skillsSrcDir)) {
+    const claudeSkillsDir = join(repoRoot, ".claude", "skills");
+    ensureDir(claudeSkillsDir);
+    for (const skillEntry of readdirSync(skillsSrcDir, { withFileTypes: true })) {
+      if (!skillEntry.isDirectory()) continue;
+      const skillSrc = join(skillsSrcDir, skillEntry.name);
+      const skillDest = join(claudeSkillsDir, skillEntry.name);
+      copyDirRecursive(skillSrc, skillDest);
+      log(`  Installed skill: .claude/skills/${skillEntry.name}`);
+    }
+  }
+
   // Generate/update tsconfig.json with @minds/* path alias
   const tsconfigPath = join(repoRoot, "tsconfig.json");
   try {
@@ -182,24 +196,6 @@ export function installCoreMinds(
     log("  Generated/updated tsconfig.json with @minds/* path alias");
   } catch (err) {
     result.errors.push(`tsconfig.json: ${(err as Error).message}`);
-  }
-
-  // Copy Claude Code skills into .claude/skills/
-  const sourceRepoRoot = join(mindsSourceDir, "..");
-  const skillsSourceDir = join(sourceRepoRoot, ".claude", "skills");
-  const skillsDestDir = join(repoRoot, ".claude", "skills");
-
-  const SKILLS_TO_INSTALL = ["Fission"] as const;
-
-  for (const skillName of SKILLS_TO_INSTALL) {
-    const src = join(skillsSourceDir, skillName);
-    if (!existsSync(src)) {
-      if (!quiet) console.warn(`  Warning: Skill '${skillName}' not found at ${src}, skipping`);
-      continue;
-    }
-    const dest = join(skillsDestDir, skillName);
-    copyDirRecursive(src, dest);
-    log(`  Installed skill: ${skillName}`);
   }
 
   // Generate .minds/minds.json from pre-generated core registry
