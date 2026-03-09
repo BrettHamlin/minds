@@ -1,5 +1,5 @@
 /**
- * generate-registry.ts — CLI script to generate .collab/minds.json.
+ * generate-registry.ts — CLI script to generate .minds/minds.json.
  *
  * Spawns all child Mind servers, calls describe() on each via MCP,
  * collects their MindDescription objects, writes them as a JSON array
@@ -23,7 +23,7 @@ const outputFlagIdx = args.indexOf("--output");
 const outputPath =
   outputFlagIdx !== -1 && args[outputFlagIdx + 1]
     ? resolve(args[outputFlagIdx + 1])
-    : resolve(repoRoot, ".collab/minds.json");
+    : resolve(repoRoot, ".minds/minds.json");
 
 const mindsDirFlagIdx = args.indexOf("--minds-dir");
 const mindsDir =

@@ -98,7 +98,7 @@ describe("getGateConfig", () => {
   const pipeline = {
     gates: {
       plan_review: {
-        prompt: ".collab/config/gates/plan.md",
+        prompt: ".minds/config/gates/plan.md",
         on: {
           APPROVED: { to: "tasks" },
           REVISION_NEEDED: { to: "plan", feedback: "enrich" },
@@ -110,7 +110,7 @@ describe("getGateConfig", () => {
   test("returns gate config when found", () => {
     const gate = getGateConfig(pipeline, "plan_review");
     expect(gate).not.toBeNull();
-    expect(gate!.prompt).toBe(".collab/config/gates/plan.md");
+    expect(gate!.prompt).toBe(".minds/config/gates/plan.md");
   });
 
   test("returns null for missing gate", () => {
@@ -222,8 +222,8 @@ let tmpDir: string;
 
 beforeAll(() => {
   tmpDir = join(tmpdir(), `evaluate-gate-cli-${process.pid}`);
-  mkdirSync(join(tmpDir, ".collab/config/gates"), { recursive: true });
-  mkdirSync(join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/config/gates"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/state/pipeline-registry"), { recursive: true });
   mkdirSync(join(tmpDir, "specs/BRE-CLI"), { recursive: true });
 
   execSync("git init", { cwd: tmpDir });
@@ -234,7 +234,7 @@ beforeAll(() => {
   writeFileSync(join(tmpDir, "specs/BRE-CLI/plan.md"), "# Plan content for CLI test");
 
   // Gate prompt file with front matter
-  writeFileSync(join(tmpDir, ".collab/config/gates/plan.md"), `---
+  writeFileSync(join(tmpDir, ".minds/config/gates/plan.md"), `---
 context:
   SPEC_MD: "specs/\${TICKET_ID}/spec.md"
   PLAN_MD: "specs/\${TICKET_ID}/plan.md"
@@ -254,7 +254,7 @@ Respond: APPROVED or REVISION_NEEDED
 
   // Pipeline config with plan_review gate (phases required by loadPipelineForTicket)
   writeFileSync(
-    join(tmpDir, ".collab/config/pipeline.json"),
+    join(tmpDir, ".minds/config/pipeline.json"),
     JSON.stringify({
       version: "3.1",
       phases: {
@@ -264,7 +264,7 @@ Respond: APPROVED or REVISION_NEEDED
       },
       gates: {
         plan_review: {
-          prompt: ".collab/config/gates/plan.md",
+          prompt: ".minds/config/gates/plan.md",
           on: {
             APPROVED: { to: "tasks" },
             REVISION_NEEDED: { to: "plan", feedback: "enrich", maxRetries: 3 },
@@ -282,7 +282,7 @@ Respond: APPROVED or REVISION_NEEDED
 
   // Registry entry so loadPipelineForTicket works
   writeFileSync(
-    join(tmpDir, ".collab/state/pipeline-registry/BRE-CLI.json"),
+    join(tmpDir, ".minds/state/pipeline-registry/BRE-CLI.json"),
     JSON.stringify({ ticket_id: "BRE-CLI", current_step: "plan" })
   );
 });

@@ -9,7 +9,7 @@
 //   GET /status             — health check + connection stats
 //
 // Constraints:
-//   - In-memory only; writes .collab/aggregator-port for discovery
+//   - In-memory only; writes .minds/aggregator-port for discovery
 //   - No external dependencies — Bun built-ins only
 //   - Singleton: checks for existing instance on startup
 //   - Reuses buildSnapshot/formatSnapshotEvent from status-snapshot.ts
@@ -21,6 +21,7 @@ import { buildSnapshot, formatSnapshotEvent } from "./status-snapshot";
 import { MindsStateTracker } from "@minds/dashboard/state-tracker.js";
 import { createMindsRouteHandler } from "@minds/dashboard/route-handler.js";
 import type { MindsBusMessage } from "./minds-events.js";
+import { mindsRoot } from "../shared/paths.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ export class StatusAggregator {
     this.registryDir = registryDir;
   }
 
-  /** The .collab/state/ dir — one level up from the pipeline-registry dir. */
+  /** The .minds/state/ dir — one level up from the pipeline-registry dir. */
   private get stateDir(): string {
     return join(this.registryDir, "..");
   }
@@ -190,7 +191,7 @@ export class StatusAggregator {
   }
 
   /**
-   * Scan .collab/state/minds-bus-*.json files and connect to any Minds bus
+   * Scan .minds/state/minds-bus-*.json files and connect to any Minds bus
    * servers not yet connected. Uses "minds-{ticketId}" as the connection key
    * to coexist with pipeline registry connections in the same map.
    */
@@ -455,7 +456,7 @@ export function createAggregatorServer(opts: AggregatorConfig = {}): {
   const port = opts.port ?? 0;
   const registryDir =
     opts.registryDir ??
-    join(process.cwd(), ".collab/state/pipeline-registry");
+    join(mindsRoot(), "state/pipeline-registry");
 
   const dbPath = join(registryDir, "minds-dashboard.db");
   const mindsTracker = new MindsStateTracker(dbPath);
@@ -510,8 +511,8 @@ if (import.meta.main) {
     regDirIdx !== -1 && args[regDirIdx + 1] ? args[regDirIdx + 1] : undefined;
 
   // Singleton check — verify existing instance is alive
-  const collabDir = join(process.cwd(), ".collab");
-  const portFile = join(collabDir, "aggregator-port");
+  const mindsDir = mindsRoot();
+  const portFile = join(mindsDir, "aggregator-port");
 
   if (existsSync(portFile)) {
     try {
@@ -549,7 +550,7 @@ if (import.meta.main) {
   });
 
   // Write port for discovery
-  if (!existsSync(collabDir)) mkdirSync(collabDir, { recursive: true });
+  if (!existsSync(mindsDir)) mkdirSync(mindsDir, { recursive: true });
   writeFileSync(portFile, String(server.port), "utf8");
 
   // Signal readiness

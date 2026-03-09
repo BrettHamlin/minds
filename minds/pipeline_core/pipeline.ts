@@ -19,9 +19,9 @@ export function parsePipelineArgs(args: string[]): { variant: string | undefined
  * Resolve the pipeline config file path, supporting pipeline variants.
  *
  * Resolution order:
- *   1. Explicit `variant` option  → .collab/config/pipeline-variants/{variant}.json
+ *   1. Explicit `variant` option  → .minds/config/pipeline-variants/{variant}.json
  *   2. `ticketId` + `registryDir` → read pipeline_variant from registry, same resolution
- *   3. Default                    → .collab/config/pipeline.json
+ *   3. Default                    → .minds/config/pipeline.json
  *
  * Falls back to the default pipeline.json when a variant is specified but
  * the variant file does not exist (mirrors orchestrator-init.ts behavior).
@@ -33,7 +33,7 @@ export function resolvePipelineConfigPath(
     ticketId?: string;
   } = {}
 ): string {
-  const defaultPath = path.join(repoRoot, ".collab", "config", "pipeline.json");
+  const defaultPath = path.join(repoRoot, ".minds", "config", "pipeline.json");
 
   let variant = options.variant;
   if (!variant && options.ticketId) {
@@ -45,7 +45,7 @@ export function resolvePipelineConfigPath(
   if (variant) {
     const variantPath = path.join(
       repoRoot,
-      ".collab",
+      ".minds",
       "config",
       "pipeline-variants",
       `${variant}.json`

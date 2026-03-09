@@ -26,12 +26,12 @@ let tmpDir: string;
 
 beforeAll(() => {
   tmpDir = join(tmpdir(), `metrics-dashboard-test-${process.pid}`);
-  mkdirSync(join(tmpDir, ".collab/state"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/state"), { recursive: true });
 
   execSync("git init", { cwd: tmpDir });
   execSync("git checkout -b test-branch", { cwd: tmpDir });
 
-  const db = openMetricsDb(join(tmpDir, ".collab/state/metrics.db"));
+  const db = openMetricsDb(join(tmpDir, ".minds/state/metrics.db"));
 
   // Run 1: BRE-901 — completed, has plan phase, has PR
   ensureRun(db, "BRE-901");
@@ -315,10 +315,10 @@ describe("empty DB", () => {
 
   beforeAll(() => {
     emptyDir = join(tmpdir(), `metrics-dashboard-empty-${process.pid}`);
-    mkdirSync(join(emptyDir, ".collab/state"), { recursive: true });
+    mkdirSync(join(emptyDir, ".minds/state"), { recursive: true });
     execSync("git init", { cwd: emptyDir });
     execSync("git checkout -b test-empty", { cwd: emptyDir });
-    const db = openMetricsDb(join(emptyDir, ".collab/state/metrics.db"));
+    const db = openMetricsDb(join(emptyDir, ".minds/state/metrics.db"));
     db.close();
   });
 

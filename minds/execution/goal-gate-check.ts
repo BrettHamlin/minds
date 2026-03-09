@@ -102,7 +102,7 @@ function main(): void {
   const nextPhase = args[1];
 
   const repoRoot = getRepoRoot();
-  const configPath = `${repoRoot}/.collab/config/pipeline.json`;
+  const configPath = `${repoRoot}/.minds/config/pipeline.json`;
 
   // Read pipeline config
   const pipeline = readJsonFile(configPath);

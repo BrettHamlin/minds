@@ -433,8 +433,8 @@ describe("classify-run CLI integration", () => {
       tmpdir(),
       `cr-int-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
-    const stateDir  = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir = join(tmpDir, ".collab", "config");
+    const stateDir  = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir = join(tmpDir, ".minds", "config");
     mkdirSync(stateDir,  { recursive: true });
     mkdirSync(configDir, { recursive: true });
 
@@ -447,7 +447,7 @@ describe("classify-run CLI integration", () => {
       JSON.stringify({ ticket_id: ticketId, status: "done" }, null, 2)
     );
 
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db = openMetricsDb(metricsPath);
     ensureRun(db, ticketId);
     db.close();
@@ -517,8 +517,8 @@ describe("classify-run CLI integration", () => {
 
   test("exits 1 when no TICKET_ID provided", async () => {
     tmpDir = join(tmpdir(), `cr-noid-${Date.now()}`);
-    mkdirSync(join(tmpDir, ".collab", "config"), { recursive: true });
-    writeFileSync(join(tmpDir, ".collab", "config", "pipeline.json"), "{}");
+    mkdirSync(join(tmpDir, ".minds", "config"), { recursive: true });
+    writeFileSync(join(tmpDir, ".minds", "config", "pipeline.json"), "{}");
 
     const proc = await Bun.spawn(
       ["bun", join(import.meta.dir, "classify-run.ts")],
@@ -530,9 +530,9 @@ describe("classify-run CLI integration", () => {
 
   test("exits 3 when @metrics(false) in pipeline config", async () => {
     tmpDir = join(tmpdir(), `cr-disabled-${Date.now()}`);
-    mkdirSync(join(tmpDir, ".collab", "config"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds", "config"), { recursive: true });
     writeFileSync(
-      join(tmpDir, ".collab", "config", "pipeline.json"),
+      join(tmpDir, ".minds", "config", "pipeline.json"),
       JSON.stringify({ metrics: { enabled: false } })
     );
 
@@ -632,8 +632,8 @@ describe("E2E: full pipeline flow", () => {
     const NONCE     = "fee1f0";
 
     tmpDir = join(tmpdir(), `cr-e2e-auto-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir   = join(tmpDir, ".collab", "config");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir   = join(tmpDir, ".minds", "config");
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(configDir,   { recursive: true });
 
@@ -644,7 +644,7 @@ describe("E2E: full pipeline flow", () => {
     );
 
     // Seed: run + phase (no interventions)
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db0 = openMetricsDb(metricsPath);
     ensureRun(db0, TICKET_ID);
     recordPhase(db0, {
@@ -701,8 +701,8 @@ describe("E2E: full pipeline flow", () => {
     const BAD_NONCE  = "dead00";
 
     tmpDir = join(tmpdir(), `cr-e2e-nonauto-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir   = join(tmpDir, ".collab", "config");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir   = join(tmpDir, ".minds", "config");
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(configDir,   { recursive: true });
 
@@ -712,7 +712,7 @@ describe("E2E: full pipeline flow", () => {
       JSON.stringify({ ticket_id: TICKET_ID, nonce: REAL_NONCE, current_step: "impl", status: "running" }, null, 2)
     );
 
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db0 = openMetricsDb(metricsPath);
     ensureRun(db0, TICKET_ID);
     db0.close();

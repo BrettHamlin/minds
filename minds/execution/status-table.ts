@@ -199,9 +199,9 @@ export function renderTable(
 function main(): void {
   try {
     const repoRoot = getRepoRoot();
-    const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-    const groupsDir = `${repoRoot}/.collab/state/pipeline-groups`;
-    const multiRepoConfigPath = `${repoRoot}/.collab/config/multi-repo.json`;
+    const registryDir = `${repoRoot}/.minds/state/pipeline-registry`;
+    const groupsDir = `${repoRoot}/.minds/state/pipeline-groups`;
+    const multiRepoConfigPath = `${repoRoot}/.minds/config/multi-repo.json`;
 
     // Ensure dirs exist
     fs.mkdirSync(registryDir, { recursive: true });

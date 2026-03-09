@@ -123,7 +123,7 @@ function logIntervention(
   description?: string
 ): void {
   try {
-    const db = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
+    const db = openMetricsDb(`${repoRoot}/.minds/state/metrics.db`);
     ensureRun(db, runId);
     insertIntervention(db, runId, phase, type, description);
     db.close();
@@ -141,7 +141,7 @@ function logSignalAttempt(
   try {
     const processedAt = new Date().toISOString();
     const latencyMs = new Date(processedAt).getTime() - new Date(receivedAt).getTime();
-    const db = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
+    const db = openMetricsDb(`${repoRoot}/.minds/state/metrics.db`);
     ensureRun(db, runId);
     insertSignal(db, runId, raw, parsedOk, { ...fields, processedAt, latencyMs });
     db.close();

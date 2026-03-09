@@ -220,7 +220,7 @@ const PIPELINE_WITH_GATES = {
   ...PIPELINE,
   gates: {
     plan_review: {
-      prompt: ".collab/config/gates/plan.md",
+      prompt: ".minds/config/gates/plan.md",
       on: {
         APPROVED: { to: "tasks" },
         REVISION_NEEDED: { to: "plan", feedback: "enrich" },
@@ -270,14 +270,14 @@ describe("transition-resolve: variant config loading", () => {
 
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-transition-variant-"));
-    variantsDir = path.join(tmpDir, ".collab", "config", "pipeline-variants");
-    registryDir = path.join(tmpDir, ".collab", "state", "pipeline-registry");
-    fs.mkdirSync(path.join(tmpDir, ".collab", "config"), { recursive: true });
+    variantsDir = path.join(tmpDir, ".minds", "config", "pipeline-variants");
+    registryDir = path.join(tmpDir, ".minds", "state", "pipeline-registry");
+    fs.mkdirSync(path.join(tmpDir, ".minds", "config"), { recursive: true });
     fs.mkdirSync(variantsDir, { recursive: true });
     fs.mkdirSync(registryDir, { recursive: true });
 
     fs.writeFileSync(
-      path.join(tmpDir, ".collab", "config", "pipeline.json"),
+      path.join(tmpDir, ".minds", "config", "pipeline.json"),
       JSON.stringify({ version: "3.1", phases: {}, id: "default" })
     );
     fs.writeFileSync(
@@ -310,6 +310,6 @@ describe("transition-resolve: variant config loading", () => {
 
   test("3. unknown variant falls back to default pipeline.json", () => {
     const configPath = resolvePipelineConfigPath(tmpDir, { variant: "unknown" });
-    expect(configPath).toBe(path.join(tmpDir, ".collab", "config", "pipeline.json"));
+    expect(configPath).toBe(path.join(tmpDir, ".minds", "config", "pipeline.json"));
   });
 });

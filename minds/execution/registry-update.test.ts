@@ -219,7 +219,7 @@ describe("registry-update integration (SQLite + JSON)", () => {
   // Each test gets a fresh temp dir that looks like a repo root
   function setupTmpRepo(ticketId: string): { registryPath: string; metricsPath: string } {
     tmpDir = join(tmpdir(), `reg-upd-int-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
     mkdirSync(registryDir, { recursive: true });
 
     const registry = {
@@ -231,7 +231,7 @@ describe("registry-update integration (SQLite + JSON)", () => {
     const registryPath = join(registryDir, `${ticketId}.json`);
     writeFileSync(registryPath, JSON.stringify(registry, null, 2) + "\n");
 
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     return { registryPath, metricsPath };
   }
 
@@ -324,7 +324,7 @@ describe("registry-update integration (SQLite + JSON)", () => {
     const { registryPath } = setupTmpRepo("BRE-INT-4");
 
     // Make the state dir read-only so SQLite cannot create metrics.db
-    const stateDir = join(tmpDir, ".collab", "state");
+    const stateDir = join(tmpDir, ".minds", "state");
     const { chmodSync } = await import("fs");
     chmodSync(stateDir, 0o555);
 
@@ -410,8 +410,8 @@ describe("registry-update integration (SQLite + JSON)", () => {
     // Simulate the orchestrator's normal completion path:
     //   pipeline reached 'done' (terminal), now setting status=done for cleanup
     tmpDir = join(tmpdir(), `reg-upd-int-terminal-${Date.now()}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir   = join(tmpDir, ".collab", "config");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir   = join(tmpDir, ".minds", "config");
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(configDir,   { recursive: true });
 
@@ -432,7 +432,7 @@ describe("registry-update integration (SQLite + JSON)", () => {
       JSON.stringify({ ticket_id: "BRE-INT-8", nonce: "abc123", current_step: "done", status: "running" }, null, 2)
     );
 
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
 
     const result = await Bun.spawn(
       ["bun", join(import.meta.dir, "registry-update.ts"), "BRE-INT-8", "status=done"],
@@ -454,8 +454,8 @@ describe("registry-update integration (SQLite + JSON)", () => {
   test("status=done when mid-pipeline with pipeline.json present: intervention logged", async () => {
     // Force-setting status=done while still in impl phase → manual override
     tmpDir = join(tmpdir(), `reg-upd-int-midpipe-${Date.now()}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir   = join(tmpDir, ".collab", "config");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir   = join(tmpDir, ".minds", "config");
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(configDir,   { recursive: true });
 
@@ -475,7 +475,7 @@ describe("registry-update integration (SQLite + JSON)", () => {
       JSON.stringify({ ticket_id: "BRE-INT-9", nonce: "abc123", current_step: "impl", status: "running" }, null, 2)
     );
 
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
 
     const result = await Bun.spawn(
       ["bun", join(import.meta.dir, "registry-update.ts"), "BRE-INT-9", "status=done"],

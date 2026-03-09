@@ -1,6 +1,6 @@
 // Collab pipeline — canonical source of truth
 // Compile with: pipelang compile collab.pipeline
-// Replaces .collab/config/pipeline.json as the authoritative definition
+// Replaces .minds/config/pipeline.json as the authoritative definition
 
 @defaultModel(sonnet)
 @codeReview()
@@ -64,7 +64,7 @@ phase(blindqa)
     }
     .signals(BLINDQA_COMPLETE, BLINDQA_FAILED, BLINDQA_ERROR, BLINDQA_QUESTION, BLINDQA_WAITING)
     .goalGate(.always)
-    .orchestratorContext(.file(".collab/config/orchestrator-contexts/blindqa.md"))
+    .orchestratorContext(.file(".minds/config/orchestrator-contexts/blindqa.md"))
     .on(BLINDQA_COMPLETE, to: done)
     .on(BLINDQA_FAILED, to: blindqa)
     .on(BLINDQA_ERROR, to: blindqa)
@@ -75,12 +75,12 @@ phase(done)
 // ── Gates ─────────────────────────────────────────────────────────────────────
 
 gate(plan_review)
-    .prompt(.file(".collab/config/gates/plan.md"))
+    .prompt(.file(".minds/config/gates/plan.md"))
     .skipTo(tasks)
     .on(APPROVED, to: tasks)
     .on(REVISION_NEEDED, to: plan, feedback: .enrich, maxRetries: 3, onExhaust: .skip)
 
 gate(analyze_review)
-    .prompt(.file(".collab/config/gates/analyze.md"))
+    .prompt(.file(".minds/config/gates/analyze.md"))
     .on(REMEDIATION_COMPLETE, to: implement)
     .on(ESCALATION, feedback: .raw, onExhaust: .abort)

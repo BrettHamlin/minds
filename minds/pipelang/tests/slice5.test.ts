@@ -21,7 +21,7 @@ const FULL_EXAMPLE = `
 phase(implement)
     .command("/collab.implement")
     .goalGate(.always)
-    .orchestratorContext(.file(".collab/config/context/implement.md"))
+    .orchestratorContext(.file(".minds/config/context/implement.md"))
     .signals(IMPLEMENT_COMPLETE)
     .on(IMPLEMENT_COMPLETE, to: blindqa)
 
@@ -58,14 +58,14 @@ describe("parse() — slice 5: .goalGate() and .orchestratorContext()", () => {
 
   test("parses .orchestratorContext(.file(path))", () => {
     const { ast, errors } = parse(
-      `phase(p)\n    .orchestratorContext(.file(".collab/ctx.md"))\n    .terminal()`
+      `phase(p)\n    .orchestratorContext(.file(".minds/ctx.md"))\n    .terminal()`
     );
     expect(errors).toHaveLength(0);
     const mod = ast!.phases[0].modifiers[0];
     expect(mod.kind).toBe("orchestratorContext");
     if (mod.kind === "orchestratorContext") {
       expect(mod.source.kind).toBe("file");
-      if (mod.source.kind === "file") expect(mod.source.path).toBe(".collab/ctx.md");
+      if (mod.source.kind === "file") expect(mod.source.path).toBe(".minds/ctx.md");
     }
   });
 
@@ -114,10 +114,10 @@ describe("compile() — slice 5: goal_gate and orchestrator_context", () => {
 
   test("orchestratorContext(.file()) compiles to string path", () => {
     const { ast } = parse(
-      `phase(p)\n    .orchestratorContext(.file(".collab/config/ctx.md"))\n    .terminal()`
+      `phase(p)\n    .orchestratorContext(.file(".minds/config/ctx.md"))\n    .terminal()`
     );
     const out = compile(ast!);
-    expect(out.phases["p"].orchestrator_context).toBe(".collab/config/ctx.md");
+    expect(out.phases["p"].orchestrator_context).toBe(".minds/config/ctx.md");
   });
 
   test("orchestratorContext(.inline()) compiles to { inline: text }", () => {
@@ -149,7 +149,7 @@ describe("compile() — slice 5: goal_gate and orchestrator_context", () => {
         implement: {
           command: "/collab.implement",
           goal_gate: "always",
-          orchestrator_context: ".collab/config/context/implement.md",
+          orchestrator_context: ".minds/config/context/implement.md",
           signals: ["IMPLEMENT_COMPLETE"],
           transitions: { IMPLEMENT_COMPLETE: { to: "blindqa" } },
         },
@@ -179,7 +179,7 @@ describe("pipelang compile — CLI (slice 5)", () => {
     const { stdout } = runCLI(["compile", fullFile]);
     const out = JSON.parse(stdout);
     expect(out.phases.implement.goal_gate).toBe("always");
-    expect(out.phases.implement.orchestrator_context).toBe(".collab/config/context/implement.md");
+    expect(out.phases.implement.orchestrator_context).toBe(".minds/config/context/implement.md");
   });
 
   test("invalid goalGate value exits 1 with readable error", () => {

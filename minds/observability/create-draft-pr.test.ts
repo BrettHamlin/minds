@@ -166,8 +166,8 @@ describe("create-draft-pr CLI integration", () => {
       tmpdir(),
       `pr-int-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
-    const stateDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir = join(tmpDir, ".collab", "config");
+    const stateDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir = join(tmpDir, ".minds", "config");
     const binDir = join(tmpDir, "bin");
     mkdirSync(stateDir, { recursive: true });
     mkdirSync(configDir, { recursive: true });
@@ -209,7 +209,7 @@ describe("create-draft-pr CLI integration", () => {
     chmodSync(fakeGh, 0o755);
 
     // Seed metrics DB with a run row
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db = openMetricsDb(metricsPath);
     ensureRun(db, ticketId);
     db.close();
@@ -281,8 +281,8 @@ describe("create-draft-pr CLI integration", () => {
 
   test("exits 1 when no TICKET_ID given", async () => {
     tmpDir = join(tmpdir(), `pr-noid-${Date.now()}`);
-    mkdirSync(join(tmpDir, ".collab", "config"), { recursive: true });
-    writeFileSync(join(tmpDir, ".collab", "config", "pipeline.json"), "{}");
+    mkdirSync(join(tmpDir, ".minds", "config"), { recursive: true });
+    writeFileSync(join(tmpDir, ".minds", "config", "pipeline.json"), "{}");
 
     const proc = Bun.spawn(
       ["bun", join(import.meta.dir, "create-draft-pr.ts")],
@@ -301,9 +301,9 @@ describe("create-draft-pr CLI integration", () => {
 
   test("exits 3 when @metrics disabled", async () => {
     tmpDir = join(tmpdir(), `pr-disabled-${Date.now()}`);
-    mkdirSync(join(tmpDir, ".collab", "config"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds", "config"), { recursive: true });
     writeFileSync(
-      join(tmpDir, ".collab", "config", "pipeline.json"),
+      join(tmpDir, ".minds", "config", "pipeline.json"),
       JSON.stringify({ metrics: { enabled: false } })
     );
 
@@ -331,8 +331,8 @@ describe("create-draft-pr CLI integration", () => {
       tmpdir(),
       `pr-ghfail-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
-    const stateDir = join(failDir, ".collab", "state", "pipeline-registry");
-    const configDir = join(failDir, ".collab", "config");
+    const stateDir = join(failDir, ".minds", "state", "pipeline-registry");
+    const configDir = join(failDir, ".minds", "config");
     const binDir = join(failDir, "bin");
     mkdirSync(stateDir, { recursive: true });
     mkdirSync(configDir, { recursive: true });
@@ -374,7 +374,7 @@ describe("create-draft-pr CLI integration", () => {
     chmodSync(fakeGh, 0o755);
 
     // Seed metrics
-    const metricsPath = join(failDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(failDir, ".minds", "state", "metrics.db");
     const db = openMetricsDb(metricsPath);
     ensureRun(db, "BRE-PR-CLI-FAIL");
     db.close();

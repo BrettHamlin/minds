@@ -2,7 +2,7 @@
 /**
  * verify-execute-executor.ts - Verification checklist executor
  *
- * Reads .collab/config/verify-checklist.json, executes each check
+ * Reads .minds/config/verify-checklist.json, executes each check
  * by type, produces structured report.
  *
  * Usage:
@@ -57,7 +57,7 @@ interface VerifyChecklistConfig {
 }
 
 function readConfig(repoRoot: string): VerifyChecklistConfig | null {
-  const configPath = path.join(repoRoot, ".collab/config/verify-checklist.json");
+  const configPath = path.join(repoRoot, ".minds/config/verify-checklist.json");
   if (!fs.existsSync(configPath)) {
     return null;
   }
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
   const config = readConfig(repoRoot);
   if (!config) {
     console.log(
-      "VERIFY_EXECUTE_ERROR | Config file .collab/config/verify-checklist.json not found or malformed"
+      "VERIFY_EXECUTE_ERROR | Config file .minds/config/verify-checklist.json not found or malformed"
     );
     process.exit(2);
   }

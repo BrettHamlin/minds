@@ -9,6 +9,7 @@
 
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { mindsRoot } from "../shared/paths.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ export function generateAgentPrompt(
   busUrl: string,
   channel: string
 ): string {
-  const memPath = `.collab/agents/${agentId}.json`;
+  const memPath = `.minds/agents/${agentId}.json`;
 
   const started = curlPublish(
     busUrl,
@@ -190,30 +191,30 @@ export function generateAgentPrompt(
 
 // ── Memory persistence ────────────────────────────────────────────────────────
 
-function agentsDir(collabDir: string): string {
-  return join(collabDir, "agents");
+function agentsDir(mindsDir: string): string {
+  return join(mindsDir, "agents");
 }
 
-function memoryPath(agentId: string, collabDir: string): string {
-  return join(agentsDir(collabDir), `${agentId}.json`);
+function memoryPath(agentId: string, mindsDir: string): string {
+  return join(agentsDir(mindsDir), `${agentId}.json`);
 }
 
-const DEFAULT_COLLAB_DIR = join(process.cwd(), ".collab");
+const DEFAULT_MINDS_DIR = mindsRoot();
 
 /**
  * Write the agent's die-and-persist memory file.
- * Creates `.collab/agents/` if it does not exist.
+ * Creates `.minds/agents/` if it does not exist.
  * Returns the absolute path of the written file.
  */
 export function writeAgentMemory(
   agentId: string,
   memory: AgentMemory,
-  collabDir: string = DEFAULT_COLLAB_DIR
+  mindsDir: string = DEFAULT_MINDS_DIR
 ): string {
-  const dir = agentsDir(collabDir);
+  const dir = agentsDir(mindsDir);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-  const path = memoryPath(agentId, collabDir);
+  const path = memoryPath(agentId, mindsDir);
   writeFileSync(path, JSON.stringify({ ...memory, last_updated: new Date().toISOString() }, null, 2), "utf8");
   return path;
 }
@@ -224,9 +225,9 @@ export function writeAgentMemory(
  */
 export function readAgentMemory(
   agentId: string,
-  collabDir: string = DEFAULT_COLLAB_DIR
+  mindsDir: string = DEFAULT_MINDS_DIR
 ): AgentMemory | null {
-  const path = memoryPath(agentId, collabDir);
+  const path = memoryPath(agentId, mindsDir);
   if (!existsSync(path)) return null;
   try {
     return JSON.parse(readFileSync(path, "utf8")) as AgentMemory;

@@ -23,8 +23,8 @@ import {
 
 async function makeTempDir(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "minds-bus-state-test-"));
-  // Create .collab/state subdirectory structure
-  await fs.mkdir(path.join(dir, ".collab", "state"), { recursive: true });
+  // Create .minds/state subdirectory structure
+  await fs.mkdir(path.join(dir, ".minds", "state"), { recursive: true });
   return dir;
 }
 
@@ -64,27 +64,27 @@ describe("writeBusState and readBusState", () => {
     await fs.rm(repoRoot, { recursive: true });
   });
 
-  test("creates .collab/state directory if missing", async () => {
+  test("creates .minds/state directory if missing", async () => {
     const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "minds-bus-mkdir-test-"));
-    // Do NOT pre-create .collab/state
+    // Do NOT pre-create .minds/state
     const state: MindsBusState = { ...SAMPLE_STATE, ticketId: "BRE-MKDIR" };
 
     await writeBusState(repoRoot, state);
 
-    const statePath = path.join(repoRoot, ".collab", "state", "minds-bus-BRE-MKDIR.json");
+    const statePath = path.join(repoRoot, ".minds", "state", "minds-bus-BRE-MKDIR.json");
     const exists = await fs.access(statePath).then(() => true).catch(() => false);
     expect(exists).toBe(true);
 
     await fs.rm(repoRoot, { recursive: true });
   });
 
-  test("state file path is .collab/state/minds-bus-{ticketId}.json", async () => {
+  test("state file path is .minds/state/minds-bus-{ticketId}.json", async () => {
     const repoRoot = await makeTempDir();
     const state: MindsBusState = { ...SAMPLE_STATE, ticketId: "BRE-PATH-CHECK" };
 
     await writeBusState(repoRoot, state);
 
-    const expectedPath = path.join(repoRoot, ".collab", "state", "minds-bus-BRE-PATH-CHECK.json");
+    const expectedPath = path.join(repoRoot, ".minds", "state", "minds-bus-BRE-PATH-CHECK.json");
     const raw = await fs.readFile(expectedPath, "utf-8");
     const parsed = JSON.parse(raw);
     expect(parsed.ticketId).toBe("BRE-PATH-CHECK");
@@ -173,7 +173,7 @@ describe("findOrphanedBusStates", () => {
     await fs.rm(repoRoot, { recursive: true });
   });
 
-  test("returns empty array when .collab/state does not exist", async () => {
+  test("returns empty array when .minds/state does not exist", async () => {
     const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "minds-bus-no-state-"));
     const orphans = await findOrphanedBusStates(repoRoot);
     expect(orphans).toEqual([]);
@@ -182,7 +182,7 @@ describe("findOrphanedBusStates", () => {
 
   test("skips malformed JSON files without throwing", async () => {
     const repoRoot = await makeTempDir();
-    const badFile = path.join(repoRoot, ".collab", "state", "minds-bus-BRE-BAD.json");
+    const badFile = path.join(repoRoot, ".minds", "state", "minds-bus-BRE-BAD.json");
     await fs.writeFile(badFile, "not valid json");
 
     const orphans = await findOrphanedBusStates(repoRoot);

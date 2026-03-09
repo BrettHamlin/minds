@@ -119,7 +119,7 @@ function main(): void {
 
     // Write phase timing to SQLite metrics store (best-effort, non-fatal)
     try {
-      const metricsDb = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
+      const metricsDb = openMetricsDb(`${repoRoot}/.minds/state/metrics.db`);
       recordPhase(metricsDb, {
         ticketId,
         phase: entry.phase ?? "unknown",
@@ -209,7 +209,7 @@ function main(): void {
 
   // Ensure run row exists; detect manual terminal-status override (best-effort, non-fatal)
   try {
-    const metricsDb = openMetricsDb(`${repoRoot}/.collab/state/metrics.db`);
+    const metricsDb = openMetricsDb(`${repoRoot}/.minds/state/metrics.db`);
     ensureRun(metricsDb, ticketId, registry.repo_id ?? null);
 
     // If status is being force-set to a terminal value outside normal phase flow,
@@ -221,7 +221,7 @@ function main(): void {
     // force-sets status=done, which skips normal phase progression.
     const MANUAL_TERMINAL_STATUSES = new Set(["done", "complete", "abandoned", "aborted"]);
     if (updates.status !== undefined && MANUAL_TERMINAL_STATUSES.has(updates.status)) {
-      const pipeline = readJsonFile(`${repoRoot}/.collab/config/pipeline.json`);
+      const pipeline = readJsonFile(`${repoRoot}/.minds/config/pipeline.json`);
       const terminalPhase = findTerminalPhase(pipeline);
       const currentStep = registry.current_step ?? null;
       // Log intervention only when not already at the terminal phase

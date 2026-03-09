@@ -63,7 +63,7 @@ if (import.meta.main) { (async () => {
 
   function assembleClaudeContent(repoRoot: string, mindName: string, ticketId: string): string {
     // Load minds.json and find entry for this mind
-    const mindsJsonPath = resolve(repoRoot, ".collab", "minds.json");
+    const mindsJsonPath = resolve(repoRoot, ".minds", "minds.json");
     let domain = "";
     let ownsFiles: string[] = [];
 

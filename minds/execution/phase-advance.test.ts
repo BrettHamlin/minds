@@ -99,15 +99,15 @@ describe("phase-advance: variant config loading", () => {
 
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-advance-variant-"));
-    variantsDir = path.join(tmpDir, ".collab", "config", "pipeline-variants");
-    registryDir = path.join(tmpDir, ".collab", "state", "pipeline-registry");
+    variantsDir = path.join(tmpDir, ".minds", "config", "pipeline-variants");
+    registryDir = path.join(tmpDir, ".minds", "state", "pipeline-registry");
     fs.mkdirSync(variantsDir, { recursive: true });
     fs.mkdirSync(registryDir, { recursive: true });
 
     // Write default pipeline
-    fs.mkdirSync(path.join(tmpDir, ".collab", "config"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".minds", "config"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".collab", "config", "pipeline.json"),
+      path.join(tmpDir, ".minds", "config", "pipeline.json"),
       JSON.stringify({ version: "3.1", phases: {}, id: "default" })
     );
     // Write a named variant
@@ -142,6 +142,6 @@ describe("phase-advance: variant config loading", () => {
 
   test("13. missing variant falls back to default pipeline.json", () => {
     const configPath = resolvePipelineConfigPath(tmpDir, { variant: "nonexistent" });
-    expect(configPath).toBe(path.join(tmpDir, ".collab", "config", "pipeline.json"));
+    expect(configPath).toBe(path.join(tmpDir, ".minds", "config", "pipeline.json"));
   });
 });

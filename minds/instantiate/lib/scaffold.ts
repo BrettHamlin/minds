@@ -47,7 +47,7 @@ export function mindsSourceDir(): string {
 
 /**
  * Returns the path to minds.json.
- * In dev mode: .collab/minds.json
+ * In dev mode: .minds/minds.json
  * In installed mode: .minds/minds.json
  */
 export function mindsJsonPath(): string {

@@ -8,22 +8,22 @@ import { registryPath, signalQueuePath, findingsPath, resolutionsPath } from "./
 describe("registryPath", () => {
   test("builds correct registry path", () => {
     expect(registryPath("/repo", "BRE-123")).toBe(
-      "/repo/.collab/state/pipeline-registry/BRE-123.json",
+      "/repo/.minds/state/pipeline-registry/BRE-123.json",
     );
   });
 
   test("handles ticket IDs with various formats", () => {
     expect(registryPath("/repo", "PROJ-999")).toBe(
-      "/repo/.collab/state/pipeline-registry/PROJ-999.json",
+      "/repo/.minds/state/pipeline-registry/PROJ-999.json",
     );
     expect(registryPath("/repo", "TEST-1")).toBe(
-      "/repo/.collab/state/pipeline-registry/TEST-1.json",
+      "/repo/.minds/state/pipeline-registry/TEST-1.json",
     );
   });
 
   test("handles nested repoRoot paths", () => {
     expect(registryPath("/home/user/projects/myrepo", "BRE-428")).toBe(
-      "/home/user/projects/myrepo/.collab/state/pipeline-registry/BRE-428.json",
+      "/home/user/projects/myrepo/.minds/state/pipeline-registry/BRE-428.json",
     );
   });
 });
@@ -31,13 +31,13 @@ describe("registryPath", () => {
 describe("signalQueuePath", () => {
   test("builds correct signal queue path", () => {
     expect(signalQueuePath("/repo", "BRE-123")).toBe(
-      "/repo/.collab/state/signal-queue/BRE-123.json",
+      "/repo/.minds/state/signal-queue/BRE-123.json",
     );
   });
 
   test("handles different ticket IDs", () => {
     expect(signalQueuePath("/repo", "PROJ-42")).toBe(
-      "/repo/.collab/state/signal-queue/PROJ-42.json",
+      "/repo/.minds/state/signal-queue/PROJ-42.json",
     );
   });
 });

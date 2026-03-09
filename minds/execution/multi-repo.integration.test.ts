@@ -19,9 +19,9 @@ let tmpDir: string;
 beforeAll(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-mr-int-"));
 
-  fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
-  fs.mkdirSync(path.join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
-  fs.mkdirSync(path.join(tmpDir, ".collab/state/pipeline-groups"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".minds/config"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".minds/state/pipeline-registry"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".minds/state/pipeline-groups"), { recursive: true });
   fs.mkdirSync(path.join(tmpDir, "specs"), { recursive: true });
   fs.mkdirSync(path.join(tmpDir, "repos/backend"), { recursive: true });
   fs.mkdirSync(path.join(tmpDir, "repos/frontend"), { recursive: true });
@@ -39,7 +39,7 @@ beforeAll(() => {
 
   // Write multi-repo.json (still needed for status-table Repo column)
   fs.writeFileSync(
-    path.join(tmpDir, ".collab/config/multi-repo.json"),
+    path.join(tmpDir, ".minds/config/multi-repo.json"),
     JSON.stringify({
       repos: {
         backend: { path: path.join(tmpDir, "repos/backend") },
@@ -48,7 +48,7 @@ beforeAll(() => {
     })
   );
 
-  // Write a minimal pipeline.json for each repo's .collab
+  // Write a minimal pipeline.json for each repo's .minds
   const pipeline = {
     version: "3.1",
     phases: {
@@ -57,9 +57,9 @@ beforeAll(() => {
     },
   };
   for (const repo of ["backend", "frontend"]) {
-    fs.mkdirSync(path.join(tmpDir, `repos/${repo}/.collab/config`), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, `repos/${repo}/.minds/config`), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, `repos/${repo}/.collab/config/pipeline.json`),
+      path.join(tmpDir, `repos/${repo}/.minds/config/pipeline.json`),
       JSON.stringify(pipeline)
     );
   }
@@ -75,10 +75,10 @@ function makeCtx(ticketId: string): InitContext {
     ticketId,
     orchestratorPane: "%test-orch",
     repoRoot: tmpDir,
-    registryDir: path.join(tmpDir, ".collab/state/pipeline-registry"),
-    groupsDir: path.join(tmpDir, ".collab/state/pipeline-groups"),
-    configPath: path.join(tmpDir, ".collab/config/pipeline.json"),
-    schemaPath: path.join(tmpDir, ".collab/config/pipeline.v3.schema.json"),
+    registryDir: path.join(tmpDir, ".minds/state/pipeline-registry"),
+    groupsDir: path.join(tmpDir, ".minds/state/pipeline-groups"),
+    configPath: path.join(tmpDir, ".minds/config/pipeline.json"),
+    schemaPath: path.join(tmpDir, ".minds/config/pipeline.v3.schema.json"),
   };
 }
 
@@ -145,9 +145,9 @@ describe("multi-repo integration: 2 tickets across 2 repos", () => {
   });
 
   test("4. status-table shows Repo column for both tickets", () => {
-    const registryDir = path.join(tmpDir, ".collab/state/pipeline-registry");
-    const groupsDir = path.join(tmpDir, ".collab/state/pipeline-groups");
-    const multiRepoPath = path.join(tmpDir, ".collab/config/multi-repo.json");
+    const registryDir = path.join(tmpDir, ".minds/state/pipeline-registry");
+    const groupsDir = path.join(tmpDir, ".minds/state/pipeline-groups");
+    const multiRepoPath = path.join(tmpDir, ".minds/config/multi-repo.json");
 
     // Write two registry entries
     fs.writeFileSync(

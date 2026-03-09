@@ -1,5 +1,5 @@
 /**
- * Repo registry — reads/writes ~/.collab/repos.json (or COLLAB_REPOS_FILE override).
+ * Repo registry — reads/writes ~/.minds/repos.json (or COLLAB_REPOS_FILE override).
  * Used by both the `collab repo` CLI and orchestrator-init.ts.
  */
 
@@ -12,7 +12,7 @@ export interface ReposMap {
 }
 
 export function getReposFilePath(): string {
-  return process.env.COLLAB_REPOS_FILE ?? join(homedir(), ".collab", "repos.json");
+  return process.env.COLLAB_REPOS_FILE ?? join(homedir(), ".minds", "repos.json");
 }
 
 export function readRepos(): ReposMap {

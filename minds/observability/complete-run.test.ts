@@ -68,14 +68,14 @@ let tmpDir: string;
 
 beforeAll(() => {
   tmpDir = join(tmpdir(), `complete-run-test-${process.pid}`);
-  mkdirSync(join(tmpDir, ".collab/state"), { recursive: true });
-  mkdirSync(join(tmpDir, ".collab/config"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/state"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/config"), { recursive: true });
 
   execSync("git init", { cwd: tmpDir });
   execSync("git checkout -b test-branch", { cwd: tmpDir });
 
   // Seed: run with two phases so there's a last phase outcome to read
-  const db = openMetricsDb(join(tmpDir, ".collab/state/metrics.db"));
+  const db = openMetricsDb(join(tmpDir, ".minds/state/metrics.db"));
   ensureRun(db, "COMP-CLI-1", null, "2026-03-01T10:00:00Z");
   recordPhase(db, {
     ticketId: "COMP-CLI-1",
@@ -130,7 +130,7 @@ describe("complete-run CLI", () => {
 
   test("runs table has completed_at, duration_ms, outcome after CLI runs", async () => {
     // Re-run on a fresh run so we can inspect the DB state
-    const db = openMetricsDb(join(tmpDir, ".collab/state/metrics.db"));
+    const db = openMetricsDb(join(tmpDir, ".minds/state/metrics.db"));
     ensureRun(db, "COMP-CLI-2", null, "2026-03-01T09:00:00Z");
     recordPhase(db, {
       ticketId: "COMP-CLI-2",
@@ -145,7 +145,7 @@ describe("complete-run CLI", () => {
     const { exitCode } = await runCli(["COMP-CLI-2"]);
     expect(exitCode).toBe(0);
 
-    const db2 = openMetricsDb(join(tmpDir, ".collab/state/metrics.db"));
+    const db2 = openMetricsDb(join(tmpDir, ".minds/state/metrics.db"));
     const row = db2
       .query("SELECT completed_at, duration_ms, outcome FROM runs WHERE id = 'COMP-CLI-2'")
       .get() as { completed_at: string; duration_ms: number; outcome: string };
@@ -157,7 +157,7 @@ describe("complete-run CLI", () => {
   });
 
   test("handles run with no phases gracefully (outcome = 'unknown')", async () => {
-    const db = openMetricsDb(join(tmpDir, ".collab/state/metrics.db"));
+    const db = openMetricsDb(join(tmpDir, ".minds/state/metrics.db"));
     ensureRun(db, "COMP-CLI-NOPHASE", null, "2026-03-01T08:00:00Z");
     db.close();
 
@@ -171,13 +171,13 @@ describe("complete-run CLI", () => {
 
   test("exit 3 when @metrics disabled in pipeline.json", async () => {
     const metricsOffDir = join(tmpdir(), `complete-run-metrics-off-${process.pid}`);
-    mkdirSync(join(metricsOffDir, ".collab/config"), { recursive: true });
-    mkdirSync(join(metricsOffDir, ".collab/state"), { recursive: true });
+    mkdirSync(join(metricsOffDir, ".minds/config"), { recursive: true });
+    mkdirSync(join(metricsOffDir, ".minds/state"), { recursive: true });
     execSync("git init", { cwd: metricsOffDir });
     execSync("git checkout -b test-metrics-off", { cwd: metricsOffDir });
 
     writeFileSync(
-      join(metricsOffDir, ".collab/config/pipeline.json"),
+      join(metricsOffDir, ".minds/config/pipeline.json"),
       JSON.stringify({ metrics: { enabled: false } })
     );
 

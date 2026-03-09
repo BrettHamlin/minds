@@ -105,7 +105,7 @@ function getChangedFileCount(repoRoot: string): number | null {
 function getTestsStatus(repoRoot: string, ticketId: string): string | null {
   const registryPath = path.join(
     repoRoot,
-    ".collab/state/pipeline-registry",
+    ".minds/state/pipeline-registry",
     `${ticketId}.json`
   );
   if (!fs.existsSync(registryPath)) return null;
@@ -188,7 +188,7 @@ function main(): void {
   // Read deploy-verify.json
   const deployConfigPath = path.join(
     repoRoot,
-    ".collab/config/deploy-verify.json"
+    ".minds/config/deploy-verify.json"
   );
   if (fs.existsSync(deployConfigPath)) {
     try {

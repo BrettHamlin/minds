@@ -99,8 +99,8 @@ describe("dispatchWave — event emission", () => {
     }) as typeof fetch;
 
     repoRoot = join(TMP, `repo-${Date.now()}`);
-    mkdirSync(join(repoRoot, ".collab"), { recursive: true });
-    writeFileSync(join(repoRoot, ".collab", "minds.json"), FAKE_MINDS_JSON);
+    mkdirSync(join(repoRoot, ".minds"), { recursive: true });
+    writeFileSync(join(repoRoot, ".minds", "minds.json"), FAKE_MINDS_JSON);
 
     // Save original spawn
     originalSpawn = Bun.spawn;

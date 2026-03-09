@@ -38,8 +38,8 @@ const MOCK_CHANNEL = `minds-${MOCK_TICKET_ID}`;
 
 function makeTempRegistry(minds: MindDescription[]): { repoRoot: string; cleanup: () => void } {
   const repoRoot = mkdtempSync("/tmp/dispatch-test-");
-  mkdirSync(join(repoRoot, ".collab"), { recursive: true });
-  writeFileSync(join(repoRoot, ".collab/minds.json"), JSON.stringify(minds));
+  mkdirSync(join(repoRoot, ".minds"), { recursive: true });
+  writeFileSync(join(repoRoot, ".minds/minds.json"), JSON.stringify(minds));
   return { repoRoot, cleanup: () => rmSync(repoRoot, { recursive: true, force: true }) };
 }
 
@@ -107,7 +107,7 @@ describe("loadMindsRegistry", () => {
   it("loads and parses a valid registry file", () => {
     const { repoRoot, cleanup } = makeTempRegistry([mindA, mindB]);
     try {
-      const registry = loadMindsRegistry(join(repoRoot, ".collab/minds.json"));
+      const registry = loadMindsRegistry(join(repoRoot, ".minds/minds.json"));
       expect(registry).toHaveLength(2);
       expect(registry[0].name).toBe("signals");
       expect(registry[1].name).toBe("pipeline_core");

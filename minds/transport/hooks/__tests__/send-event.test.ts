@@ -106,7 +106,7 @@ describe("send-event.ts hook handler", () => {
 
   it("resolves bus URL from state file when no BUS_URL env var", async () => {
     // Write a fake state file
-    const stateDir = join(tmpDir, ".collab", "state");
+    const stateDir = join(tmpDir, ".minds", "state");
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stateDir, "minds-bus-BRE-457.json"),

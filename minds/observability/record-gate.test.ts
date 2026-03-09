@@ -75,14 +75,14 @@ let tmpDir: string;
 
 beforeAll(() => {
   tmpDir = join(tmpdir(), `record-gate-test-${process.pid}`);
-  mkdirSync(join(tmpDir, ".collab/state"), { recursive: true });
-  mkdirSync(join(tmpDir, ".collab/config"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/state"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/config"), { recursive: true });
 
   execSync("git init", { cwd: tmpDir });
   execSync("git checkout -b test-branch", { cwd: tmpDir });
 
   // Seed a run so insertGate has a valid run_id FK
-  const db = openMetricsDb(join(tmpDir, ".collab/state/metrics.db"));
+  const db = openMetricsDb(join(tmpDir, ".minds/state/metrics.db"));
   ensureRun(db, "RG-CLI-1");
   ensureRun(db, "RG-CLI-2");
   db.close();
@@ -148,7 +148,7 @@ describe("record-gate CLI", () => {
     const { exitCode } = await runCli(["RG-CLI-2", "analyze_review", "PASS", "All good"]);
     expect(exitCode).toBe(0);
 
-    const db = openMetricsDb(join(tmpDir, ".collab/state/metrics.db"));
+    const db = openMetricsDb(join(tmpDir, ".minds/state/metrics.db"));
     const row = db
       .query("SELECT gate, decision, reasoning FROM gates WHERE run_id = 'RG-CLI-2'")
       .get() as { gate: string; decision: string; reasoning: string } | null;
@@ -162,13 +162,13 @@ describe("record-gate CLI", () => {
 
   test("exit 3 when @metrics disabled in pipeline.json", async () => {
     const metricsOffDir = join(tmpdir(), `record-gate-metrics-off-${process.pid}`);
-    mkdirSync(join(metricsOffDir, ".collab/config"), { recursive: true });
-    mkdirSync(join(metricsOffDir, ".collab/state"), { recursive: true });
+    mkdirSync(join(metricsOffDir, ".minds/config"), { recursive: true });
+    mkdirSync(join(metricsOffDir, ".minds/state"), { recursive: true });
     execSync("git init", { cwd: metricsOffDir });
     execSync("git checkout -b test-off", { cwd: metricsOffDir });
 
     writeFileSync(
-      join(metricsOffDir, ".collab/config/pipeline.json"),
+      join(metricsOffDir, ".minds/config/pipeline.json"),
       JSON.stringify({ metrics: { enabled: false } })
     );
 

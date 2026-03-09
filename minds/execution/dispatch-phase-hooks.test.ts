@@ -96,15 +96,15 @@ let tmpDir: string;
 
 beforeAll(() => {
   tmpDir = join(tmpdir(), `dispatch-phase-hooks-${process.pid}`);
-  mkdirSync(join(tmpDir, ".collab/config"), { recursive: true });
-  mkdirSync(join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/config"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/state/pipeline-registry"), { recursive: true });
 
   execSync("git init", { cwd: tmpDir });
   execSync("git checkout -b test-branch", { cwd: tmpDir });
 
   // Pipeline config with hooks
   writeFileSync(
-    join(tmpDir, ".collab/config/pipeline.json"),
+    join(tmpDir, ".minds/config/pipeline.json"),
     JSON.stringify({
       version: "3.1",
       phases: {
@@ -127,7 +127,7 @@ beforeAll(() => {
 
   // Registry pointing at "implement"
   writeFileSync(
-    join(tmpDir, ".collab/state/pipeline-registry/BRE-HOOKS.json"),
+    join(tmpDir, ".minds/state/pipeline-registry/BRE-HOOKS.json"),
     JSON.stringify({ ticket_id: "BRE-HOOKS", current_step: "implement" })
   );
 });

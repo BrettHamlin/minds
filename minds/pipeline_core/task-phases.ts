@@ -4,7 +4,7 @@
  * Single source of truth for phase structure extraction.
  * Used by verify-and-complete.ts (scope filtering) and analyze-task-phases.ts (summary).
  *
- * Install path: .collab/lib/pipeline/task-phases.ts
+ * Install path: .minds/lib/pipeline/task-phases.ts
  */
 
 export interface TaskPhase {
