@@ -6,6 +6,16 @@ description: Dispatch Mind-aware tasks to Mind+Drone pairs for collab developmen
 
 > **IMPORTANT:** Do not ask for confirmation at any step. Do not use AskUserQuestion. Proceed with dispatch immediately.
 
+## Path Detection
+
+Determine the Minds source directory before running any commands. In installed repos everything lives under `.minds/`; in the dev repo it lives under `minds/`.
+
+```bash
+if [ -d ".minds" ]; then MINDS_DIR=".minds"; else MINDS_DIR="minds"; fi
+```
+
+Use `{MINDS_DIR}` for all script paths below (e.g., `bun {MINDS_DIR}/transport/...`). Runtime state paths (`.minds/state/`, `.minds/bus-port`, `.minds/aggregator-port`, `.minds/minds.json`) always use `.minds/` regardless.
+
 ## User Input
 
 ```text
@@ -23,7 +33,7 @@ This command executes implementation for the **collab repo itself**, where work 
 0. **Cleanup stale context from previous runs**: Before doing anything else, clean up orphaned bus processes and drone directories left by crashed or incomplete previous runs.
 
    ```bash
-   bun minds/transport/minds-teardown.ts --cleanup-orphans
+   bun {MINDS_DIR}/transport/minds-teardown.ts --cleanup-orphans
    ```
 
    ```bash
@@ -49,7 +59,7 @@ This command executes implementation for the **collab repo itself**, where work 
    If that file exists and contains `## Active Mind Review`, remove that section:
 
    ```bash
-   bun minds/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review'
+   bun {MINDS_DIR}/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review'
    ```
 
 1. **Load Mind registry**: Read `.minds/minds.json` from the repo root.
@@ -60,19 +70,19 @@ This command executes implementation for the **collab repo itself**, where work 
 
    Parse the JSON array of `MindDescription` objects. Each entry has `name`, `domain`, `owns_files`, `capabilities`, `exposes`, and `consumes`.
 
-   If `.minds/minds.json` does not exist, run `bun minds/generate-registry.ts` first to create it, then read it.
+   If `.minds/minds.json` does not exist, run `bun {MINDS_DIR}/generate-registry.ts` first to create it, then read it.
 
 2. **Resolve feature directory**: Run to locate tasks.md:
 
    ```bash
-   bun .minds/scripts/resolve-feature.ts --require-tasks --include-tasks
+   bun {MINDS_DIR}/scripts/resolve-feature.ts --require-tasks --include-tasks
    ```
 
    Parse `FEATURE_DIR` from the output. If `$ARGUMENTS` contains a ticket ID, pass it as the argument.
 
 3. **Load and parse tasks.md**: Read `{FEATURE_DIR}/tasks.md`.
 
-   Parse all task lines using the `parseTasks()` format from `minds/pipeline_core/task-phases.ts`. Each task line follows:
+   Parse all task lines using the `parseTasks()` format from `{MINDS_DIR}/pipeline_core/task-phases.ts`. Each task line follows:
 
    ```
    - [ ] T001 @mind_name [P] Description with exact file path
@@ -115,7 +125,7 @@ This command executes implementation for the **collab repo itself**, where work 
 5b. **Lint contracts**: Run the deterministic contract linter before dispatching any drones:
 
     ```bash
-    bun minds/lib/contracts.ts lint {FEATURE_DIR}/tasks.md .minds/minds.json
+    bun {MINDS_DIR}/lib/contracts.ts lint {FEATURE_DIR}/tasks.md .minds/minds.json
     ```
 
     Parse the JSON output. If there are errors:
@@ -130,7 +140,7 @@ This command executes implementation for the **collab repo itself**, where work 
     Run the start command (fire-and-forget — it writes state to disk):
 
     ```bash
-    bun minds/transport/minds-bus-lifecycle.ts start --ticket {ticket_id} --pane $TMUX_PANE
+    bun {MINDS_DIR}/transport/minds-bus-lifecycle.ts start --ticket {ticket_id} --pane $TMUX_PANE
     ```
 
     Then read the bus URL from the state file (the start command persists state automatically):
@@ -148,7 +158,7 @@ This command executes implementation for the **collab repo itself**, where work 
     ```
 
     ```bash
-    bun minds/transport/wave-event.ts start --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID
+    bun {MINDS_DIR}/transport/wave-event.ts start --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID
     ```
 
     Print the **dashboard** URL (NOT the bus URL) for the user:
@@ -166,7 +176,7 @@ This command executes implementation for the **collab repo itself**, where work 
    a. **Create Mind+Drone pair** using `drone-pane.ts`:
 
       ```bash
-      bun minds/lib/drone-pane.ts --mind {mind_name} --ticket {ticket_id} --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID
+      bun {MINDS_DIR}/lib/drone-pane.ts --mind {mind_name} --ticket {ticket_id} --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID
       ```
 
       Parse the JSON output:
@@ -226,7 +236,7 @@ This command executes implementation for the **collab repo itself**, where work 
       When all tasks are complete and the checklist passes, send completion signal via the bus:
 
       ```bash
-      bun minds/transport/minds-publish.ts --channel minds-{ticket_id} --type DRONE_COMPLETE --payload '{"mindName":"{mind_name}","waveId":"{wave_id}"}'
+      bun {MINDS_DIR}/transport/minds-publish.ts --channel minds-{ticket_id} --type DRONE_COMPLETE --payload '{"mindName":"{mind_name}","waveId":"{wave_id}"}'
       ```
 
       The bus URL is resolved automatically from `BUS_URL` env var or `.minds/bus-port`.
@@ -236,7 +246,7 @@ This command executes implementation for the **collab repo itself**, where work 
    c. **Send brief to drone pane**:
 
       ```bash
-      bun minds/lib/tmux-send.ts {drone_pane} "Read DRONE-BRIEF.md and execute the tasks described."
+      bun {MINDS_DIR}/lib/tmux-send.ts {drone_pane} "Read DRONE-BRIEF.md and execute the tasks described."
       ```
 
    d. **After dispatching all Minds in the wave**, write the Mind's own review context to its private CLAUDE.md so the Mind retains it after compaction.
@@ -253,13 +263,13 @@ This command executes implementation for the **collab repo itself**, where work 
       ## Active Mind Review
       Currently reviewing: @{mind_name_1}, @{mind_name_2}, ... for ticket {ticket_id}.
       Before reviewing each drone's work, re-read from disk:
-      - minds/STANDARDS.md
-      - minds/{mind_name}/MIND.md
+      - {MINDS_DIR}/STANDARDS.md
+      - {MINDS_DIR}/{mind_name}/MIND.md
       The Mind NEVER makes code changes directly. Review only. Send feedback to the drone if changes are needed.
       If the drone is struggling, analyze the problem and send guidance, but the drone does the implementation.
       EOF
 
-      bun minds/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review' --content-file /tmp/active-mind-review.md
+      bun {MINDS_DIR}/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review' --content-file /tmp/active-mind-review.md
       ```
 
 7. **Wait for drone completion signals**: After dispatching all Minds in a wave, **end your response**. Do not run any more commands. Do not sleep. Do not poll. Do not capture drone panes. Just stop.
@@ -269,14 +279,14 @@ This command executes implementation for the **collab repo itself**, where work 
    Track which Minds have reported completion. Do not start Wave N+1 until all Minds in Wave N have reported.
 
    ```bash
-   bun minds/transport/wave-event.ts complete --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID
+   bun {MINDS_DIR}/transport/wave-event.ts complete --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID
    ```
 
 7b. **Between-waves cleanup**: After all drones in a wave complete, BEFORE launching the next wave, for each drone in the wave:
 
    ```bash
    tmux kill-pane -t {drone_pane}
-   bun minds/lib/cleanup.ts all {worktree_path}
+   bun {MINDS_DIR}/lib/cleanup.ts all {worktree_path}
    ```
 
 8. **Handle failures**: If a drone reports an error instead of DRONE_COMPLETE:
@@ -292,11 +302,11 @@ This command executes implementation for the **collab repo itself**, where work 
        First, publish `DRONE_REVIEWING` so the dashboard reflects the in-progress review:
 
        ```bash
-       bun minds/lib/review-drone.ts start-review --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name}
+       bun {MINDS_DIR}/lib/review-drone.ts start-review --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name}
        ```
 
-       - Read `minds/STANDARDS.md` from disk
-       - Read `minds/{mind_name}/MIND.md` from disk for each Mind being reviewed
+       - Read `{MINDS_DIR}/STANDARDS.md` from disk
+       - Read `{MINDS_DIR}/{mind_name}/MIND.md` from disk for each Mind being reviewed
        - Run `git diff` in the drone's worktree to get the exact diff
 
        **For EVERY item in MIND.md's "Review Focus" section AND EVERY item in STANDARDS.md's review checklist**, produce an explicit citation entry in this format:
@@ -327,7 +337,7 @@ This command executes implementation for the **collab repo itself**, where work 
        The Mind NEVER modifies code directly. If issues are found:
        - Publish `DRONE_REVIEW_FAIL` deterministically:
          ```bash
-         bun minds/lib/review-drone.ts review-fail --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name} --violations {violation_count}
+         bun {MINDS_DIR}/lib/review-drone.ts review-fail --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name} --violations {violation_count}
          ```
        - Send the specific violation citations to the drone via tmux
        - Wait for the drone to fix and re-report DRONE_COMPLETE on the bus
@@ -340,11 +350,11 @@ This command executes implementation for the **collab repo itself**, where work 
    9b. **Commit and merge**: After review passes for each drone (including any fix cycles), publish `DRONE_REVIEW_PASS` then merge:
 
        ```bash
-       bun minds/lib/review-drone.ts review-pass --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name}
+       bun {MINDS_DIR}/lib/review-drone.ts review-pass --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name}
        ```
 
        ```bash
-       bun minds/lib/merge-drone.ts {worktree_path} {target_branch} --log-content "..." --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name}
+       bun {MINDS_DIR}/lib/merge-drone.ts {worktree_path} {target_branch} --log-content "..." --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID --mind {mind_name}
        ```
 
        The `--log-content` value should be a one-sentence summary of what was learned from the review in step 9a — patterns confirmed, violations caught, or decisions made (e.g., "All registry writes used registryPath(); no inline path construction found.").
@@ -369,7 +379,7 @@ This command executes implementation for the **collab repo itself**, where work 
         - Decisions made (e.g., "Added --content-file flag for multi-line review summaries")}
        EOF
 
-       bun minds/memory/lib/write-cli.ts --mind {mind_name} --content-file /tmp/{mind_name}-review-learnings.md
+       bun {MINDS_DIR}/memory/lib/write-cli.ts --mind {mind_name} --content-file /tmp/{mind_name}-review-learnings.md
        ```
 
        **Rules:**
@@ -420,7 +430,7 @@ This command executes implementation for the **collab repo itself**, where work 
     For each Mind that was dispatched in this run:
 
     ```bash
-    bun minds/memory/lib/hygiene-cli.ts --mind {mind_name} --prune
+    bun {MINDS_DIR}/memory/lib/hygiene-cli.ts --mind {mind_name} --prune
     ```
 
     This is a lightweight, idempotent operation — safe to run even if no stale entries exist. It removes any lines marked `<!-- STALE -->` from the Mind's MEMORY.md.
@@ -432,21 +442,21 @@ This command executes implementation for the **collab repo itself**, where work 
     Tear down the Minds bus (reads PIDs from state file, kills them, clears state):
 
     ```bash
-    bun minds/transport/minds-teardown.ts --ticket {ticket_id}
+    bun {MINDS_DIR}/transport/minds-teardown.ts --ticket {ticket_id}
     ```
 
     Remove the `## Active Mind Review` section from the Mind's private CLAUDE.md:
 
     ```bash
     MIND_CLAUDE=~/.claude/projects/$(echo {collab-repo-absolute-path} | tr '/' '-' | sed 's/^-//')/CLAUDE.md
-    bun minds/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review'
+    bun {MINDS_DIR}/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review'
     ```
 
     For each drone worktree that was created during this run:
 
     ```bash
     # Full cleanup: DRONE-BRIEF.md + private CLAUDE.md dir + worktree removal (--force for untracked files)
-    bun minds/lib/cleanup.ts all {worktree_absolute_path}
+    bun {MINDS_DIR}/lib/cleanup.ts all {worktree_absolute_path}
     ```
 
     Note: If the Mind crashes before reaching this step, the startup cleanup in step 0 handles orphaned directories on the next run.
