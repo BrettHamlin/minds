@@ -8,7 +8,7 @@
  *   Step 2: Variant config override (pipeline-variants/{variant}.json)
  *   Step 3: Schema validation of pipeline config
  *   Step 4: Coordination cycle detection
- *   Step 5: Set up symlinks (.claude/ and .collab/)
+ *   Step 5: Set up symlinks (.claude/ and .minds/)
  *   Step 6: Spawn agent pane
  *   Step 7: Create registry atomically
  *
@@ -92,12 +92,12 @@ interface RollbackState {
 
 /**
  * Resolves the absolute path to a transport script file.
- * Checks installed location (.collab/transport/) first (for production use
- * after `collab.install.ts` is run), falls back to development location
+ * Checks installed location (.minds/transport/) first (for production use
+ * after `collab init` is run), falls back to development location
  * (transport/ at repo root, used during collab development).
  */
 export function resolveTransportFile(repoRoot: string, filename: string): string {
-  const installed = path.join(repoRoot, ".collab", "transport", filename);
+  const installed = path.join(repoRoot, ".minds", "transport", filename);
   if (fs.existsSync(installed)) return installed;
   // Dev path: transport files live in minds/transport/ after Wave A migration
   const devPath = path.join(repoRoot, "minds", "transport", filename);
@@ -135,7 +135,7 @@ export function injectBusEnv(spawnCmd: string, busUrl: string): string {
 /**
  * Starts bus-server.ts as a detached background process.
  * Resolves with { pid, url } once BUS_READY is printed to stdout.
- * Also writes the port to .collab/bus-port (done by bus-server.ts itself).
+ * Also writes the port to .minds/bus-port (done by bus-server.ts itself).
  */
 export function startBusServer(repoRoot: string): Promise<{ pid: number; url: string }> {
   const serverPath = resolveTransportFile(repoRoot, "bus-server.ts");
@@ -181,7 +181,7 @@ export function startBusServer(repoRoot: string): Promise<{ pid: number; url: st
 }
 
 /**
- * Kills the bus server process and removes .collab/bus-port.
+ * Kills the bus server process and removes .minds/bus-port.
  */
 export function teardownBusServer(pid: number, portFile?: string): void {
   try {
@@ -309,7 +309,7 @@ export function validateSchema(ctx: InitContext): void {
   if (!fs.existsSync(ctx.schemaPath)) {
     throw new OrchestratorError(
       "FILE_NOT_FOUND",
-      `Schema file not found: ${ctx.schemaPath}. Run 'cp src/config/pipeline.v3.schema.json .collab/config/' to deploy it.`
+      `Schema file not found: ${ctx.schemaPath}. Run 'cp src/config/pipeline.v3.schema.json .minds/config/' to deploy it.`
     );
   }
 
@@ -468,7 +468,7 @@ export function resolvePaths(ctx: InitContext): PathResolution {
     pipelineVariant = featureMetadata.pipeline_variant;
   }
 
-  // Multi-repo: resolve repo path from ~/.collab/repos.json
+  // Multi-repo: resolve repo path from ~/.minds/repos.json
   let repoId: string | undefined;
   let repoPath: string | undefined;
 
@@ -483,7 +483,7 @@ export function resolvePaths(ctx: InitContext): PathResolution {
     }
   }
 
-  // Build spawn command: worktree takes precedence (has symlinked .collab/ with registry).
+  // Build spawn command: worktree takes precedence (has symlinked .minds/ with registry).
   // Fall back to repoPath only when no worktree was created.
   const spawnTarget = worktreePath ?? repoPath;
   const spawnCmd = spawnTarget
@@ -508,7 +508,7 @@ export function setupSymlinks(
 ): void {
   if (!worktreePath) return;
 
-  for (const dir of [".claude", ".collab", ".specify"] as const) {
+  for (const dir of [".claude", ".minds", ".specify"] as const) {
     const src = path.join(repoRoot, dir);
     const dest = path.join(worktreePath, dir);
 
@@ -523,7 +523,7 @@ export function setupSymlinks(
     if (!fs.existsSync(dest)) {
       fs.symlinkSync(src, dest);
       if (dir === ".claude") rb.claudeSymlinkCreated = dest;
-      else if (dir === ".collab") rb.collabSymlinkCreated = dest;
+      else if (dir === ".minds") rb.mindsSymlinkCreated = dest;
       else rb.specifySymlinkCreated = dest;
       console.error(`Created ${dir}/ symlink in worktree`);
     }
@@ -645,7 +645,7 @@ function rollback(rb: RollbackState, repoRoot?: string): void {
   }
 
   if (rb.busServerPid !== undefined) {
-    const portFile = repoRoot ? path.join(repoRoot, ".collab", "bus-port") : undefined;
+    const portFile = repoRoot ? path.join(repoRoot, ".minds", "bus-port") : undefined;
     teardownBusServer(rb.busServerPid, portFile);
   }
 
@@ -667,7 +667,7 @@ function rollback(rb: RollbackState, repoRoot?: string): void {
     }
   }
 
-  for (const symlinkPath of [rb.claudeSymlinkCreated, rb.collabSymlinkCreated, rb.specifySymlinkCreated]) {
+  for (const symlinkPath of [rb.claudeSymlinkCreated, rb.mindsSymlinkCreated, rb.specifySymlinkCreated]) {
     if (symlinkPath && fs.existsSync(symlinkPath)) {
       try {
         fs.unlinkSync(symlinkPath);
@@ -695,7 +695,7 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
 
     // Step 2: Variant config override
     if (pipelineVariant) {
-      const variantPath = path.join(ctx.repoRoot, ".collab", "config", "pipeline-variants", `${pipelineVariant}.json`);
+      const variantPath = path.join(ctx.repoRoot, ".minds", "config", "pipeline-variants", `${pipelineVariant}.json`);
       if (fs.existsSync(variantPath)) {
         ctx.configPath = variantPath;
         console.error(`Using pipeline variant '${pipelineVariant}': ${variantPath}`);
@@ -864,10 +864,10 @@ async function main(): Promise<void> {
       ticketId,
       orchestratorPane,
       repoRoot,
-      registryDir: `${repoRoot}/.collab/state/pipeline-registry`,
-      groupsDir: `${repoRoot}/.collab/state/pipeline-groups`,
-      configPath: `${repoRoot}/.collab/config/pipeline.json`,
-      schemaPath: `${repoRoot}/.collab/config/pipeline.compiled.schema.json`,
+      registryDir: `${repoRoot}/.minds/state/pipeline-registry`,
+      groupsDir: `${repoRoot}/.minds/state/pipeline-groups`,
+      configPath: `${repoRoot}/.minds/config/pipeline.json`,
+      schemaPath: `${repoRoot}/.minds/config/pipeline.compiled.schema.json`,
       pipelineVariant: cliVariant,
     };
 

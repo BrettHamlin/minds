@@ -20,6 +20,8 @@ const args = new Set(process.argv.slice(2));
 const requireTasks = args.has("--require-tasks");
 const includeTasks = args.has("--include-tasks");
 const setupPlan = args.has("--setup-plan");
+// Positional ticket ID arg (e.g., BRE-443) — allows running on main/non-feature branches
+const argTicketId = process.argv.slice(2).find(a => !a.startsWith("--") && /^[A-Z]+-\d+$/.test(a)) ?? null;
 
 function fail(message: string): never {
   process.stderr.write(JSON.stringify({ error: message }) + "\n");
@@ -74,7 +76,7 @@ const prefixMatch = branch.match(/^(\d{3})-/);
 // Match ticket ID patterns: ABC-123, BRE-418, PROJ-1234 (at start of branch name)
 const ticketMatch = !prefixMatch ? branch.match(/^([A-Z]+-\d+)/) : null;
 
-if (!prefixMatch && !ticketMatch) {
+if (!prefixMatch && !ticketMatch && !argTicketId) {
   fail(`Not on a feature branch. Current branch: ${branch}\nFeature branches should be named like: 001-feature-name or BRE-123-description`);
 }
 
@@ -82,9 +84,14 @@ if (!prefixMatch && !ticketMatch) {
 let featureDir: string;
 
 // Use findFeatureDir for consolidated resolution (supports branch prefix + ticket ID)
-const lookupId = prefixMatch ? prefixMatch[1] : ticketMatch![1];
+const lookupId = prefixMatch ? prefixMatch[1] : (ticketMatch ? ticketMatch![1] : argTicketId!);
 const resolved = findFeatureDir(repoRoot, lookupId, { branch });
-featureDir = resolved ?? join(specsDir, branch);
+featureDir = resolved ?? join(specsDir, argTicketId ?? branch);
+
+// When ticket ID comes from positional arg (non-feature branch), auto-create specs dir
+if (argTicketId && !prefixMatch && !ticketMatch && !existsSync(featureDir)) {
+  mkdirSync(featureDir, { recursive: true });
+}
 
 // --- 5. Derive paths ---
 const featureSpec = join(featureDir, "spec.md");
@@ -156,6 +163,8 @@ if (existsSync(metadataPath)) {
     // non-fatal — ticketId stays empty
   }
 }
+// Fall back to positional arg if metadata not yet written
+if (!ticketId && argTicketId) ticketId = argTicketId;
 
 // --- 10. Output JSON ---
 const output = {

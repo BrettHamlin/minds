@@ -26,8 +26,9 @@
 
 import { Database } from "bun:sqlite";
 // TODO(WD): getRepoRoot should be requested via parent escalation once Pipeline Core is a Mind.
-import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import { getRepoRoot } from "@minds/pipeline_core/repo"; // CROSS-MIND
 import { openMetricsDb } from "./metrics";
+import { metricsDbPath } from "@minds/shared/paths";
 import {
   listRuns,
   getBottleneckPhases,
@@ -268,8 +269,7 @@ function main(): void {
   const repoRoot = getRepoRoot();
 
   try {
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
+    const db = openMetricsDb(metricsDbPath());
 
     if (opts.gates) {
       runGatesView(db, opts);

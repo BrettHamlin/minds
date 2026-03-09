@@ -13,7 +13,7 @@
 
 import { execSync } from "child_process";
 import * as fs from "fs";
-import { resolveTransportPath } from "../transport/resolve-transport"; // CROSS-MIND
+import { resolveTransportPath } from "@minds/transport/resolve-transport"; // CROSS-MIND
 
 function getRepoRoot(): string {
   try {
@@ -89,7 +89,7 @@ export async function emitPhaseSignal(
   fallbackState = "error",
 ): Promise<void> {
   const REPO_ROOT = getRepoRoot();
-  const TMUX_PATH = `${REPO_ROOT}/.collab/scripts/orchestrator/Tmux.ts`;
+  const TMUX_PATH = `${REPO_ROOT}/.minds/scripts/orchestrator/Tmux.ts`;
   const tag = `Emit${phaseName.charAt(0).toUpperCase() + phaseName.slice(1)}Signal`;
 
   const { mapResponseState, buildSignalMessage, resolveRegistry, truncateDetail, resolveSignalName } =
@@ -124,7 +124,7 @@ export async function emitPhaseSignal(
     const signalMessage = buildSignalMessage(registry, status, detail);
 
     // Persist signal to queue before tmux send (survives orchestrator context compaction)
-    const queueDir = `${REPO_ROOT}/.collab/state/signal-queue`;
+    const queueDir = `${REPO_ROOT}/.minds/state/signal-queue`;
     fs.mkdirSync(queueDir, { recursive: true });
     const queueFile = `${queueDir}/${registry.ticket_id}.json`;
     const queueTmp = `${queueFile}.tmp`;

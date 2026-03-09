@@ -5,7 +5,7 @@
  * resolve them via either interactive (AskUserQuestion) or non-interactive
  * (batch signal) modes.
  *
- * Install path: .collab/lib/pipeline/questions.ts
+ * Install path: .minds/lib/pipeline/questions.ts
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
@@ -106,7 +106,7 @@ export type InteractiveMode = "interactive" | "non-interactive";
 
 export interface ModeResolutionOptions {
   /**
-   * Path to pipeline.json. Defaults to .collab/config/pipeline.json
+   * Path to pipeline.json. Defaults to .minds/config/pipeline.json
    * resolved from the git repo root.
    */
   pipelineConfigPath?: string;
@@ -186,7 +186,7 @@ export async function emitQuestionBatch(
   const signal = `${batch.phase.toUpperCase()}_QUESTIONS`;
   try {
     execSync(
-      `bun .collab/handlers/emit-phase-signal.ts "${signal}" "${filePath}"`,
+      `bun .minds/handlers/emit-phase-signal.ts "${signal}" "${filePath}"`,
       { stdio: "inherit" },
     );
   } catch {

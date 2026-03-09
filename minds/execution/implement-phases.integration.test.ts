@@ -163,7 +163,7 @@ describe("phased implement: full lifecycle via registry files", () => {
 
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-phases-"));
-    registryDir = path.join(tmpDir, ".collab/state/pipeline-registry");
+    registryDir = path.join(tmpDir, ".minds/state/pipeline-registry");
     fs.mkdirSync(registryDir, { recursive: true });
     regPath = path.join(registryDir, "BRE-PHASE.json");
   });

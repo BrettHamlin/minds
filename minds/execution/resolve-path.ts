@@ -6,10 +6,10 @@
  * never need to construct paths inline.
  *
  * Usage:
- *   bun .collab/scripts/orchestrator/resolve-path.ts <TICKET_ID> registry
- *   bun .collab/scripts/orchestrator/resolve-path.ts <TICKET_ID> signal-queue
- *   bun .collab/scripts/orchestrator/resolve-path.ts <TICKET_ID> findings <phase> <round>
- *   bun .collab/scripts/orchestrator/resolve-path.ts <TICKET_ID> resolutions <phase> <round>
+ *   bun .minds/scripts/orchestrator/resolve-path.ts <TICKET_ID> registry
+ *   bun .minds/scripts/orchestrator/resolve-path.ts <TICKET_ID> signal-queue
+ *   bun .minds/scripts/orchestrator/resolve-path.ts <TICKET_ID> findings <phase> <round>
+ *   bun .minds/scripts/orchestrator/resolve-path.ts <TICKET_ID> resolutions <phase> <round>
  *
  * Exit codes:
  *   0 = path resolved, printed to stdout

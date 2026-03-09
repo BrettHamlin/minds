@@ -1,5 +1,0 @@
-{
-  "command": "go test ./...",
-  "timeout": 120,
-  "working_dir": null
-}

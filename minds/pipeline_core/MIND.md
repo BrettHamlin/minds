@@ -6,7 +6,7 @@ The foundation layer: pipeline types, registry CRUD, signal definitions, phase t
 
 ## Conventions
 
-- **All `.collab/` path construction goes through `paths.ts`**: `registryPath()`, `findingsPath()`, `resolutionsPath()`, `signalQueuePath()`. Never construct these paths inline in any file.
+- **All `.gravitas/` path construction goes through `paths.ts`**: `registryPath()`, `findingsPath()`, `resolutionsPath()`, `signalQueuePath()`. Never construct these paths inline in any file.
 - `getRegistryPath()` is removed — all callers use `registryPath()` from `paths.ts`.
 - `loadPipelineForTicket(repoRoot, ticketId)` in `pipeline.ts` is the single function for loading pipeline config. Never read `pipeline.json` directly.
 - Signal names use `SIGNAL_SUFFIXES` constants and `resolveSignalName()` from `signal.ts` — never construct `PHASE_COMPLETE` style names as raw strings.
@@ -25,7 +25,7 @@ The foundation layer: pipeline types, registry CRUD, signal definitions, phase t
 
 ## Anti-Patterns
 
-- Constructing `.collab/state/pipeline-registry/{TICKET_ID}.json` inline (always use `registryPath()`).
+- Constructing `.gravitas/state/pipeline-registry/{TICKET_ID}.json` inline (always use `registryPath()`).
 - Calling `getRegistryPath()` — it is removed, use `registryPath()`.
 - Reading `pipeline.json` at a hardcoded path (use `loadPipelineForTicket`).
 - Adding new path helpers in a non-`paths.ts` file.
@@ -33,7 +33,7 @@ The foundation layer: pipeline types, registry CRUD, signal definitions, phase t
 
 ## Review Focus
 
-- Zero inline `.collab/` path construction across all files in this Mind.
+- Zero inline `.gravitas/` path construction across all files in this Mind.
 - All signal name resolution goes through `signal.ts` exports.
 - `findFeatureDir()` used for all feature directory lookups (no custom glob patterns).
 - New types exported from `types.ts`, not scattered across modules.

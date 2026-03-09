@@ -254,8 +254,8 @@ describe("gate-accuracy-check CLI integration", () => {
       tmpdir(),
       `ga-chk-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
-    const stateDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir = join(tmpDir, ".collab", "config");
+    const stateDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir = join(tmpDir, ".minds", "config");
     mkdirSync(stateDir, { recursive: true });
     mkdirSync(configDir, { recursive: true });
 
@@ -268,7 +268,7 @@ describe("gate-accuracy-check CLI integration", () => {
       JSON.stringify({ ticket_id: ticketId, status: "done" }, null, 2)
     );
 
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db = openMetricsDb(metricsPath);
     ensureRun(db, ticketId);
     if (runOutcome !== null) {
@@ -323,8 +323,8 @@ describe("gate-accuracy-check CLI integration", () => {
 
   test("exits 1 when no TICKET_ID provided", async () => {
     tmpDir = join(tmpdir(), `ga-noid-${Date.now()}`);
-    mkdirSync(join(tmpDir, ".collab", "config"), { recursive: true });
-    writeFileSync(join(tmpDir, ".collab", "config", "pipeline.json"), "{}");
+    mkdirSync(join(tmpDir, ".minds", "config"), { recursive: true });
+    writeFileSync(join(tmpDir, ".minds", "config", "pipeline.json"), "{}");
 
     const result = await Bun.spawn(
       ["bun", join(import.meta.dir, "gate-accuracy-check.ts")],
@@ -336,9 +336,9 @@ describe("gate-accuracy-check CLI integration", () => {
 
   test("exits 3 when @metrics(false) in pipeline config", async () => {
     tmpDir = join(tmpdir(), `ga-disabled-${Date.now()}`);
-    mkdirSync(join(tmpDir, ".collab", "config"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds", "config"), { recursive: true });
     writeFileSync(
-      join(tmpDir, ".collab", "config", "pipeline.json"),
+      join(tmpDir, ".minds", "config", "pipeline.json"),
       JSON.stringify({ metrics: { enabled: false } })
     );
 
@@ -355,14 +355,14 @@ describe("gate-accuracy-check CLI integration", () => {
 
   test("exits 0 with 0 updated when run has no gates", async () => {
     tmpDir = join(tmpdir(), `ga-nogate-${Date.now()}`);
-    mkdirSync(join(tmpDir, ".collab", "state", "pipeline-registry"), { recursive: true });
-    mkdirSync(join(tmpDir, ".collab", "config"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds", "state", "pipeline-registry"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds", "config"), { recursive: true });
     writeFileSync(
-      join(tmpDir, ".collab", "config", "pipeline.json"),
+      join(tmpDir, ".minds", "config", "pipeline.json"),
       JSON.stringify({ metrics: { enabled: true } })
     );
 
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db = openMetricsDb(metricsPath);
     ensureRun(db, "BRE-NOGATE");
     db.query("UPDATE runs SET outcome = 'IMPL_COMPLETE' WHERE id = ?").run("BRE-NOGATE");
@@ -407,8 +407,8 @@ describe("E2E: full pipeline flow", () => {
   test("signal → gate-accuracy-check: all tables populated correctly", async () => {
     // ── Setup temp repo ──────────────────────────────────────────────────────
     tmpDir = join(tmpdir(), `ga-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir   = join(tmpDir, ".collab", "config");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir   = join(tmpDir, ".minds", "config");
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(configDir, { recursive: true });
 
@@ -422,7 +422,7 @@ describe("E2E: full pipeline flow", () => {
     );
 
     // ── Seed metrics DB ──────────────────────────────────────────────────────
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db = openMetricsDb(metricsPath);
     ensureRun(db, TICKET_ID);
     recordPhase(db, {

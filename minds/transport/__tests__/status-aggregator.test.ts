@@ -247,9 +247,9 @@ describe("standalone entry point", () => {
     expect(port).toBeGreaterThan(0);
 
     // Simulate what the standalone entry point does: write port file
-    const collabDir = join(tempDir, ".collab-test");
-    mkdirSync(collabDir, { recursive: true });
-    const portFile = join(collabDir, "aggregator-port");
+    const mindsDir = join(tempDir, ".minds-test");
+    mkdirSync(mindsDir, { recursive: true });
+    const portFile = join(mindsDir, "aggregator-port");
     writeFileSync(portFile, String(port), "utf8");
 
     // Verify port file content matches

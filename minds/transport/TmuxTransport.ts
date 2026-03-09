@@ -12,12 +12,12 @@ import type { Transport, Message, Unsubscribe } from "./Transport.ts";
 import * as fs from "fs";
 import * as path from "path";
 
-// Resolve tmux-client.ts: works from both minds/transport/ (dev) and .collab/transport/ (installed)
+// Resolve tmux-client.ts: works from both minds/transport/ (dev) and .minds/transport/ (installed)
 const thisDir = path.dirname(new URL(import.meta.url).pathname);
 // Dev: minds/transport/ is 2 levels from repo root
-// Installed: .collab/transport/ is also 2 levels from repo root
+// Installed: .minds/transport/ is also 2 levels from repo root
 let repoRoot = path.resolve(thisDir, "../..");
-let tmuxClientPath = path.join(repoRoot, ".collab/lib/pipeline/tmux-client.ts");
+let tmuxClientPath = path.join(repoRoot, ".minds/lib/pipeline/tmux-client.ts");
 if (!fs.existsSync(tmuxClientPath)) {
   tmuxClientPath = path.join(repoRoot, "minds/pipeline_core/tmux-client.ts");
 }

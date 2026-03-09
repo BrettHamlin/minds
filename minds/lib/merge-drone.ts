@@ -3,8 +3,10 @@
  * Commit and merge a drone's worktree branch into a target branch.
  *
  * CLI usage:
- *   bun minds/lib/merge-drone.ts <worktree-path> <target-branch> [--message 'commit msg']
+ *   bun minds/lib/merge-drone.ts <worktree-path> <target-branch> [--message 'commit msg'] [--log-content 'text'] [--bus-url <url> --channel <channel> --wave-id <id> --mind <name>]
  */
+
+import { publishMindsEvent } from "../transport/publish-event.ts";
 
 export interface MergeResult {
   success: boolean;
@@ -60,9 +62,29 @@ export async function mergeDrone(options: {
   targetBranch: string;
   commitMessage?: string;
   repoRoot?: string;
+  logContent?: string;
+  /** Bus server URL for event emission (optional — non-critical). */
+  busUrl?: string;
+  /** Bus channel (e.g. "minds-BRE-455"). Required when busUrl is set. */
+  channel?: string;
+  /** Wave identifier shared with other events in the same dispatch wave. */
+  waveId?: string;
+  /** Mind name emitting these events (e.g. "signals"). */
+  mindName?: string;
 }): Promise<MergeResult> {
-  const { worktreePath, targetBranch, commitMessage } = options;
+  const { worktreePath, targetBranch, commitMessage, logContent } = options;
   const repoRoot = options.repoRoot ?? process.cwd();
+
+  // Publish DRONE_MERGING at the start of merge logic (non-critical)
+  if (options.busUrl && options.channel && options.waveId && options.mindName) {
+    const ticketId = options.channel.replace(/^minds-/, "");
+    publishMindsEvent(options.busUrl, options.channel, {
+      type: "DRONE_MERGING",
+      source: "orchestrator",
+      ticketId,
+      payload: { waveId: options.waveId, mindName: options.mindName },
+    });
+  }
 
   // b. Get the drone's branch name.
   const branchResult = await git(worktreePath, "branch", "--show-current");
@@ -81,6 +103,9 @@ export async function mergeDrone(options: {
       error: "Worktree is in detached HEAD state — cannot determine branch",
     };
   }
+
+  // Parse mind name once — reused for auto-commit message and log writing.
+  const parsed = extractMindAndTicket(droneBranch);
 
   // a. Check for uncommitted changes.
   const statusResult = await git(worktreePath, "status", "--porcelain");
@@ -106,9 +131,8 @@ export async function mergeDrone(options: {
     // Build commit message.
     let msg = commitMessage;
     if (!msg) {
-      const extracted = extractMindAndTicket(droneBranch);
-      msg = extracted
-        ? `feat: @${extracted.mindName} drone work for ${extracted.ticketId}`
+      msg = parsed
+        ? `feat: @${parsed.mindName} drone work for ${parsed.ticketId}`
         : `feat: drone work on ${droneBranch}`;
     }
 
@@ -168,6 +192,24 @@ export async function mergeDrone(options: {
 
   // e. Capture the merge commit hash.
   const hashResult = await git(repoRoot, "rev-parse", "HEAD");
+
+  // Publish DRONE_MERGED after successful merge (non-critical)
+  if (options.busUrl && options.channel && options.waveId && options.mindName) {
+    const ticketId2 = options.channel.replace(/^minds-/, "");
+    publishMindsEvent(options.busUrl, options.channel, {
+      type: "DRONE_MERGED",
+      source: "orchestrator",
+      ticketId: ticketId2,
+      payload: { waveId: options.waveId, mindName: options.mindName },
+    });
+  }
+
+  // f. Write learning entry to daily log if provided.
+  if (logContent && parsed) {
+    const { appendDailyLog } = await import("../memory/lib/write.js");
+    await appendDailyLog(parsed.mindName, logContent);
+  }
+
   return {
     success: true,
     branch: droneBranch,
@@ -189,21 +231,35 @@ async function main(): Promise<void> {
 
   if (args.length < 2) {
     console.error(
-      "Usage: bun merge-drone.ts <worktree-path> <target-branch> [--message 'commit msg']"
+      "Usage: bun merge-drone.ts <worktree-path> <target-branch> [--message 'commit msg'] [--log-content 'text'] [--bus-url <url> --channel <channel> --wave-id <id> --mind <name>]"
     );
     process.exit(1);
+  }
+
+  function getFlag(flag: string): string | undefined {
+    const idx = args.indexOf(flag);
+    return idx !== -1 ? args[idx + 1] : undefined;
   }
 
   const worktreePath = args[0];
   const targetBranch = args[1];
 
-  const msgIdx = args.indexOf("--message");
-  const commitMessage = msgIdx !== -1 ? args[msgIdx + 1] : undefined;
+  const commitMessage = getFlag("--message");
+  const logContent = getFlag("--log-content");
+  const busUrl = getFlag("--bus-url");
+  const channel = getFlag("--channel");
+  const waveId = getFlag("--wave-id");
+  const mindName = getFlag("--mind");
 
   const result = await mergeDrone({
     worktreePath,
     targetBranch,
     commitMessage,
+    logContent,
+    busUrl,
+    channel,
+    waveId,
+    mindName,
   });
 
   if (result.success) {

@@ -13,6 +13,23 @@ import { join } from "path";
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 
 /**
+ * Absolute path to the shared contract data directory.
+ * Stores ContractPattern JSON files for cross-Mind handoff patterns.
+ * Format: {repoRoot}/minds/contracts
+ */
+export function contractDataDir(): string {
+  return join(REPO_ROOT, "minds", "contracts");
+}
+
+/**
+ * Absolute path to the SQLite FTS5 index for the contracts scope.
+ * Format: {repoRoot}/minds/contracts/.index.db
+ */
+export function contractIndexPath(): string {
+  return join(contractDataDir(), ".index.db");
+}
+
+/**
  * Absolute path to a Mind's memory directory.
  * Format: {repoRoot}/minds/{mindName}/memory
  */

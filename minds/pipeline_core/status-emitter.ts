@@ -74,7 +74,7 @@ export function computeChangedFields(
 
 export function discoverBusUrl(): string | null {
   try {
-    const portFile = path.join(getRepoRoot(), ".collab", "bus-port");
+    const portFile = path.join(getRepoRoot(), ".minds", "bus-port");
     if (!fs.existsSync(portFile)) return null;
     const content = fs.readFileSync(portFile, "utf-8").trim();
     const port = parseInt(content, 10);

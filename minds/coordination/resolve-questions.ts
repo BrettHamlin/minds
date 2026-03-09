@@ -170,8 +170,8 @@ function main(): void {
   const spec = featureDir ? safeReadFile(join(featureDir, "spec.md")) : "";
 
   // 2. Load constitution / architecture doc
-  const constitution = safeReadFile(join(repoRoot, ".collab/memory/constitution.md"));
-  const archDoc = safeReadFile(join(repoRoot, ".collab/memory/architecture.md"));
+  const constitution = safeReadFile(join(repoRoot, ".minds/memory/constitution.md"));
+  const archDoc = safeReadFile(join(repoRoot, ".minds/memory/architecture.md"));
   const constitutionText = [constitution, archDoc].filter(Boolean).join("\n\n---\n\n");
 
   // 3. Load prior resolutions (earlier rounds of same phase)

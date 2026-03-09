@@ -328,8 +328,8 @@ describe("signal-validate integration (variant pipeline config)", () => {
     pipelineVariant?: string;
   }): void {
     tmpDir = join(tmpdir(), `sig-variant-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir = join(tmpDir, ".collab", "config");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir = join(tmpDir, ".minds", "config");
     const variantsDir = join(configDir, "pipeline-variants");
 
     mkdirSync(registryDir, { recursive: true });
@@ -446,8 +446,8 @@ describe("signal-validate integration (SQLite signal logging)", () => {
 
   function setupTmpRepo(ticketId: string, nonce: string, currentStep: string): { metricsPath: string } {
     tmpDir = join(tmpdir(), `sig-val-int-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir = join(tmpDir, ".collab", "config");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir = join(tmpDir, ".minds", "config");
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(configDir, { recursive: true });
 
@@ -457,7 +457,7 @@ describe("signal-validate integration (SQLite signal logging)", () => {
     );
     writeFileSync(join(configDir, "pipeline.json"), JSON.stringify(PIPELINE_JSON, null, 2) + "\n");
 
-    return { metricsPath: join(tmpDir, ".collab", "state", "metrics.db") };
+    return { metricsPath: join(tmpDir, ".minds", "state", "metrics.db") };
   }
 
   afterEach(() => {

@@ -41,9 +41,9 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { execSync } from "child_process";
 
-import type { Finding, FindingsBatch } from "../pipeline_core/questions"; // CROSS-MIND
-import { findingsPath } from "../pipeline_core/paths"; // CROSS-MIND
-import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import type { Finding, FindingsBatch } from "@minds/pipeline_core/questions"; // CROSS-MIND
+import { findingsPath } from "@minds/pipeline_core/paths"; // CROSS-MIND
+import { getRepoRoot } from "@minds/pipeline_core/repo"; // CROSS-MIND
 
 // ── Input types ──────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ function resolveFeatureDir(featureDirEnv?: string): string {
   // Auto-detect from resolve-feature.ts
   const repoRoot = getRepoRoot();
   try {
-    const result = execSync("bun .collab/scripts/resolve-feature.ts 2>/dev/null", {
+    const result = execSync("bun .minds/scripts/resolve-feature.ts 2>/dev/null", {
       encoding: "utf-8",
       cwd: repoRoot,
     });
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
   const repoRoot = getRepoRoot();
   try {
     execSync(
-      `bun .collab/handlers/emit-question-signal.ts question "${filePath}"`,
+      `bun .minds/handlers/emit-question-signal.ts question "${filePath}"`,
       { stdio: "inherit", cwd: repoRoot },
     );
   } catch {

@@ -9,7 +9,7 @@
 //   GET /status             — health check + connection stats
 //
 // Constraints:
-//   - In-memory only; writes .collab/aggregator-port for discovery
+//   - In-memory only; writes .minds/aggregator-port for discovery
 //   - No external dependencies — Bun built-ins only
 //   - Singleton: checks for existing instance on startup
 //   - Reuses buildSnapshot/formatSnapshotEvent from status-snapshot.ts
@@ -18,6 +18,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "path";
 import { watch, type FSWatcher } from "fs";
 import { buildSnapshot, formatSnapshotEvent } from "./status-snapshot";
+import { MindsStateTracker } from "@minds/dashboard/state-tracker.js";
+import { createMindsRouteHandler } from "@minds/dashboard/route-handler.js";
+import type { MindsBusMessage } from "./minds-events.js";
+import { mindsRoot } from "../shared/paths.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,11 +51,19 @@ export class StatusAggregator {
   private seqCounter = 0;
   private readonly registryDir: string;
   private watcher: FSWatcher | null = null;
+  private mindsWatcher: FSWatcher | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private mindsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly startTime = Date.now();
+  mindsTracker: MindsStateTracker | null = null;
 
   constructor(registryDir: string) {
     this.registryDir = registryDir;
+  }
+
+  /** The .minds/state/ dir — one level up from the pipeline-registry dir. */
+  private get stateDir(): string {
+    return join(this.registryDir, "..");
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -63,14 +75,23 @@ export class StatusAggregator {
       mkdirSync(this.registryDir, { recursive: true });
     }
 
-    // Initial scan
+    // Initial scans
     this.scanRegistries();
+    this.scanMindsBusStates();
 
-    // Watch for changes with debounce
+    // Watch pipeline-registry dir for changes with debounce
     this.watcher = watch(this.registryDir, () => {
       if (this.debounceTimer) clearTimeout(this.debounceTimer);
       this.debounceTimer = setTimeout(() => {
         this.scanRegistries();
+      }, DEBOUNCE_MS);
+    });
+
+    // Watch state dir for minds-bus-*.json changes with debounce
+    this.mindsWatcher = watch(this.stateDir, () => {
+      if (this.mindsDebounceTimer) clearTimeout(this.mindsDebounceTimer);
+      this.mindsDebounceTimer = setTimeout(() => {
+        this.scanMindsBusStates();
       }, DEBOUNCE_MS);
     });
   }
@@ -82,9 +103,19 @@ export class StatusAggregator {
       this.debounceTimer = null;
     }
 
+    if (this.mindsDebounceTimer) {
+      clearTimeout(this.mindsDebounceTimer);
+      this.mindsDebounceTimer = null;
+    }
+
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
+    }
+
+    if (this.mindsWatcher) {
+      this.mindsWatcher.close();
+      this.mindsWatcher = null;
     }
 
     // Abort all bus connections
@@ -149,11 +180,65 @@ export class StatusAggregator {
       }
     }
 
-    // Remove connections for deleted pipeline registry files
+    // Remove connections for deleted pipeline registry files.
+    // Minds-prefixed keys are managed by scanMindsBusStates() — skip them here.
     for (const [ticketId, conn] of this.connections) {
-      if (!activeTickets.has(ticketId)) {
+      if (!ticketId.startsWith("minds-") && !activeTickets.has(ticketId)) {
         conn.abortController.abort();
         this.connections.delete(ticketId);
+      }
+    }
+  }
+
+  /**
+   * Scan .minds/state/minds-bus-*.json files and connect to any Minds bus
+   * servers not yet connected. Uses "minds-{ticketId}" as the connection key
+   * to coexist with pipeline registry connections in the same map.
+   */
+  scanMindsBusStates(): void {
+    let files: string[] = [];
+    try {
+      files = readdirSync(this.stateDir).filter((f) =>
+        /^minds-bus-.+\.json$/.test(f),
+      );
+    } catch {
+      return; // State dir unreadable — no-op
+    }
+
+    const activeMindsKeys = new Set<string>();
+
+    for (const file of files) {
+      try {
+        const raw = readFileSync(join(this.stateDir, file), "utf8");
+        const state = JSON.parse(raw) as Record<string, unknown>;
+        const busUrl = state.busUrl as string | undefined;
+        const ticketId = state.ticketId as string | undefined;
+
+        if (!busUrl || !ticketId) continue;
+
+        const key = `minds-${ticketId}`;
+        activeMindsKeys.add(key);
+
+        if (!this.connections.has(key)) {
+          this.connectToBus(key, busUrl);
+        } else {
+          const existing = this.connections.get(key)!;
+          if (existing.busUrl !== busUrl) {
+            existing.abortController.abort();
+            this.connections.delete(key);
+            this.connectToBus(key, busUrl);
+          }
+        }
+      } catch {
+        // Corrupt or unparseable file — skip
+      }
+    }
+
+    // Remove connections for deleted minds-bus state files
+    for (const [key, conn] of this.connections) {
+      if (key.startsWith("minds-") && !activeMindsKeys.has(key)) {
+        conn.abortController.abort();
+        this.connections.delete(key);
       }
     }
   }
@@ -189,7 +274,8 @@ export class StatusAggregator {
           headers["Last-Event-ID"] = conn.lastEventId;
         }
 
-        const res = await fetch(`${conn.busUrl}/subscribe/status`, {
+        const channel = conn.ticketId.startsWith("minds-") ? conn.ticketId : "status";
+        const res = await fetch(`${conn.busUrl}/subscribe/${channel}`, {
           headers,
           signal: conn.abortController.signal,
         });
@@ -231,6 +317,21 @@ export class StatusAggregator {
             if (eventId) conn.lastEventId = eventId;
 
             if (dataLine) {
+              // Route minds events to the state tracker
+              if (this.mindsTracker) {
+                try {
+                  const parsed = JSON.parse(dataLine) as Record<string, unknown>;
+                  if (
+                    typeof parsed.channel === "string" &&
+                    parsed.channel.startsWith("minds-")
+                  ) {
+                    this.mindsTracker.applyEvent(parsed as unknown as MindsBusMessage);
+                  }
+                } catch {
+                  // Not JSON or no channel field — not a minds event
+                }
+              }
+
               // Relay event to aggregator subscribers with our own sequence ID
               const seq = ++this.seqCounter;
               let encoded: Uint8Array;
@@ -350,13 +451,20 @@ export class StatusAggregator {
 export function createAggregatorServer(opts: AggregatorConfig = {}): {
   server: ReturnType<typeof Bun.serve>;
   aggregator: StatusAggregator;
+  mindsTracker: MindsStateTracker;
 } {
   const port = opts.port ?? 0;
   const registryDir =
     opts.registryDir ??
-    join(process.cwd(), ".collab/state/pipeline-registry");
+    join(mindsRoot(), "state/pipeline-registry");
+
+  const dbPath = join(registryDir, "minds-dashboard.db");
+  const mindsTracker = new MindsStateTracker(dbPath);
+  mindsTracker.loadFromDb();
+  const mindsHandler = createMindsRouteHandler(mindsTracker);
 
   const aggregator = new StatusAggregator(registryDir);
+  aggregator.mindsTracker = mindsTracker;
   aggregator.start();
 
   const server = Bun.serve({
@@ -374,11 +482,14 @@ export function createAggregatorServer(opts: AggregatorConfig = {}): {
         return aggregator.handleStatus();
       }
 
+      const mindsResponse = mindsHandler(req);
+      if (mindsResponse) return mindsResponse;
+
       return new Response("Not Found", { status: 404 });
     },
   });
 
-  return { server, aggregator };
+  return { server, aggregator, mindsTracker };
 }
 
 // ── Standalone entry point ──────────────────────────────────────────────────
@@ -400,8 +511,8 @@ if (import.meta.main) {
     regDirIdx !== -1 && args[regDirIdx + 1] ? args[regDirIdx + 1] : undefined;
 
   // Singleton check — verify existing instance is alive
-  const collabDir = join(process.cwd(), ".collab");
-  const portFile = join(collabDir, "aggregator-port");
+  const mindsDir = mindsRoot();
+  const portFile = join(mindsDir, "aggregator-port");
 
   if (existsSync(portFile)) {
     try {
@@ -439,11 +550,12 @@ if (import.meta.main) {
   });
 
   // Write port for discovery
-  if (!existsSync(collabDir)) mkdirSync(collabDir, { recursive: true });
+  if (!existsSync(mindsDir)) mkdirSync(mindsDir, { recursive: true });
   writeFileSync(portFile, String(server.port), "utf8");
 
   // Signal readiness
   process.stdout.write(`AGGREGATOR_READY port=${server.port}\n`);
+  console.log(`Dashboard running on http://localhost:${server.port}/minds`);
 
   // Graceful shutdown
   const shutdown = () => {

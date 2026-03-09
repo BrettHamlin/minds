@@ -12,6 +12,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { PipelineSnapshot, StatusSnapshot } from "./status-snapshot";
 import { deriveStatus, deriveDetail } from "./status-derive";
+import { mindsRoot } from "../shared/paths.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,14 +32,14 @@ export interface StatusDaemonConfig {
 // ── Foundational Utilities ───────────────────────────────────────────────────
 
 /**
- * Discover the aggregator URL by reading the .collab/aggregator-port file.
+ * Discover the aggregator URL by reading the .minds/aggregator-port file.
  * Returns null if the file doesn't exist or is unreadable.
  * Follows discoverBusUrl() pattern from status-emitter.ts.
  */
 export function discoverAggregatorUrl(repoRoot?: string): string | null {
   try {
-    const root = repoRoot || process.cwd();
-    const portFile = path.join(root, ".collab", "aggregator-port");
+    const root = repoRoot ? path.join(repoRoot, ".minds") : mindsRoot();
+    const portFile = path.join(root, "aggregator-port");
     if (!fs.existsSync(portFile)) return null;
     const content = fs.readFileSync(portFile, "utf-8").trim();
     const port = parseInt(content, 10);
@@ -106,7 +107,7 @@ export function writeCacheAtomic(
 const DEBOUNCE_MS = 500;
 const MAX_BACKOFF_MS = 30_000;
 const RECONNECT_DELAY_MS = 2000;
-const DEFAULT_CACHE_PATH = ".collab/state/status-cache.json";
+const DEFAULT_CACHE_PATH = ".minds/state/status-cache.json";
 
 export class StatusDaemon {
   private readonly pipelines = new Map<string, PipelineSnapshot>();
@@ -351,8 +352,8 @@ if (import.meta.main) {
     aggUrlIdx !== -1 && args[aggUrlIdx + 1] ? args[aggUrlIdx + 1] : undefined;
 
   // Singleton check
-  const collabDir = path.join(process.cwd(), ".collab");
-  const portFile = path.join(collabDir, "status-daemon-port");
+  const mindsDir = mindsRoot();
+  const portFile = path.join(mindsDir, "status-daemon-port");
 
   if (fs.existsSync(portFile)) {
     try {
@@ -390,10 +391,10 @@ if (import.meta.main) {
   });
 
   // Write port and pid files for discovery
-  if (!fs.existsSync(collabDir)) fs.mkdirSync(collabDir, { recursive: true });
+  if (!fs.existsSync(mindsDir)) fs.mkdirSync(mindsDir, { recursive: true });
   fs.writeFileSync(portFile, String(server.port), "utf8");
   fs.writeFileSync(
-    path.join(collabDir, "status-daemon-pid"),
+    path.join(mindsDir, "status-daemon-pid"),
     String(process.pid),
     "utf8",
   );
@@ -406,7 +407,7 @@ if (import.meta.main) {
     daemon.stop();
     server.stop();
     try { fs.unlinkSync(portFile); } catch { /* ignore */ }
-    try { fs.unlinkSync(path.join(collabDir, "status-daemon-pid")); } catch { /* ignore */ }
+    try { fs.unlinkSync(path.join(mindsDir, "status-daemon-pid")); } catch { /* ignore */ }
     process.exit(0);
   };
   process.on("SIGINT", shutdown);

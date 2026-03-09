@@ -6,7 +6,7 @@
  * This is the single entry point for all external requests.
  *
  * Unlike child Minds, the Router does NOT use createMind() from server-base.ts.
- * It IS the root MCP server, running on a fixed port (COLLAB_MIND_PORT or 3100).
+ * It IS the root MCP server, running on a fixed port (MINDS_ROUTER_PORT or 3100).
  *
  * Startup sequence:
  *   1. Start Bun HTTP server on fixed port
@@ -18,22 +18,22 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { resolve } from "path";
-import type { MindDescription, WorkUnit, WorkResult } from "../mind.js";
-import { validateWorkUnit } from "../mind.js";
+import type { MindDescription, WorkUnit, WorkResult } from "@minds/mind.js";
+import { validateWorkUnit } from "@minds/mind.js";
 import {
   findChildServerFiles,
   spawnChild,
   callDescribe,
   callHandle,
-} from "../discovery.js";
-import type { ChildProcess, SpawnedChild } from "../discovery.js";
-import { MindRouter } from "../router.js";
+} from "@minds/discovery.js";
+import type { ChildProcess, SpawnedChild } from "@minds/discovery.js";
+import { MindRouter } from "@minds/router.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-const PORT = parseInt(process.env.COLLAB_MIND_PORT ?? "3100", 10);
+const PORT = parseInt(process.env.MINDS_ROUTER_PORT ?? "3100", 10);
 const ROUTER_NAME = "router";
 
 // ---------------------------------------------------------------------------
@@ -262,7 +262,7 @@ if (import.meta.main) {
   _state = await discoverSiblings();
 
   // Load embedding model for hybrid search (BM25 + vector)
-  const { loadEmbeddingModel } = await import("../embeddings.js");
+  const { loadEmbeddingModel } = await import("@minds/embeddings.js");
   const model = await loadEmbeddingModel();
   if (model) {
     _state.mindRouter.setModel(model);

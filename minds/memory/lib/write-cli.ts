@@ -4,14 +4,17 @@
  *
  * Usage:
  *   bun minds/memory/lib/write-cli.ts --mind <name> --content <text>
+ *   bun minds/memory/lib/write-cli.ts --mind <name> --content-file <path>
  *   bun minds/memory/lib/write-cli.ts --mind <name> --content <text> --date 2026-03-08
  */
 
+import { readFileSync, existsSync } from "fs";
 import { appendDailyLog } from "./write.js";
 
 interface ParsedArgs {
   mindName?: string;
   content?: string;
+  contentFile?: string;
   date?: string;
 }
 
@@ -19,6 +22,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const args = argv.slice(2);
   let mindName: string | undefined;
   let content: string | undefined;
+  let contentFile: string | undefined;
   let date: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
@@ -35,6 +39,13 @@ function parseArgs(argv: string[]): ParsedArgs {
         process.exit(1);
       }
       content = args[i + 1];
+      i++;
+    } else if (args[i] === "--content-file") {
+      if (i + 1 >= args.length) {
+        console.error("write-cli: --content-file requires a value");
+        process.exit(1);
+      }
+      contentFile = args[i + 1];
       i++;
     } else if (args[i] === "--date") {
       if (i + 1 >= args.length) {
@@ -54,22 +65,37 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
   }
 
-  return { mindName, content, date };
+  return { mindName, content, contentFile, date };
 }
 
 async function main(): Promise<void> {
-  const { mindName, content, date } = parseArgs(process.argv);
+  const { mindName, content, contentFile, date } = parseArgs(process.argv);
 
   if (!mindName) {
     console.error("write-cli: --mind <name> is required");
     process.exit(1);
   }
-  if (!content) {
-    console.error("write-cli: --content <text> is required");
+
+  if (content !== undefined && contentFile !== undefined) {
+    console.error("write-cli: --content and --content-file are mutually exclusive");
     process.exit(1);
   }
 
-  await appendDailyLog(mindName, content, date);
+  let finalContent: string;
+  if (contentFile !== undefined) {
+    if (!existsSync(contentFile)) {
+      console.error(`write-cli: --content-file: file not found: ${contentFile}`);
+      process.exit(1);
+    }
+    finalContent = readFileSync(contentFile, "utf-8");
+  } else if (content !== undefined) {
+    finalContent = content;
+  } else {
+    console.error("write-cli: --content <text> or --content-file <path> is required");
+    process.exit(1);
+  }
+
+  await appendDailyLog(mindName, finalContent, date);
 
   const dateLabel = date ?? new Date().toISOString().slice(0, 10);
   console.log(`Appended to ${mindName} daily log (${dateLabel}).`);

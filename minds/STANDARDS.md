@@ -45,6 +45,12 @@ Deterministic code is testable, produces exact repeatable outcomes, and is the f
 - Test files live alongside source files: `foo.ts` → `foo.test.ts`.
 - All unit tests must pass before reporting DRONE_COMPLETE.
 
+### Test Scoping (CRITICAL)
+- Drones run `bun test minds/{mind_name}/` — NOT bare `bun test`. Bare `bun test` runs all 162+ test files across the entire repo, takes 3-5+ minutes, and can hang indefinitely.
+- When creating new test files, run those specific files: `bun test minds/{mind_name}/path/to/new.test.ts`.
+- The drone's CLAUDE.md includes a `## Test Command` section with the correct scoped command — use it.
+- Available npm scripts: `test` (tests/ only), `test:minds` (minds/ only), `test:unit` (unit tests only), `test:all` (everything — use sparingly).
+
 ### Integration / E2E Tests (post-merge, Mind responsibility)
 - Integration tests span multiple Minds' domains and run after all Minds' work is merged.
 - The Mind does NOT run integration tests during drone review — unit tests are sufficient for review.

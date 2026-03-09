@@ -10,7 +10,7 @@ import {
   insertIntervention,
   recordPhase,
 } from "./metrics";
-import { classifyRun } from "./classify-run-lib";
+import { classifyRun, formatDuration } from "./classify-run-lib";
 import {
   getAutonomyRate,
   getAllAutonomyRates,
@@ -194,6 +194,93 @@ describe("classifyRun — durationMs", () => {
 });
 
 // ============================================================================
+// Unit tests: formatDuration
+// ============================================================================
+
+describe("formatDuration", () => {
+  test("null → null", () => {
+    expect(formatDuration(null)).toBeNull();
+  });
+
+  test("0ms → '0s'", () => {
+    expect(formatDuration(0)).toBe("0s");
+  });
+
+  test("sub-second (1–999ms) → '< 1s'", () => {
+    expect(formatDuration(1)).toBe("< 1s");
+    expect(formatDuration(500)).toBe("< 1s");
+    expect(formatDuration(999)).toBe("< 1s");
+  });
+
+  test("exactly 1s → '1s'", () => {
+    expect(formatDuration(1000)).toBe("1s");
+  });
+
+  test("seconds only → 'Xs'", () => {
+    expect(formatDuration(45_000)).toBe("45s");
+    expect(formatDuration(59_000)).toBe("59s");
+  });
+
+  test("minutes + seconds → 'Xm Ys'", () => {
+    expect(formatDuration(150_000)).toBe("2m 30s");
+    expect(formatDuration(61_000)).toBe("1m 1s");
+  });
+
+  test("exact minutes (no seconds) → 'Xm'", () => {
+    expect(formatDuration(120_000)).toBe("2m");
+    expect(formatDuration(300_000)).toBe("5m");
+  });
+
+  test("hours + minutes → 'Xh Ym'", () => {
+    expect(formatDuration(3_900_000)).toBe("1h 5m");
+    expect(formatDuration(7_380_000)).toBe("2h 3m");
+  });
+
+  test("exact hours (no minutes) → 'Xh'", () => {
+    expect(formatDuration(3_600_000)).toBe("1h");
+    expect(formatDuration(7_200_000)).toBe("2h");
+  });
+});
+
+// ============================================================================
+// Unit tests: classifyRun — durationFormatted
+// ============================================================================
+
+describe("classifyRun — durationFormatted", () => {
+  test("returns durationFormatted string when duration_ms is set", () => {
+    const db: Database = openInMemoryMetricsDb();
+    ensureRun(db, "DF-1");
+    db.query("UPDATE runs SET duration_ms = 150000 WHERE id = 'DF-1'").run();
+
+    const result = classifyRun(db, "DF-1");
+
+    expect(result.durationFormatted).toBe("2m 30s");
+    db.close();
+  });
+
+  test("returns null durationFormatted when run has no row (no timestamps available)", () => {
+    const db: Database = openInMemoryMetricsDb();
+    // Call classifyRun for a run that was never inserted — runRow is null → durationMs is null
+
+    const result = classifyRun(db, "DF-MISSING");
+
+    expect(result.durationFormatted).toBeNull();
+    db.close();
+  });
+
+  test("durationFormatted reflects computed duration from timestamps", () => {
+    const db: Database = openInMemoryMetricsDb();
+    ensureRun(db, "DF-3");
+    db.query("UPDATE runs SET started_at = '2026-03-07T10:00:00.000Z', completed_at = '2026-03-07T10:05:00.000Z' WHERE id = 'DF-3'").run();
+
+    const result = classifyRun(db, "DF-3");
+
+    expect(result.durationFormatted).toBe("5m");
+    db.close();
+  });
+});
+
+// ============================================================================
 // Unit tests: getAutonomyRate
 // ============================================================================
 
@@ -346,8 +433,8 @@ describe("classify-run CLI integration", () => {
       tmpdir(),
       `cr-int-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
-    const stateDir  = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir = join(tmpDir, ".collab", "config");
+    const stateDir  = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir = join(tmpDir, ".minds", "config");
     mkdirSync(stateDir,  { recursive: true });
     mkdirSync(configDir, { recursive: true });
 
@@ -360,7 +447,7 @@ describe("classify-run CLI integration", () => {
       JSON.stringify({ ticket_id: ticketId, status: "done" }, null, 2)
     );
 
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db = openMetricsDb(metricsPath);
     ensureRun(db, ticketId);
     db.close();
@@ -430,8 +517,8 @@ describe("classify-run CLI integration", () => {
 
   test("exits 1 when no TICKET_ID provided", async () => {
     tmpDir = join(tmpdir(), `cr-noid-${Date.now()}`);
-    mkdirSync(join(tmpDir, ".collab", "config"), { recursive: true });
-    writeFileSync(join(tmpDir, ".collab", "config", "pipeline.json"), "{}");
+    mkdirSync(join(tmpDir, ".minds", "config"), { recursive: true });
+    writeFileSync(join(tmpDir, ".minds", "config", "pipeline.json"), "{}");
 
     const proc = await Bun.spawn(
       ["bun", join(import.meta.dir, "classify-run.ts")],
@@ -443,9 +530,9 @@ describe("classify-run CLI integration", () => {
 
   test("exits 3 when @metrics(false) in pipeline config", async () => {
     tmpDir = join(tmpdir(), `cr-disabled-${Date.now()}`);
-    mkdirSync(join(tmpDir, ".collab", "config"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds", "config"), { recursive: true });
     writeFileSync(
-      join(tmpDir, ".collab", "config", "pipeline.json"),
+      join(tmpDir, ".minds", "config", "pipeline.json"),
       JSON.stringify({ metrics: { enabled: false } })
     );
 
@@ -476,6 +563,24 @@ describe("classify-run CLI integration", () => {
     expect(proc.exitCode).toBe(0);
     const out = JSON.parse(await new Response(proc.stdout).text());
     expect(out.durationMs).toBe(12345);
+  });
+
+  test("JSON output includes durationFormatted field", async () => {
+    const { metricsPath } = setupTmpRepo("BRE-CR-DFM");
+
+    const db = openMetricsDb(metricsPath);
+    db.query("UPDATE runs SET duration_ms = 150000 WHERE id = 'BRE-CR-DFM'").run();
+    db.close();
+
+    const proc = await Bun.spawn(
+      ["bun", join(import.meta.dir, "classify-run.ts"), "BRE-CR-DFM"],
+      { cwd: tmpDir, stdout: "pipe", stderr: "pipe" }
+    );
+    await proc.exited;
+
+    expect(proc.exitCode).toBe(0);
+    const out = JSON.parse(await new Response(proc.stdout).text());
+    expect(out.durationFormatted).toBe("2m 30s");
   });
 
   test("autonomyRates reflect history across multiple runs", async () => {
@@ -527,8 +632,8 @@ describe("E2E: full pipeline flow", () => {
     const NONCE     = "fee1f0";
 
     tmpDir = join(tmpdir(), `cr-e2e-auto-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir   = join(tmpDir, ".collab", "config");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir   = join(tmpDir, ".minds", "config");
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(configDir,   { recursive: true });
 
@@ -539,7 +644,7 @@ describe("E2E: full pipeline flow", () => {
     );
 
     // Seed: run + phase (no interventions)
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db0 = openMetricsDb(metricsPath);
     ensureRun(db0, TICKET_ID);
     recordPhase(db0, {
@@ -596,8 +701,8 @@ describe("E2E: full pipeline flow", () => {
     const BAD_NONCE  = "dead00";
 
     tmpDir = join(tmpdir(), `cr-e2e-nonauto-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const registryDir = join(tmpDir, ".collab", "state", "pipeline-registry");
-    const configDir   = join(tmpDir, ".collab", "config");
+    const registryDir = join(tmpDir, ".minds", "state", "pipeline-registry");
+    const configDir   = join(tmpDir, ".minds", "config");
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(configDir,   { recursive: true });
 
@@ -607,7 +712,7 @@ describe("E2E: full pipeline flow", () => {
       JSON.stringify({ ticket_id: TICKET_ID, nonce: REAL_NONCE, current_step: "impl", status: "running" }, null, 2)
     );
 
-    const metricsPath = join(tmpDir, ".collab", "state", "metrics.db");
+    const metricsPath = join(tmpDir, ".minds", "state", "metrics.db");
     const db0 = openMetricsDb(metricsPath);
     ensureRun(db0, TICKET_ID);
     db0.close();

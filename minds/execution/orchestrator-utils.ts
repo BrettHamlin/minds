@@ -20,7 +20,7 @@ export { registryPath } from "../pipeline_core/paths"; // CROSS-MIND
  * TODO(WD): Belongs to Observability Mind — move to minds/observability/ in Wave E.
  */
 export function exitIfMetricsDisabled(repoRoot: string): void {
-  const pipeline = readJsonFile(`${repoRoot}/.collab/config/pipeline.json`);
+  const pipeline = readJsonFile(`${repoRoot}/.minds/config/pipeline.json`);
   if (pipeline?.metrics?.enabled === false) {
     console.log(JSON.stringify({ skipped: true, reason: "@metrics(false)" }));
     process.exit(3);

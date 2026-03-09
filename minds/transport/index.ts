@@ -11,6 +11,7 @@
 //     COLLAB_TRANSPORT=bus  → force BusTransport  (when @debug is absent)
 //     Useful in CI environments where editing the pipeline file isn't possible.
 //     NOTE: does NOT override @debug — a pipeline marked @debug stays on tmux.
+//     MINDS_BUS_URL overrides the default bus URL (http://localhost:7777).
 //
 //   Level 3 — Auto-detection (no directive, no env var)
 //     Pings the bus server; uses BusTransport if reachable, falls back otherwise.
@@ -22,7 +23,7 @@
 //   Pipeline has @debug                → TmuxTransport  (Level 1, cannot override)
 //   @debug + COLLAB_TRANSPORT=bus      → TmuxTransport  (Level 1 wins)
 //   No @debug, COLLAB_TRANSPORT=tmux   → TmuxTransport  (Level 2)
-//   No @debug, COLLAB_TRANSPORT=bus    → BusTransport   (Level 2)
+//   No @debug, COLLAB_TRANSPORT=bus    → BusTransport   (Level 2, uses MINDS_BUS_URL)
 //   No @debug, no env var, bus running → BusTransport   (Level 3)
 //   No @debug, no env var, bus down    → TmuxTransport  (Level 4 fallback)
 
@@ -42,7 +43,7 @@ import { BusTransport } from "./BusTransport.ts";
  *   (e.g. ["@debug", "@codeReview"]). Pass an empty array if none.
  */
 export async function resolveTransport(pipelineDirectives: string[]): Promise<Transport> {
-  const busUrl = process.env.COLLAB_BUS_URL ?? "http://localhost:7777";
+  const busUrl = process.env.MINDS_BUS_URL ?? "http://localhost:7777";
 
   // Level 1: pipeline directive — @debug means "I'm still building this pipeline"
   // This is the highest-priority signal and cannot be overridden by env vars.

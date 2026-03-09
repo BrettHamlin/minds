@@ -6,8 +6,8 @@
  * Leaf Mind: no children.
  */
 
-import { createMind } from "../server-base.js";
-import type { WorkUnit, WorkResult } from "../mind.js";
+import { createMind } from "@minds/server-base.js";
+import type { WorkUnit, WorkResult } from "@minds/mind.js";
 
 async function handle(workUnit: WorkUnit): Promise<WorkResult> {
   const ctx = (workUnit.context ?? {}) as Record<string, unknown>;
@@ -96,6 +96,16 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
       return { status: "handled", result: { ok: true } };
     }
 
+    case "warm session": {
+      const { warmSession } = await import("./lib/index.js");
+      const mindName = ctx.mindName as string | undefined;
+      if (!mindName) {
+        return { status: "handled", error: "warm session: missing context.mindName" };
+      }
+      await warmSession(mindName);
+      return { status: "handled", result: { ok: true } };
+    }
+
     default:
       return { status: "escalate" };
   }
@@ -115,6 +125,7 @@ export default createMind({
     "sync index",
     "promote to memory md",
     "prune stale entries",
+    "warm session",
   ],
   exposes: [
     "memoryDir",
@@ -126,6 +137,7 @@ export default createMind({
     "updateMemoryMd",
     "createIndex",
     "syncIndex",
+    "warmSession",
     "searchMemory",
     "promoteToMemoryMd",
     "pruneStaleEntries",

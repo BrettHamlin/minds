@@ -15,8 +15,8 @@
 
 import { existsSync } from "fs";
 import { Database } from "bun:sqlite";
-import { indexPath, syncIndex, blobToEmbedding } from "./index.js";
-import { memoryDir } from "./paths.js";
+import { indexPath, syncIndex, syncContractIndex, blobToEmbedding } from "./index.js";
+import { memoryDir, contractDataDir, contractIndexPath } from "./paths.js";
 import { createEmbeddingProvider } from "./embeddings.js";
 import type { EmbeddingProvider } from "./embeddings.js";
 import { mergeHybridResults } from "./hybrid.js";
@@ -42,16 +42,32 @@ export interface SearchOptions {
   minScore?: number;
   /** Explicit embedding provider (bypasses auto-creation, useful for testing). */
   provider?: EmbeddingProvider | null;
+  /**
+   * Search scope:
+   * - `"mind"` (default) — searches a single Mind's memory directory (`minds/{mindName}/memory/`)
+   * - `"contracts"` — searches the shared contract data directory (`minds/contracts/`)
+   *
+   * When `"contracts"`, the `mindName` parameter is ignored (contracts are cross-Mind).
+   */
+  scope?: "mind" | "contracts";
 }
 
 /**
- * Searches a Mind's memory for content matching the query.
- * Runs hybrid BM25 + vector search when an embedding provider is available,
- * otherwise falls back to BM25-only. Auto-syncs the index if it doesn't exist.
+ * Searches memory for content matching the query.
  *
- * Always scoped to a single Mind — never searches across Minds.
+ * When `scope` is `"mind"` (default):
+ *   - Searches a single Mind's memory directory (`minds/{mindName}/memory/`)
+ *   - Runs hybrid BM25 + vector search when a provider is available
+ *   - Falls back to BM25-only when no provider is available
+ *   - Auto-syncs the index if it doesn't exist
  *
- * @param mindName - Name of the Mind to search
+ * When `scope` is `"contracts"`:
+ *   - Searches the shared contract data directory (`minds/contracts/`)
+ *   - `mindName` is ignored (contracts are cross-Mind)
+ *   - Returns empty array when no patterns exist yet (cold-start safe)
+ *   - Same hybrid BM25 + vector infrastructure as mind-scoped search
+ *
+ * @param mindName - Name of the Mind to search (ignored when scope is "contracts")
  * @param query - Search query string
  * @param opts - Optional search configuration
  * @returns Ranked array of SearchResult snippets
@@ -61,6 +77,14 @@ export async function searchMemory(
   query: string,
   opts?: SearchOptions
 ): Promise<SearchResult[]> {
+  const scope = opts?.scope ?? "mind";
+
+  // --- Contracts scope ---
+  if (scope === "contracts") {
+    return searchContracts(query, opts);
+  }
+
+  // --- Mind scope (default) ---
   const dir = memoryDir(mindName);
   if (!existsSync(dir)) {
     throw new Error(`searchMemory: memory directory does not exist for mind "${mindName}" at "${dir}"`);
@@ -192,4 +216,125 @@ function cosineSimilarity(a: number[], b: number[]): number {
     dot += a[i] * b[i];
   }
   return dot;
+}
+
+/**
+ * Searches the shared contract data directory using hybrid BM25 + vector search.
+ * Returns empty array when no patterns exist (cold-start safe).
+ *
+ * @param query - Search query string
+ * @param opts - Optional search configuration
+ * @returns Ranked array of SearchResult snippets
+ */
+async function searchContracts(query: string, opts?: SearchOptions): Promise<SearchResult[]> {
+  const dir = contractDataDir();
+
+  // Cold-start: no contract directory yet — return empty results
+  if (!existsSync(dir)) {
+    return [];
+  }
+
+  const maxResults = opts?.maxResults ?? 10;
+  const dbPath = contractIndexPath();
+
+  // Auto-sync contract index if it doesn't exist
+  if (!existsSync(dbPath)) {
+    await syncContractIndex();
+  }
+
+  // Resolve embedding provider
+  const provider: EmbeddingProvider | null =
+    opts?.provider !== undefined ? opts.provider : await createEmbeddingProvider();
+
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const bm25Rows = db
+      .query<{
+        path: string;
+        start_line: number;
+        end_line: number;
+        content: string;
+        rank: number;
+      }>(
+        `
+        SELECT c.path, c.start_line, c.end_line, c.content, bm25(chunks_fts) AS rank
+        FROM chunks_fts
+        JOIN chunks c ON chunks_fts.rowid = c.id
+        WHERE chunks_fts MATCH ?
+        ORDER BY rank
+        LIMIT ?
+      `
+      )
+      .all(query, maxResults * 3);
+
+    // Vector search (when provider and stored embeddings available)
+    if (provider && bm25Rows.length >= 0) {
+      const allChunks = db
+        .query<{ id: number; path: string; start_line: number; end_line: number; content: string; embedding: Buffer | null }>(
+          "SELECT id, path, start_line, end_line, content, embedding FROM chunks WHERE embedding IS NOT NULL"
+        )
+        .all();
+
+      if (allChunks.length > 0) {
+        const queryVec = await provider.embedQuery(query);
+
+        const vectorResults: VectorSearchResult[] = allChunks
+          .map((row) => {
+            const chunkVec = blobToEmbedding(row.embedding!);
+            const similarity = cosineSimilarity(queryVec, chunkVec);
+            return {
+              path: row.path,
+              startLine: row.start_line,
+              endLine: row.end_line,
+              content: row.content,
+              vectorScore: similarity,
+            };
+          })
+          .filter((r) => r.vectorScore > 0);
+
+        vectorResults.sort((a, b) => b.vectorScore - a.vectorScore);
+
+        const bm25Results: BM25SearchResult[] = bm25Rows.map((row) => ({
+          path: row.path,
+          startLine: row.start_line,
+          endLine: row.end_line,
+          content: row.content,
+          bm25Rank: row.rank,
+        }));
+
+        const merged = mergeHybridResults(
+          vectorResults.slice(0, maxResults * 3),
+          bm25Results,
+          { maxResults }
+        );
+
+        if (opts?.minScore !== undefined) {
+          return merged.filter((r) => r.score >= opts.minScore!);
+        }
+        return merged;
+      }
+    }
+
+    // BM25-only fallback
+    const results: SearchResult[] = bm25Rows.slice(0, maxResults).map((row) => ({
+      path: row.path,
+      startLine: row.start_line,
+      endLine: row.end_line,
+      content: row.content,
+      score: -row.rank,
+    }));
+
+    if (opts?.minScore !== undefined) {
+      return results.filter((r) => r.score >= opts.minScore!);
+    }
+    return results;
+  } catch (err: any) {
+    // FTS5 throws on empty/invalid queries — return empty instead of crashing
+    if (err.message?.includes("fts5") || err.message?.includes("no such table")) {
+      return [];
+    }
+    throw new Error(`searchMemory (contracts): query failed: ${err.message}`);
+  } finally {
+    db.close();
+  }
 }

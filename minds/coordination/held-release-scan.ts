@@ -141,7 +141,7 @@ function main(): void {
   const completedTicket = args[0] || "";
 
   const repoRoot = getRepoRoot();
-  const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
+  const registryDir = `${repoRoot}/.minds/state/pipeline-registry`;
   // registry-update.ts lives in minds/execution/ (moved by Wave D WD-3)
   const scriptDir = path.join(repoRoot, "minds/execution");
 

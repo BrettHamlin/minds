@@ -27,17 +27,27 @@
 export async function handleBusMessage(msg: unknown, orchestratorPane: string): Promise<void> {
   if (!msg || typeof msg !== "object") return;
   const m = msg as Record<string, unknown>;
-  if (m.type !== "signal") return;
 
-  const payload = m.payload as Record<string, unknown> | undefined;
-  const signal = payload?.signal as string | undefined;
-  if (!signal) return;
+  let deliveryText: string | undefined;
 
-  console.error(`[BusBridge] Delivering: ${signal}`);
+  if (m.type === "signal") {
+    // Collab pipeline signal: { type: "signal", payload: { signal: "[SIGNAL:...]" } }
+    const payload = m.payload as Record<string, unknown> | undefined;
+    deliveryText = payload?.signal as string | undefined;
+  } else if (m.from === "minds" && typeof m.type === "string") {
+    // Minds event: { from: "minds", type: "DRONE_COMPLETE", payload: {...} }
+    const payload = m.payload as Record<string, unknown> | undefined;
+    const mindName = (payload?.mindName as string) ?? "";
+    const tag = mindName ? ` @${mindName}` : "";
+    deliveryText = `${m.type}${tag}`;
+  }
+
+  if (!deliveryText) return;
+
+  console.error(`[BusBridge] Delivering: ${deliveryText}`);
 
   // Send text then C-m separately (Tmux.ts pattern for Claude Code panes).
-  // Two send-keys calls: text first, then C-m as a distinct keystroke.
-  Bun.spawnSync(["tmux", "send-keys", "-t", orchestratorPane, signal]);
+  Bun.spawnSync(["tmux", "send-keys", "-t", orchestratorPane, deliveryText]);
   Bun.spawnSync(["tmux", "send-keys", "-t", orchestratorPane, "C-m"]);
 }
 

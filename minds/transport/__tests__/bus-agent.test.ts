@@ -82,8 +82,8 @@ describe("generateAgentPrompt", () => {
     expect(donePart).toContain("memory_path");
   });
 
-  test("memory_path in done payload matches .collab/agents/<agentId>.json", () => {
-    expect(prompt).toContain(`.collab/agents/${agentId}.json`);
+  test("memory_path in done payload matches .minds/agents/<agentId>.json", () => {
+    expect(prompt).toContain(`.minds/agents/${agentId}.json`);
   });
 
   test("includes || true for graceful fallback", () => {
@@ -146,7 +146,7 @@ describe("writeAgentMemory + readAgentMemory", () => {
     expect(path).toContain("agents");
   });
 
-  test("written file path is inside .collab/agents/", () => {
+  test("written file path is inside .minds/agents/", () => {
     const path = writeAgentMemory("agent-xyz", baseMemory, tmpDir);
     expect(path).toContain(join(tmpDir, "agents"));
   });

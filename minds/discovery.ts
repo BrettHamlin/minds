@@ -53,16 +53,17 @@ const SERVER_FILE = "server.ts";
 // ---------------------------------------------------------------------------
 
 /**
- * Finds all "minds/{name}/server.ts" files relative to parentDir.
+ * Finds all "{name}/server.ts" files within mindsDir.
+ * If mindsDir is not provided, defaults to "minds/" relative to parentDir.
  * Returns absolute paths to each server.ts.
  */
-export function findChildServerFiles(parentDir: string): string[] {
-  const mindsDir = join(parentDir, "minds");
-  if (!existsSync(mindsDir)) return [];
+export function findChildServerFiles(parentDir: string, mindsDir?: string): string[] {
+  const resolvedMindsDir = mindsDir ?? join(parentDir, "minds");
+  if (!existsSync(resolvedMindsDir)) return [];
 
   let entries: string[];
   try {
-    entries = readdirSync(mindsDir, { withFileTypes: true })
+    entries = readdirSync(resolvedMindsDir, { withFileTypes: true })
       .filter((e) => e.isDirectory())
       .map((e) => e.name);
   } catch {
@@ -70,7 +71,7 @@ export function findChildServerFiles(parentDir: string): string[] {
   }
 
   return entries
-    .map((name) => join(mindsDir, name, SERVER_FILE))
+    .map((name) => join(resolvedMindsDir, name, SERVER_FILE))
     .filter((p) => existsSync(p));
 }
 

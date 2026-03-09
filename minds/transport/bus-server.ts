@@ -7,7 +7,7 @@
 //   GET  /dashboard            — minimal HTML pipeline status page (BRE-399)
 //
 // Constraints:
-//   - In-memory only; no disk writes except .collab/bus-port (port discovery)
+//   - In-memory only; no disk writes except .minds/bus-port (port discovery)
 //   - No authentication — local-only server
 //   - Dynamic channels — any string is valid, no pre-registration
 //   - Ring buffer of last 100 messages per channel for SSE reconnect
@@ -15,6 +15,7 @@
 import { join } from "path";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { buildSnapshot, formatSnapshotEvent } from "./status-snapshot";
+import { mindsRoot } from "../shared/paths.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -150,7 +151,7 @@ function handleSubscribe(channel: string, req: Request): Response {
       // Snapshot-on-connect for status channel — new connections only (BRE-397)
       // Injected BEFORE channelSubs.add() so live events cannot interleave
       if (channel === "status" && isNewConnection) {
-        const dir = registryDir ?? join(process.cwd(), ".collab/state/pipeline-registry");
+        const dir = registryDir ?? join(mindsRoot(), "state/pipeline-registry");
         const snapshot = buildSnapshot(dir);
         ctrl.enqueue(formatSnapshotEvent(snapshot, ++seqCounter));
       }
@@ -251,7 +252,7 @@ export function createServer(opts: ServerConfig = {}) {
 // ── Standalone entry point ───────────────────────────────────────────────────
 //
 // When run directly (`bun transport/bus-server.ts`), starts the server and
-// writes the chosen port to .collab/bus-port.
+// writes the chosen port to .minds/bus-port.
 
 if (import.meta.main) {
   // Parse --registry-dir CLI flag for snapshot-on-connect (FR-010)
@@ -266,9 +267,9 @@ if (import.meta.main) {
   const port = server.port;
 
   // Persist port for client discovery
-  const collabDir = join(process.cwd(), ".collab");
-  if (!existsSync(collabDir)) mkdirSync(collabDir, { recursive: true });
-  writeFileSync(join(collabDir, "bus-port"), String(port), "utf8");
+  const mindsDir = mindsRoot();
+  if (!existsSync(mindsDir)) mkdirSync(mindsDir, { recursive: true });
+  writeFileSync(join(mindsDir, "bus-port"), String(port), "utf8");
 
   // Signal readiness to parent process / any watcher
   process.stdout.write(`BUS_READY port=${port}\n`);

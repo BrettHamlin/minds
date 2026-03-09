@@ -1,7 +1,7 @@
 /**
  * Pipeline registry — shared types and operations for ticket registry files.
  *
- * Registry files live at .collab/state/pipeline-registry/{TICKET_ID}.json
+ * Registry files live at .minds/state/pipeline-registry/{TICKET_ID}.json
  * and track the current state of a running pipeline instance.
  */
 

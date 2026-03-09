@@ -9,7 +9,7 @@ const REPO_ROOT = execSync("git rev-parse --show-toplevel", {
   cwd: import.meta.dir,
 }).trim();
 
-const REGISTRY_DIR = path.join(REPO_ROOT, ".collab/state/pipeline-registry");
+const REGISTRY_DIR = path.join(REPO_ROOT, ".minds/state/pipeline-registry");
 const TICKET = "TEST-RR-001";
 const TICKET_FILE = path.join(REGISTRY_DIR, `${TICKET}.json`);
 

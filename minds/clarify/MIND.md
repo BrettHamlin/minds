@@ -15,13 +15,15 @@ set of questions (findings), routes them through the orchestrator, receives answ
 
 | File | Role |
 |------|------|
-| `src/commands/collab.clarify.md` | Pipeline clarify command — the agent's execution instructions |
 | `minds/clarify/server.ts` | Clarify Mind server — MCP capabilities for the clarify domain |
 | `minds/clarify/group-questions.ts` | Finding grouping utility (`groupFindings()`) |
+| `minds/clarify/lib/memory-query.ts` | Memory search wrapper for ambiguity matching (`queryMemoryForAmbiguity()`) |
 | `minds/pipeline_core/questions.ts` | Shared Q&A protocol: `Finding`, `FindingsBatch`, `QuestionCollector`, `resolveMode()` |
 | `minds/pipeline_core/paths.ts` | `findingsPath()`, `resolutionsPath()` — deterministic file paths |
-| `minds/signals/emit-question-signal.ts` | Emits `CLARIFY_QUESTION` / `CLARIFY_COMPLETE` signals |
+| `minds/signals/emit-signal.ts` | Generic phase-aware signal emitter — reads current phase from registry |
 | `minds/signals/emit-findings.ts` | Writes FindingsBatch + emits batch signal |
+| `minds/memory/lib/search-cli.ts` | CLI for hybrid memory search (consumed, not owned) |
+| `minds/memory/lib/write-cli.ts` | CLI for writing to daily log (consumed, not owned) |
 
 ---
 
@@ -35,7 +37,7 @@ The clarify phase uses a **push-based, non-polling** question/answer flow:
 2. Agent writes `findings/clarify-round-N.json` via `emit-findings.ts` CLI
 3. Agent emits `CLARIFY_QUESTIONS` signal and **ends its response** (no polling)
 4. Orchestrator receives signal → gathers context → writes `resolutions/clarify-round-N.json`
-5. Orchestrator re-dispatches `/collab.clarify` to the agent pane
+5. Orchestrator re-dispatches `/gravitas.clarify` to the agent pane
 6. On re-entry, agent detects resolutions file → applies answers → emits `CLARIFY_COMPLETE`
 
 ### Interactive Mode — Manual Runs
@@ -129,6 +131,8 @@ From `minds/signals/pipeline-signal.ts` and `minds/pipeline_core/types.ts`:
 | Calling `AskUserQuestion` in batch mode | Wrong mode; orchestrator can't interact | Check mode via `resolve-execution-mode.ts` first |
 | Emitting `CLARIFY_COMPLETE` before writing spec | Premature completion | Write spec atomically, then emit signal |
 | More than 3 questions in orchestrated mode | Slows pipeline | Max 3 questions per round; synthesize where possible |
+| Generating questions without checking memory first | Redundant questions across pipeline runs waste orchestrator cycles | Run step 6b memory query before generating each question |
+| Skipping memory write after integrating answers | Future runs cannot benefit from prior decisions | Always write to clarify daily log in step 9b after integrating each answer |
 
 ---
 
@@ -144,6 +148,9 @@ When reviewing clarify-domain code changes, check:
 6. **No hardcoded signal strings** — use constants from `pipeline-signal.ts`
 7. **Re-entry detection** — agent checks for existing resolutions before re-collecting questions
 8. **Atomic spec writes** — spec file written atomically before emitting completion signal
+9. **Memory query precedes question generation** — step 6b runs before step 7 (not after)
+10. **Graceful empty-memory handling** — no errors on first run when clarify memory directory is absent
+11. **Prior decisions cited** — when skipping a question or strengthening a recommendation via memory, the source decision is referenced explicitly
 
 ---
 
@@ -153,3 +160,4 @@ When reviewing clarify-domain code changes, check:
 - Finding IDs: `"f1"`, `"f2"`, ... (sequential, from `QuestionCollector.add()`)
 - Round numbers: start at `1`, increment for dependent follow-up rounds
 - Spec update: `## Clarifications` section, `### Session YYYY-MM-DD`, `- Q: ... → A: ...` format
+- Memory writes use structured format: `{TICKET}: Q: <q> → A: <a>. Reasoning: <r>. Codebase evidence: <e>.`

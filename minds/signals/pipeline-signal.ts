@@ -11,7 +11,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 // TODO(WD): Should be requested via parent escalation once Router Mind exists (Wave E).
-import { loadPipelineForTicket } from "../pipeline_core/pipeline"; // CROSS-MIND
+import { loadPipelineForTicket } from "@minds/pipeline_core/pipeline"; // CROSS-MIND
 
 // Detect repo root and use local state directory
 function getRepoRoot(): string {
@@ -23,7 +23,7 @@ function getRepoRoot(): string {
 }
 
 const REPO_ROOT = getRepoRoot();
-const REGISTRY_DIR = `${REPO_ROOT}/.collab/state/pipeline-registry`;
+const REGISTRY_DIR = `${REPO_ROOT}/.minds/state/pipeline-registry`;
 
 /**
  * Map response state and current step to phase-specific signal type
