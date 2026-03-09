@@ -14,7 +14,7 @@
  * orchestrator's inline handling, NOT an entry in phases[].
  *
  * Checked locations:
- *   - src/config/pipeline-variants/*.json          (source of truth)
+ *   - minds/templates/pipeline-variants/*.json          (source of truth)
  *   - .collab/config/pipeline-variants/*.json      (installed copy)
  *   - tests/e2e/fixtures/{fixture}/pipeline-variants/*.json (test fixtures)
  */
@@ -40,8 +40,8 @@ function collectVariantFiles(): string[] {
     }
   }
 
-  // src/config/pipeline-variants/*.json
-  scanDir(join(PROJECT_ROOT, "src/config/pipeline-variants"));
+  // minds/templates/pipeline-variants/*.json
+  scanDir(join(PROJECT_ROOT, "minds/templates/pipeline-variants"));
 
   // .collab/config/pipeline-variants/*.json
   scanDir(join(PROJECT_ROOT, ".collab/config/pipeline-variants"));

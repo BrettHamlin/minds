@@ -20,7 +20,7 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync, rmSync } from "node
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const CLI_ENTRY = join(import.meta.dir, "../../src/cli/index.ts");
+const CLI_ENTRY = join(import.meta.dir, "../../minds/cli/index.ts");
 
 async function runCLI(
   args: string[],

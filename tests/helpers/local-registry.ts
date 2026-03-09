@@ -12,7 +12,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
-import { computeChecksum } from "../../src/cli/lib/integrity.js";
+import { computeChecksum } from "../../minds/cli/lib/integrity.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -20,10 +20,20 @@
  *   3 = skipped (@metrics disabled)
  */
 
+<<<<<<<< HEAD:minds/observability/classify-run.ts
+// TODO(WD): getRepoRoot/validateTicketIdArg should be requested via parent escalation once Pipeline Core is a Mind.
+import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import { validateTicketIdArg } from "../pipeline_core/validation"; // CROSS-MIND
+import { exitIfMetricsDisabled } from "./metrics-guard";
+import { openMetricsDb } from "./metrics";
+import { classifyRun } from "./classify-run-lib";
+import { getAllAutonomyRates } from "./autonomy-rate";
+========
 import { getRepoRoot, exitIfMetricsDisabled } from "./orchestrator-utils";
 import { openMetricsDb } from "../../lib/pipeline/metrics";
 import { classifyRun } from "../../lib/pipeline/classify-run";
 import { getAllAutonomyRates } from "../../lib/pipeline/autonomy-rate";
+>>>>>>>> minds/post-migration:cli/src/templates/orchestrator/classify-run.ts
 
 function main(): void {
   const args = process.argv.slice(2);

@@ -4,8 +4,8 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { resolve, filterInstalled, collectCliDeps } from "../../src/cli/lib/resolver.js";
-import type { PipelineManifest } from "../../src/cli/types/index.js";
+import { resolve, filterInstalled, collectCliDeps } from "../../minds/cli/lib/resolver.js";
+import type { PipelineManifest } from "../../minds/cli/types/index.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

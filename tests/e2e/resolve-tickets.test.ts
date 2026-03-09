@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 const SCRIPT = join(
   import.meta.dir,
-  "../../src/scripts/orchestrator/commands/resolve-tickets.ts"
+  "../../minds/coordination/resolve-tickets.ts"
 );
 
 async function run(

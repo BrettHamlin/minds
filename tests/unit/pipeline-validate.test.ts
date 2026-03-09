@@ -7,7 +7,7 @@ import { describe, test, expect } from "bun:test";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { validateManifest } from "../../src/cli/commands/pipeline/validate.js";
+import { validateManifest } from "../../minds/cli/commands/pipeline/validate.js";
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 

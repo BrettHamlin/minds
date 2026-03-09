@@ -11,9 +11,9 @@ import { describe, test, expect } from "bun:test";
 import {
   checkGoalGates,
   type GatedPhase,
-} from "../../src/scripts/orchestrator/goal-gate-check";
-import type { CompiledPipeline } from "../../src/lib/pipeline/types";
-import type { PhaseHistoryEntry } from "../../src/lib/pipeline/registry";
+} from "../../minds/execution/goal-gate-check";
+import type { CompiledPipeline } from "../../minds/pipeline_core/types";
+import type { PhaseHistoryEntry } from "../../minds/pipeline_core/registry";
 import { compileCollab } from "./helpers";
 
 // ── Compile once ──────────────────────────────────────────────────────────────

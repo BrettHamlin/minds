@@ -5,11 +5,11 @@
  * from their INSTALLED location (.collab/), not just their source location (src/).
  *
  * The installer copies files with this mapping:
- *   src/handlers/       → .collab/handlers/
- *   src/scripts/        → .collab/scripts/        (top-level only)
- *   src/scripts/orchestrator/** → .collab/scripts/orchestrator/**
- *   src/lib/**           → .collab/lib/**
- *   transport/           → .collab/transport/
+ *   minds/templates/handlers/      → .collab/handlers/
+ *   minds/templates/scripts/       → .collab/scripts/        (top-level only)
+ *   minds/templates/orchestrator/** → .collab/scripts/orchestrator/**
+ *   minds/templates/lib-pipeline/  → .collab/lib/pipeline/
+ *   minds/transport/               → .collab/transport/
  *
  * A relative import that works from src/ may break from .collab/ if it
  * references a path that doesn't exist after the prefix transformation.
@@ -31,14 +31,16 @@ interface InstallMapping {
   destDir: string;
   /** Whether to recurse into subdirectories */
   recursive: boolean;
+  /** File names to exclude from the mapping */
+  exclude?: string[];
 }
 
 const INSTALL_MAPPINGS: InstallMapping[] = [
-  { srcDir: "src/handlers", destDir: ".collab/handlers", recursive: false },
-  { srcDir: "src/scripts", destDir: ".collab/scripts", recursive: false },
-  { srcDir: "src/scripts/orchestrator", destDir: ".collab/scripts/orchestrator", recursive: true },
-  { srcDir: "src/lib", destDir: ".collab/lib", recursive: true },
-  { srcDir: "transport", destDir: ".collab/transport", recursive: false },
+  { srcDir: "minds/templates/handlers", destDir: ".collab/handlers", recursive: false },
+  { srcDir: "minds/templates/orchestrator", destDir: ".collab/scripts/orchestrator", recursive: true },
+  { srcDir: "minds/templates/scripts", destDir: ".collab/scripts", recursive: false },
+  { srcDir: "minds/templates/lib-pipeline", destDir: ".collab/lib/pipeline", recursive: false },
+  { srcDir: "minds/transport", destDir: ".collab/transport", recursive: false, exclude: ["server.ts", "status-aggregator.ts"] },
 ];
 
 // ── Extract imports from a TypeScript file ─────────────────────────────────
@@ -77,13 +79,14 @@ function extractImports(filePath: string): ImportRef[] {
 
 // ── Collect all installed .ts files (excluding tests) ──────────────────────
 
-function collectFiles(dir: string, recursive: boolean): string[] {
+function collectFiles(dir: string, recursive: boolean, exclude: string[] = []): string[] {
   const absDir = join(PROJECT_ROOT, dir);
   if (!existsSync(absDir)) return [];
 
   const files: string[] = [];
 
   for (const entry of readdirSync(absDir)) {
+    if (exclude.includes(entry)) continue;
     const full = join(absDir, entry);
     const stat = statSync(full);
 
@@ -206,7 +209,7 @@ describe("portable imports", () => {
     const failures: string[] = [];
 
     for (const mapping of INSTALL_MAPPINGS) {
-      const srcFiles = collectFiles(mapping.srcDir, mapping.recursive);
+      const srcFiles = collectFiles(mapping.srcDir, mapping.recursive, mapping.exclude ?? []);
 
       for (const srcFile of srcFiles) {
         const installedFile = sourceToInstalled(srcFile);

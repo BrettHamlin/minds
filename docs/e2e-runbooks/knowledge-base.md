@@ -98,51 +98,68 @@ Registry file is **DELETED** when pipeline reaches `done` (absence = success).
 ### Directory Structure
 
 ```
+minds/                           # Pipeline orchestrator source (canonical)
+├── execution/                   # Orchestrator execution scripts (Layer 2)
+│   ├── orchestrator-init.ts     # Pipeline init (spawn pane, registry)
+│   ├── phase-dispatch.ts        # Phase dispatch to agent panes
+│   ├── transition-resolve.ts    # Phase transition resolution
+│   ├── signal-validate.ts       # Signal parsing and validation
+│   ├── registry-read.ts         # Registry JSON reader
+│   ├── registry-update.ts       # Atomic registry updates
+│   ├── goal-gate-check.ts       # Goal gate verification
+│   ├── verify-and-complete.ts   # Phase completion + signal emission
+│   ├── Tmux.ts                  # Tmux interaction CLI
+│   └── ...
+├── coordination/                # Multi-ticket coordination
+│   ├── coordination-check.ts    # Dependency cycle detection
+│   ├── held-release-scan.ts     # Held agent release scanning
+│   ├── group-manage.ts          # Coordination group management
+│   └── check-dependency-hold.ts # Registry hold check
+├── signals/                     # Signal handlers and hooks
+│   ├── pipeline-signal.ts       # Shared signal utilities
+│   ├── emit-question-signal.ts  # Question/complete signal emission
+│   ├── emit-blindqa-signal.ts   # BlindQA signal emission
+│   ├── resolve-tokens.ts        # Token expression resolver
+│   ├── question-signal.hook.ts  # PreToolUse hook for questions
+│   └── ...
+├── pipeline_core/               # Core pipeline logic (transitions, registry, paths)
+│   ├── transitions.ts           # Core transition logic (resolveTransition)
+│   ├── registry.ts              # Registry read/write helpers
+│   ├── paths.ts                 # Deterministic path resolution
+│   └── index.ts                 # Shared utilities
+├── transport/                   # Transport layer (tmux, bus)
+├── cli/                         # Compiled binary CLI (manual arg parsing)
+└── ...
+
 src/
-├── commands/           # Orchestrator and agent command files (.md)
-│   ├── collab.run.md           # THE orchestrator brain — drives entire pipeline
-│   ├── collab.clarify.md       # Agent: clarify phase
-│   ├── collab.plan.md          # Agent: plan phase
-│   ├── collab.implement.md     # Agent: implement phase
-│   ├── collab.analyze.md       # Agent: analyze phase
-│   ├── collab.codeReview.md    # Agent: inline code review subagent
-│   ├── collab.blindqa.md       # Agent: blind QA phase
-│   └── collab.specify.md       # Orchestrator: creates worktree + spec scaffold
+├── commands/                    # Orchestrator and agent command files (.md)
+│   ├── collab.run.md            # THE orchestrator brain — drives entire pipeline
+│   ├── collab.clarify.md        # Agent: clarify phase
+│   ├── collab.plan.md           # Agent: plan phase
+│   ├── collab.implement.md      # Agent: implement phase
+│   └── ...
 ├── config/
-│   ├── pipeline.v3.schema.json # Source schema
-│   └── gates/                  # Gate evaluation prompts
-├── scripts/
-│   ├── verify-and-complete.ts  # Phase completion + signal emission
-│   └── orchestrator/
-│       ├── commands/
-│       │   ├── orchestrator-init.ts      # Pipeline init (spawn pane, registry)
-│       │   ├── transition-resolve.ts     # Phase transition resolution
-│       │   └── coordination-check.ts     # Multi-ticket dependency detection
-│       └── ...
-├── lib/
-│   └── pipeline/
-│       ├── transitions.ts       # Core transition logic (resolveTransition)
-│       ├── registry.ts          # Registry read/write helpers
-│       └── index.ts             # Shared utilities
-└── hooks/                       # Signal and question hooks
+│   ├── pipeline.v3.schema.json  # Source schema
+│   └── gates/                   # Gate evaluation prompts
+└── skills/                      # AI skill definitions
 
 cli/                             # CLI package (npx collab-workflow)
 ├── src/
-│   ├── templates/               # *** MIRRORS src/ — MUST stay in sync ***
+│   ├── templates/               # *** MIRRORS minds/ — MUST stay in sync ***
 │   │   ├── commands/            # Same .md files as src/commands/
-│   │   ├── scripts/             # Same scripts as src/scripts/
+│   │   ├── scripts/             # Same scripts as minds/execution/
 │   │   ├── config/              # Same config files
-│   │   └── hooks/               # Same hooks
+│   │   └── hooks/               # Same hooks as minds/signals/
 │   └── installer.ts             # Deploys templates to target repo .collab/
 └── dist/                        # Built bundle
 ```
 
 ### CRITICAL: Dual Template Structure
 
-Every file in `src/` has a mirror in `cli/src/templates/`. When you change a source file:
+Every pipeline file in `minds/` has a mirror in `cli/src/templates/`. When you change a source file:
 
-1. Edit `src/commands/collab.run.md`
-2. **ALSO** edit `cli/src/templates/commands/collab.run.md` (identical change)
+1. Edit `minds/execution/transition-resolve.ts`
+2. **ALSO** edit `cli/src/templates/scripts/orchestrator/transition-resolve.ts` (identical change)
 3. Rebuild CLI: `cd cli && bun run build`
 4. Reinstall in test repo: `cd ~/Code/test-repos/hugo && npx collab-workflow init --force`
 
@@ -155,9 +172,9 @@ Every file in `src/` has a mirror in `cli/src/templates/`. When you change a sou
 | File | What it does | When you need it |
 |------|-------------|-----------------|
 | `src/commands/collab.run.md` | Orchestrator brain — all transition logic, gate evaluation, phase dispatch | Any orchestrator behavior issue |
-| `src/lib/pipeline/transitions.ts` | Resolves which phase comes next given current phase + signal | Wrong phase transitions |
-| `src/scripts/verify-and-complete.ts` | Validates phase completion, emits signals | Signal not received, phase not completing |
-| `src/scripts/orchestrator/commands/orchestrator-init.ts` | Spawns agent pane, creates registry, sets up symlinks | Agent not spawning, wrong working directory |
+| `minds/pipeline_core/transitions.ts` | Resolves which phase comes next given current phase + signal | Wrong phase transitions |
+| `minds/execution/verify-and-complete.ts` | Validates phase completion, emits signals | Signal not received, phase not completing |
+| `minds/execution/orchestrator-init.ts` | Spawns agent pane, creates registry, sets up symlinks | Agent not spawning, wrong working directory |
 | `src/commands/collab.implement.md` | Agent implement phase — handles phased implementation | Implementation issues, phase counting |
 | `src/commands/collab.codeReview.md` | Inline code review subagent | Code review not firing or wrong verdict |
 | `cli/src/installer.ts` | Deploys templates to target repo | Files not deploying after init |

@@ -20,9 +20,18 @@
  *   3 = skipped (@metrics disabled)
  */
 
+<<<<<<<< HEAD:minds/observability/gate-accuracy-check.ts
+// TODO(WD): getRepoRoot/validateTicketIdArg should be requested via parent escalation once Pipeline Core is a Mind.
+import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import { validateTicketIdArg } from "../pipeline_core/validation"; // CROSS-MIND
+import { exitIfMetricsDisabled } from "./metrics-guard";
+import { openMetricsDb } from "./metrics";
+import { updateGateAccuracy, getGateAccuracyReport } from "./gate-accuracy-lib";
+========
 import { getRepoRoot, exitIfMetricsDisabled } from "./orchestrator-utils";
 import { openMetricsDb } from "../../lib/pipeline/metrics";
 import { updateGateAccuracy, getGateAccuracyReport } from "../../lib/pipeline/gate-accuracy";
+>>>>>>>> minds/post-migration:cli/src/templates/orchestrator/gate-accuracy-check.ts
 
 function main(): void {
   const args = process.argv.slice(2);

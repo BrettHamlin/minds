@@ -56,17 +56,17 @@ if (existsSync(TEMPLATE_DIR)) {
 const copies: Array<{ from: string; to: string; filter?: (name: string) => boolean }> = [
   { from: "src/commands", to: "commands" },
   { from: "src/skills", to: "skills" },
-  { from: "src/handlers", to: "handlers" },
+  { from: "minds/templates/handlers", to: "handlers" },
   {
-    from: "src/scripts/orchestrator",
+    from: "minds/templates/orchestrator",
     to: "orchestrator",
     filter: (name: string) => !name.endsWith(".test.ts")
   },
-  { from: "src/scripts/verify-and-complete.ts", to: "scripts/verify-and-complete.ts" },
-  { from: "src/scripts/webhook-notify.ts", to: "scripts/webhook-notify.ts" },
+  { from: "minds/templates/scripts/verify-and-complete.ts", to: "scripts/verify-and-complete.ts" },
+  { from: "minds/templates/scripts/webhook-notify.ts", to: "scripts/webhook-notify.ts" },
   { from: "src/config", to: "config" },
-  { from: "src/lib/pipeline", to: "lib-pipeline" },
-  { from: "src/hooks", to: "hooks" },
+  { from: "minds/templates/lib-pipeline", to: "lib-pipeline" },
+  { from: "minds/templates/hooks", to: "hooks" },
   {
     from: ".specify/scripts",
     to: "specify-scripts",

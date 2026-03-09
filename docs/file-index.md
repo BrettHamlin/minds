@@ -64,75 +64,67 @@ Search by tag to find files related to a concept. Each entry has:
 
 ---
 
-### src/scripts/orchestrator/
+### minds/execution/
 
-Bash scripts (Layer 2 execution interpreters):
-
-| File | Responsibility | Subsystem | Tags |
-|------|---------------|-----------|------|
-| `src/scripts/orchestrator/orchestrator-init.sh` | Validates pipeline schema, resolves worktree, spawns agent pane, creates registry entry | orchestrator | init, schema-validation, tmux, registry, spawn |
-| `src/scripts/orchestrator/phase-dispatch.sh` | Reads phase command from pipeline.json, checks coordination holds, sends command to agent pane | orchestrator | dispatch, phase, coordination, tmux |
-| `src/scripts/orchestrator/transition-resolve.sh` | Looks up matching transition row for (phase, signal) pair in pipeline.json | orchestrator | transition, signal, lookup, routing |
-| `src/scripts/orchestrator/signal-validate.sh` | Parses and validates signal strings against registry (nonce, phase correctness) | orchestrator | signal, validation, nonce, parsing |
-| `src/scripts/orchestrator/registry-read.sh` | Reads and outputs JSON registry for a given ticket ID | orchestrator | registry, read, json, state |
-| `src/scripts/orchestrator/registry-update.sh` | Applies atomic field=value updates to ticket registry files (tmp + mv pattern) | orchestrator | registry, update, atomic-write, state |
-| `src/scripts/orchestrator/phase-advance.sh` | Determines next phase in sequence from pipeline.json (pure function, no side effects) | orchestrator | phase, advance, sequence, next |
-| `src/scripts/orchestrator/status-table.sh` | Scans all registries and renders formatted ASCII status table | orchestrator | status, display, table, monitoring |
-| `src/scripts/orchestrator/goal-gate-check.sh` | Verifies goal_gate requirements before terminal phase advance (always/if_triggered) | orchestrator | goal-gate, terminal, verification, blindqa |
-| `src/scripts/orchestrator/held-release-scan.sh` | Scans registries for held agents and releases those with satisfied dependencies | orchestrator | held, release, coordination, dependencies |
-| `src/scripts/orchestrator/coordination-check.sh` | Validates coordination.json files for circular dependencies and unknown ticket references | orchestrator | coordination, validation, cycles, references |
-| `src/scripts/orchestrator/group-manage.sh` | Creates and manages coordination groups linking multiple tickets for synchronized operations | orchestrator | groups, coordination, multi-ticket, deploy-gate |
-
-TypeScript equivalents (Bash-to-TS conversion):
+Orchestrator execution scripts (Layer 2 execution interpreters):
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `src/scripts/orchestrator/Tmux.ts` | Tmux interaction CLI: send-keys, capture-pane, split, list, pane-exists | orchestrator | tmux, cli, automation, pane |
-| `src/scripts/orchestrator/orchestrator-utils.ts` | Shared utilities for repo root detection, JSON file I/O, and registry paths | orchestrator | utils, shared, repo-root, json |
-| `src/scripts/orchestrator/goal-gate-check.ts` | TypeScript implementation of goal gate checking logic (exportable, testable functions) | orchestrator | goal-gate, typescript, testable |
-| `src/scripts/orchestrator/signal-validate.ts` | TypeScript implementation of signal parsing and validation | orchestrator | signal, validation, typescript, testable |
-| `src/scripts/orchestrator/transition-resolve.ts` | TypeScript implementation of transition resolution lookup | orchestrator | transition, typescript, testable |
-| `src/scripts/orchestrator/registry-update.ts` | TypeScript implementation of atomic registry updates with phase_history append | orchestrator | registry, update, typescript, testable |
-| `src/scripts/orchestrator/held-release-scan.ts` | TypeScript implementation of held agent release scanning | orchestrator | held, release, typescript, testable |
+| `minds/execution/orchestrator-init.ts` | Validates pipeline schema, resolves worktree, spawns agent pane, creates registry entry | orchestrator | init, schema-validation, tmux, registry, spawn |
+| `minds/execution/phase-dispatch.ts` | Reads phase command from pipeline.json, checks coordination holds, sends command to agent pane | orchestrator | dispatch, phase, coordination, tmux |
+| `minds/execution/transition-resolve.ts` | Looks up matching transition row for (phase, signal) pair in pipeline.json | orchestrator | transition, signal, lookup, routing |
+| `minds/execution/signal-validate.ts` | Parses and validates signal strings against registry (nonce, phase correctness) | orchestrator | signal, validation, nonce, parsing |
+| `minds/execution/registry-read.ts` | Reads and outputs JSON registry for a given ticket ID | orchestrator | registry, read, json, state |
+| `minds/execution/registry-update.ts` | Applies atomic field=value updates to ticket registry files (tmp + mv pattern) | orchestrator | registry, update, atomic-write, state |
+| `minds/execution/phase-advance.ts` | Determines next phase in sequence from pipeline.json (pure function, no side effects) | orchestrator | phase, advance, sequence, next |
+| `minds/execution/status-table.ts` | Scans all registries and renders formatted ASCII status table | orchestrator | status, display, table, monitoring |
+| `minds/execution/goal-gate-check.ts` | Verifies goal_gate requirements before terminal phase advance (always/if_triggered) | orchestrator | goal-gate, terminal, verification, blindqa |
+| `minds/execution/Tmux.ts` | Tmux interaction CLI: send-keys, capture-pane, split, list, pane-exists | orchestrator | tmux, cli, automation, pane |
+| `minds/execution/orchestrator-utils.ts` | Shared utilities for repo root detection, JSON file I/O, and registry paths | orchestrator | utils, shared, repo-root, json |
+| `minds/execution/evaluate-gate.ts` | Gate prompt resolution and verdict validation | orchestrator | gate, evaluation, prompt, verdict |
+| `minds/execution/dispatch-phase-hooks.ts` | Pre/post phase dispatch hook list | orchestrator | hooks, dispatch, phase |
+| `minds/execution/resolve-execution-mode.ts` | Deterministic interactive/autonomous detection | orchestrator | execution-mode, detection |
+| `minds/execution/analyze-task-phases.ts` | Deterministic phase structure analysis | orchestrator | phases, analysis, structure |
+| `minds/execution/resolve-path.ts` | Deterministic path resolution for markdown | orchestrator | paths, resolution |
+| `minds/execution/pipeline-config-read.ts` | Pipeline config reading and interpretation | orchestrator | config, pipeline, read |
+| `minds/execution/resolve-retry-config.ts` | Phase history-based attempt counting and retry config | orchestrator | retry, config, attempts |
+| `minds/execution/verify-and-complete.ts` | Verifies phase completion (tasks done, tests pass) and emits completion signal | orchestrator | verify, complete, signal, phase-end |
+| `minds/execution/webhook-notify.ts` | Sends phase change notifications to OpenClaw webhook (forwards to Discord) | orchestrator | webhook, notification, discord, openclaw |
+
+### minds/coordination/
+
+| File | Responsibility | Subsystem | Tags |
+|------|---------------|-----------|------|
+| `minds/coordination/held-release-scan.ts` | Scans registries for held agents and releases those with satisfied dependencies | orchestrator | held, release, coordination, dependencies |
+| `minds/coordination/coordination-check.ts` | Validates coordination.json files for circular dependencies and unknown ticket references | orchestrator | coordination, validation, cycles, references |
+| `minds/coordination/group-manage.ts` | Creates and manages coordination groups linking multiple tickets for synchronized operations | orchestrator | groups, coordination, multi-ticket, deploy-gate |
+| `minds/coordination/check-dependency-hold.ts` | Registry hold check for dependency satisfaction | orchestrator | hold, dependency, check |
 
 TypeScript tests:
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `src/scripts/orchestrator/goal-gate-check.test.ts` | Unit tests for goal gate checking logic | tests | goal-gate, unit-test, bun-test |
-| `src/scripts/orchestrator/signal-validate.test.ts` | Unit tests for signal parsing and validation | tests | signal, validation, unit-test, bun-test |
-| `src/scripts/orchestrator/transition-resolve.test.ts` | Unit tests for transition resolution | tests | transition, unit-test, bun-test |
-| `src/scripts/orchestrator/registry-update.test.ts` | Unit tests for registry update operations | tests | registry, update, unit-test, bun-test |
-| `src/scripts/orchestrator/held-release-scan.test.ts` | Unit tests for held agent release scanning | tests | held, release, unit-test, bun-test |
+| `minds/execution/goal-gate-check.test.ts` | Unit tests for goal gate checking logic | tests | goal-gate, unit-test, bun-test |
+| `minds/execution/signal-validate.test.ts` | Unit tests for signal parsing and validation | tests | signal, validation, unit-test, bun-test |
+| `minds/execution/transition-resolve.test.ts` | Unit tests for transition resolution | tests | transition, unit-test, bun-test |
+| `minds/execution/registry-update.test.ts` | Unit tests for registry update operations | tests | registry, update, unit-test, bun-test |
+| `minds/coordination/held-release-scan.test.ts` | Unit tests for held agent release scanning | tests | held, release, unit-test, bun-test |
 
 ---
 
-### src/scripts/
+### minds/signals/
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `src/scripts/verify-and-complete.ts` | Verifies phase completion (tasks done, tests pass) and emits completion signal to orchestrator | orchestrator | verify, complete, signal, phase-end |
-| `src/scripts/webhook-notify.ts` | Sends phase change notifications to OpenClaw webhook (forwards to Discord) | orchestrator | webhook, notification, discord, openclaw |
-
----
-
-### src/handlers/
-
-| File | Responsibility | Subsystem | Tags |
-|------|---------------|-----------|------|
-| `src/handlers/pipeline-signal.ts` | Shared signal utilities: signal building, registry lookup, nonce matching, phase-to-signal mapping | handlers | signal, shared, utilities, nonce |
-| `src/handlers/emit-question-signal.ts` | Emits CLARIFY_QUESTION and CLARIFY_COMPLETE signals deterministically (replaces hook dependency) | handlers | clarify, signal, emission, deterministic |
-| `src/handlers/emit-blindqa-signal.ts` | Emits BLINDQA_* signals (start, pass, fail) deterministically | handlers | blindqa, signal, emission, deterministic |
-| `src/handlers/emit-spec-critique-signal.ts` | Emits SPEC_CRITIQUE_* signals (start, pass, warn, fail) deterministically | handlers | spec-critique, signal, emission, deterministic |
-| `src/handlers/resolve-tokens.ts` | Pipeline v3 token expression resolver: substitutes {{TICKET_ID}}, {{PHASE}}, etc. in templates | handlers | tokens, templates, resolution, pipeline-v3 |
-
----
-
-### src/hooks/
-
-| File | Responsibility | Subsystem | Tags |
-|------|---------------|-----------|------|
-| `src/hooks/question-signal.hook.ts` | PreToolUse:AskUserQuestion hook that emits PHASE_QUESTION signal to orchestrator pane | handlers | hook, question, pretooluse, signal |
+| `minds/signals/pipeline-signal.ts` | Shared signal utilities: signal building, registry lookup, nonce matching, phase-to-signal mapping | signals | signal, shared, utilities, nonce |
+| `minds/signals/emit-question-signal.ts` | Emits CLARIFY_QUESTION and CLARIFY_COMPLETE signals deterministically (replaces hook dependency) | signals | clarify, signal, emission, deterministic |
+| `minds/signals/emit-blindqa-signal.ts` | Emits BLINDQA_* signals (start, pass, fail) deterministically | signals | blindqa, signal, emission, deterministic |
+| `minds/signals/emit-spec-critique-signal.ts` | Emits SPEC_CRITIQUE_* signals (start, pass, warn, fail) deterministically | signals | spec-critique, signal, emission, deterministic |
+| `minds/signals/resolve-tokens.ts` | Pipeline v3 token expression resolver: substitutes {{TICKET_ID}}, {{PHASE}}, etc. in templates | signals | tokens, templates, resolution, pipeline-v3 |
+| `minds/signals/emit-signal.ts` | Generic signal emission handler (reads phase from registry) | signals | signal, emission, generic |
+| `minds/signals/emit-findings.ts` | Findings batch emission with schema enforcement | signals | findings, emission, schema |
+| `minds/signals/emit-phase-signal.ts` | Phase-specific signal emission | signals | phase, signal, emission |
+| `minds/signals/question-signal.hook.ts` | PreToolUse:AskUserQuestion hook that emits PHASE_QUESTION signal to orchestrator pane | signals | hook, question, pretooluse, signal |
 
 ---
 
@@ -453,7 +445,7 @@ TypeScript tests:
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `.collab/scripts/orchestrator/*.sh` | Runtime copies of all orchestrator bash scripts (12 files) | orchestrator | runtime-copy |
+| `.collab/scripts/orchestrator/*.ts` | Runtime copies of all orchestrator TypeScript scripts (from `minds/execution/`) | orchestrator | runtime-copy |
 | `.collab/scripts/orchestrator/Tmux.ts` | Runtime copy of Tmux CLI utility | orchestrator | runtime-copy |
 | `.collab/scripts/verify-and-complete.ts` | Runtime copy of verify-and-complete script | orchestrator | runtime-copy |
 | `.collab/scripts/webhook-notify.ts` | Runtime copy of webhook notification script | orchestrator | runtime-copy |
@@ -464,7 +456,7 @@ TypeScript tests:
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `.collab/handlers/*.ts` | Runtime copies of all signal emission handlers (5 files) | handlers | runtime-copy |
+| `.collab/handlers/*.ts` | Runtime copies of all signal emission handlers (from `minds/signals/`) | signals | runtime-copy |
 
 ---
 
@@ -472,7 +464,7 @@ TypeScript tests:
 
 | File | Responsibility | Subsystem | Tags |
 |------|---------------|-----------|------|
-| `.collab/hooks/question-signal.hook.ts` | Runtime copy of PreToolUse question signal hook | handlers | runtime-copy, hook |
+| `.collab/hooks/question-signal.hook.ts` | Runtime copy of PreToolUse question signal hook (from `minds/signals/`) | signals | runtime-copy, hook |
 
 ---
 

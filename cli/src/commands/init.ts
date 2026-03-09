@@ -1,10 +1,10 @@
 import { existsSync, readdirSync, statSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import chalk from "chalk";
-import { isGitRepo, getRepoRoot } from "../utils/git";
-import { readVersion, writeVersion } from "../utils/version";
-import { countFiles } from "../utils/fs";
-import { installTemplates, getTemplateDir } from "../utils/installer";
+import { isGitRepo, getRepoRoot } from "../../../minds/cli/utils/git";
+import { readVersion, writeVersion } from "../../../minds/cli/utils/version";
+import { countFiles } from "../../../minds/cli/utils/fs";
+import { installTemplates, getTemplateDir } from "../../../minds/installer/core";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);

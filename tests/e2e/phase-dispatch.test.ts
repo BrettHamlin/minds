@@ -9,7 +9,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { resolvePhaseCommand } from "../../src/scripts/orchestrator/commands/phase-dispatch";
+import { resolvePhaseCommand } from "../../minds/execution/phase-dispatch";
 import { compileCollab } from "./helpers";
 
 // ── Compile once ──────────────────────────────────────────────────────────────

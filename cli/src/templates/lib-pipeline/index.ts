@@ -1,15 +1,7 @@
 /**
- * src/lib/pipeline — Shared pipeline library
+ * src/lib/pipeline — Re-export barrel (WD-2: implementation moved to minds/pipeline_core/)
  *
- * Barrel export for all shared pipeline types, utilities, and logic.
- * Imported by both pipelang compiler/runner and orchestrator scripts.
+ * Maintained for backward compatibility. Import directly from minds/pipeline_core/ for new code.
  */
-
-export * from "./types";
+export * from "../../../minds/pipeline_core/index";
 export * from "./utils";
-export * from "./paths";
-export * from "./registry";
-export * from "./signal";
-export * from "./transitions";
-export * from "./tmux-client";
-export * from "./errors";

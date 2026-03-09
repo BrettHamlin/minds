@@ -4,7 +4,7 @@
  * Guard test: ensures every command referenced in a pipeline variant config
  * has a corresponding .md file in src/commands/.
  *
- * Pipeline variant configs live in src/config/pipeline-variants/*.json.
+ * Pipeline variant configs live in minds/templates/pipeline-variants/*.json.
  * Each phase may have a "command" field like "/collab.spec-critique".
  * The installer copies these commands to .claude/commands/ automatically
  * (see src/commands/collab.install.ts — variant command scan block).
@@ -23,7 +23,7 @@ import { readdirSync, readFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "../..");
-const VARIANTS_DIR = join(PROJECT_ROOT, "src/config/pipeline-variants");
+const VARIANTS_DIR = join(PROJECT_ROOT, "minds/templates/pipeline-variants");
 const COMMANDS_DIR = join(PROJECT_ROOT, "src/commands");
 
 // ─── Helper ──────────────────────────────────────────────────────────────────

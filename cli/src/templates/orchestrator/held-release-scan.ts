@@ -30,11 +30,19 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+<<<<<<<< HEAD:minds/coordination/held-release-scan.ts
+// TODO(WD): These should be requested via parent escalation once Router Mind exists (Wave E).
+import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import { readJsonFile } from "../pipeline_core/json-io"; // CROSS-MIND
+import { validateTicketIdArg } from "../pipeline_core/validation"; // CROSS-MIND
+import { registryPath } from "../pipeline_core/paths"; // CROSS-MIND
+========
 import {
   getRepoRoot,
   readJsonFile,
   registryPath,
 } from "./orchestrator-utils";
+>>>>>>>> minds/post-migration:cli/src/templates/orchestrator/held-release-scan.ts
 
 // ============================================================================
 // Types
@@ -141,7 +149,8 @@ function main(): void {
 
   const repoRoot = getRepoRoot();
   const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-  const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+  // registry-update.ts lives in minds/execution/ (moved by Wave D WD-3)
+  const scriptDir = path.join(repoRoot, "minds/execution");
 
   // Validate registry dir exists
   if (!fs.existsSync(registryDir)) {

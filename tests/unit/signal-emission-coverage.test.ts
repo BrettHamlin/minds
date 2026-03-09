@@ -2,8 +2,8 @@ import { describe, test, expect } from "bun:test";
 import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 
-const HANDLERS_DIR = join(__dirname, "../../src/handlers");
-const VARIANTS_DIR = join(__dirname, "../../src/config/pipeline-variants");
+const HANDLERS_DIR = join(__dirname, "../../minds/signals");
+const VARIANTS_DIR = join(__dirname, "../../minds/templates/pipeline-variants");
 
 // mirrors mapResponseState in pipeline-signal.ts
 const stateMap: Record<string, string> = {

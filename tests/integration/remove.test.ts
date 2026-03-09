@@ -12,11 +12,11 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { install } from "../../src/cli/commands/pipelines/install.js";
-import { remove } from "../../src/cli/commands/pipelines/remove.js";
-import { readState, addCli } from "../../src/cli/lib/state.js";
-import { writeState } from "../../src/cli/lib/state.js";
-import { readLockfile } from "../../src/cli/lib/lockfile.js";
+import { install } from "../../minds/cli/commands/pipelines/install.js";
+import { remove } from "../../minds/cli/commands/pipelines/remove.js";
+import { readState, addCli } from "../../minds/cli/lib/state.js";
+import { writeState } from "../../minds/cli/lib/state.js";
+import { readLockfile } from "../../minds/cli/lib/lockfile.js";
 import { createTestEnv, type TestEnv } from "../helpers/test-env.js";
 import { startLocalRegistry, type LocalRegistry } from "../helpers/local-registry.js";
 

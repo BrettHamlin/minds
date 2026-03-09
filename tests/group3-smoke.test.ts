@@ -20,7 +20,7 @@ import * as path from "path";
 import * as os from "os";
 import { execSync, spawnSync } from "child_process";
 
-// Ensure .collab/config/pipeline.json is in sync with src/config/pipeline.json
+// Ensure .collab/config/pipeline.json is in sync with minds/templates/pipeline.json
 // before any tests run.  Phase-dispatch tests copy this file into temp repos;
 // they need the v3.1 format, not whatever stale content may be present locally.
 {
@@ -28,7 +28,7 @@ import { execSync, spawnSync } from "child_process";
     encoding: "utf-8",
     cwd: import.meta.dir,
   }).trim();
-  const _src = path.join(_root, "src/config/pipeline.json");
+  const _src = path.join(_root, "minds/templates/pipeline.json");
   const _dst = path.join(_root, ".collab/config/pipeline.json");
   if (fs.existsSync(_src)) {
     fs.mkdirSync(path.dirname(_dst), { recursive: true });
@@ -45,9 +45,9 @@ const REPO_ROOT = execSync("git rev-parse --show-toplevel", {
   cwd: import.meta.dir,
 }).trim();
 
-const VERIFY_SCRIPT = path.join(REPO_ROOT, "src/scripts/verify-and-complete.ts");
-const PHASE_DISPATCH = path.join(REPO_ROOT, "src/scripts/orchestrator/commands/phase-dispatch.ts");
-const RUN_TESTS_EXECUTOR = path.join(REPO_ROOT, "src/scripts/run-tests-executor.ts");
+const VERIFY_SCRIPT = path.join(REPO_ROOT, "minds/execution/verify-and-complete.ts");
+const PHASE_DISPATCH = path.join(REPO_ROOT, "minds/execution/phase-dispatch.ts");
+const RUN_TESTS_EXECUTOR = path.join(REPO_ROOT, "minds/execution/run-tests-executor.ts");
 
 /** Run a shell script with arguments, returning { exitCode, stdout, stderr } */
 function runScript(
@@ -450,7 +450,7 @@ describe("pipeline.json: phase command resolution via jq", () => {
 // ===========================================================================
 
 describe("emit-run-tests-signal.ts: signal emission", () => {
-  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-run-tests-signal.ts");
+  const EMIT_HANDLER = path.join(REPO_ROOT, "minds/signals/emit-run-tests-signal.ts");
   let tmpDir: string;
 
   afterAll(() => {
@@ -519,7 +519,7 @@ describe("emit-run-tests-signal.ts: signal emission", () => {
 // ===========================================================================
 
 describe("emit-visual-verify-signal.ts: signal emission", () => {
-  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-visual-verify-signal.ts");
+  const EMIT_HANDLER = path.join(REPO_ROOT, "minds/signals/emit-visual-verify-signal.ts");
   let tmpDir: string;
 
   afterAll(() => {
@@ -587,7 +587,7 @@ describe("emit-visual-verify-signal.ts: signal emission", () => {
 // ===========================================================================
 
 describe("visual-verify-executor.ts: structural checks", () => {
-  const VV_EXECUTOR = path.join(REPO_ROOT, "src/scripts/visual-verify-executor.ts");
+  const VV_EXECUTOR = path.join(REPO_ROOT, "minds/execution/visual-verify-executor.ts");
   let tmpDir: string;
 
   afterAll(() => {
@@ -730,7 +730,7 @@ describe("pipeline variant config override", () => {
 
   test("28. variant config exists → configPath overridden", () => {
     // Import initPipeline dependencies inline to test the override logic
-    const { resolvePaths } = require("../src/scripts/orchestrator/commands/orchestrator-init");
+    const { resolvePaths } = require("../minds/execution/orchestrator-init");
 
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-variant-smoke-"));
     fs.mkdirSync(path.join(tmpDir, ".collab/config/pipeline-variants"), { recursive: true });
@@ -791,7 +791,7 @@ describe("pipeline variant config override", () => {
       JSON.stringify({ ticket_id: "TEST-VARIANT-002", pipeline_variant: "nonexistent" })
     );
 
-    const { resolvePaths: rp } = require("../src/scripts/orchestrator/commands/orchestrator-init");
+    const { resolvePaths: rp } = require("../minds/execution/orchestrator-init");
 
     const ctx = {
       ticketId: "TEST-VARIANT-002",
@@ -825,7 +825,7 @@ describe("pipeline variant config override", () => {
       JSON.stringify({ ticket_id: "TEST-VARIANT-003" })
     );
 
-    const { resolvePaths: rp2 } = require("../src/scripts/orchestrator/commands/orchestrator-init");
+    const { resolvePaths: rp2 } = require("../minds/execution/orchestrator-init");
 
     const ctx = {
       ticketId: "TEST-VARIANT-003",
@@ -847,7 +847,7 @@ describe("pipeline variant config override", () => {
 // ===========================================================================
 
 describe("emit-verify-execute-signal.ts: signal emission", () => {
-  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-verify-execute-signal.ts");
+  const EMIT_HANDLER = path.join(REPO_ROOT, "minds/signals/emit-verify-execute-signal.ts");
   let tmpDir: string;
 
   afterAll(() => {
@@ -915,7 +915,7 @@ describe("emit-verify-execute-signal.ts: signal emission", () => {
 // ===========================================================================
 
 describe("emit-pre-deploy-confirm-signal.ts: signal emission", () => {
-  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-pre-deploy-confirm-signal.ts");
+  const EMIT_HANDLER = path.join(REPO_ROOT, "minds/signals/emit-pre-deploy-confirm-signal.ts");
   let tmpDir: string;
 
   afterAll(() => {
@@ -983,7 +983,7 @@ describe("emit-pre-deploy-confirm-signal.ts: signal emission", () => {
 // ===========================================================================
 
 describe("emit-deploy-verify-signal.ts: signal emission", () => {
-  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-deploy-verify-signal.ts");
+  const EMIT_HANDLER = path.join(REPO_ROOT, "minds/signals/emit-deploy-verify-signal.ts");
   let tmpDir: string;
 
   afterAll(() => {
@@ -1108,7 +1108,7 @@ describe("collab.visual-verify.md executor wiring", () => {
 // ===========================================================================
 
 describe("deploy-verify-executor.ts: deploy verification", () => {
-  const DV_EXECUTOR = path.join(REPO_ROOT, "src/scripts/deploy-verify-executor.ts");
+  const DV_EXECUTOR = path.join(REPO_ROOT, "minds/execution/deploy-verify-executor.ts");
   let tmpDir: string;
   let mockHandle: { kill: () => void } | null = null;
 
@@ -1245,7 +1245,7 @@ describe("collab.deploy-verify.md executor wiring", () => {
 // ===========================================================================
 
 describe("verify-execute-executor.ts: verification checks", () => {
-  const VE_EXECUTOR = path.join(REPO_ROOT, "src/scripts/verify-execute-executor.ts");
+  const VE_EXECUTOR = path.join(REPO_ROOT, "minds/execution/verify-execute-executor.ts");
   let tmpDir: string;
   let mockHandle: { kill: () => void } | null = null;
 
@@ -1481,7 +1481,7 @@ describe("collab.verify-execute.md executor wiring", () => {
 // ===========================================================================
 
 describe("pre-deploy-summary.ts: deployment context aggregation", () => {
-  const PDS_EXECUTOR = path.join(REPO_ROOT, "src/scripts/pre-deploy-summary.ts");
+  const PDS_EXECUTOR = path.join(REPO_ROOT, "minds/execution/pre-deploy-summary.ts");
   let tmpDir: string;
 
   afterAll(() => {
@@ -1707,7 +1707,7 @@ describe("collab.install.ts: installer scaffold logic", () => {
 // ===========================================================================
 
 describe("emit-code-review-signal.ts: signal emission", () => {
-  const EMIT_HANDLER = path.join(REPO_ROOT, "src/handlers/emit-code-review-signal.ts");
+  const EMIT_HANDLER = path.join(REPO_ROOT, "minds/signals/emit-code-review-signal.ts");
   let tmpDir: string;
 
   afterAll(() => {

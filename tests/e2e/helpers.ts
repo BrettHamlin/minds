@@ -8,11 +8,11 @@
 
 import { readFileSync } from "fs";
 import { join } from "path";
-import { parse } from "../../pipelang/src/parser";
-import { compile } from "../../pipelang/src/compiler";
-import type { CompiledPipeline } from "../../src/lib/pipeline/types";
+import { parse } from "../../minds/pipelang/src/parser";
+import { compile } from "../../minds/pipelang/src/compiler";
+import type { CompiledPipeline } from "../../minds/pipeline_core/types";
 
-const PIPELINE_FILE = join(import.meta.dir, "../../pipelang/collab.pipeline");
+const PIPELINE_FILE = join(import.meta.dir, "../../minds/pipelang/collab.pipeline");
 
 /**
  * Parse and compile collab.pipeline, throwing on any parse error.

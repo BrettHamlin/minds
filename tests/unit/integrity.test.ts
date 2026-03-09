@@ -15,7 +15,7 @@ import {
   checksumMap,
   generateChecksum,
   verifyDirectoryChecksum,
-} from "../../src/cli/lib/integrity.js";
+} from "../../minds/cli/lib/integrity.js";
 
 // ─── computeChecksum ─────────────────────────────────────────────────────────
 

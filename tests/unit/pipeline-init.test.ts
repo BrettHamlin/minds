@@ -17,7 +17,7 @@ import {
   scanCommandFiles,
   generateManifest,
   init,
-} from "../../src/cli/commands/pipeline/init.js";
+} from "../../minds/cli/commands/pipeline/init.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

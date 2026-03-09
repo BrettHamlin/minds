@@ -1,5 +1,5 @@
 ---
-description: Orchestrator-compatible spec clarification using AskUserQuestion for signal emission
+description: Orchestrator-compatible spec clarification using shared question/answer protocol (interactive or batch)
 ---
 
 ## User Input
@@ -15,7 +15,7 @@ $ARGUMENTS
 Whenever you have **finished all clarification work for this phase**, emit:
 
 ```bash
-bun .collab/handlers/emit-question-signal.ts complete "Clarification phase finished"
+bun .collab/handlers/emit-signal.ts complete "Clarification phase finished"
 ```
 
 This applies in every scenario: normal completion, after follow-up messages from the orchestrator, after any retry. Any response that represents "this phase is done" must end with this signal.
@@ -24,7 +24,12 @@ This applies in every scenario: normal completion, after follow-up messages from
 
 ## Goal
 
-Detect and reduce ambiguity in the active feature specification. In autonomous pipeline mode, auto-resolve using recommended options. In interactive mode, use AskUserQuestion tool for orchestrator compatibility.
+Detect and reduce ambiguity in the active feature specification. Uses the shared batch question/answer protocol from `src/lib/pipeline/questions.ts`:
+
+- **Interactive mode** (`@interactive` enabled, default): Uses AskUserQuestion for each finding.
+- **Non-interactive mode** (`@interactive(off)`): Collects ALL questions upfront into a `FindingsBatch`, writes to `findings/clarify-round-N.json`, emits a questions signal, then polls for `resolutions/clarify-round-N.json`.
+
+Both modes share the same analysis and resolution-application code.
 
 ## Execution Steps
 
@@ -36,18 +41,18 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
 
 2. **Detect Execution Mode**
 
-   Check if autonomous (orchestrated) mode is active by reading the registry file directly:
+   Where `{ticket_id}` is extracted from `$ARGUMENTS` or from the `BRANCH` name (e.g., branch `BRE-246-content-curator` → ticket_id `BRE-246`).
 
-   Use the **Read** tool on the absolute path:
+   Run the mode resolution script:
+   ```bash
+   MODE_JSON=$(bun .collab/scripts/resolve-execution-mode.ts {ticket_id} --phase clarify)
    ```
-   Read: {repo_root}/.collab/state/pipeline-registry/{ticket_id}.json
-   ```
 
-   Where `{repo_root}` is the git repository root (use `git rev-parse --show-toplevel` via Bash if needed), and `{ticket_id}` is extracted from `$ARGUMENTS` or from the `BRANCH` name (e.g., branch `BRE-246-content-curator` → ticket_id `BRE-246`).
+   Parse JSON to extract:
+   - `AUTONOMOUS_MODE` = `MODE_JSON.autonomous` (true if registry active with clarify as current step)
+   - `INTERACTIVE_MODE` = `MODE_JSON.interactive` (true only when interactive.enabled=true in pipeline config, or manual run)
 
-   **IMPORTANT**: Do NOT use Glob or shell `find` to locate the registry. In pipeline worktrees, `.collab` is a symlink — Glob may not traverse it. Use the **Read** tool directly on the known path.
-
-   If the file exists and `current_step` contains `clarify`, set `AUTONOMOUS_MODE=true`. Otherwise `AUTONOMOUS_MODE=false`.
+   **IMPORTANT:** The absence of `interactive` in pipeline.json means non-interactive. This is the standard for orchestrated pipelines — the orchestrator handles all questions via the batch protocol.
 
 3. **Load Spec**
    Read the spec file from `FEATURE_SPEC`.
@@ -133,51 +138,89 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
 
    Mark each: Clear / Partial / Missing
 
+6b. **Memory Query** (before generating questions)
+
+   For each ambiguity detected in step 6, before generating a question, check prior decisions:
+
+   ```bash
+   bun minds/memory/lib/search-cli.ts --mind clarify --query "<ambiguity description>"
+   ```
+
+   Parse the output and apply the following rules:
+   - **High score (> 0.7) + content contains `Q:` and `A:` matching the ambiguity** → **Skip the question.** Cite the prior decision in the spec update instead (e.g., "Prior decision (BRE-XXX): Q: ... → A: ...").
+   - **Moderate score (0.3–0.7)** → **Keep the question** but use the memory content as evidence to strengthen the recommendation. Reference it in the option description.
+   - **No results or score < 0.3** → Proceed as before (codebase-grounded recommendation from `CODEBASE_CONTEXT`).
+
+   This step reduces redundant questions across pipeline runs.
+
 7. **Generate Questions** (max 3 for orchestrated mode)
 
-   For each critical ambiguity:
+   For each critical ambiguity (not skipped in step 6b):
    - Create 2-4 distinct options
-   - **Ground the recommended option in `CODEBASE_CONTEXT`:** If the repo already has a convention for this decision, the recommendation MUST follow it. Cite the evidence (e.g., "This repo uses Zod for validation — see `src/middleware/validate.ts`").
-   - Only fall back to generic best practices when no project convention exists for the decision.
+   - **Ground the recommended option using this priority order:**
+     1. **Prior clarification decision from memory** (strongest — explicit human choice from a prior run; cite the source decision)
+     2. **Codebase convention from scan** (current — pattern observed in `CODEBASE_CONTEXT`; cite the file/line)
+     3. **Generic best practice** (weakest — fallback only when no project-specific evidence exists)
    - For **Refactor** tickets: recommendations should preserve existing patterns unless the ticket explicitly calls for changing them.
    - For **New Feature** tickets: recommendations should extend the patterns found in analogous features.
    - Make recommendation the first option
    - Add "(Recommended)" to its description
 
-8. **Ask Questions / Auto-Resolve**
+8. **Ask Questions / Resolve**
 
-   ### 8a. AUTONOMOUS MODE (when `AUTONOMOUS_MODE=true`)
+   Use a `QuestionCollector` (from `.collab/lib/pipeline/questions.ts`) to collect ALL findings first, then call `resolveAndApply()`.
 
-   > **Only enter this path when `AUTONOMOUS_MODE=true`. Skip to Step 8b otherwise.**
+   **Decision tree (check in this order):**
+   1. `AUTONOMOUS_MODE=true` AND `INTERACTIVE_MODE=false` → **8a** (non-interactive batch — orchestrator resolves)
+   2. `AUTONOMOUS_MODE=false` AND `INTERACTIVE_MODE=true` → **8b** (interactive — human resolves via AskUserQuestion)
+   3. `AUTONOMOUS_MODE=true` AND `INTERACTIVE_MODE=true` → **8c** (auto-resolve fallback — only when pipeline config explicitly sets `interactive.enabled: true`)
 
-   In autonomous mode, DO NOT call AskUserQuestion. Instead, auto-resolve each question:
+   **The common orchestrated case is 8a.** When pipeline.json has no `interactive` field, `INTERACTIVE_MODE=false`, so autonomous pipelines always use the batch protocol.
 
-   For each generated question:
-   - Select the **recommended option** (the first option, marked with "(Recommended)")
-   - Record the decision: `[AUTONOMOUS] Selected recommended: <option label>`
-   - Proceed directly to integration (Step 9)
+   ### 8a. NON-INTERACTIVE MODE (when `INTERACTIVE_MODE=false`)
 
-   This ensures the pipeline does not stall waiting for interactive input.
+   > **This is the DEFAULT for orchestrated pipelines (AUTONOMOUS_MODE=true).** Enter this path when `INTERACTIVE_MODE=false`.
 
-   ### 8b. INTERACTIVE MODE (when `AUTONOMOUS_MODE=false`)
+   **Re-entry detection:** Before collecting questions, check if resolutions already exist from a previous round:
 
-   For EACH question:
-
-   a) **FIRST: Emit CLARIFY_QUESTION signal to orchestrator**
-
-   Run this Bash command BEFORE calling AskUserQuestion:
    ```bash
-   bun .collab/handlers/emit-question-signal.ts question "<question text>§<label1> (Recommended)§<label2>§<label3>"
+   RESOLUTIONS_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} resolutions clarify 1)
    ```
 
-   Encode the question text and all option labels separated by `§`. Always put the recommended option first (matching the AskUserQuestion order). Labels only — no descriptions. Example:
+   If `$RESOLUTIONS_PATH` exists (use `test -f "$RESOLUTIONS_PATH"`), this is a **re-dispatch** from the orchestrator. Read the resolutions file at that path, apply them to the spec (update sections, add clarifications), then skip to emitting the completion signal. Do NOT re-collect questions or re-emit the questions signal.
+
+   **First entry (no resolutions):** Collect ALL questions, write them using the CLI, and **end your response**. Do NOT poll or wait for resolutions — the orchestrator will:
+   1. Receive the questions signal
+   2. Gather context, synthesize answers, write resolutions
+   3. Re-dispatch `/collab.clarify` to this agent pane
+
+   **Write findings using the CLI** (this writes the correct schema and emits the signal automatically):
+
    ```bash
-   bun .collab/handlers/emit-question-signal.ts question "What step size?§2px§4px§Custom"
+   cat <<'EOF' | bun .collab/scripts/emit-findings.ts --phase clarify --round 1 --stdin
+   [
+     {
+       "question": "Your question text here",
+       "why": "Why this matters for implementation",
+       "specReferences": ["Section X mentions Y"],
+       "codePatterns": ["src/foo.ts uses pattern Z"],
+       "constraints": ["Must not break existing API"],
+       "implications": ["Determines migration strategy"]
+     }
+   ]
+   EOF
    ```
 
-   This is MANDATORY in orchestrated mode. The orchestrator reads the question and options directly from the signal detail — no screen capture needed. Without this signal, the orchestrator waits indefinitely.
+   All context fields (`why`, `specReferences`, `codePatterns`, `constraints`, `implications`) are optional.
 
-   b) **THEN: Call AskUserQuestion tool**
+   After the CLI runs, output: "Emitted questions batch with {N} questions. Waiting for orchestrator to resolve." then **END RESPONSE** — do not wait, do not poll.
+
+   **Do NOT use AskUserQuestion in non-interactive mode.** The orchestrator reasons about answers using its full context stack (spec > constitution > prior resolutions > codebase patterns > agent context > coordination).
+
+   ### 8b. INTERACTIVE MODE (when `AUTONOMOUS_MODE=false` and `INTERACTIVE_MODE=true`)
+
+   Collect ALL questions first, then for each question call AskUserQuestion:
+
    ```
    {
      questions: [{
@@ -194,19 +237,30 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
            description: "<trade-offs of this option>"
          },
          {
-           label: "<option C>",
-           description: "<trade-offs of this option>"
-         },
-         {
            label: "Custom answer",
-           description: "Provide your own answer (will prompt for short text)"
+           description: "Provide your own answer"
          }
        ]
      }]
    }
    ```
 
-   **IMPORTANT**: Always include "Custom answer" option so user can provide their own response if predefined options don't fit.
+   Wrap each user answer into a `Resolution` object and apply after all questions answered.
+
+   **IMPORTANT**: Always include "Custom answer" option so user can provide their own response.
+
+   ### 8c. AUTONOMOUS MODE fallback (when `AUTONOMOUS_MODE=true` and `INTERACTIVE_MODE=true`)
+
+   > **This path is ONLY reached when pipeline.json explicitly sets `interactive.enabled: true`.** If the `interactive` field is absent, `INTERACTIVE_MODE=false` and you use 8a instead.
+
+   In autonomous mode with interactive explicitly enabled, DO NOT call AskUserQuestion. Instead, auto-resolve each question:
+
+   For each generated question:
+   - Select the **recommended option** (the first option, marked with "(Recommended)")
+   - Record the decision: `[AUTONOMOUS] Selected recommended: <option label>`
+   - Proceed directly to integration (Step 9)
+
+   This ensures the pipeline does not stall waiting for interactive input.
 
 9. **Integrate Each Answer**
 
@@ -217,6 +271,16 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
    - Update relevant sections (e.g., add enum to Database Schema)
    - **Save spec file immediately** (atomic write)
 
+9b. **Memory Write** (after integrating each answer)
+
+   For each answered question, write the decision to the clarify Mind's daily log:
+
+   ```bash
+   bun minds/memory/lib/write-cli.ts --mind clarify --content "{TICKET_ID}: Q: <question> → A: <answer>. Reasoning: <why>. Codebase evidence: <files cited>."
+   ```
+
+   This enables future pipeline runs to skip redundant questions by finding prior decisions in step 6b.
+
 10. **Validation**
    - One bullet per answer in Clarifications section
    - Max 3 questions asked total
@@ -225,7 +289,7 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
 
 11. **Emit Completion Signal**
    ```bash
-   bun .collab/handlers/emit-question-signal.ts complete "Clarification phase finished"
+   bun .collab/handlers/emit-signal.ts complete "Clarification phase finished"
    ```
    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 
@@ -240,13 +304,13 @@ Detect and reduce ambiguity in the active feature specification. In autonomous p
 **Autonomous mode:** Steps 4-5 (classification + scan) still run. Steps 8a auto-selects recommended options (grounded in codebase context) and proceeds directly to integration.
 
 **Interactive mode:**
-1. Agent emits `CLARIFY_QUESTION` via `bun .collab/handlers/emit-question-signal.ts question "question§option1§option2§..."`
+1. Agent emits a question signal via `bun .collab/handlers/emit-signal.ts question "question§option1§option2§..."`
 2. Orchestrator receives signal → reads question + options directly from signal `detail` field (no screen capture)
 3. Agent calls AskUserQuestion
 4. Orchestrator reasons with ticket context, navigates tmux to select best option
 5. Agent receives answer, integrates into spec
 6. Repeat for remaining questions
-7. After all questions: Agent explicitly calls `emit-question-signal.ts complete` to emit `CLARIFY_COMPLETE`
+7. After all questions: Agent explicitly calls `emit-signal.ts complete` to emit a completion signal
 
 ## Key Differences from Standard Clarify
 

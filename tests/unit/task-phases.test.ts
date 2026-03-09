@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { parseTaskPhases } from "../../src/lib/pipeline/task-phases";
+import { parseTaskPhases, parseTaskLine, parseTasks } from "../../minds/pipeline_core/task-phases";
 
 describe("parseTaskPhases: no phase sections", () => {
   test("returns empty array when content has no ## Phase N: headings", () => {
@@ -138,6 +138,105 @@ describe("parseTaskPhases: nextIncompletePhase helper pattern", () => {
   });
 });
 
+// ── parseTaskLine ─────────────────────────────────────────────────────────────
+
+describe("parseTaskLine", () => {
+  test("minimal task line with no tags", () => {
+    expect(parseTaskLine("- [ ] T001 Do thing")).toEqual({
+      id: "T001",
+      mind: null,
+      parallelizable: false,
+      story: null,
+      description: "Do thing",
+      complete: false,
+    });
+  });
+
+  test("lowercase x marks complete", () => {
+    const task = parseTaskLine("- [x] T002 Done thing");
+    expect(task?.complete).toBe(true);
+  });
+
+  test("uppercase X marks complete", () => {
+    const task = parseTaskLine("- [X] T099 Upper X complete");
+    expect(task?.complete).toBe(true);
+  });
+
+  test("@mind tag extracted", () => {
+    const task = parseTaskLine("- [ ] T001 @signals Emit signal");
+    expect(task?.mind).toBe("signals");
+    expect(task?.description).toBe("Emit signal");
+  });
+
+  test("[P] tag sets parallelizable", () => {
+    const task = parseTaskLine("- [ ] T001 [P] Parallel task");
+    expect(task?.parallelizable).toBe(true);
+    expect(task?.description).toBe("Parallel task");
+  });
+
+  test("[US#] tag sets story", () => {
+    const task = parseTaskLine("- [ ] T001 [US1] Story task");
+    expect(task?.story).toBe("US1");
+    expect(task?.description).toBe("Story task");
+  });
+
+  test("all tags together in any order", () => {
+    const task = parseTaskLine("- [ ] T001 [P] [US2] @execution Full tags task desc");
+    expect(task).toEqual({
+      id: "T001",
+      mind: "execution",
+      parallelizable: true,
+      story: "US2",
+      description: "Full tags task desc",
+      complete: false,
+    });
+  });
+
+  test("underscore mind name extracted", () => {
+    const task = parseTaskLine("- [ ] T001 @pipeline_core Hyphen-underscore mind");
+    expect(task?.mind).toBe("pipeline_core");
+  });
+
+  test("non-task line returns null", () => {
+    expect(parseTaskLine("Not a task line")).toBeNull();
+  });
+
+  test("task line without T### ID returns null", () => {
+    expect(parseTaskLine("- [ ] No task ID")).toBeNull();
+  });
+});
+
+// ── parseTasks ────────────────────────────────────────────────────────────────
+
+describe("parseTasks", () => {
+  test("parses multiple task lines from content", () => {
+    const content = [
+      "## Phase 1: Setup",
+      "- [ ] T001 First task",
+      "- [x] T002 @signals Done task",
+      "Some description text",
+    ].join("\n");
+
+    const tasks = parseTasks(content);
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0].id).toBe("T001");
+    expect(tasks[1].id).toBe("T002");
+    expect(tasks[1].mind).toBe("signals");
+    expect(tasks[1].complete).toBe(true);
+  });
+
+  test("skips non-task lines", () => {
+    const content = "# Heading\nSome text\n- [ ] T001 Real task\nMore text";
+    const tasks = parseTasks(content);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe("T001");
+  });
+
+  test("empty string returns empty array", () => {
+    expect(parseTasks("")).toEqual([]);
+  });
+});
+
 // ── analyze-task-phases CLI: argument validation ─────────────────────────────
 
 describe("analyze-task-phases CLI: argument validation", () => {
@@ -147,7 +246,7 @@ describe("analyze-task-phases CLI: argument validation", () => {
 
   test("exits with error when no arguments provided", () => {
     const result = spawnSync("bun", [
-      "src/scripts/analyze-task-phases.ts",
+      "minds/execution/analyze-task-phases.ts",
     ], { encoding: "utf-8", cwd: PROJECT_ROOT });
 
     expect(result.status).toBe(1);
@@ -156,7 +255,7 @@ describe("analyze-task-phases CLI: argument validation", () => {
 
   test("exits with error when first arg is a flag (not ticket ID)", () => {
     const result = spawnSync("bun", [
-      "src/scripts/analyze-task-phases.ts",
+      "minds/execution/analyze-task-phases.ts",
       "--help",
     ], { encoding: "utf-8", cwd: PROJECT_ROOT });
 

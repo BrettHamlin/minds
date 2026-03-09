@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { toFinding, type QuestionInput } from "../../src/scripts/emit-findings";
+import { toFinding, type QuestionInput } from "../../minds/signals/emit-findings";
 
 describe("emit-findings", () => {
   test("toFinding wraps a minimal question into the correct Finding schema", () => {
