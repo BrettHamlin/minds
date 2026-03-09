@@ -41,7 +41,6 @@ coverage/
 tmp/
 temp/
 # Repo-specific relay installation directories (created by /collab.install)
-.claude/
 .collab/
 .minds/
 .specify/
