@@ -1,7 +1,7 @@
 // db.ts — SQLite persistence layer for Minds dashboard (BRE-457)
 //
 // Uses bun:sqlite (zero external deps). WAL mode for concurrent reads.
-// DB file: .collab/state/minds-dashboard.db
+// DB file: .minds/state/minds-dashboard.db
 
 import { Database } from "bun:sqlite";
 

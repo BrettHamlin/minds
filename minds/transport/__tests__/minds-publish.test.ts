@@ -57,15 +57,15 @@ describe("resolveBusUrl — env var", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveBusUrl — .collab/bus-port file
+// resolveBusUrl — .minds/bus-port file
 // ---------------------------------------------------------------------------
 
 describe("resolveBusUrl — bus-port file", () => {
-  test("reads port from .collab/bus-port and returns http URL", () => {
+  test("reads port from .minds/bus-port and returns http URL", () => {
     const tempDir = join(tmpdir(), `bus-port-test-${Date.now()}`);
-    const collabDir = join(tempDir, ".collab");
-    mkdirSync(collabDir, { recursive: true });
-    writeFileSync(join(collabDir, "bus-port"), "7777", "utf8");
+    const mindsDir = join(tempDir, ".minds");
+    mkdirSync(mindsDir, { recursive: true });
+    writeFileSync(join(mindsDir, "bus-port"), "7777", "utf8");
 
     try {
       const result = resolveBusUrl(tempDir);
@@ -77,9 +77,9 @@ describe("resolveBusUrl — bus-port file", () => {
 
   test("ignores non-numeric content in bus-port file", () => {
     const tempDir = join(tmpdir(), `bus-port-bad-${Date.now()}`);
-    const collabDir = join(tempDir, ".collab");
-    mkdirSync(collabDir, { recursive: true });
-    writeFileSync(join(collabDir, "bus-port"), "not-a-port", "utf8");
+    const mindsDir = join(tempDir, ".minds");
+    mkdirSync(mindsDir, { recursive: true });
+    writeFileSync(join(mindsDir, "bus-port"), "not-a-port", "utf8");
 
     try {
       const result = resolveBusUrl(tempDir);
@@ -92,9 +92,9 @@ describe("resolveBusUrl — bus-port file", () => {
   test("env var takes priority over bus-port file", () => {
     process.env.BUS_URL = "http://localhost:9999";
     const tempDir = join(tmpdir(), `bus-port-priority-${Date.now()}`);
-    const collabDir = join(tempDir, ".collab");
-    mkdirSync(collabDir, { recursive: true });
-    writeFileSync(join(collabDir, "bus-port"), "8888", "utf8");
+    const mindsDir = join(tempDir, ".minds");
+    mkdirSync(mindsDir, { recursive: true });
+    writeFileSync(join(mindsDir, "bus-port"), "8888", "utf8");
 
     try {
       const result = resolveBusUrl(tempDir);
@@ -201,9 +201,9 @@ describe("mindsPublish — POST body construction", () => {
   });
 
   test("throws error with context when server returns non-ok status", async () => {
-    // Use a URL that doesn't exist to trigger a failure
+    // Publish to a non-existent path on the live server → 404 Not Found (non-ok status)
     await expect(
-      mindsPublish("http://localhost:1", "minds-BRE-444", "DRONE_COMPLETE", null),
+      mindsPublish(`${busUrl}/bad-endpoint`, "minds-BRE-444", "DRONE_COMPLETE", null),
     ).rejects.toThrow("mindsPublish failed");
   });
 });

@@ -17,9 +17,10 @@
  */
 
 // TODO(WD): getRepoRoot should be requested via parent escalation once Pipeline Core is a Mind.
-import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
+import { getRepoRoot } from "@minds/pipeline_core/repo"; // CROSS-MIND
 import { exitIfMetricsDisabled } from "./metrics-guard";
 import { openMetricsDb, insertGate } from "./metrics";
+import { metricsDbPath } from "@minds/shared/paths";
 
 function main(): void {
   const args = process.argv.slice(2);
@@ -38,8 +39,7 @@ function main(): void {
   exitIfMetricsDisabled(repoRoot);
 
   try {
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
+    const db = openMetricsDb(metricsDbPath());
 
     const id = insertGate(db, ticketId, gateName, decision, reasoning ?? null);
 

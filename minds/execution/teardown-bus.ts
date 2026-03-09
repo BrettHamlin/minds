@@ -6,7 +6,7 @@
  *   bun teardown-bus.ts <TICKET_ID>
  *
  * Reads bus_server_pid, bridge_pid, command_bridge_pid from registry.
- * Sends SIGTERM to each. Removes .collab/bus-port if it exists.
+ * Sends SIGTERM to each. Removes .minds/bus-port if it exists.
  * Silent on errors (process may already be dead).
  * Always exits 0 — non-fatal cleanup step.
  */
@@ -81,7 +81,7 @@ if (import.meta.main) {
     busServerPid: registry.bus_server_pid as number | undefined,
     bridgePid: registry.bridge_pid as number | undefined,
     commandBridgePid: registry.command_bridge_pid as number | undefined,
-    busPortFile: path.join(repoRoot, ".collab", "bus-port"),
+    busPortFile: path.join(repoRoot, ".minds", "bus-port"),
   });
 
   process.exit(0);

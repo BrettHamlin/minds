@@ -266,7 +266,7 @@ async function rebuildBorderFormat(targetPane: string): Promise<void> {
     } catch {
       repoRoot = process.cwd();
     }
-    const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
+    const registryDir = `${repoRoot}/.minds/state/pipeline-registry`;
     let titleColorMap: Record<string, number> = {};
     try {
       const { readdirSync, readFileSync } = await import("fs");

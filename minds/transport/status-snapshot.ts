@@ -1,6 +1,6 @@
 // status-snapshot.ts — Build pipeline state snapshots for SSE delivery (BRE-397)
 //
-// Reads registry JSON files from .collab/state/pipeline-registry/ and derives
+// Reads registry JSON files from .minds/state/pipeline-registry/ and derives
 // pipeline state using deriveStatus/deriveDetail from status-table.ts (FR-005).
 //
 // Dependencies:

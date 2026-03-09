@@ -15,7 +15,7 @@ import {
   StatusAggregator,
 } from "../status-aggregator";
 import { MindsEventType, type MindsBusMessage } from "../minds-events";
-import type { MindsStateTracker } from "../../dashboard/state-tracker";
+import type { MindsStateTracker } from "@minds/dashboard/state-tracker";
 
 // ── Mock SSE bus ─────────────────────────────────────────────────────────────
 
@@ -80,8 +80,8 @@ function createMockBus(): MockBus {
 // ── Directory helpers ─────────────────────────────────────────────────────────
 //
 // Production layout:
-//   .collab/state/                    ← stateDir  (minds-bus-*.json live here)
-//   .collab/state/pipeline-registry/  ← registryDir
+//   .minds/state/                    ← stateDir  (minds-bus-*.json live here)
+//   .minds/state/pipeline-registry/  ← registryDir
 //
 // We mirror this in tests so join(registryDir, "..") == stateDir.
 

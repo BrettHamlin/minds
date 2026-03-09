@@ -2,7 +2,7 @@
  * Portable transport module resolver.
  *
  * Resolves absolute paths to transport implementations that work both in the
- * collab dev repo (transport/ at root) and in installed repos (only .collab/).
+ * dev repo (transport/ at root) and in installed repos (only .minds/).
  *
  * Usage:
  *   const { BusTransport } = await import(resolveTransportPath("BusTransport.ts"));
@@ -16,11 +16,11 @@ const thisDir = path.dirname(new URL(import.meta.url).pathname);
 const repoRoot = path.resolve(thisDir, "../..");
 
 /**
- * Returns the absolute path to a transport module, preferring .collab/transport/
+ * Returns the absolute path to a transport module, preferring .minds/transport/
  * (installed) over transport/ (dev repo source).
  */
 export function resolveTransportPath(moduleName: string): string {
-  const installed = path.join(repoRoot, ".collab", "transport", moduleName);
+  const installed = path.join(repoRoot, ".minds", "transport", moduleName);
   if (fs.existsSync(installed)) return installed;
   return path.join(repoRoot, "minds", "transport", moduleName);
 }

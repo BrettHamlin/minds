@@ -19,8 +19,8 @@ function writeTestConfig(obj: object): void {
 
 beforeAll(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-pcr-"));
-  configDir = path.join(tmpDir, ".collab", "config");
-  registryDir = path.join(tmpDir, ".collab", "state", "pipeline-registry");
+  configDir = path.join(tmpDir, ".minds", "config");
+  registryDir = path.join(tmpDir, ".minds", "state", "pipeline-registry");
   configPath = path.join(configDir, "pipeline.json");
   fs.mkdirSync(configDir, { recursive: true });
   fs.mkdirSync(registryDir, { recursive: true });

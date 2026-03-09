@@ -14,7 +14,7 @@ import {
 // ============================================================================
 
 let tmpDir: string;
-const REGISTRY_SUBDIR = path.join(".collab", "state", "pipeline-registry");
+const REGISTRY_SUBDIR = path.join(".minds", "state", "pipeline-registry");
 
 function setupTmpRegistry(): string {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "held-release-test-"));

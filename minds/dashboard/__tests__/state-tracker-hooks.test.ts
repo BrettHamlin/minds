@@ -2,7 +2,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { MindsStateTracker } from "../state-tracker.js";
-import { MindsEventType, HOOK_TYPES, type MindsBusMessage } from "../../transport/minds-events.js";
+import { MindsEventType, HOOK_TYPES, type MindsBusMessage } from "@minds/transport/minds-events.js";
 
 function makeMsg(
   type: MindsEventType,

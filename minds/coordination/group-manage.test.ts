@@ -10,7 +10,7 @@ let groupsDir: string;
 
 beforeAll(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "collab-gm-"));
-  const registryDir = path.join(tmpDir, ".collab", "state", "pipeline-registry");
+  const registryDir = path.join(tmpDir, ".minds", "state", "pipeline-registry");
   groupsDir = path.join(tmpDir, "groups");
   fs.mkdirSync(registryDir, { recursive: true });
   fs.mkdirSync(groupsDir, { recursive: true });
@@ -21,7 +21,7 @@ afterAll(() => {
 });
 
 function writeReg(ticketId: string, data: Record<string, unknown> = {}): void {
-  const registryDir = path.join(tmpDir, ".collab", "state", "pipeline-registry");
+  const registryDir = path.join(tmpDir, ".minds", "state", "pipeline-registry");
   writeJsonAtomic(path.join(registryDir, `${ticketId}.json`), {
     ticket_id: ticketId,
     current_step: "clarify",

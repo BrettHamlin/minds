@@ -7,7 +7,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 // TODO(WD): Cross-Mind import — replace with parent escalation when Transport Mind is formalized.
-import type { PipelineSnapshot } from "../transport/status-snapshot"; // CROSS-MIND
+import type { PipelineSnapshot } from "@minds/transport/status-snapshot"; // CROSS-MIND
 
 export interface CachedStatus {
   pipelines: PipelineSnapshot[];
@@ -36,7 +36,7 @@ export function formatElapsed(ms: number): string {
 export function render(cachePath?: string): string {
   const resolvedPath =
     cachePath ||
-    join(process.env.COLLAB_ROOT || process.cwd(), ".collab/state/status-cache.json");
+    join(process.env.MINDS_ROOT || process.cwd(), ".minds/state/status-cache.json");
 
   if (!existsSync(resolvedPath)) return "collab: no status";
 

@@ -25,7 +25,7 @@ phase(plan)
     .on(PLAN_COMPLETE, gate: plan_review)
 
 gate(plan_review)
-    .prompt(.file(".collab/config/gates/plan.md"))
+    .prompt(.file(".minds/config/gates/plan.md"))
     .skipTo(tasks)
     .on(APPROVED, to: tasks)
     .on(REVISION_NEEDED, to: plan, feedback: .enrich, maxRetries: 3, onExhaust: .skip)
@@ -238,7 +238,7 @@ describe("compile() — slice 8: gate compilation (AC1, AC5)", () => {
     const { ast } = parse(FULL_EXAMPLE);
     const out = compile(ast!);
     expect(out.gates).toBeDefined();
-    expect(out.gates!["plan_review"].prompt).toBe(".collab/config/gates/plan.md");
+    expect(out.gates!["plan_review"].prompt).toBe(".minds/config/gates/plan.md");
   });
 
   test("gate skipTo compiles correctly", () => {
@@ -327,7 +327,7 @@ describe("pipelang compile — CLI (slice 8)", () => {
     const { stdout } = runCLI(["compile", fullFile]);
     const out = JSON.parse(stdout);
     expect(out.gates).toBeDefined();
-    expect(out.gates.plan_review.prompt).toBe(".collab/config/gates/plan.md");
+    expect(out.gates.plan_review.prompt).toBe(".minds/config/gates/plan.md");
   });
 
   test("undeclared gate reference exits 1 (AC2)", () => {

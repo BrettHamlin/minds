@@ -2,7 +2,7 @@
 /**
  * visual-verify-executor.ts - Visual verification execution logic
  *
- * Reads .collab/config/visual-verify.json, fetches configured routes,
+ * Reads .minds/config/visual-verify.json, fetches configured routes,
  * checks structural DOM selectors, and reports pass/fail/error.
  *
  * Separated from signal emission so it can be tested independently.
@@ -51,7 +51,7 @@ interface VisualVerifyConfig {
 }
 
 function readConfig(repoRoot: string): VisualVerifyConfig | null {
-  const configPath = path.join(repoRoot, ".collab/config/visual-verify.json");
+  const configPath = path.join(repoRoot, ".minds/config/visual-verify.json");
   if (!fs.existsSync(configPath)) {
     return null;
   }
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   // Read config
   const config = readConfig(repoRoot);
   if (!config) {
-    console.log("VISUAL_VERIFY_ERROR | Config file .collab/config/visual-verify.json not found or malformed");
+    console.log("VISUAL_VERIFY_ERROR | Config file .minds/config/visual-verify.json not found or malformed");
     process.exit(2);
   }
 

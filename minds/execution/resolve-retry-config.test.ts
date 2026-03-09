@@ -98,14 +98,14 @@ describe("resolveRetryConfig — pure function", () => {
 
   beforeAll(() => {
     tmpDir = join(tmpdir(), `retry-config-unit-${process.pid}`);
-    mkdirSync(join(tmpDir, ".collab/config"), { recursive: true });
-    mkdirSync(join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds/config"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds/state/pipeline-registry"), { recursive: true });
 
     execSync("git init", { cwd: tmpDir });
     execSync("git checkout -b test-branch", { cwd: tmpDir });
 
     writeFileSync(
-      join(tmpDir, ".collab/config/pipeline.json"),
+      join(tmpDir, ".minds/config/pipeline.json"),
       JSON.stringify({
         version: "3.1",
         phases: {
@@ -126,7 +126,7 @@ describe("resolveRetryConfig — pure function", () => {
 
   function writeRegistry(ticketId: string, history: Array<{ phase: string; signal: string }>) {
     writeFileSync(
-      join(tmpDir, ".collab/state/pipeline-registry", `${ticketId}.json`),
+      join(tmpDir, ".minds/state/pipeline-registry", `${ticketId}.json`),
       JSON.stringify({ ticket_id: ticketId, current_step: "blindqa", phase_history: history })
     );
   }
@@ -188,14 +188,14 @@ let tmpDir: string;
 
 beforeAll(() => {
   tmpDir = join(tmpdir(), `retry-config-cli-${process.pid}`);
-  mkdirSync(join(tmpDir, ".collab/config"), { recursive: true });
-  mkdirSync(join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/config"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/state/pipeline-registry"), { recursive: true });
 
   execSync("git init", { cwd: tmpDir });
   execSync("git checkout -b test-branch", { cwd: tmpDir });
 
   writeFileSync(
-    join(tmpDir, ".collab/config/pipeline.json"),
+    join(tmpDir, ".minds/config/pipeline.json"),
     JSON.stringify({
       version: "3.1",
       phases: {
@@ -207,13 +207,13 @@ beforeAll(() => {
 
   // Fresh ticket — no failures yet
   writeFileSync(
-    join(tmpDir, ".collab/state/pipeline-registry/BRE-FRESH.json"),
+    join(tmpDir, ".minds/state/pipeline-registry/BRE-FRESH.json"),
     JSON.stringify({ ticket_id: "BRE-FRESH", current_step: "blindqa", phase_history: [] })
   );
 
   // One failure
   writeFileSync(
-    join(tmpDir, ".collab/state/pipeline-registry/BRE-ONE.json"),
+    join(tmpDir, ".minds/state/pipeline-registry/BRE-ONE.json"),
     JSON.stringify({
       ticket_id: "BRE-ONE",
       current_step: "blindqa",
@@ -223,7 +223,7 @@ beforeAll(() => {
 
   // Three failures — exhausted
   writeFileSync(
-    join(tmpDir, ".collab/state/pipeline-registry/BRE-MAX.json"),
+    join(tmpDir, ".minds/state/pipeline-registry/BRE-MAX.json"),
     JSON.stringify({
       ticket_id: "BRE-MAX",
       current_step: "blindqa",

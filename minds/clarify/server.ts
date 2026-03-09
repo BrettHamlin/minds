@@ -2,8 +2,7 @@
  * Clarify Mind — pipeline clarify stage Q&A protocol, findings emission,
  * and resolution handling.
  *
- * Owns: clarify phase command (src/commands/collab.clarify.md),
- * clarify Mind source (minds/clarify/).
+ * Owns: clarify Mind source (minds/clarify/).
  *
  * Leaf Mind: no children.
  */
@@ -91,7 +90,7 @@ export default createMind({
   name: "clarify",
   domain: "Pipeline clarify stage: Q&A protocol, batch findings emission, resolution handling, interactive and non-interactive modes.",
   keywords: ["clarify", "question", "finding", "resolution", "batch", "ambiguity", "spec", "qa", "interactive"],
-  owns_files: ["minds/clarify/", "src/commands/collab.clarify.md"],
+  owns_files: ["minds/clarify/"],
   capabilities: [
     "run clarify phase",
     "group findings",

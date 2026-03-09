@@ -66,7 +66,7 @@ try {
   REPO_ROOT = process.cwd();
 }
 
-const COLLAB_DIR = join(REPO_ROOT, ".collab");
+const COLLAB_DIR = join(REPO_ROOT, ".minds");
 
 console.log(`[VerifyComplete] Phase: ${PHASE}`);
 console.log("[VerifyComplete] Checking completion conditions...");

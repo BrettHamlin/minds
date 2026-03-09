@@ -10,9 +10,9 @@
  * Leaf Mind: no children.
  */
 
-import { createMind } from "../server-base.js";
-import type { WorkUnit, WorkResult } from "../mind.js";
-import { MindsEventType, type MindsBusMessage } from "../transport/minds-events.js";
+import { createMind } from "@minds/server-base.js";
+import type { WorkUnit, WorkResult } from "@minds/mind.js";
+import { MindsEventType, type MindsBusMessage } from "@minds/transport/minds-events.js";
 import { MindsStateTracker } from "./state-tracker.js";
 import { createMindsRouteHandler } from "./route-handler.js";
 

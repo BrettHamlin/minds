@@ -2,7 +2,7 @@
 /**
  * deploy-verify-executor.ts - Post-deploy smoke verification
  *
- * Reads .collab/config/deploy-verify.json, polls production URL,
+ * Reads .minds/config/deploy-verify.json, polls production URL,
  * checks smoke routes for HTTP 200, captures response times.
  *
  * Usage:
@@ -42,7 +42,7 @@ interface DeployVerifyConfig {
 }
 
 function readConfig(repoRoot: string): DeployVerifyConfig | null {
-  const configPath = path.join(repoRoot, ".collab/config/deploy-verify.json");
+  const configPath = path.join(repoRoot, ".minds/config/deploy-verify.json");
   if (!fs.existsSync(configPath)) {
     return null;
   }
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
   const config = readConfig(repoRoot);
   if (!config) {
     console.log(
-      "DEPLOY_VERIFY_ERROR | Config file .collab/config/deploy-verify.json not found or malformed"
+      "DEPLOY_VERIFY_ERROR | Config file .minds/config/deploy-verify.json not found or malformed"
     );
     process.exit(2);
   }

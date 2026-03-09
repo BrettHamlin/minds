@@ -2,7 +2,7 @@
 /**
  * run-tests-executor.ts - Test suite executor logic
  *
- * Reads .collab/config/run-tests.json, executes the configured test command,
+ * Reads .minds/config/run-tests.json, executes the configured test command,
  * captures output, and prints the result verdict (pass/fail/error) with details.
  *
  * Separated from signal emission so it can be tested independently.
@@ -45,7 +45,7 @@ interface RunTestsConfig {
 }
 
 function readConfig(repoRoot: string): RunTestsConfig | null {
-  const configPath = path.join(repoRoot, ".collab/config/run-tests.json");
+  const configPath = path.join(repoRoot, ".minds/config/run-tests.json");
   if (!fs.existsSync(configPath)) {
     return null;
   }
@@ -73,7 +73,7 @@ function main(): void {
   // Read config
   const config = readConfig(repoRoot);
   if (!config) {
-    console.log("RUN_TESTS_ERROR | Config file .collab/config/run-tests.json not found or malformed");
+    console.log("RUN_TESTS_ERROR | Config file .minds/config/run-tests.json not found or malformed");
     process.exit(2);
   }
 

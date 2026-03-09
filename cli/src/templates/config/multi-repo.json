@@ -1,6 +1,0 @@
-{
-  "repos": {
-    "backend": { "path": "/abs/path/to/backend" },
-    "frontend": { "path": "/abs/path/to/frontend" }
-  }
-}

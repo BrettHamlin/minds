@@ -3,7 +3,7 @@ import { validateMindDescription } from "./mind";
 import type { MindDescription } from "./mind";
 
 // Tests for the output format that generate-registry.ts produces:
-// a JSON array of MindDescription objects written to .collab/minds.json
+// a JSON array of MindDescription objects written to .minds/minds.json
 
 const validDescription: MindDescription = {
   name: "signals",

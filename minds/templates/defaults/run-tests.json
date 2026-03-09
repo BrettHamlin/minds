@@ -1,6 +1,0 @@
-{
-  "command": "npm test",
-  "workingDir": ".",
-  "timeout": 120,
-  "requiredTestFiles": []
-}

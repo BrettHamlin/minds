@@ -11,7 +11,7 @@
  *
  * Flow:
  *   1. Read $TMUX_PANE — exit if not in tmux
- *   2. Scan .collab/state/pipeline-registry/ for entry where agent_pane_id matches
+ *   2. Scan .minds/state/pipeline-registry/ for entry where agent_pane_id matches
  *   3. Send [SIGNAL:{ticket_id}:{nonce}] {PHASE}_QUESTION to orchestrator pane
  *   4. Always exit 0 — never block the UI
  */
@@ -26,8 +26,8 @@ const TMUX_PANE = process.env.TMUX_PANE;
 if (!TMUX_PANE) process.exit(0);
 
 // Registry dir is sibling of this hook's parent dir:
-// .collab/hooks/../state/pipeline-registry = .collab/state/pipeline-registry
-// import.meta.dir resolves symlinks, so this always points to the real .collab/
+// .minds/hooks/../state/pipeline-registry = .minds/state/pipeline-registry
+// import.meta.dir resolves symlinks, so this always points to the real .minds/
 const REGISTRY_DIR = join(import.meta.dir, "..", "state", "pipeline-registry");
 
 async function main() {

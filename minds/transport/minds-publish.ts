@@ -6,7 +6,7 @@
 //
 // BUS_URL resolution (in priority order):
 //   1. BUS_URL env var
-//   2. .collab/bus-port file in cwd (port only → http://localhost:{port})
+//   2. .minds/bus-port file via mindsRoot() (port only → http://localhost:{port})
 //
 // Programmatic usage:
 //   import { mindsPublish } from "./minds-publish.ts";
@@ -14,19 +14,20 @@
 
 import { readFileSync } from "fs";
 import { join } from "path";
+import { mindsRoot } from "../shared/paths.js";
 
 // ---------------------------------------------------------------------------
 // BUS_URL resolution
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the bus server URL from the environment or from `.collab/bus-port`.
+ * Resolve the bus server URL from the environment or from `.minds/bus-port`.
  * Returns undefined if neither source is available.
  */
-export function resolveBusUrl(cwd = process.cwd()): string | undefined {
+export function resolveBusUrl(cwd?: string): string | undefined {
   if (process.env.BUS_URL) return process.env.BUS_URL;
 
-  const portFile = join(cwd, ".collab", "bus-port");
+  const portFile = cwd ? join(cwd, ".minds", "bus-port") : join(mindsRoot(), "bus-port");
   try {
     const port = readFileSync(portFile, "utf8").trim();
     if (port && /^\d+$/.test(port)) return `http://localhost:${port}`;
@@ -116,7 +117,7 @@ if (import.meta.main) {
     console.error(
       JSON.stringify({
         error:
-          "Cannot resolve bus URL: set BUS_URL env var or ensure .collab/bus-port exists",
+          "Cannot resolve bus URL: set BUS_URL env var or ensure .minds/bus-port exists",
       }),
     );
     process.exit(1);

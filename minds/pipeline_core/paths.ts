@@ -4,25 +4,25 @@
  * Single source of truth for all file paths used by the pipeline.
  * No LLM judgment: pure functions, deterministic output.
  *
- * Install path: .collab/lib/pipeline/paths.ts
+ * Install path: .minds/lib/pipeline/paths.ts
  */
 
 import { join } from "path";
 
 /**
  * Absolute path to the pipeline registry file for a ticket.
- * Format: {repoRoot}/.collab/state/pipeline-registry/{ticketId}.json
+ * Format: {repoRoot}/.minds/state/pipeline-registry/{ticketId}.json
  */
 export function registryPath(repoRoot: string, ticketId: string): string {
-  return join(repoRoot, ".collab", "state", "pipeline-registry", `${ticketId}.json`);
+  return join(repoRoot, ".minds", "state", "pipeline-registry", `${ticketId}.json`);
 }
 
 /**
  * Absolute path to the signal queue file for a ticket.
- * Format: {repoRoot}/.collab/state/signal-queue/{ticketId}.json
+ * Format: {repoRoot}/.minds/state/signal-queue/{ticketId}.json
  */
 export function signalQueuePath(repoRoot: string, ticketId: string): string {
-  return join(repoRoot, ".collab", "state", "signal-queue", `${ticketId}.json`);
+  return join(repoRoot, ".minds", "state", "signal-queue", `${ticketId}.json`);
 }
 
 /**

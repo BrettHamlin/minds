@@ -149,7 +149,7 @@ describe("discoverBusUrl", () => {
   });
 
   test("returns URL when bus-port file contains valid port", () => {
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     fs.writeFileSync(path.join(collabDir, "bus-port"), "12345");
     expect(discoverBusUrl()).toBe("http://localhost:12345");
@@ -157,7 +157,7 @@ describe("discoverBusUrl", () => {
   });
 
   test("returns null when bus-port file contains non-numeric content", () => {
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     fs.writeFileSync(path.join(collabDir, "bus-port"), "not-a-number");
     expect(discoverBusUrl()).toBeNull();
@@ -165,7 +165,7 @@ describe("discoverBusUrl", () => {
   });
 
   test("returns null when bus-port file is empty", () => {
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     fs.writeFileSync(path.join(collabDir, "bus-port"), "");
     expect(discoverBusUrl()).toBeNull();
@@ -200,7 +200,7 @@ describe("writeJsonAtomic emission integration", () => {
       },
     });
 
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     fs.writeFileSync(path.join(collabDir, "bus-port"), String(mockServer.port));
   });
@@ -287,7 +287,7 @@ describe("writeJsonAtomic guard — non-registry writes", () => {
       },
     });
 
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     fs.writeFileSync(path.join(collabDir, "bus-port"), String(mockServer.port));
   });
@@ -365,7 +365,7 @@ describe("graceful degradation — no bus available", () => {
   });
 
   test("write succeeds when bus-port contains non-numeric content", () => {
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     fs.writeFileSync(path.join(collabDir, "bus-port"), "not-a-number");
 
@@ -381,7 +381,7 @@ describe("graceful degradation — no bus available", () => {
   });
 
   test("write succeeds when bus server is unreachable (wrong port)", async () => {
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     // Use a port that nothing is listening on
     fs.writeFileSync(path.join(collabDir, "bus-port"), "19999");
@@ -435,7 +435,7 @@ describe("emission timeout", () => {
       },
     });
 
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     fs.writeFileSync(path.join(collabDir, "bus-port"), String(slowServer.port));
   });
@@ -502,7 +502,7 @@ describe("e2e classification — all 5 event types via writeJsonAtomic", () => {
       },
     });
 
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     fs.writeFileSync(path.join(collabDir, "bus-port"), String(mockServer.port));
   });
@@ -598,7 +598,7 @@ describe("e2e priority — higher event type wins", () => {
       },
     });
 
-    const collabDir = path.join(tmpDir, ".collab");
+    const collabDir = path.join(tmpDir, ".minds");
     fs.mkdirSync(collabDir, { recursive: true });
     fs.writeFileSync(path.join(collabDir, "bus-port"), String(mockServer.port));
   });

@@ -8,7 +8,7 @@ import type { CompiledGate, ConditionalTransitionRow } from "../src/compiler";
 
 function makeGate(overrides: Partial<CompiledGate> = {}): CompiledGate {
   return {
-    prompt: ".collab/config/gates/plan.md",
+    prompt: ".minds/config/gates/plan.md",
     on: {},
     ...overrides,
   };

@@ -1,7 +1,7 @@
 /**
  * Pipeline metrics — SQLite store for phase timing and cost tracking.
  *
- * Database lives at .collab/state/metrics.db
+ * Database lives at .minds/state/metrics.db
  * Tables: runs, phases, gates, signals, interventions
  *
  * Cost/token columns are nullable — populated by a future ticket once a

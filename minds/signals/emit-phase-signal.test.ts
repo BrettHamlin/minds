@@ -3,8 +3,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { dispatchSignal } from "./emit-phase-signal";
-import { handleBusMessage } from "../transport/bus-signal-bridge"; // CROSS-MIND
-import { startBusServer, teardownBusServer } from "../execution/orchestrator-init"; // CROSS-MIND
+import { handleBusMessage } from "@minds/transport/bus-signal-bridge"; // CROSS-MIND
+import { startBusServer, teardownBusServer } from "@minds/execution/orchestrator-init"; // CROSS-MIND
 
 // __dirname = minds/signals → ../../ = repo root
 const REAL_REPO_ROOT = path.resolve(__dirname, "../../");
@@ -58,7 +58,7 @@ describe("dispatchSignal: bus transport", () => {
 
   test("2. COLLAB_TRANSPORT=bus + BUS_URL → signal written to queue file", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dispatch-test-"));
-    const queueDir = path.join(tmpDir, ".collab/state/signal-queue");
+    const queueDir = path.join(tmpDir, ".minds/state/signal-queue");
     fs.mkdirSync(queueDir, { recursive: true });
 
     const savedTransport = process.env.COLLAB_TRANSPORT;

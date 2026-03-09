@@ -21,12 +21,13 @@
  */
 
 // TODO(WD): getRepoRoot/validateTicketIdArg should be requested via parent escalation once Pipeline Core is a Mind.
-import { getRepoRoot } from "../pipeline_core/repo"; // CROSS-MIND
-import { validateTicketIdArg } from "../pipeline_core/validation"; // CROSS-MIND
+import { getRepoRoot } from "@minds/pipeline_core/repo"; // CROSS-MIND
+import { validateTicketIdArg } from "@minds/pipeline_core/validation"; // CROSS-MIND
 import { exitIfMetricsDisabled } from "./metrics-guard";
 import { openMetricsDb } from "./metrics";
 import { classifyRun } from "./classify-run-lib";
 import { getAllAutonomyRates } from "./autonomy-rate";
+import { metricsDbPath } from "@minds/shared/paths";
 
 function main(): void {
   const args = process.argv.slice(2);
@@ -45,8 +46,7 @@ function main(): void {
   exitIfMetricsDisabled(repoRoot);
 
   try {
-    const dbPath = `${repoRoot}/.collab/state/metrics.db`;
-    const db = openMetricsDb(dbPath);
+    const db = openMetricsDb(metricsDbPath());
 
     const result = classifyRun(db, ticketId);
     const autonomyRates = getAllAutonomyRates(db);

@@ -26,9 +26,9 @@ beforeAll(() => {
   repoRoot = tmpDir;
 
   // Create minimal directory structure
-  fs.mkdirSync(path.join(tmpDir, ".collab/config"), { recursive: true });
-  fs.mkdirSync(path.join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
-  fs.mkdirSync(path.join(tmpDir, ".collab/state/pipeline-groups"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".minds/config"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".minds/state/pipeline-registry"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".minds/state/pipeline-groups"), { recursive: true });
   fs.mkdirSync(path.join(tmpDir, "specs"), { recursive: true });
 });
 
@@ -41,10 +41,10 @@ function makeCtx(ticketId: string): InitContext {
     ticketId,
     orchestratorPane: "%test-orch",
     repoRoot: tmpDir,
-    registryDir: path.join(tmpDir, ".collab/state/pipeline-registry"),
-    groupsDir: path.join(tmpDir, ".collab/state/pipeline-groups"),
-    configPath: path.join(tmpDir, ".collab/config/pipeline.json"),
-    schemaPath: path.join(tmpDir, ".collab/config/pipeline.v3.schema.json"),
+    registryDir: path.join(tmpDir, ".minds/state/pipeline-registry"),
+    groupsDir: path.join(tmpDir, ".minds/state/pipeline-groups"),
+    configPath: path.join(tmpDir, ".minds/config/pipeline.json"),
+    schemaPath: path.join(tmpDir, ".minds/config/pipeline.v3.schema.json"),
   };
 }
 
@@ -272,17 +272,17 @@ describe("orchestrator-init: resolvePaths() pipeline variant", () => {
 });
 
 describe("orchestrator-init: setupSymlinks()", () => {
-  test("6. creates .claude and .collab symlinks in worktree", () => {
+  test("6. creates .claude and .minds symlinks in worktree", () => {
     const worktreePath = path.join(tmpDir, "worktrees", "symlink-test");
     fs.mkdirSync(worktreePath, { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".collab"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".minds"), { recursive: true });
 
     const rb = {};
     setupSymlinks(worktreePath, tmpDir, rb);
 
     expect(fs.lstatSync(path.join(worktreePath, ".claude")).isSymbolicLink()).toBe(true);
-    expect(fs.lstatSync(path.join(worktreePath, ".collab")).isSymbolicLink()).toBe(true);
+    expect(fs.lstatSync(path.join(worktreePath, ".minds")).isSymbolicLink()).toBe(true);
 
     fs.rmSync(worktreePath, { recursive: true });
   });
@@ -510,7 +510,7 @@ const REAL_REPO_ROOT = path.resolve(__dirname, "../../");
 
 describe("orchestrator-init: resolveTransportFromConfig()", () => {
   test("17. pipeline transport=bus → returns 'bus'", () => {
-    const configPath = path.join(tmpDir, ".collab/config/pipeline-bus.json");
+    const configPath = path.join(tmpDir, ".minds/config/pipeline-bus.json");
     fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", transport: "bus", phases: {} }));
     const saved = process.env.COLLAB_TRANSPORT;
     delete process.env.COLLAB_TRANSPORT;
@@ -522,7 +522,7 @@ describe("orchestrator-init: resolveTransportFromConfig()", () => {
   });
 
   test("18. pipeline transport=tmux → returns 'tmux'", () => {
-    const configPath = path.join(tmpDir, ".collab/config/pipeline-tmux.json");
+    const configPath = path.join(tmpDir, ".minds/config/pipeline-tmux.json");
     fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", transport: "tmux", phases: {} }));
     const saved = process.env.COLLAB_TRANSPORT;
     delete process.env.COLLAB_TRANSPORT;
@@ -534,7 +534,7 @@ describe("orchestrator-init: resolveTransportFromConfig()", () => {
   });
 
   test("19. no transport field in pipeline.json → defaults to 'tmux'", () => {
-    const configPath = path.join(tmpDir, ".collab/config/pipeline-notransport.json");
+    const configPath = path.join(tmpDir, ".minds/config/pipeline-notransport.json");
     fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", phases: {} }));
     const saved = process.env.COLLAB_TRANSPORT;
     delete process.env.COLLAB_TRANSPORT;
@@ -546,7 +546,7 @@ describe("orchestrator-init: resolveTransportFromConfig()", () => {
   });
 
   test("20. COLLAB_TRANSPORT=bus env var overrides pipeline transport=tmux", () => {
-    const configPath = path.join(tmpDir, ".collab/config/pipeline-override-bus.json");
+    const configPath = path.join(tmpDir, ".minds/config/pipeline-override-bus.json");
     fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", transport: "tmux", phases: {} }));
     const saved = process.env.COLLAB_TRANSPORT;
     process.env.COLLAB_TRANSPORT = "bus";
@@ -559,7 +559,7 @@ describe("orchestrator-init: resolveTransportFromConfig()", () => {
   });
 
   test("21. COLLAB_TRANSPORT=tmux env var overrides pipeline transport=bus", () => {
-    const configPath = path.join(tmpDir, ".collab/config/pipeline-override-tmux.json");
+    const configPath = path.join(tmpDir, ".minds/config/pipeline-override-tmux.json");
     fs.writeFileSync(configPath, JSON.stringify({ version: "3.1", transport: "bus", phases: {} }));
     const saved = process.env.COLLAB_TRANSPORT;
     process.env.COLLAB_TRANSPORT = "tmux";

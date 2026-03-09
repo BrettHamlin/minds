@@ -11,7 +11,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { createAggregatorServer, type StatusAggregator } from "../status-aggregator";
 import { MindsEventType, type MindsBusMessage } from "../minds-events";
-import type { MindsStateTracker } from "../../dashboard/state-tracker";
+import type { MindsStateTracker } from "@minds/dashboard/state-tracker";
 
 // ── Mock SSE bus that emits arbitrary events ─────────────────────────────────
 

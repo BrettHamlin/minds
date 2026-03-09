@@ -19,15 +19,15 @@ describe("checkDependencyHold — pure function", () => {
 
   beforeAll(() => {
     tmpDir = join(tmpdir(), `dep-hold-unit-${process.pid}`);
-    mkdirSync(join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
-    mkdirSync(join(tmpDir, ".collab/config"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds/state/pipeline-registry"), { recursive: true });
+    mkdirSync(join(tmpDir, ".minds/config"), { recursive: true });
 
     execSync("git init", { cwd: tmpDir });
     execSync("git checkout -b test-branch", { cwd: tmpDir });
 
     // Pipeline config required by registryPath resolution
     writeFileSync(
-      join(tmpDir, ".collab/config/pipeline.json"),
+      join(tmpDir, ".minds/config/pipeline.json"),
       JSON.stringify({ version: "3.1", phases: { done: { terminal: true } } })
     );
   });
@@ -42,13 +42,13 @@ describe("checkDependencyHold — pure function", () => {
 
   function writeRegistry(ticketId: string, data: Record<string, unknown>) {
     writeFileSync(
-      join(tmpDir, ".collab/state/pipeline-registry", `${ticketId}.json`),
+      join(tmpDir, ".minds/state/pipeline-registry", `${ticketId}.json`),
       JSON.stringify({ ticket_id: ticketId, ...data })
     );
   }
 
   function deleteRegistry(ticketId: string) {
-    const p = join(tmpDir, ".collab/state/pipeline-registry", `${ticketId}.json`);
+    const p = join(tmpDir, ".minds/state/pipeline-registry", `${ticketId}.json`);
     if (existsSync(p)) unlinkSync(p);
   }
 
@@ -128,26 +128,26 @@ let tmpDir: string;
 
 beforeAll(() => {
   tmpDir = join(tmpdir(), `dep-hold-cli-${process.pid}`);
-  mkdirSync(join(tmpDir, ".collab/config"), { recursive: true });
-  mkdirSync(join(tmpDir, ".collab/state/pipeline-registry"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/config"), { recursive: true });
+  mkdirSync(join(tmpDir, ".minds/state/pipeline-registry"), { recursive: true });
 
   execSync("git init", { cwd: tmpDir });
   execSync("git checkout -b test-branch", { cwd: tmpDir });
 
   writeFileSync(
-    join(tmpDir, ".collab/config/pipeline.json"),
+    join(tmpDir, ".minds/config/pipeline.json"),
     JSON.stringify({ version: "3.1", phases: { done: { terminal: true } } })
   );
 
   // Free ticket
   writeFileSync(
-    join(tmpDir, ".collab/state/pipeline-registry/BRE-A.json"),
+    join(tmpDir, ".minds/state/pipeline-registry/BRE-A.json"),
     JSON.stringify({ ticket_id: "BRE-A", current_step: "implement", status: "running" })
   );
 
   // External hold
   writeFileSync(
-    join(tmpDir, ".collab/state/pipeline-registry/BRE-B.json"),
+    join(tmpDir, ".minds/state/pipeline-registry/BRE-B.json"),
     JSON.stringify({
       ticket_id: "BRE-B",
       current_step: "clarify",
@@ -159,7 +159,7 @@ beforeAll(() => {
 
   // Internal hold — blocker exists
   writeFileSync(
-    join(tmpDir, ".collab/state/pipeline-registry/BRE-C.json"),
+    join(tmpDir, ".minds/state/pipeline-registry/BRE-C.json"),
     JSON.stringify({
       ticket_id: "BRE-C",
       current_step: "clarify",
@@ -171,7 +171,7 @@ beforeAll(() => {
 
   // Internal hold — blocker gone (no registry file for BRE-GONE)
   writeFileSync(
-    join(tmpDir, ".collab/state/pipeline-registry/BRE-D.json"),
+    join(tmpDir, ".minds/state/pipeline-registry/BRE-D.json"),
     JSON.stringify({
       ticket_id: "BRE-D",
       current_step: "clarify",

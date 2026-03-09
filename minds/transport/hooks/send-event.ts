@@ -12,6 +12,7 @@ import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { publishMindsEvent } from "../publish-event.ts";
 import type { MindsHookEvent } from "../minds-events.ts";
+import { mindsRoot } from "../../shared/paths.js";
 
 function getArg(flag: string): string | undefined {
   const args = process.argv.slice(2);
@@ -20,13 +21,13 @@ function getArg(flag: string): string | undefined {
 }
 
 /**
- * Resolve bus URL from BUS_URL env var or by scanning .collab/state/minds-bus-*.json files.
+ * Resolve bus URL from BUS_URL env var or by scanning .minds/state/minds-bus-*.json files.
  */
 function resolveBusUrlFromEnvOrState(): string | undefined {
   if (process.env.BUS_URL) return process.env.BUS_URL;
 
   // Scan state files for bus URL
-  const stateDir = join(process.cwd(), ".collab", "state");
+  const stateDir = join(mindsRoot(), "state");
   try {
     const files = readdirSync(stateDir).filter((f) => /^minds-bus-.+\.json$/.test(f));
     if (files.length > 0) {

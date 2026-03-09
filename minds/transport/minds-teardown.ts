@@ -1,6 +1,6 @@
 // minds-teardown.ts — Teardown CLI for Minds bus processes (BRE-446)
 //
-// Reads .collab/state/minds-bus-{ticketId}.json, SIGTERMs all PIDs,
+// Reads .minds/state/minds-bus-{ticketId}.json, SIGTERMs all PIDs,
 // then clears the state file.
 //
 // Usage:

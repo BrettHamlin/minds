@@ -59,7 +59,7 @@ function detectRepoRoot(): string {
   return new TextDecoder().decode(proc.stdout).trim();
 }
 
-/** Load and parse .collab/minds.json from the given path. Exported for testing. */
+/** Load and parse .minds/minds.json from the given path. Exported for testing. */
 export function loadMindsRegistry(registryPath: string): MindDescription[] {
   const raw = readFileSync(registryPath, "utf-8");
   return JSON.parse(raw) as MindDescription[];
@@ -70,7 +70,7 @@ export function loadMindsRegistry(registryPath: string): MindDescription[] {
 /**
  * Dispatch a task brief to a named Mind's Drone.
  *
- * 1. Looks up the Mind in .collab/minds.json
+ * 1. Looks up the Mind in .minds/minds.json
  * 2. Creates a worktree + tmux split via drone-pane.ts (with --mind, --ticket, optionally --bus-url)
  * 3. Writes the brief to /tmp/mind-brief-{mindName}.md
  * 4. Sends brief to drone pane via tmux-send.ts (always — bus carries signals, tmux carries brief text)
@@ -84,7 +84,7 @@ export async function dispatchToMind(
   options: DispatchOptions = {}
 ): Promise<DispatchResult> {
   const repoRoot = options.repoRoot ?? detectRepoRoot();
-  const registryPath = resolve(repoRoot, ".collab/minds.json");
+  const registryPath = resolve(repoRoot, ".minds/minds.json");
   const registry = loadMindsRegistry(registryPath);
 
   const mind = registry.find((m) => m.name === mindName);

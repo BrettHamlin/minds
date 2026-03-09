@@ -254,8 +254,8 @@ function main(): void {
 
   try {
     const repoRoot = getRepoRoot();
-    const registryDir = `${repoRoot}/.collab/state/pipeline-registry`;
-    const groupsDir = `${repoRoot}/.collab/state/pipeline-groups`;
+    const registryDir = `${repoRoot}/.minds/state/pipeline-registry`;
+    const groupsDir = `${repoRoot}/.minds/state/pipeline-groups`;
 
     fs.mkdirSync(registryDir, { recursive: true });
     fs.mkdirSync(groupsDir, { recursive: true });

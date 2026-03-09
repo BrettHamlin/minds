@@ -63,7 +63,7 @@ if (import.meta.main) { (async () => {
 
   function assembleClaudeContent(repoRoot: string, mindName: string, ticketId: string): string {
     // Load minds.json and find entry for this mind
-    const mindsJsonPath = resolve(repoRoot, ".collab", "minds.json");
+    const mindsJsonPath = resolve(repoRoot, ".minds", "minds.json");
     let domain = "";
     let ownsFiles: string[] = [];
 
@@ -275,7 +275,8 @@ if (import.meta.main) { (async () => {
   // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
 
   const settingsPath = resolve(worktreePath, ".claude", "settings.json");
-  const hookScriptPath = resolve(repoRoot, "minds", "transport", "hooks", "send-event.ts");
+  const hooksBase = existsSync(resolve(repoRoot, ".minds")) ? ".minds" : "minds";
+  const hookScriptPath = resolve(repoRoot, hooksBase, "transport", "hooks", "send-event.ts");
   const hookCommand = `bun ${hookScriptPath} --source-app drone:${mindName}`;
 
   // Claude Code hooks use matcher-based format: { matcher?: string, hooks: [{ type, command }] }

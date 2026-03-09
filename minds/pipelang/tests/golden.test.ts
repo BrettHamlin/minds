@@ -172,7 +172,7 @@ describe("golden: phase compilation (AC3)", () => {
 
   test("blindqa has orchestrator_context (AC3)", () => {
     expect(compiled!.phases["blindqa"].orchestrator_context).toBe(
-      ".collab/config/orchestrator-contexts/blindqa.md"
+      ".minds/config/orchestrator-contexts/blindqa.md"
     );
   });
 
@@ -199,7 +199,7 @@ describe("golden: phase compilation (AC3)", () => {
 
 describe("golden: gate compilation (AC3)", () => {
   test("plan_review prompt is correct", () => {
-    expect(compiled!.gates!["plan_review"].prompt).toBe(".collab/config/gates/plan.md");
+    expect(compiled!.gates!["plan_review"].prompt).toBe(".minds/config/gates/plan.md");
   });
 
   test("plan_review skipTo is tasks", () => {
@@ -220,7 +220,7 @@ describe("golden: gate compilation (AC3)", () => {
   });
 
   test("analyze_review prompt is correct", () => {
-    expect(compiled!.gates!["analyze_review"].prompt).toBe(".collab/config/gates/analyze.md");
+    expect(compiled!.gates!["analyze_review"].prompt).toBe(".minds/config/gates/analyze.md");
   });
 
   test("analyze_review REMEDIATION_COMPLETE → implement", () => {

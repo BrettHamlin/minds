@@ -3,7 +3,7 @@
 // Processes MindsEventType bus events into MindsState snapshots.
 // Pure TypeScript, no React dependency.
 
-import { MindsEventType, HOOK_TYPES, type MindsBusMessage, type MindsHookEvent } from "../transport/minds-events.js";
+import { MindsEventType, HOOK_TYPES, type MindsBusMessage, type MindsHookEvent } from "@minds/transport/minds-events.js";
 import { MindsDb } from "./db.js";
 
 // ---------------------------------------------------------------------------

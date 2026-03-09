@@ -15,7 +15,6 @@ set of questions (findings), routes them through the orchestrator, receives answ
 
 | File | Role |
 |------|------|
-| `src/commands/collab.clarify.md` | Pipeline clarify command — the agent's execution instructions |
 | `minds/clarify/server.ts` | Clarify Mind server — MCP capabilities for the clarify domain |
 | `minds/clarify/group-questions.ts` | Finding grouping utility (`groupFindings()`) |
 | `minds/clarify/lib/memory-query.ts` | Memory search wrapper for ambiguity matching (`queryMemoryForAmbiguity()`) |
@@ -38,7 +37,7 @@ The clarify phase uses a **push-based, non-polling** question/answer flow:
 2. Agent writes `findings/clarify-round-N.json` via `emit-findings.ts` CLI
 3. Agent emits `CLARIFY_QUESTIONS` signal and **ends its response** (no polling)
 4. Orchestrator receives signal → gathers context → writes `resolutions/clarify-round-N.json`
-5. Orchestrator re-dispatches `/collab.clarify` to the agent pane
+5. Orchestrator re-dispatches `/gravitas.clarify` to the agent pane
 6. On re-entry, agent detects resolutions file → applies answers → emits `CLARIFY_COMPLETE`
 
 ### Interactive Mode — Manual Runs

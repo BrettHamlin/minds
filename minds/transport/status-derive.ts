@@ -1,7 +1,7 @@
 // status-derive.ts — Shared status derivation functions for transport layer
 //
 // Inlined from src/scripts/orchestrator/commands/status-table.ts to avoid
-// cross-directory imports that break when transport/ is installed to .collab/transport/.
+// cross-directory imports that break when transport/ is installed to .minds/transport/.
 
 export function deriveStatus(reg: Record<string, unknown>): string {
   const status = reg.status as string | undefined;
