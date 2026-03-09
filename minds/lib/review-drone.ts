@@ -11,7 +11,7 @@
  *   bun minds/lib/review-drone.ts review-fail --bus-url $BUS_URL --channel minds-{ticketId} --wave-id {waveId} --mind {mindName} [--violations {count}]
  */
 
-import { mindsPublish } from "../transport/minds-publish.ts";
+import { publishMindsEvent } from "../transport/publish-event.ts";
 
 // ─── Programmatic API ─────────────────────────────────────────────────────────
 
@@ -25,7 +25,13 @@ export async function startReview(
   waveId: string,
   mindName: string,
 ): Promise<void> {
-  await mindsPublish(busUrl, channel, "DRONE_REVIEWING", { waveId, mindName }).catch(() => {});
+  const ticketId = channel.replace(/^minds-/, "");
+  await publishMindsEvent(busUrl, channel, {
+    type: "DRONE_REVIEWING",
+    source: "orchestrator",
+    ticketId,
+    payload: { waveId, mindName },
+  });
 }
 
 /**
@@ -38,7 +44,13 @@ export async function reviewPass(
   waveId: string,
   mindName: string,
 ): Promise<void> {
-  await mindsPublish(busUrl, channel, "DRONE_REVIEW_PASS", { waveId, mindName }).catch(() => {});
+  const ticketId = channel.replace(/^minds-/, "");
+  await publishMindsEvent(busUrl, channel, {
+    type: "DRONE_REVIEW_PASS",
+    source: "orchestrator",
+    ticketId,
+    payload: { waveId, mindName },
+  });
 }
 
 /**
@@ -52,7 +64,13 @@ export async function reviewFail(
   mindName: string,
   violations?: number,
 ): Promise<void> {
-  await mindsPublish(busUrl, channel, "DRONE_REVIEW_FAIL", { waveId, mindName, violations }).catch(() => {});
+  const ticketId = channel.replace(/^minds-/, "");
+  await publishMindsEvent(busUrl, channel, {
+    type: "DRONE_REVIEW_FAIL",
+    source: "orchestrator",
+    ticketId,
+    payload: { waveId, mindName, violations },
+  });
 }
 
 // ─── CLI entry point ──────────────────────────────────────────────────────────

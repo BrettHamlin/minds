@@ -5,15 +5,27 @@
 //   bun minds/transport/wave-event.ts start --bus-url $BUS_URL --channel minds-{ticketId} --wave-id $WAVE_ID
 //   bun minds/transport/wave-event.ts complete --bus-url $BUS_URL --channel minds-{ticketId} --wave-id $WAVE_ID
 
-import { mindsPublish } from "./minds-publish.ts";
+import { publishMindsEvent } from "./publish-event.ts";
 import { MindsEventType } from "./minds-events.ts";
 
 export async function publishWaveStarted(busUrl: string, channel: string, waveId: string): Promise<void> {
-  await mindsPublish(busUrl, channel, MindsEventType.WAVE_STARTED, { waveId });
+  const ticketId = channel.replace(/^minds-/, "");
+  await publishMindsEvent(busUrl, channel, {
+    type: MindsEventType.WAVE_STARTED,
+    source: "orchestrator",
+    ticketId,
+    payload: { waveId },
+  });
 }
 
 export async function publishWaveComplete(busUrl: string, channel: string, waveId: string): Promise<void> {
-  await mindsPublish(busUrl, channel, MindsEventType.WAVE_COMPLETE, { waveId });
+  const ticketId = channel.replace(/^minds-/, "");
+  await publishMindsEvent(busUrl, channel, {
+    type: MindsEventType.WAVE_COMPLETE,
+    source: "orchestrator",
+    ticketId,
+    payload: { waveId },
+  });
 }
 
 if (import.meta.main) {

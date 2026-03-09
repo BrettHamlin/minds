@@ -47,7 +47,8 @@ describe("wave-event: publishWaveStarted()", () => {
     expect(publishedCalls).toHaveLength(1);
     expect(publishedCalls[0].type).toBe(MindsEventType.WAVE_STARTED);
     expect(publishedCalls[0].channel).toBe("minds-BRE-456");
-    expect(publishedCalls[0].payload).toEqual({ waveId: "wave-1234" });
+    expect(publishedCalls[0].payload).toMatchObject({ waveId: "wave-1234", source: "orchestrator", ticketId: "BRE-456" });
+    expect(publishedCalls[0].payload).toHaveProperty("timestamp");
   });
 
   test("2. uses correct bus URL", async () => {
@@ -86,7 +87,8 @@ describe("wave-event: publishWaveComplete()", () => {
     expect(publishedCalls).toHaveLength(1);
     expect(publishedCalls[0].type).toBe(MindsEventType.WAVE_COMPLETE);
     expect(publishedCalls[0].channel).toBe("minds-BRE-456");
-    expect(publishedCalls[0].payload).toEqual({ waveId: "wave-1234" });
+    expect(publishedCalls[0].payload).toMatchObject({ waveId: "wave-1234", source: "orchestrator", ticketId: "BRE-456" });
+    expect(publishedCalls[0].payload).toHaveProperty("timestamp");
   });
 
   test("4. start and complete use different event types", async () => {
