@@ -8,7 +8,7 @@ Mind lifecycle — scaffolding new Minds in any repo. Creates the directory stru
 
 - **Single intent: `create-mind`** — takes `name` (lowercase, no spaces) and `domain` (human-readable description).
 - **Path resolution is portable**: `mindsSourceDir()` locates the Minds source directory — `.minds/` for installed repos, `minds/` (relative to git root) for dev repos.
-- **Registration uses `mindsRoot()`** from `@minds/shared/paths.js` to locate `minds.json` — `.minds/minds.json` (installed) or `.collab/minds.json` (dev).
+- **Registration uses `mindsRoot()`** from `@minds/shared/paths.js` to locate `minds.json` — `.minds/minds.json` in both installed and dev layouts.
 - **Atomic writes**: `minds.json` is written to a `.tmp` file then renamed — never partial writes.
 - **Idempotent name check**: scaffold throws if the Mind directory already exists.
 - **Name validation**: must match `^[a-z][a-z0-9-]*$` — lowercase, starts with letter.
@@ -21,7 +21,7 @@ Mind lifecycle — scaffolding new Minds in any repo. Creates the directory stru
 ## Anti-Patterns
 
 - Hardcoding `minds/` or `.minds/` paths — always use `mindsSourceDir()` for source location.
-- Hardcoding `.collab/minds.json` — always use `mindsJsonPath()` (delegates to `mindsRoot()`).
+- Hardcoding paths to `minds.json` — always use `mindsJsonPath()` (delegates to `mindsRoot()`).
 - Non-atomic `minds.json` writes — always write to `.tmp` then rename.
 - Allowing overwrite of existing Mind directories — throw with a clear error.
 
