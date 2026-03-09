@@ -17,7 +17,7 @@ Expected format: `<ticket-id>` (e.g., BRE-245)
 > - failure signal — one or more checks failed
 > - error signal — ticket spec missing, config error, or unrecoverable failure
 >
-> Signal is emitted via `bun .collab/handlers/emit-signal.ts <pass|fail|error> "detail"`.
+> Signal is emitted via `bun .gravitas/handlers/emit-signal.ts <pass|fail|error> "detail"`.
 > Signal format: `[SIGNAL:TICKET_ID:NONCE] {PHASE}_COMPLETE | detail text`
 >
 > Signal MUST be written to signal-queue file BEFORE tmux send-keys (pipeline persistence contract).
@@ -35,23 +35,23 @@ Parse arguments to extract:
 
 If no ticket ID provided, emit error signal and exit:
 ```bash
-bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
+bun .gravitas/handlers/emit-signal.ts error "No ticket ID provided"
 ```
 
 ### Step 0: Extract Checklist (Agent-Driven)
 
 1. Read `specs/*/spec.md` (or Linear ticket AC)
 2. For each verification item, classify as deterministic or agent-driven
-3. Write structured checklist to `.collab/config/verify-checklist.json`
+3. Write structured checklist to `.gravitas/config/verify-checklist.json`
    - Deterministic checks go in `checks[]`: `file_exists`, `file_contains`, `http_200`, `command_succeeds`, `json_field`
    - Agent checks go in `agentChecks[]`: anything requiring browser, DB, or complex logic
 
 ### Step 1: Deterministic Checks (Executor)
 
-Call the deterministic verification executor. This script reads `.collab/config/verify-checklist.json`, executes each check by type, and prints a verdict line to stdout.
+Call the deterministic verification executor. This script reads `.gravitas/config/verify-checklist.json`, executes each check by type, and prints a verdict line to stdout.
 
 ```bash
-bun .collab/scripts/verify-execute-executor.ts --cwd <worktree-path> 2>&1
+bun .gravitas/scripts/verify-execute-executor.ts --cwd <worktree-path> 2>&1
 ```
 
 Capture:
@@ -62,12 +62,12 @@ Do NOT duplicate executor logic inline — config reading, file checks, HTTP cal
 
 **Exit 2 — Emit error signal and STOP:**
 ```bash
-bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
+bun .gravitas/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
 **Exit 1 — Emit failure signal and STOP:**
 ```bash
-bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
+bun .gravitas/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
 
 **Exit 0 — All deterministic checks passed. Proceed to Step 2.**
@@ -80,7 +80,7 @@ Only reached when Step 1 passes (exit 0). Read `agentChecks` from the config —
 3. If all pass → emit completion signal
 
 ```bash
-bun .collab/handlers/emit-signal.ts pass "All checks passed"
+bun .gravitas/handlers/emit-signal.ts pass "All checks passed"
 ```
 
 ### On failure — Remediation
@@ -91,7 +91,7 @@ The self-loop is managed by the pipeline config (fail transition → `verify_exe
 
 ## Design Rationale
 
-This command follows the proven `collab.deploy-verify` two-layer pattern:
+This command follows the proven `gravitas.deploy-verify` two-layer pattern:
 - **Layer 1 (deterministic)** — executor handles file, HTTP, command, JSON checks
 - **Layer 2 (agent-driven)** — agent handles Playwright, DB, complex logic
 - **Structured evidence** — every check has captured output

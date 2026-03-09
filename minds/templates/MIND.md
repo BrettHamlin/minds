@@ -7,7 +7,7 @@ Pure data: distributable config, orchestrator scripts, schemas, gate prompts, pi
 ## Conventions
 
 - **No logic in this Mind** — template files contain data, config, and TypeScript scripts that run in target repos. Functions and classes do not belong here.
-- **Three locations must stay in sync**: `minds/execution/` (source of truth), `minds/templates/` (installed to target repos via `collab install`), and `cli/src/templates/` (alternate install path). Changes to orchestrator scripts must be made in all three.
+- **Three locations must stay in sync**: `minds/execution/` (source of truth), `minds/templates/` (installed to target repos via `gravitas install`), and `cli/src/templates/` (alternate install path). Changes to orchestrator scripts must be made in all three.
 - Pipeline variant files (`pipeline-variants/*.json`) must validate against `pipeline.v3.1.schema.json`.
 - Gate prompt files (`gates/*.md`) are Markdown — keep them LLM-readable with clear criteria.
 - Schema files (`*.schema.json`) are JSON Schema draft-07 — validate new schemas with `ajv-cli` before committing.

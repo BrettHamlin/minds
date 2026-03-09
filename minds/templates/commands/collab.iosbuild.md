@@ -12,18 +12,18 @@ Expected format: `<ticket-id>` (e.g., BRE-237)
 
 ## Goal
 
-Build and install the iOS app on the simulator for the given ticket. Write the build artifact metadata to `.collab/state/build-output-{ticket_id}.json` for the iosverify phase to consume. Emit a deterministic signal to the orchestrator.
+Build and install the iOS app on the simulator for the given ticket. Write the build artifact metadata to `.gravitas/state/build-output-{ticket_id}.json` for the iosverify phase to consume. Emit a deterministic signal to the orchestrator.
 
 ## Execution Steps
 
 ### 1. Validate Input
 
-Parse `ticket_id` from `$ARGUMENTS`. If missing, output "Usage: /collab.iosbuild <ticket-id>" and stop.
+Parse `ticket_id` from `$ARGUMENTS`. If missing, output "Usage: /gravitas.iosbuild <ticket-id>" and stop.
 
 ### 2. Verify Registry State
 
 ```bash
-REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts ${ticket_id} registry)
+REGISTRY_PATH=$(bun .gravitas/scripts/orchestrator/resolve-path.ts ${ticket_id} registry)
 test -f "$REGISTRY_PATH" || { echo "Not in orchestrated mode"; exit 1; }
 ```
 
@@ -48,7 +48,7 @@ Look for an `## iOS Config` section or YAML front matter with:
 
 Emit clarification signal:
 ```bash
-bun .collab/handlers/emit-build-signal.ts failed "ios_repo_path not found in spec. Add '## iOS Config' section with ios_repo_path to specs/${ticket_id}/spec.md"
+bun .gravitas/handlers/emit-build-signal.ts failed "ios_repo_path not found in spec. Add '## iOS Config' section with ios_repo_path to specs/${ticket_id}/spec.md"
 ```
 Stop.
 
@@ -77,8 +77,8 @@ Parse the JSON output. Capture:
 On success OR failure, always write the build output (orchestrator and iosverify read it):
 
 ```bash
-mkdir -p .collab/state
-cat > .collab/state/build-output-${ticket_id}.json << EOF
+mkdir -p .gravitas/state
+cat > .gravitas/state/build-output-${ticket_id}.json << EOF
 {
   "ticket_id": "${ticket_id}",
   "result": "${build_result}",
@@ -98,12 +98,12 @@ EOF
 
 **On success** (`result == "success"`):
 ```bash
-bun .collab/handlers/emit-build-signal.ts complete "Build succeeded: ${app_name} installed on ${simulator_udid}"
+bun .gravitas/handlers/emit-build-signal.ts complete "Build succeeded: ${app_name} installed on ${simulator_udid}"
 ```
 
 **On failure** (`result == "failed"` or `"needs_clarification"`):
 ```bash
-bun .collab/handlers/emit-build-signal.ts failed "${reason}"
+bun .gravitas/handlers/emit-build-signal.ts failed "${reason}"
 ```
 
 ## Signal Protocol

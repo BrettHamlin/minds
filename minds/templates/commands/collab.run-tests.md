@@ -17,14 +17,14 @@ Expected format: `<ticket-id>` (e.g., BRE-350)
 > - failure signal — tests fail (exit code non-zero), includes test output
 > - error signal — command failed to execute (missing binary, config error)
 >
-> Signal is emitted via `bun .collab/handlers/emit-signal.ts <pass|fail|error> "detail"`.
+> Signal is emitted via `bun .gravitas/handlers/emit-signal.ts <pass|fail|error> "detail"`.
 > Signal format: `[SIGNAL:TICKET_ID:NONCE] {PHASE}_COMPLETE | detail text`
 >
 > Signal MUST be written to signal-queue file BEFORE tmux send-keys (pipeline persistence contract).
 
 ## Goal
 
-Execute the project's test suite as configured in `.collab/config/run-tests.json`, capture full stdout/stderr output, and emit a pass/fail signal. Works with any test runner — no runner-specific logic.
+Execute the project's test suite as configured in `.gravitas/config/run-tests.json`, capture full stdout/stderr output, and emit a pass/fail signal. Works with any test runner — no runner-specific logic.
 
 ## Execution Steps
 
@@ -35,15 +35,15 @@ Parse arguments to extract:
 
 If no ticket ID provided, emit error signal and exit:
 ```bash
-bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
+bun .gravitas/handlers/emit-signal.ts error "No ticket ID provided"
 ```
 
 ### 2. Run Test Executor
 
-Call the deterministic test executor script. This script reads `.collab/config/run-tests.json`, executes the configured test command, and prints a single verdict line to stdout.
+Call the deterministic test executor script. This script reads `.gravitas/config/run-tests.json`, executes the configured test command, and prints a single verdict line to stdout.
 
 ```bash
-bun .collab/scripts/run-tests-executor.ts --cwd <worktree-path> 2>&1
+bun .gravitas/scripts/run-tests-executor.ts --cwd <worktree-path> 2>&1
 ```
 
 Capture:
@@ -58,19 +58,19 @@ Based on the executor exit code, emit the corresponding pipeline signal:
 
 **Exit 0 — Tests Pass:**
 ```bash
-bun .collab/handlers/emit-signal.ts pass "All tests passed"
+bun .gravitas/handlers/emit-signal.ts pass "All tests passed"
 ```
 
 **Exit 1 — Tests Fail:**
 ```bash
-bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
+bun .gravitas/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
 
 Include the verdict detail from the executor's last stdout line in the signal.
 
 **Exit 2 — Execution Error:**
 ```bash
-bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
+bun .gravitas/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
 ### 4. On failure — Remediation
@@ -81,7 +81,7 @@ Retry loop is managed by the orchestrator (max 3 attempts), same pattern as code
 
 ## Design Rationale
 
-This command follows the proven `collab.blindqa` pattern:
+This command follows the proven `gravitas.blindqa` pattern:
 - **Deterministic signals** via explicit handler calls (not hooks)
 - **Orchestration boundary** separated from test execution
 - **Runner-agnostic** — works with vitest, jest, bun test, pytest, go test, cargo test, etc.

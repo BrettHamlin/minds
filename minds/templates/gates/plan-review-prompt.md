@@ -6,7 +6,7 @@ You are reviewing the implementation plan for this feature. Evaluate:
 2. **Data Model Completeness**: Are all entities and relationships defined in data-model.md?
 3. **Phase Ordering**: Are dependencies between phases correctly ordered?
 4. **Acceptance Criteria**: Do the success criteria in spec.md align with the plan?
-5. **Constitution Compliance**: Does the plan comply with .collab/memory/constitution.md?
+5. **Constitution Compliance**: Does the plan comply with .gravitas/memory/constitution.md?
 
 ## Feature Specification
 ${SPEC_MD}

@@ -17,7 +17,7 @@ Expected format: `<ticket-id>` (e.g., BRE-245)
 > - failure signal — user aborted the deployment
 > - error signal — spec missing, config error, or unrecoverable failure
 >
-> Signal is emitted via `bun .collab/handlers/emit-signal.ts <pass|fail|error> "detail"`.
+> Signal is emitted via `bun .gravitas/handlers/emit-signal.ts <pass|fail|error> "detail"`.
 > Signal format: `[SIGNAL:TICKET_ID:NONCE] {PHASE}_COMPLETE | detail text`
 >
 > Signal MUST be written to signal-queue file BEFORE tmux send-keys (pipeline persistence contract).
@@ -30,10 +30,10 @@ Present a structured pre-deploy confirmation gate. This is a human gate that run
 
 ### Step 1: Gather Context (Deterministic)
 
-1. Run: `bun .collab/scripts/pre-deploy-summary.ts --cwd <worktree-path>`
+1. Run: `bun .gravitas/scripts/pre-deploy-summary.ts --cwd <worktree-path>`
 2. If exit 2 → emit error signal. STOP.
    ```bash
-   bun .collab/handlers/emit-signal.ts error "Failed to gather deploy context"
+   bun .gravitas/handlers/emit-signal.ts error "Failed to gather deploy context"
    ```
 3. Parse JSON from stdout.
 
@@ -44,7 +44,7 @@ Parse arguments to extract:
 
 If no ticket ID provided, emit error signal and exit:
 ```bash
-bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
+bun .gravitas/handlers/emit-signal.ts error "No ticket ID provided"
 ```
 
 ### Step 3: Present Human Gate (Agent-Driven)
@@ -57,11 +57,11 @@ bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
    - **Options:** "Approve — proceed with deploy" / "Abort — stop and investigate"
 2. If user approves → emit completion signal:
    ```bash
-   bun .collab/handlers/emit-signal.ts pass "Deploy approved for {TICKET_ID}"
+   bun .gravitas/handlers/emit-signal.ts pass "Deploy approved for {TICKET_ID}"
    ```
 3. If user aborts → emit failure signal:
    ```bash
-   bun .collab/handlers/emit-signal.ts fail "Deploy aborted by user"
+   bun .gravitas/handlers/emit-signal.ts fail "Deploy aborted by user"
    ```
 
 ### Step 4: On user abort — Pipeline Halts
@@ -70,7 +70,7 @@ When the user aborts, the pipeline does not retry automatically. The orchestrato
 
 ## Design Rationale
 
-This command follows the proven `collab.verify-execute` pattern:
+This command follows the proven `gravitas.verify-execute` pattern:
 - **Deterministic signals** via explicit handler calls (not hooks)
 - **Human gate** — uses AskUserQuestion for explicit approval
 - **Idempotent** — re-runnable if the pipeline retries

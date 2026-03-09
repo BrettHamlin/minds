@@ -17,7 +17,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 Whenever you have **finished all analysis work for this phase**, run:
 
 ```bash
-bun .collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"
+bun .gravitas/scripts/verify-and-complete.ts analyze "Analysis phase finished"
 ```
 
 This verification script will automatically emit the completion signal to the orchestrator.
@@ -28,19 +28,19 @@ This applies in every scenario: normal completion, after fixing CRITICAL issues 
 
 ## Goal
 
-Identify inconsistencies, duplications, ambiguities, and underspecified items across the three core artifacts (`spec.md`, `plan.md`, `tasks.md`) before implementation. This command MUST run only after `/collab.tasks` has successfully produced a complete `tasks.md`.
+Identify inconsistencies, duplications, ambiguities, and underspecified items across the three core artifacts (`spec.md`, `plan.md`, `tasks.md`) before implementation. This command MUST run only after `/gravitas.tasks` has successfully produced a complete `tasks.md`.
 
 ## Operating Constraints
 
 **Read-only during initial analysis**: Do **not** modify any files during the analysis pass. Output a structured analysis report. When the orchestrator sends remediation instructions after the initial signal, apply all directed changes to the appropriate files, then re-run the verification script.
 
-**Constitution Authority**: The project constitution (`.collab/memory/constitution.md`) is **non-negotiable** within this analysis scope. Constitution conflicts are automatically CRITICAL and require adjustment of the spec, plan, or tasks—not dilution, reinterpretation, or silent ignoring of the principle. If a principle itself needs to change, that must occur in a separate, explicit constitution update outside `/collab.analyze`.
+**Constitution Authority**: The project constitution (`.gravitas/memory/constitution.md`) is **non-negotiable** within this analysis scope. Constitution conflicts are automatically CRITICAL and require adjustment of the spec, plan, or tasks—not dilution, reinterpretation, or silent ignoring of the principle. If a principle itself needs to change, that must occur in a separate, explicit constitution update outside `/gravitas.analyze`.
 
 ## Execution Steps
 
 ### 1. Initialize Analysis Context
 
-Run `bun .collab/scripts/resolve-feature.ts --require-tasks --include-tasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
+Run `bun .gravitas/scripts/resolve-feature.ts --require-tasks --include-tasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
 
 - SPEC = FEATURE_DIR/spec.md
 - PLAN = FEATURE_DIR/plan.md
@@ -78,7 +78,7 @@ Load only the minimal necessary context from each artifact:
 
 **From constitution:**
 
-- Load `.collab/memory/constitution.md` for principle validation
+- Load `.gravitas/memory/constitution.md` for principle validation
 
 ### 3. Build Semantic Models
 
@@ -168,7 +168,7 @@ Generate the report below and **write it to `$FEATURE_DIR/analysis.md`** (overwr
 
 ### 6b. Structured Findings (Batch Q&A Protocol)
 
-If there are CRITICAL or HIGH findings that require clarification (not just remediation), collect them using the shared question/answer protocol from `.collab/lib/pipeline/questions.ts`:
+If there are CRITICAL or HIGH findings that require clarification (not just remediation), collect them using the shared question/answer protocol from `.gravitas/lib/pipeline/questions.ts`:
 
 **Interactive mode** is resolved automatically by `resolveAndApply()` — no separate `pipeline-config-read.ts` call is needed. If non-interactive mode is active (resolved internally from pipeline config):
 
@@ -194,16 +194,16 @@ If effective value is `true` or `inherit` (interactive mode): use AskUserQuestio
 
 At end of report, output a concise Next Actions block:
 
-- If CRITICAL issues exist: Recommend resolving before `/collab.implement`
+- If CRITICAL issues exist: Recommend resolving before `/gravitas.implement`
 - If only LOW/MEDIUM: User may proceed, but provide improvement suggestions
-- Provide explicit command suggestions: e.g., "Run /collab.specify with refinement", "Run /collab.plan to adjust architecture", "Manually edit tasks.md to add coverage for 'performance-metrics'"
+- Provide explicit command suggestions: e.g., "Run /gravitas.specify with refinement", "Run /gravitas.plan to adjust architecture", "Manually edit tasks.md to add coverage for 'performance-metrics'"
 
 ### 8. Verify Completion and Emit Signal
 
 Run the verification script to automatically emit the completion signal:
 
 ```bash
-bun .collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"
+bun .gravitas/scripts/verify-and-complete.ts analyze "Analysis phase finished"
 ```
 
 This script automatically emits the ANALYZE_COMPLETE signal to the orchestrator.
@@ -217,7 +217,7 @@ This script automatically emits the ANALYZE_COMPLETE signal to the orchestrator.
 When the orchestrator sends remediation instructions, apply all directed changes to the appropriate files (plan.md, tasks.md, spec.md, or other artifacts as specified). Do not ask for confirmation — the orchestrator's instructions are authoritative. Once all changes are applied, re-run the verification script:
 
 ```bash
-bun .collab/scripts/verify-and-complete.ts analyze "Analysis phase finished"
+bun .gravitas/scripts/verify-and-complete.ts analyze "Analysis phase finished"
 ```
 
 ## Operating Principles

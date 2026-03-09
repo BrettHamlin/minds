@@ -31,7 +31,7 @@ If no ticket ID provided, error and exit.
 
 Check that orchestrated mode is active:
 ```bash
-MODE_JSON=$(bun .collab/scripts/resolve-execution-mode.ts ${ticket_id} --phase blindqa)
+MODE_JSON=$(bun .gravitas/scripts/resolve-execution-mode.ts ${ticket_id} --phase blindqa)
 ```
 
 Parse `MODE_JSON.autonomous`. If `false`, error and exit:
@@ -45,7 +45,7 @@ Verify `MODE_JSON.phase` is "blindqa" (current_step matches).
 
 Read retry config from the registry (survives context compaction):
 ```bash
-RETRY_JSON=$(bun .collab/scripts/resolve-retry-config.ts ${ticket_id} blindqa)
+RETRY_JSON=$(bun .gravitas/scripts/resolve-retry-config.ts ${ticket_id} blindqa)
 ```
 Parse `RETRY_JSON`: `attempt = currentAttempt`, `max_attempts = maxAttempts`.
 If `exhausted == true`: emit failure signal immediately and exit.
@@ -54,7 +54,7 @@ If `exhausted == true`: emit failure signal immediately and exit.
 
 On first attempt only, run:
 ```bash
-bun .collab/handlers/emit-signal.ts start "Starting blind verification (attempt ${attempt}/${max_attempts})"
+bun .gravitas/handlers/emit-signal.ts start "Starting blind verification (attempt ${attempt}/${max_attempts})"
 ```
 
 This is MANDATORY before invoking BlindQA skill. The signal must be sent before verification begins so orchestrator can track progress.
@@ -91,7 +91,7 @@ fi
 
 If `IS_WEB_FEATURE=true`, use the Playwright skill to verify UI acceptance criteria from the ticket BEFORE BlindQA adversarial testing:
 
-**Read the ticket's acceptance criteria** from the feature spec (`specs/*/spec.md`) or from memory (provided when invoking collab.blindqa). Then invoke:
+**Read the ticket's acceptance criteria** from the feature spec (`specs/*/spec.md`) or from memory (provided when invoking gravitas.blindqa). Then invoke:
 
 ```
 Skill: playwright-skill
@@ -163,7 +163,7 @@ Combine evidence from **both** Playwright (step 5a) and BlindQA (step 5b):
 - Both must agree: Playwright shows each AC green, BlindQA reports no issues
 - Emit success signal:
   ```bash
-  bun .collab/handlers/emit-signal.ts pass "All ${check_count} checks passed with evidence"
+  bun .gravitas/handlers/emit-signal.ts pass "All ${check_count} checks passed with evidence"
   ```
 - Exit successfully (pipeline advances to done/next phase)
 
@@ -176,7 +176,7 @@ Combine evidence from **both** Playwright (step 5a) and BlindQA (step 5b):
 - If `attempt >= max_attempts`:
   - Emit failure signal:
     ```bash
-    bun .collab/handlers/emit-signal.ts fail "${issue_count} issues remain after ${max_attempts} attempts"
+    bun .gravitas/handlers/emit-signal.ts fail "${issue_count} issues remain after ${max_attempts} attempts"
     ```
   - Report issues and exit (pipeline halts for manual intervention)
 
@@ -222,17 +222,17 @@ When `--interactive` flag is present:
 
 **Default (batch mode):**
 ```
-collab.blindqa BRE-191
+gravitas.blindqa BRE-191
 ```
 
 **Interactive mode:**
 ```
-collab.blindqa BRE-191 --interactive
+gravitas.blindqa BRE-191 --interactive
 ```
 
 ## Design Rationale
 
-This command follows the proven `collab.clarify` pattern:
+This command follows the proven `gravitas.clarify` pattern:
 - **Deterministic signals** via explicit Bash calls (not hooks)
 - **Orchestration boundary** separated from skill logic
 - **BlindQA skill stays clean** for standalone use

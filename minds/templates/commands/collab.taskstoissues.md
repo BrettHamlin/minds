@@ -13,7 +13,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. Run `bun .collab/scripts/resolve-feature.ts --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list.
+1. Run `bun .gravitas/scripts/resolve-feature.ts --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list.
 1. From the executed script, extract the path to **tasks**.
 1. Get the Git remote by running:
 

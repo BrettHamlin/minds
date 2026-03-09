@@ -1,10 +1,10 @@
 ---
-description: Install collab workflow system into the current repository from GitHub
+description: Install gravitas workflow system into the current repository from GitHub
 ---
 
 ## Goal
 
-Install the collab workflow system into the current repository by cloning from GitHub and copying files into the appropriate directories.
+Install the gravitas workflow system into the current repository by cloning from GitHub and copying files into the appropriate directories.
 
 **Architecture:** This command uses the detailed installation steps below. All file operations are deterministic with no AI interpretation overhead.
 
@@ -19,17 +19,17 @@ Install the collab workflow system into the current repository by cloning from G
 Execute the following bash commands exactly:
 
 ```bash
-# Clone collab repo
-TEMP_DIR="/tmp/collab-install-$$"
-git clone --depth 1 --branch dev https://github.com/BrettHamlin/collab "$TEMP_DIR"
+# Clone gravitas repo
+TEMP_DIR="/tmp/gravitas-install-$$"
+git clone --depth 1 --branch dev https://github.com/BrettHamlin/gravitas "$TEMP_DIR"
 
 if [ $? -ne 0 ]; then
-  echo "❌ ERROR: Failed to clone collab repository"
+  echo "❌ ERROR: Failed to clone gravitas repository"
   exit 1
 fi
 
 # Run the install script from the cloned repo
-bun "$TEMP_DIR/src/commands/collab.install.ts"
+bun "$TEMP_DIR/src/commands/gravitas.install.ts"
 
 # Clean up temp directory
 rm -rf "$TEMP_DIR" 2>/dev/null
@@ -37,14 +37,14 @@ rm -rf "$TEMP_DIR" 2>/dev/null
 
 ## What Gets Installed
 
-After running `/collab.install`, your repo will have:
+After running `/gravitas.install`, your repo will have:
 
 ```
 <your-repo>/
 ├── .claude/
-│   ├── commands/           # Collab commands (auto-discovered)
+│   ├── commands/           # Gravitas commands (auto-discovered)
 │   └── skills/             # Local skill copies (SpecCreator, etc.)
-├── .collab/
+├── .gravitas/
 │   ├── handlers/           # Signal emitters
 │   ├── scripts/            # Orchestrator scripts
 │   └── memory/             # Project state (constitution)
@@ -55,17 +55,17 @@ After running `/collab.install`, your repo will have:
 
 ## Next Steps
 
-After `/collab.install` completes, install workflow pipelines to enable phase commands:
+After `/gravitas.install` completes, install workflow pipelines to enable phase commands:
 
 ```
 /pipelines
 ```
 
-This opens the pipeline registry browser where you can install pre-built workflow packs. Run **`/pipelines`** and select `full-workflow` to install all standard phase commands (`collab.clarify`, `collab.plan`, `collab.implement`, etc.) needed to run `/collab.run`.
+This opens the pipeline registry browser where you can install pre-built workflow packs. Run **`/pipelines`** and select `full-workflow` to install all standard phase commands (`gravitas.clarify`, `gravitas.plan`, `gravitas.implement`, etc.) needed to run `/gravitas.run`.
 
 ## Why This Architecture?
 
 - **Fast**: Installation commands are deterministic, no AI interpretation overhead
-- **Discoverable**: `/collab.install` command shows up in Claude Code command list
+- **Discoverable**: `/gravitas.install` command shows up in Claude Code command list
 - **Simple**: Step-by-step instructions are clear and easy to follow
-- **Maintainable**: All install logic lives in `src/commands/collab.install.ts`
+- **Maintainable**: All install logic lives in `src/commands/gravitas.install.ts`

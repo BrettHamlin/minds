@@ -3,7 +3,7 @@
 **Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
 **Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
 
-**Note**: This template is filled in by the `/collab.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
+**Note**: This template is filled in by the `/gravitas.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
@@ -39,12 +39,12 @@
 
 ```text
 specs/[###-feature]/
-├── plan.md              # This file (/collab.plan command output)
-├── research.md          # Phase 0 output (/collab.plan command)
-├── data-model.md        # Phase 1 output (/collab.plan command)
-├── quickstart.md        # Phase 1 output (/collab.plan command)
-├── contracts/           # Phase 1 output (/collab.plan command)
-└── tasks.md             # Phase 2 output (/collab.tasks command - NOT created by /collab.plan)
+├── plan.md              # This file (/gravitas.plan command output)
+├── research.md          # Phase 0 output (/gravitas.plan command)
+├── data-model.md        # Phase 1 output (/gravitas.plan command)
+├── quickstart.md        # Phase 1 output (/gravitas.plan command)
+├── contracts/           # Phase 1 output (/gravitas.plan command)
+└── tasks.md             # Phase 2 output (/gravitas.tasks command - NOT created by /gravitas.plan)
 ```
 
 ### Source Code (repository root)

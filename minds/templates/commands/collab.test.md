@@ -12,7 +12,7 @@ You **MUST** consider the user input before proceeding (if not empty). If argume
 
 ## Goal
 
-Validate the collab pipeline infrastructure by spawning sub-pipelines with fixture tickets TEST-001 through TEST-005, each exercising a progressively more complex pipeline configuration. Generate a pass/fail report per stage.
+Validate the gravitas pipeline infrastructure by spawning sub-pipelines with fixture tickets TEST-001 through TEST-005, each exercising a progressively more complex pipeline configuration. Generate a pass/fail report per stage.
 
 ## Execution Steps
 
@@ -22,19 +22,19 @@ Scan the pipeline infrastructure and report what's available:
 
 ```bash
 # Verify orchestrator scripts exist
-ls .collab/scripts/orchestrator/commands/ 2>/dev/null | wc -l
-ls .collab/config/pipeline-variants/ 2>/dev/null
-ls .collab/config/test-fixtures/ 2>/dev/null
+ls .gravitas/scripts/orchestrator/commands/ 2>/dev/null | wc -l
+ls .gravitas/config/pipeline-variants/ 2>/dev/null
+ls .gravitas/config/test-fixtures/ 2>/dev/null
 ```
 
 Check bus transport is available:
 ```bash
-ls .collab/transport/bus-server.ts 2>/dev/null && echo "bus-server: OK" || echo "bus-server: MISSING"
+ls .gravitas/transport/bus-server.ts 2>/dev/null && echo "bus-server: OK" || echo "bus-server: MISSING"
 ```
 
 Check bus port file (if pipeline is already running):
 ```bash
-cat .collab/bus-port 2>/dev/null && echo "bus: running" || echo "bus: not running"
+cat .gravitas/bus-port 2>/dev/null && echo "bus: running" || echo "bus: not running"
 ```
 
 Report findings:
@@ -45,12 +45,12 @@ Report findings:
 
 Emit DISCOVER_COMPLETE via signal (only when running inside a pipeline):
 ```bash
-bun .collab/scripts/verify-and-complete.ts discover "Infrastructure discovery complete" 2>/dev/null || true
+bun .gravitas/scripts/verify-and-complete.ts discover "Infrastructure discovery complete" 2>/dev/null || true
 ```
 
 ### 2. Stage Configuration
 
-Each stage uses a fixture ticket ID and a minimal pipeline.json loaded from `.collab/config/test-fixtures/stageN.json`.
+Each stage uses a fixture ticket ID and a minimal pipeline.json loaded from `.gravitas/config/test-fixtures/stageN.json`.
 
 | Stage | Ticket    | Fixture Config          | What it tests                                    |
 |-------|-----------|-------------------------|--------------------------------------------------|
@@ -71,7 +71,7 @@ Copy the fixture config to a temporary pipeline config location for the test:
 ```bash
 STAGE=1
 TICKET="TEST-001"
-FIXTURE=".collab/config/test-fixtures/stage${STAGE}.json"
+FIXTURE=".gravitas/config/test-fixtures/stage${STAGE}.json"
 
 # Validate fixture exists
 if [ ! -f "$FIXTURE" ]; then
@@ -133,9 +133,9 @@ For each stage, evaluate against these criteria:
 
 #### Bus Health Check
 
-If a bus is running (`.collab/bus-port` exists), check its health:
+If a bus is running (`.gravitas/bus-port` exists), check its health:
 ```bash
-BUS_PORT=$(cat .collab/bus-port 2>/dev/null)
+BUS_PORT=$(cat .gravitas/bus-port 2>/dev/null)
 if [ -n "$BUS_PORT" ]; then
   STATUS=$(curl -sf "http://localhost:${BUS_PORT}/status" 2>/dev/null)
   if [ $? -eq 0 ]; then
@@ -176,10 +176,10 @@ If all 5 stages pass, emit TEST_COMPLETE. If any stage fails, emit TEST_FAILED w
 # Emit orchestrator signal (only when running inside a pipeline)
 PASS_COUNT=<count>
 if [ "$PASS_COUNT" -eq 5 ]; then
-  bun .collab/scripts/verify-and-complete.ts test "All 5 stages passed" 2>/dev/null || true
+  bun .gravitas/scripts/verify-and-complete.ts test "All 5 stages passed" 2>/dev/null || true
 else
   # Emit FAILED signal via handler if available
-  bun .collab/handlers/emit-signal.ts TEST_FAILED "Stage failures detected: $FAIL_DETAILS" 2>/dev/null || true
+  bun .gravitas/handlers/emit-signal.ts TEST_FAILED "Stage failures detected: $FAIL_DETAILS" 2>/dev/null || true
 fi
 ```
 
@@ -196,7 +196,7 @@ If the orchestrator routes to diagnose phase, analyze what failed:
 
 Emit DIAGNOSE_COMPLETE when diagnosis is finished:
 ```bash
-bun .collab/scripts/verify-and-complete.ts diagnose "Diagnosis complete" 2>/dev/null || true
+bun .gravitas/scripts/verify-and-complete.ts diagnose "Diagnosis complete" 2>/dev/null || true
 ```
 
 ### 6. Fix Failures (when directed by orchestrator)
@@ -210,14 +210,14 @@ Apply targeted fixes to failing fixture configs based on diagnosis:
 
 Write fixed configs and emit FIX_COMPLETE:
 ```bash
-bun .collab/scripts/verify-and-complete.ts fix "Fixes applied" 2>/dev/null || true
+bun .gravitas/scripts/verify-and-complete.ts fix "Fixes applied" 2>/dev/null || true
 ```
 
 ### 7. Retest (when directed by orchestrator)
 
 Re-run all stages (or previously failing stages) and emit RETEST_COMPLETE or RETEST_FAILED:
 ```bash
-bun .collab/scripts/verify-and-complete.ts retest "Retest complete" 2>/dev/null || true
+bun .gravitas/scripts/verify-and-complete.ts retest "Retest complete" 2>/dev/null || true
 ```
 
 ## Design Notes

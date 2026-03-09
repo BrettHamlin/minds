@@ -1,5 +1,5 @@
 ---
-description: Browse and install collab workflow pipelines from the official registry.
+description: Browse and install gravitas workflow pipelines from the official registry.
 ---
 
 ## User Input
@@ -23,12 +23,12 @@ Parse `$ARGUMENTS` to determine the subcommand:
 git rev-parse --show-toplevel
 ```
 
-Set `COLLAB_BIN` to `<repo-root>/.collab/bin/collab`.
+Set `COLLAB_BIN` to `<repo-root>/.gravitas/bin/gravitas`.
 
 Check that `COLLAB_BIN` exists on disk. If it does **not** exist:
 ```
-Error: collab CLI not found at .collab/bin/collab
-Run /collab.install first to install the collab runtime.
+Error: gravitas CLI not found at .gravitas/bin/gravitas
+Run /gravitas.install first to install the gravitas runtime.
 ```
 Stop — do not proceed further.
 
@@ -111,7 +111,7 @@ Report output. On success: `✓ <name> removed.`
 
 If the CLI exits non-zero, display:
 ```
-Error: collab CLI exited with code <N>
+Error: gravitas CLI exited with code <N>
 <stderr output>
 ```
 

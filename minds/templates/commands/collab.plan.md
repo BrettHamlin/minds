@@ -25,7 +25,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 Whenever you have **finished all planning work for this phase**, emit:
 
 ```bash
-bun .collab/handlers/emit-signal.ts complete "Plan phase finished"
+bun .gravitas/handlers/emit-signal.ts complete "Plan phase finished"
 ```
 
 This applies in every scenario: normal completion, after follow-up messages from the orchestrator, after any retry. Any response that represents "this phase is done" must end with this signal.
@@ -34,9 +34,9 @@ This applies in every scenario: normal completion, after follow-up messages from
 
 ## Outline
 
-1. **Setup**: Run `bun .collab/scripts/resolve-feature.ts --setup-plan` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, SPECS_DIR (= FEATURE_DIR), BRANCH.
+1. **Setup**: Run `bun .gravitas/scripts/resolve-feature.ts --setup-plan` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, SPECS_DIR (= FEATURE_DIR), BRANCH.
 
-2. **Load context**: Read FEATURE_SPEC and `.collab/memory/constitution.md`. Load IMPL_PLAN template (already copied).
+2. **Load context**: Read FEATURE_SPEC and `.gravitas/memory/constitution.md`. Load IMPL_PLAN template (already copied).
 
 3. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
    - Fill Technical Context (mark unknowns as "NEEDS CLARIFICATION")
@@ -49,7 +49,7 @@ This applies in every scenario: normal completion, after follow-up messages from
 
 4. **Emit Completion Signal**
    ```bash
-   bun .collab/handlers/emit-signal.ts complete "Plan phase finished"
+   bun .gravitas/handlers/emit-signal.ts complete "Plan phase finished"
    ```
    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 

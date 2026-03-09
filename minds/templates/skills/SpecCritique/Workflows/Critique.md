@@ -523,7 +523,7 @@ Pass 2:
 **Called by:**
 - SpecCreator Step 5 (validate preliminary spec)
 - Standalone invocation via SpecCritique skill
-- Orchestrated via collab.spec-critique command (with signals)
+- Orchestrated via gravitas.spec-critique command (with signals)
 
 **Calls:**
 - Linear MCP (fetch/update tickets)

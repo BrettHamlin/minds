@@ -15,7 +15,7 @@ $ARGUMENTS
 Whenever you have **finished all clarification work for this phase**, emit:
 
 ```bash
-bun .collab/handlers/emit-signal.ts complete "Clarification phase finished"
+bun .gravitas/handlers/emit-signal.ts complete "Clarification phase finished"
 ```
 
 This applies in every scenario: normal completion, after follow-up messages from the orchestrator, after any retry. Any response that represents "this phase is done" must end with this signal.
@@ -35,7 +35,7 @@ Both modes share the same analysis and resolution-application code.
 
 1. **Prerequisites Check**
    ```bash
-   bun .collab/scripts/resolve-feature.ts
+   bun .gravitas/scripts/resolve-feature.ts
    ```
    Parse JSON to get `FEATURE_DIR` and `FEATURE_SPEC`.
 
@@ -45,7 +45,7 @@ Both modes share the same analysis and resolution-application code.
 
    Run the mode resolution script:
    ```bash
-   MODE_JSON=$(bun .collab/scripts/resolve-execution-mode.ts {ticket_id} --phase clarify)
+   MODE_JSON=$(bun .gravitas/scripts/resolve-execution-mode.ts {ticket_id} --phase clarify)
    ```
 
    Parse JSON to extract:
@@ -168,7 +168,7 @@ Both modes share the same analysis and resolution-application code.
 
 8. **Ask Questions / Resolve**
 
-   Use a `QuestionCollector` (from `.collab/lib/pipeline/questions.ts`) to collect ALL findings first, then call `resolveAndApply()`.
+   Use a `QuestionCollector` (from `.gravitas/lib/pipeline/questions.ts`) to collect ALL findings first, then call `resolveAndApply()`.
 
    **Decision tree (check in this order):**
    1. `AUTONOMOUS_MODE=true` AND `INTERACTIVE_MODE=false` → **8a** (non-interactive batch — orchestrator resolves)
@@ -184,7 +184,7 @@ Both modes share the same analysis and resolution-application code.
    **Re-entry detection:** Before collecting questions, check if resolutions already exist from a previous round:
 
    ```bash
-   RESOLUTIONS_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} resolutions clarify 1)
+   RESOLUTIONS_PATH=$(bun .gravitas/scripts/orchestrator/resolve-path.ts {ticket_id} resolutions clarify 1)
    ```
 
    If `$RESOLUTIONS_PATH` exists (use `test -f "$RESOLUTIONS_PATH"`), this is a **re-dispatch** from the orchestrator. Read the resolutions file at that path, apply them to the spec (update sections, add clarifications), then skip to emitting the completion signal. Do NOT re-collect questions or re-emit the questions signal.
@@ -192,12 +192,12 @@ Both modes share the same analysis and resolution-application code.
    **First entry (no resolutions):** Collect ALL questions, write them using the CLI, and **end your response**. Do NOT poll or wait for resolutions — the orchestrator will:
    1. Receive the questions signal
    2. Gather context, synthesize answers, write resolutions
-   3. Re-dispatch `/collab.clarify` to this agent pane
+   3. Re-dispatch `/gravitas.clarify` to this agent pane
 
    **Write findings using the CLI** (this writes the correct schema and emits the signal automatically):
 
    ```bash
-   cat <<'EOF' | bun .collab/scripts/emit-findings.ts --phase clarify --round 1 --stdin
+   cat <<'EOF' | bun .gravitas/scripts/emit-findings.ts --phase clarify --round 1 --stdin
    [
      {
        "question": "Your question text here",
@@ -289,7 +289,7 @@ Both modes share the same analysis and resolution-application code.
 
 11. **Emit Completion Signal**
    ```bash
-   bun .collab/handlers/emit-signal.ts complete "Clarification phase finished"
+   bun .gravitas/handlers/emit-signal.ts complete "Clarification phase finished"
    ```
    **CRITICAL**: This signal emission is MANDATORY for orchestrated workflows. Without it, the orchestrator will wait indefinitely.
 
@@ -297,14 +297,14 @@ Both modes share the same analysis and resolution-application code.
    - Number of questions answered
    - Sections updated
    - Path to updated spec
-   - Suggest `/collab.plan` as next command
+   - Suggest `/gravitas.plan` as next command
 
 ## Signal Flow
 
 **Autonomous mode:** Steps 4-5 (classification + scan) still run. Steps 8a auto-selects recommended options (grounded in codebase context) and proceeds directly to integration.
 
 **Interactive mode:**
-1. Agent emits a question signal via `bun .collab/handlers/emit-signal.ts question "question§option1§option2§..."`
+1. Agent emits a question signal via `bun .gravitas/handlers/emit-signal.ts question "question§option1§option2§..."`
 2. Orchestrator receives signal → reads question + options directly from signal `detail` field (no screen capture)
 3. Agent calls AskUserQuestion
 4. Orchestrator reasons with ticket context, navigates tmux to select best option

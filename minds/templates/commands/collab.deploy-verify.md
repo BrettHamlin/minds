@@ -17,14 +17,14 @@ Expected format: `<ticket-id>` (e.g., BRE-245)
 > - failure signal — one or more routes failed or timeout exceeded
 > - error signal — config missing, Playwright failed to launch, or unrecoverable failure
 >
-> Signal is emitted via `bun .collab/handlers/emit-signal.ts <pass|fail|error> "detail"`.
+> Signal is emitted via `bun .gravitas/handlers/emit-signal.ts <pass|fail|error> "detail"`.
 > Signal format: `[SIGNAL:TICKET_ID:NONCE] {PHASE}_COMPLETE | detail text`
 >
 > Signal MUST be written to signal-queue file BEFORE tmux send-keys (pipeline persistence contract).
 
 ## Goal
 
-Run post-deploy smoke verification against the live production URL to confirm the deployment succeeded. Reads configuration from `.collab/config/deploy-verify.json`, polls until the production URL responds, then verifies all configured smoke routes.
+Run post-deploy smoke verification against the live production URL to confirm the deployment succeeded. Reads configuration from `.gravitas/config/deploy-verify.json`, polls until the production URL responds, then verifies all configured smoke routes.
 
 ## Execution Steps
 
@@ -35,15 +35,15 @@ Parse arguments to extract:
 
 If no ticket ID provided, emit error signal and exit:
 ```bash
-bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
+bun .gravitas/handlers/emit-signal.ts error "No ticket ID provided"
 ```
 
 ### 2. Layer 1 — Deterministic HTTP Smoke Checks (Executor)
 
-Call the deterministic deploy verify executor. This script reads `.collab/config/deploy-verify.json`, polls the production URL until it responds, then checks each smoke route for HTTP 200 and response time.
+Call the deterministic deploy verify executor. This script reads `.gravitas/config/deploy-verify.json`, polls the production URL until it responds, then checks each smoke route for HTTP 200 and response time.
 
 ```bash
-bun .collab/scripts/deploy-verify-executor.ts --cwd <worktree-path> 2>&1
+bun .gravitas/scripts/deploy-verify-executor.ts --cwd <worktree-path> 2>&1
 ```
 
 Capture:
@@ -54,12 +54,12 @@ Do NOT duplicate executor logic inline — config reading, URL polling, route ch
 
 **Exit 2 — Emit error signal and STOP:**
 ```bash
-bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
+bun .gravitas/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
 **Exit 1 — Emit failure signal and STOP:**
 ```bash
-bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
+bun .gravitas/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
 
 **Exit 0 — HTTP smoke checks passed. Proceed to Layer 2.**
@@ -73,14 +73,14 @@ Only reached when Layer 1 passes (exit 0). For each smoke route:
 
 If any Browser-based issues found, emit failure:
 ```bash
-bun .collab/handlers/emit-signal.ts fail "Browser: ${details}"
+bun .gravitas/handlers/emit-signal.ts fail "Browser: ${details}"
 ```
 
 ### 4. Emit Success Signal
 
 If both Layer 1 and Layer 2 pass:
 ```bash
-bun .collab/handlers/emit-signal.ts pass "All smoke routes healthy"
+bun .gravitas/handlers/emit-signal.ts pass "All smoke routes healthy"
 ```
 
 ### 5. On failure — Remediation
@@ -89,7 +89,7 @@ When verification fails, the orchestrator routes to the next phase per pipeline 
 
 ## Design Rationale
 
-This command follows the proven `collab.verify-execute` pattern:
+This command follows the proven `gravitas.verify-execute` pattern:
 - **Deterministic signals** via explicit handler calls (not hooks)
 - **Polling with timeout** — handles async deploy propagation
 - **Browser-based verification** — captures JS errors, not just HTTP status

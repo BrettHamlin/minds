@@ -6,8 +6,8 @@ description: Orchestrate the full relay pipeline by spawning agent panes and pro
 
 You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Code agents in tmux split panes and processing signal responses.
 
-**Scripts Directory**: `.collab/scripts/orchestrator`
-**Phase progression and commands**: driven entirely by the selected pipeline config (e.g., `.collab/config/pipeline.mobile.json`)
+**Scripts Directory**: `.gravitas/scripts/orchestrator`
+**Phase progression and commands**: driven entirely by the selected pipeline config (e.g., `.gravitas/config/pipeline.mobile.json`)
 **Architecture**: See `architecture.md` for the three-layer design (Declarative / Execution / Judgment).
 
 ## Arguments
@@ -19,7 +19,7 @@ You are the **orchestrator**. You drive the Relay pipeline by spawning Claude Co
 Run the CLI to classify each argument as a ticket ID or project name. The CLI does **no API calls** — it only classifies arguments deterministically.
 
 ```bash
-CLASSIFIED=$(bun .collab/scripts/orchestrator/commands/resolve-tickets.ts {TOKEN_1} {TOKEN_2} ... 2>/tmp/resolve-tickets-err)
+CLASSIFIED=$(bun .gravitas/scripts/orchestrator/commands/resolve-tickets.ts {TOKEN_1} {TOKEN_2} ... 2>/tmp/resolve-tickets-err)
 ```
 
 On non-zero exit, output the error from `/tmp/resolve-tickets-err` and stop.
@@ -29,7 +29,7 @@ The CLI outputs JSON:
 {
   "ticketsWithVariant": [{"ticket": "BRE-342", "variant": "backend"}],
   "ticketsNoVariant": ["BRE-339"],
-  "projectNames": ["Collab Install"]
+  "projectNames": ["Gravitas Install"]
 }
 ```
 
@@ -47,7 +47,7 @@ Use the Linear MCP tools (already authenticated) to resolve any items that need 
 
 For each ticket that has no `repo:*` label:
 
-1. Read `.collab/config/multi-repo.json`. If it exists and has repos, present the options:
+1. Read `.gravitas/config/multi-repo.json`. If it exists and has repos, present the options:
    - Use AskUserQuestion: "Ticket {TICKET_ID} has no `repo:*` label. Which repo should it target?"
    - Options: each key from `multi-repo.json` repos (e.g., "paper-clips-backend", "paper-clips.net") plus "current repo (no label needed)"
 2. If the user selects a repo:
@@ -72,27 +72,27 @@ Use `{TICKET_ID}`, `{PIPELINE[TICKET_ID]}` (the per-ticket pipeline name), and `
 
 ### 1. Crash Recovery (run once)
 
-Scan `.collab/state/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun .collab/scripts/orchestrator/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `bun .collab/scripts/orchestrator/commands/status-table.ts`, output "Recovered N agent(s)." **END RESPONSE.**
+Scan `.gravitas/state/pipeline-registry/*.json`. For each where `orchestrator_pane_id == $TMUX_PANE`: if agent pane exists (`bun .gravitas/scripts/orchestrator/Tmux.ts pane-exists -w {agent_pane_id}`), recover state. If gone, delete file. If recovered: `bun .gravitas/scripts/orchestrator/commands/status-table.ts`, output "Recovered N agent(s)." **END RESPONSE.**
 
 ### 2. Validate (run once)
 
-No arguments -> "Usage: /collab.run <ticket[:pipeline]> [ticket[:pipeline] ...] — e.g. BRE-342:default BRE-341:mobile or BRE-339 (pipeline inferred from Linear label)" and stop.
+No arguments -> "Usage: /gravitas.run <ticket[:pipeline]> [ticket[:pipeline] ...] — e.g. BRE-342:default BRE-341:mobile or BRE-339 (pipeline inferred from Linear label)" and stop.
 
 ### 2.5. Pre-flight Command Check (run once)
 
 Before starting orchestration, verify that the phase commands needed by the pipeline exist:
 
 ```bash
-ls .claude/commands/collab.clarify.md .claude/commands/collab.plan.md .claude/commands/collab.implement.md 2>/dev/null | wc -l
+ls .claude/commands/gravitas.clarify.md .claude/commands/gravitas.plan.md .claude/commands/gravitas.implement.md 2>/dev/null | wc -l
 ```
 
 If fewer than 3 files are found, auto-install the pipeline pack:
 
 ```bash
-.collab/bin/collab pipelines install full-workflow --yes
+.gravitas/bin/gravitas pipelines install full-workflow --yes
 ```
 
-If `.collab/bin/collab` does not exist (older install), log a warning and continue: "Warning: .collab/bin/collab not found — skipping pipeline pack check. Run /collab.install to upgrade."
+If `.gravitas/bin/gravitas` does not exist (older install), log a warning and continue: "Warning: .gravitas/bin/gravitas not found — skipping pipeline pack check. Run /gravitas.install to upgrade."
 
 ### 3. Per-Ticket Setup Loop
 
@@ -103,20 +103,20 @@ If `.collab/bin/collab` does not exist (older install), log a warning and contin
 If `REPO[TICKET_ID]` is set (from the `repo:*` Linear label):
 
 ```bash
-SOURCE_REPO=$(collab repo resolve {REPO[TICKET_ID]})
+SOURCE_REPO=$(gravitas repo resolve {REPO[TICKET_ID]})
 ```
 
 - Exit 0: store result as `SOURCE_REPO[TICKET_ID]`.
 - Exit 1 (not registered): use AskUserQuestion to get the local path for this repo. Then register it:
   ```bash
-  collab repo add {REPO[TICKET_ID]} {user_provided_path}
-  SOURCE_REPO=$(collab repo resolve {REPO[TICKET_ID]})
+  gravitas repo add {REPO[TICKET_ID]} {user_provided_path}
+  SOURCE_REPO=$(gravitas repo resolve {REPO[TICKET_ID]})
   ```
 
 If `REPO[TICKET_ID]` is unset, read `specs/{TICKET_ID}/metadata.json` and try `repo_id`:
 
 ```bash
-SOURCE_REPO=$(collab repo resolve {repo_id})
+SOURCE_REPO=$(gravitas repo resolve {repo_id})
 ```
 
 If that also fails or no `repo_id` exists, `SOURCE_REPO[TICKET_ID]` is unset.
@@ -127,10 +127,10 @@ Run specify to create the specification (and worktree, if needed) before the age
 
 ```
 If SOURCE_REPO[TICKET_ID] is set:
-  Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]} --source-repo {SOURCE_REPO[TICKET_ID]} --repo {REPO[TICKET_ID]}` as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
+  Read the file `.claude/commands/gravitas.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]} --source-repo {SOURCE_REPO[TICKET_ID]} --repo {REPO[TICKET_ID]}` as input. Do NOT invoke it as a `/gravitas.specify` skill — read the file contents and execute the instructions inline within this response.
 
 Otherwise (REPO[TICKET_ID] may still be set even without SOURCE_REPO):
-  Read the file `.claude/commands/collab.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]}` (and `--repo {REPO[TICKET_ID]}` if REPO is set) as input. Do NOT invoke it as a `/collab.specify` skill — read the file contents and execute the instructions inline within this response.
+  Read the file `.claude/commands/gravitas.specify.md` and execute all its instructions with `{TICKET_ID} --pipeline {PIPELINE[TICKET_ID]}` (and `--repo {REPO[TICKET_ID]}` if REPO is set) as input. Do NOT invoke it as a `/gravitas.specify` skill — read the file contents and execute the instructions inline within this response.
 ```
 
 This reads the specify instructions and executes them inline — do NOT use the Skill tool.
@@ -179,7 +179,7 @@ You MUST run this command after specify completes for this ticket.
 #### 3d. Initialize (deterministic)
 
 ```bash
-bun .collab/scripts/orchestrator/commands/orchestrator-init.ts {TICKET_ID} --pipeline {PIPELINE[TICKET_ID]}
+bun .gravitas/scripts/orchestrator/commands/orchestrator-init.ts {TICKET_ID} --pipeline {PIPELINE[TICKET_ID]}
 ```
 Parse output: `AGENT_PANE=...`, `NONCE=...`, `REGISTRY=...`, optionally `SOURCE_REPO=...`. Non-zero exit -> output error, stop.
 Store `AGENT_PANE[TICKET_ID]`, `NONCE[TICKET_ID]`, `REGISTRY[TICKET_ID]` for use in later steps.
@@ -196,27 +196,27 @@ For EACH ticket ID in TICKET_IDS: call `get_issue` MCP with `includeRelations: t
 
 For EACH ticket ID in TICKET_IDS:
 ```bash
-FIRST_PHASE=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts {TICKET_ID} --first)
-bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {TICKET_ID} "$FIRST_PHASE"
+FIRST_PHASE=$(bun .gravitas/scripts/orchestrator/commands/phase-advance.ts {TICKET_ID} --first)
+bun .gravitas/scripts/orchestrator/commands/phase-dispatch.ts {TICKET_ID} "$FIRST_PHASE"
 ```
 
-`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for {N} ticket(s): {TICKET_IDS joined by ', '}. Waiting for signals..."** **END RESPONSE.**
-For EACH ticket ID: `.collab/scripts/webhook-notify.ts {TICKET_ID} none clarify started`
+`bun .gravitas/scripts/orchestrator/commands/status-table.ts`. Output: **"Pipeline started for {N} ticket(s): {TICKET_IDS joined by ', '}. Waiting for signals..."** **END RESPONSE.**
+For EACH ticket ID: `.gravitas/scripts/webhook-notify.ts {TICKET_ID} none clarify started`
 
 ---
 
 ## Signal Queue Check (run at the start of EVERY response)
 
-Before routing any input, check `.collab/state/signal-queue/` for pending signals that may have been missed due to context compaction:
+Before routing any input, check `.gravitas/state/signal-queue/` for pending signals that may have been missed due to context compaction:
 
 ```bash
-ls .collab/state/signal-queue/*.json 2>/dev/null
+ls .gravitas/state/signal-queue/*.json 2>/dev/null
 ```
 
 For each file found (each file is named `{ticket_id}.json`):
 1. Parse `{ticket_id}` from the filename. Get the canonical path:
    ```bash
-   SIGNAL_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} signal-queue)
+   SIGNAL_PATH=$(bun .gravitas/scripts/orchestrator/resolve-path.ts {ticket_id} signal-queue)
    ```
 2. Read the file: `cat "$SIGNAL_PATH"` — extract the `signal` field.
 3. Process the signal through **Signal Processing** below exactly as if it had arrived via tmux.
@@ -231,13 +231,13 @@ Then proceed to Input Routing for the current input.
 Run this **before every END RESPONSE** to process any signals that arrived during this turn:
 
 ```bash
-ls .collab/state/signal-queue/*.json 2>/dev/null
+ls .gravitas/state/signal-queue/*.json 2>/dev/null
 ```
 
 For each file found (each file is named `{ticket_id}.json`):
 1. Parse `{ticket_id}` from the filename. Get the canonical path:
    ```bash
-   SIGNAL_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} signal-queue)
+   SIGNAL_PATH=$(bun .gravitas/scripts/orchestrator/resolve-path.ts {ticket_id} signal-queue)
    ```
 2. Read the file: `cat "$SIGNAL_PATH"` — extract the `signal` field.
 3. Process the signal through **Signal Processing** above exactly as if it had arrived via tmux.
@@ -260,13 +260,13 @@ If no files remain, end the response normally.
 ### 1. Validate (deterministic)
 
 ```bash
-SCRIPTS=.collab/scripts/orchestrator && bun $SCRIPTS/signal-validate.ts "$INPUT"
+SCRIPTS=.gravitas/scripts/orchestrator && bun $SCRIPTS/signal-validate.ts "$INPUT"
 ```
 Exit 0 -> parse JSON: `ticket_id`, `signal_type`, `detail`, `current_step`. Non-zero -> log, **END RESPONSE.**
 
 ### 2. Get agent pane
 
-`bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id}` -> extract `agent_pane_id`.
+`bun .gravitas/scripts/orchestrator/commands/registry-read.ts {ticket_id}` -> extract `agent_pane_id`.
 
 ### 3. Route by signal suffix
 
@@ -288,7 +288,7 @@ This signal is emitted when `@interactive(off)` is set and a phase has collected
 
 1. **Gather context bundle (deterministic):**
    ```bash
-   bun .collab/scripts/orchestrator/commands/resolve-questions.ts {detail}
+   bun .gravitas/scripts/orchestrator/commands/resolve-questions.ts {detail}
    # Writes context-bundle.json alongside the findings file
    ```
 
@@ -300,23 +300,23 @@ This signal is emitted when `@interactive(off)` is set and a phase has collected
        "findingId": "f1",
        "answer": "Use the existing Zod validation pattern from src/middleware/validate.ts",
        "reasoning": "Spec requires validation; constitution mandates type safety; existing codebase uses Zod throughout",
-       "sources": ["src/middleware/validate.ts", "spec.md:AC3", ".collab/memory/constitution.md"]
+       "sources": ["src/middleware/validate.ts", "spec.md:AC3", ".gravitas/memory/constitution.md"]
      }
    ]
    ```
 
 3. **Write resolutions (deterministic):**
    ```bash
-   TICKET_ID={ticket_id} bun .collab/scripts/orchestrator/commands/write-resolutions.ts \
+   TICKET_ID={ticket_id} bun .gravitas/scripts/orchestrator/commands/write-resolutions.ts \
      {phase} {round} --stdin <<< '{resolutions_json}'
    ```
    Where `{phase}` is the phase from the findings batch and `{round}` is the round number.
 
-4. Update registry: `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=processing`
-5. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Resolutions written for {ticket_id} ({N} answers)."
+4. Update registry: `bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} status=processing`
+5. `bun .gravitas/scripts/orchestrator/commands/status-table.ts`. Output: "Resolutions written for {ticket_id} ({N} answers)."
 6. **Re-dispatch the phase to the agent** so it can pick up the resolutions:
    ```bash
-   bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {phase}
+   bun .gravitas/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {phase}
    ```
    This uses the same dispatch mechanism as normal phase transitions. The agent receives the phase command again, detects the existing resolutions file, applies them, and continues (or emits `_COMPLETE` if no more questions).
 7. Run **Signal Drain** before ending.
@@ -337,8 +337,8 @@ The signal `detail` field contains the question and all options encoded with `§
    tmux send-keys -t {agent_pane_id} Down   # repeat N times for chosen position
    tmux send-keys -t {agent_pane_id} Enter  # confirm selection
    ```
-5. `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=answered`
-6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Answered for {ticket_id}: {choice}." Run **Signal Drain** before ending.
+5. `bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} status=answered`
+6. `bun .gravitas/scripts/orchestrator/commands/status-table.ts`. Output: "Answered for {ticket_id}: {choice}." Run **Signal Drain** before ending.
 
 #### `_COMPLETE` -- Step finished
 
@@ -347,20 +347,20 @@ The signal `detail` field contains the question and all options encoded with `§
 *AI LOGIC: After all tracked tickets complete their `analyze` phase in multi-repo mode.*
 
 Only runs when **all** of the following are true:
-1. `.collab/config/multi-repo.json` exists (multi-repo mode active)
+1. `.gravitas/config/multi-repo.json` exists (multi-repo mode active)
 2. `current_step == analyze`
-3. Every ticket in `.collab/state/pipeline-registry/*.json` has `analyze` in its `phase_history` with a `_COMPLETE` signal
+3. Every ticket in `.gravitas/state/pipeline-registry/*.json` has `analyze` in its `phase_history` with a `_COMPLETE` signal
 
 If all conditions met: dispatch the dependency analyzer before any ticket advances to `implement`:
 
-Read the file `.claude/commands/collab.dependencies.md` and execute all its instructions inline with `{ticket_id_1} {ticket_id_2} ...` as input. Do NOT invoke it as a `/collab.dependencies` skill — read the file contents and execute the instructions within this response.
+Read the file `.claude/commands/gravitas.dependencies.md` and execute all its instructions inline with `{ticket_id_1} {ticket_id_2} ...` as input. Do NOT invoke it as a `/gravitas.dependencies` skill — read the file contents and execute the instructions within this response.
 
 Where the ticket IDs are all currently tracked tickets. Wait for `DEPENDENCY_COMPLETE` signal, then proceed normally with transition resolution for the triggering ticket.
 
 ##### a. Append phase history (deterministic)
 
 ```bash
-SCRIPTS=.collab/scripts/orchestrator && bun $SCRIPTS/registry-update.ts {ticket_id} \
+SCRIPTS=.gravitas/scripts/orchestrator && bun $SCRIPTS/registry-update.ts {ticket_id} \
   --append-phase-history "{\"phase\":\"{current_step}\",\"signal\":\"{signal_type}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 ```
 
@@ -370,25 +370,25 @@ SCRIPTS=.collab/scripts/orchestrator && bun $SCRIPTS/registry-update.ts {ticket_
 
 If `current_step == implement`:
 
-1. Read registry: `bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id}`
+1. Read registry: `bun .gravitas/scripts/orchestrator/commands/registry-read.ts {ticket_id}`
 2. Parse `implement_phase_plan` from output.
 
 **If `implement_phase_plan` exists AND `current_impl_phase < total_phases`** (more phases remain):
 - Compute `next_phase = current_impl_phase + 1`
 - Update registry to advance the plan:
   ```bash
-  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --advance-impl-phase
+  bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} --advance-impl-phase
   ```
 - Re-dispatch implement for the next phase:
   ```bash
-  bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} implement --args "phase:{next_phase}"
+  bun .gravitas/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} implement --args "phase:{next_phase}"
   ```
-- `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Phase {current_impl_phase} of {total_phases} complete for {ticket_id}. Dispatching phase {next_phase}." Run **Signal Drain** before ending.
+- `bun .gravitas/scripts/orchestrator/commands/status-table.ts`. Output: "Phase {current_impl_phase} of {total_phases} complete for {ticket_id}. Dispatching phase {next_phase}." Run **Signal Drain** before ending.
 
 **If `implement_phase_plan` exists AND `current_impl_phase == total_phases`** (all phases done):
 - Remove the plan from registry:
   ```bash
-  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field implement_phase_plan
+  bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field implement_phase_plan
   ```
 - Proceed to step b (normal `_COMPLETE` flow).
 
@@ -410,9 +410,9 @@ Procedure:
 
 1. Read global and per-phase code review config:
    ```bash
-   eval "$(bun .collab/scripts/orchestrator/commands/pipeline-config-read.ts {ticket_id} codereview --phase {current_step})"
+   eval "$(bun .gravitas/scripts/orchestrator/commands/pipeline-config-read.ts {ticket_id} codereview --phase {current_step})"
    ```
-   This sets `CR_ENABLED`, `CR_MODEL`, `CR_MAX`, `CR_FILE`, and `PHASE_CR` from `.collab/config/pipeline.json`.
+   This sets `CR_ENABLED`, `CR_MODEL`, `CR_MAX`, `CR_FILE`, and `PHASE_CR` from `.gravitas/config/pipeline.json`.
    If `CR_ENABLED == "false"`: skip to step b.
 
 2. Check per-phase override:
@@ -420,7 +420,7 @@ Procedure:
 
 3. Read current attempt count from registry:
    ```bash
-   CR_ATTEMPTS=$(bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id} --field code_review_attempts --default 0)
+   CR_ATTEMPTS=$(bun .gravitas/scripts/orchestrator/commands/registry-read.ts {ticket_id} --field code_review_attempts --default 0)
    ```
 
 4. Check exhaustion:
@@ -428,29 +428,29 @@ Procedure:
    ```
    "Code review for {ticket_id} exhausted {CR_MAX} attempt(s). Manual review required before advancing."
    ```
-   Update registry: `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=blocked`
-   `bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+   Update registry: `bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} status=blocked`
+   `bun .gravitas/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
 
 5. Increment attempt count:
    ```bash
    NEW_ATTEMPTS=$((CR_ATTEMPTS + 1))
-   bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=$NEW_ATTEMPTS
+   bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=$NEW_ATTEMPTS
    ```
 
 6. Run code review inline (do NOT use the Skill tool):
-   Read the file `.claude/commands/collab.codeReview.md` and execute all its instructions inline with `{ticket_id}$([ -n "$CR_FILE" ] && echo " --arch $CR_FILE" || echo "")` as the arguments.
-   Do NOT invoke it as `/collab.codeReview` — read the file contents and execute the instructions within this response.
+   Read the file `.claude/commands/gravitas.codeReview.md` and execute all its instructions inline with `{ticket_id}$([ -n "$CR_FILE" ] && echo " --arch $CR_FILE" || echo "")` as the arguments.
+   Do NOT invoke it as `/gravitas.codeReview` — read the file contents and execute the instructions within this response.
    Parse the output for `REVIEW: PASS` or `REVIEW: FAIL`.
 
 7. Handle verdict:
    - **PASS**: Reset attempt count:
      ```bash
-     bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=0
+     bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} code_review_attempts=0
      ```
      Log: "Code review passed for {ticket_id} (attempt {NEW_ATTEMPTS}/{CR_MAX}). Advancing." Proceed to step b.
    - **FAIL**: Extract findings (everything after `REVIEW: FAIL` line). Relay to implementing agent:
      ```bash
-     bun .collab/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "⛔ CODE REVIEW FAILED (attempt {NEW_ATTEMPTS}/{CR_MAX})
+     bun .gravitas/scripts/orchestrator/Tmux.ts send -w {agent_pane_id} -t "⛔ CODE REVIEW FAILED (attempt {NEW_ATTEMPTS}/{CR_MAX})
 
 {findings}
 
@@ -458,11 +458,11 @@ Fix all blocking findings above and re-run the verification script to re-emit IM
      sleep 1
      tmux send-keys -t {agent_pane_id} C-m
      ```
-     `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Code review failed for {ticket_id} (attempt {NEW_ATTEMPTS}/{CR_MAX}). Findings sent to agent." **END RESPONSE.**
+     `bun .gravitas/scripts/orchestrator/commands/status-table.ts`. Output: "Code review failed for {ticket_id} (attempt {NEW_ATTEMPTS}/{CR_MAX}). Findings sent to agent." **END RESPONSE.**
 
 ##### b. Load orchestrator context (AI)
 
-Read `phases[current_step].orchestrator_context` from the pipeline config (use variant: `.collab/config/pipeline-variants/{PIPELINE[TICKET_ID]}.json` if it exists, otherwise `.collab/config/pipeline.json`):
+Read `phases[current_step].orchestrator_context` from the pipeline config (use variant: `.gravitas/config/pipeline-variants/{PIPELINE[TICKET_ID]}.json` if it exists, otherwise `.gravitas/config/pipeline.json`):
 - If value ends in `.md`: read the file. If missing, log warning and continue.
 - If inline string: use directly.
 - **Apply as framing for your entire signal-handling response.** All judgments flow through this context.
@@ -470,7 +470,7 @@ Read `phases[current_step].orchestrator_context` from the pipeline config (use v
 ##### c. Resolve transition (deterministic + conditional)
 
 ```bash
-TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {ticket_id} {current_step} {signal_type})
+TRANSITION=$(bun .gravitas/scripts/orchestrator/transition-resolve.ts {ticket_id} {current_step} {signal_type})
 ```
 
 Parse `to`, `gate`, `if`, and `conditional` from output. Exit 2 means no match: log "No transition found for {current_step} → {signal_type}", **END RESPONSE.**
@@ -482,13 +482,13 @@ Parse `to`, `gate`, `if`, and `conditional` from output. Exit 2 means no match: 
 Supported conditions:
 - **`hasGroup`**: Does the ticket have an `implement_phase_plan` with remaining phases?
   ```bash
-  IMPL_PLAN=$(bun .collab/scripts/orchestrator/commands/registry-read.ts {ticket_id} --field implement_phase_plan --default '{}')
+  IMPL_PLAN=$(bun .gravitas/scripts/orchestrator/commands/registry-read.ts {ticket_id} --field implement_phase_plan --default '{}')
   ```
   Parse `current_impl_phase` and `total_phases` from `IMPL_PLAN`.
   - If `current_impl_phase < total_phases`: condition is **TRUE** → use the conditional `to`.
   - If `current_impl_phase >= total_phases` OR `implement_phase_plan` is absent/empty: condition is **FALSE** → re-resolve with `--plain`:
     ```bash
-    TRANSITION=$(bun .collab/scripts/orchestrator/transition-resolve.ts {ticket_id} {current_step} {signal_type} --plain)
+    TRANSITION=$(bun .gravitas/scripts/orchestrator/transition-resolve.ts {ticket_id} {current_step} {signal_type} --plain)
     ```
     Re-parse `to` and `gate` from the new result.
 
@@ -499,7 +499,7 @@ If `to != null`: skip to step **e. Goal Gate Check**.
 
 1. **Resolve gate prompt (deterministic):**
    ```bash
-   GATE_DATA=$(bun .collab/scripts/orchestrator/evaluate-gate.ts {ticket_id} {gate_name})
+   GATE_DATA=$(bun .gravitas/scripts/orchestrator/evaluate-gate.ts {ticket_id} {gate_name})
    ```
    Parse `prompt` and `validKeywords` from JSON output.
    - Exit 0: `prompt` contains the fully resolved gate prompt (tokens + file contents substituted). `validKeywords` lists the allowed verdict keywords.
@@ -509,14 +509,14 @@ If `to != null`: skip to step **e. Goal Gate Check**.
 
 3. **Validate verdict and get routing (deterministic):**
    ```bash
-   GATE_RESPONSE=$(bun .collab/scripts/orchestrator/evaluate-gate.ts {ticket_id} {gate_name} --verdict {keyword})
+   GATE_RESPONSE=$(bun .gravitas/scripts/orchestrator/evaluate-gate.ts {ticket_id} {gate_name} --verdict {keyword})
    ```
    - Exit 0: parse `response` from JSON. Contains routing instructions (`to`, `feedback`, `maxRetries`, etc.).
    - Exit 2: invalid keyword — re-read `validKeywords` from step 1 output and pick again.
 
 4. **Record gate decision** (non-fatal — if exit 2/3, log and continue):
    ```bash
-   bun .collab/scripts/orchestrator/record-gate.ts {ticket_id} {gate_name} {keyword}
+   bun .gravitas/scripts/orchestrator/record-gate.ts {ticket_id} {gate_name} {keyword}
    ```
 
 5. **Feedback**: If `response.feedback` is set, relay your full evaluation to the agent before routing.
@@ -525,7 +525,7 @@ If `to != null`: skip to step **e. Goal Gate Check**.
    - Response has `to`: set `NEXT={to}`, proceed to **e. Goal Gate Check**.
    - Response has no `to` (retry): increment `retry_count` in registry. Check `on_exhaust` if `retry_count >= max_retries`. Then re-dispatch:
      ```bash
-     bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {current_step}
+     bun .gravitas/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {current_step}
      ```
      Status table. Run **Signal Drain** before ending.
 
@@ -534,7 +534,7 @@ If `to != null`: skip to step **e. Goal Gate Check**.
 Only runs before terminal. If `NEXT` is not the terminal phase, script returns PASS immediately.
 
 ```bash
-GOAL=$(bun .collab/scripts/orchestrator/goal-gate-check.ts {ticket_id} {NEXT})
+GOAL=$(bun .gravitas/scripts/orchestrator/goal-gate-check.ts {ticket_id} {NEXT})
 ```
 
 If output starts with `REDIRECT:`: extract phase id, dispatch it, status table, output "Goal gate check: redirecting to '{phase}' before terminal." **END RESPONSE.**
@@ -545,7 +545,7 @@ If output starts with `REDIRECT:`: extract phase id, dispatch it, status table, 
 
 Check if `NEXT` is terminal:
 ```bash
-IS_TERMINAL=$(bun .collab/scripts/orchestrator/commands/phase-advance.ts {ticket_id} --is-terminal {NEXT})
+IS_TERMINAL=$(bun .gravitas/scripts/orchestrator/commands/phase-advance.ts {ticket_id} --is-terminal {NEXT})
 ```
 If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
 
@@ -554,26 +554,26 @@ If `IS_TERMINAL == "true"`: go to **Pipeline Complete**.
 **Only runs when `NEXT != "clarify"`** (clarify always runs in parallel, even for held tickets).
 
 ```bash
-HOLD=$(bun .collab/scripts/orchestrator/check-dependency-hold.ts {ticket_id})
+HOLD=$(bun .gravitas/scripts/orchestrator/check-dependency-hold.ts {ticket_id})
 ```
 
 Parse `held`, `released`, `waiting_for`, `external`, `was_waiting_for` from JSON output.
 
-- **If `held == true` and `external == true`**: log "⏸ {ticket_id} is held by external blocker {waiting_for} — manual release required." Set `status=held`. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
-- **If `held == true` and `external == false`**: set `status=held`, log "⏸ {ticket_id} is held, waiting for {waiting_for} to complete." `bun .collab/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
+- **If `held == true` and `external == true`**: log "⏸ {ticket_id} is held by external blocker {waiting_for} — manual release required." Set `status=held`. `bun .gravitas/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
+- **If `held == true` and `external == false`**: set `status=held`, log "⏸ {ticket_id} is held, waiting for {waiting_for} to complete." `bun .gravitas/scripts/orchestrator/commands/status-table.ts`. Run **Signal Drain** before ending.
 - **If `held == false` and `released == true`** (blocker completed — registry deleted): clear hold fields and proceed:
   ```bash
-  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field held_by
-  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_release_when
-  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_reason
-  bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_external
+  bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field held_by
+  bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_release_when
+  bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_reason
+  bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} --delete-field hold_external
   ```
   Then continue to the normal advance below.
 - **If `held == false`** (no hold): proceed normally.
 
 Update registry and dispatch next phase:
 ```bash
-SCRIPTS=.collab/scripts/orchestrator
+SCRIPTS=.gravitas/scripts/orchestrator
 bun $SCRIPTS/registry-update.ts {ticket_id} current_step={NEXT} status=running
 ```
 
@@ -596,7 +596,7 @@ bun $SCRIPTS/registry-update.ts {ticket_id} current_step={NEXT} status=running
      ```
    - Write to registry (construct the JSON string from the extracted values):
      ```bash
-     bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} \
+     bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} \
        'implement_phase_plan={"total_phases":N,"current_impl_phase":1,"phase_names":[...],"completed_impl_phases":[]}'
      ```
      Replace `N` with the actual total count and `[...]` with the actual phase names array.
@@ -618,7 +618,7 @@ bun $SCRIPTS/commands/phase-dispatch.ts {ticket_id} {NEXT}
 bun $SCRIPTS/held-release-scan.ts {ticket_id}
 ```
 
-`bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "'{current_step}' complete for {ticket_id}. Advancing to '{NEXT}'." Run **Signal Drain** before ending.
+`bun .gravitas/scripts/orchestrator/commands/status-table.ts`. Output: "'{current_step}' complete for {ticket_id}. Advancing to '{NEXT}'." Run **Signal Drain** before ending.
 
 ##### f.1 Before hooks (deterministic)
 
@@ -651,17 +651,17 @@ Parse `hooks` array and `empty` from JSON output (reads `current_step` from regi
   ```
   Wait for hook `_COMPLETE`, then proceed to step b. Log: "After-hook '{hook_phase}' dispatched for {ticket_id} after '{current_step}'."
 - If `empty == true`: proceed normally.
-`.collab/scripts/webhook-notify.ts {ticket_id} {current_step} {NEXT} running`
+`.gravitas/scripts/webhook-notify.ts {ticket_id} {current_step} {NEXT} running`
 
 #### `_ERROR` or `_FAILED` -- Error
 
-1. Capture screen (`-s 200`). `bun .collab/scripts/orchestrator/registry-update.ts {ticket_id} status=error`
+1. Capture screen (`-s 200`). `bun .gravitas/scripts/orchestrator/registry-update.ts {ticket_id} status=error`
 2. Re-dispatch current phase:
    ```bash
-   bun .collab/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {current_step}
+   bun .gravitas/scripts/orchestrator/commands/phase-dispatch.ts {ticket_id} {current_step}
    ```
-3. `bun .collab/scripts/orchestrator/commands/status-table.ts`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." Run **Signal Drain** before ending.
-4. `.collab/scripts/webhook-notify.ts {ticket_id} {step} {step} error`
+3. `bun .gravitas/scripts/orchestrator/commands/status-table.ts`. Output: "Error in '{step}' for {ticket_id}: {detail}. Retrying..." Run **Signal Drain** before ending.
+4. `.gravitas/scripts/webhook-notify.ts {ticket_id} {step} {step} error`
 
 #### Any other signal -- Phase-specific outcome (transition routing)
 
@@ -673,15 +673,15 @@ For signals that do not match any suffix above (e.g., `VERIFY_PASS`, `VERIFY_FAI
 
 ### [CMD:status]
 
-`bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+`bun .gravitas/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
 
 ### [CMD:remove {ticket_id}]
 
 Validate. Remove the registry file:
 ```bash
-rm $(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)
+rm $(bun .gravitas/scripts/orchestrator/resolve-path.ts {ticket_id} registry)
 ```
-`bun .collab/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
+`bun .gravitas/scripts/orchestrator/commands/status-table.ts`. **END RESPONSE.**
 
 ### Unknown
 
@@ -696,26 +696,26 @@ When `IS_TERMINAL == "true"` in the Advance step:
 System nodes — all are non-fatal (exit 2 or 3 = log warning and continue):
 
 1. Draft PR (`.before` TERMINAL node):
-   `bun .collab/scripts/orchestrator/create-draft-pr.ts {ticket_id}`
+   `bun .gravitas/scripts/orchestrator/create-draft-pr.ts {ticket_id}`
 
 2. Complete run (stamps `completed_at`, `duration_ms`, `outcome`):
-   `bun .collab/scripts/orchestrator/complete-run.ts {ticket_id}`
+   `bun .gravitas/scripts/orchestrator/complete-run.ts {ticket_id}`
 
 3. Classify run (stamps `autonomous`, `intervention_count`):
-   `bun .collab/scripts/orchestrator/classify-run.ts {ticket_id}`
+   `bun .gravitas/scripts/orchestrator/classify-run.ts {ticket_id}`
 
 4. Gate accuracy (evaluates gate decisions — runs after complete-run, which sets `runs.outcome`):
-   `bun .collab/scripts/orchestrator/gate-accuracy-check.ts {ticket_id}`
+   `bun .gravitas/scripts/orchestrator/gate-accuracy-check.ts {ticket_id}`
 
-4b. Bus teardown (if transport=bus — kills bus server + bridges, removes .collab/bus-port):
-   `bun .collab/scripts/orchestrator/commands/teardown-bus.ts {ticket_id}`
+4b. Bus teardown (if transport=bus — kills bus server + bridges, removes .gravitas/bus-port):
+   `bun .gravitas/scripts/orchestrator/commands/teardown-bus.ts {ticket_id}`
 
 Cleanup:
 4c. Release dependency holds (run before registry deletion so other held tickets can detect completion):
-   `bun .collab/scripts/orchestrator/held-release-scan.ts {ticket_id}`
-5. `rm "$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} registry)"`
-6. `bun .collab/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
-7. `.collab/scripts/webhook-notify.ts {ticket_id} {current_step} done complete`
+   `bun .gravitas/scripts/orchestrator/held-release-scan.ts {ticket_id}`
+5. `rm "$(bun .gravitas/scripts/orchestrator/resolve-path.ts {ticket_id} registry)"`
+6. `bun .gravitas/scripts/orchestrator/commands/status-table.ts`. "Pipeline complete for {ticket_id}!"
+7. `.gravitas/scripts/webhook-notify.ts {ticket_id} {current_step} done complete`
 8. Other agents running -> wait. None remain -> "All pipelines complete."
 
 ---
