@@ -27,7 +27,7 @@ If no ticket ID provided, error and exit.
 
 Run the mode resolution script:
 ```bash
-MODE_JSON=$(bun .collab/scripts/resolve-execution-mode.ts {ticket_id} --phase spec_critique)
+MODE_JSON=$(bun .gravitas/scripts/resolve-execution-mode.ts {ticket_id} --phase spec_critique)
 ```
 
 Parse JSON to extract:
@@ -42,14 +42,14 @@ Parse JSON to extract:
 
 **Re-entry detection:** Before collecting issues, check if resolutions already exist from a previous round:
 ```bash
-RESOLUTIONS_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts {ticket_id} resolutions spec_critique 1)
+RESOLUTIONS_PATH=$(bun .gravitas/scripts/orchestrator/resolve-path.ts {ticket_id} resolutions spec_critique 1)
 ```
 If `$RESOLUTIONS_PATH` exists (use `test -f "$RESOLUTIONS_PATH"`), this is a re-dispatch from the orchestrator. Read the resolutions file at that path, apply them (mark issues as resolved), re-evaluate verdict, and proceed to Step 5.
 
 **First entry (no resolutions):** Collect HIGH/unresolved issues into a simple JSON array and write using the CLI (this writes the correct schema and emits the signal automatically):
 
 ```bash
-cat <<'EOF' | bun .collab/scripts/emit-findings.ts --phase spec_critique --round 1 --ticket {ticket_id} --stdin
+cat <<'EOF' | bun .gravitas/scripts/emit-findings.ts --phase spec_critique --round 1 --ticket {ticket_id} --stdin
 [
   {
     "question": "Issue description requiring clarification",
@@ -67,7 +67,7 @@ All context fields (`why`, `specReferences`, `codePatterns`, `constraints`, `imp
 After the CLI runs, output: "Emitted {N} questions to orchestrator. Waiting for resolution." then **END RESPONSE** — do not wait, do not poll. The orchestrator will:
 1. Receive the questions signal
 2. Synthesize answers, write resolutions file
-3. Re-dispatch `/collab.spec-critique` to this agent pane
+3. Re-dispatch `/gravitas.spec-critique` to this agent pane
 
 **Do NOT use AskUserQuestion in non-interactive mode.**
 
@@ -78,7 +78,7 @@ After the CLI runs, output: "Emitted {N} questions to orchestrator. Waiting for 
 
 Run:
 ```bash
-bun .collab/handlers/emit-signal.ts start "Starting spec analysis for ${ticket_id}"
+bun .gravitas/handlers/emit-signal.ts start "Starting spec analysis for ${ticket_id}"
 ```
 
 This is MANDATORY before analysis begins so orchestrator can track progress.
@@ -145,7 +145,7 @@ For each identified issue, apply the auto-resolution strategy:
 
 #### 4a-4. Produce Autonomous Analysis Report
 
-Write a structured report to stdout (and optionally to `.collab/state/${ticket_id}-spec-critique.md`):
+Write a structured report to stdout (and optionally to `.gravitas/state/${ticket_id}-spec-critique.md`):
 
 ```markdown
 ## Autonomous SpecCritique Report — ${ticket_id}
@@ -250,14 +250,14 @@ Parse the analysis output for verdict:
 Emit the terminal signal using the verdict determined in Step 5:
 
 ```bash
-bun .collab/handlers/emit-signal.ts ${result_signal} "${result_message}"
+bun .gravitas/handlers/emit-signal.ts ${result_signal} "${result_message}"
 ```
 
 Where `${result_signal}` is one of: `pass`, `warn`, `fail`.
 
 If Step 5 was never reached due to an unexpected error, emit an error signal:
 ```bash
-bun .collab/handlers/emit-signal.ts fail "Unexpected error during spec analysis - manual review required"
+bun .gravitas/handlers/emit-signal.ts fail "Unexpected error during spec analysis - manual review required"
 ```
 
 Then report the error details.
@@ -308,7 +308,7 @@ Unresolved issues: [list]
 
 **Autonomous mode (orchestrated):**
 ```
-collab.spec-critique BRE-246
+gravitas.spec-critique BRE-246
 → Registry found: current_step=spec_critique → AUTONOMOUS_MODE=true
 → Emit START
 → Fetch ticket, analyze, auto-resolve HIGH issues
@@ -317,7 +317,7 @@ collab.spec-critique BRE-246
 
 **Interactive mode (standalone):**
 ```
-collab.spec-critique BRE-191
+gravitas.spec-critique BRE-191
 → No registry match → AUTONOMOUS_MODE=false
 → Emit START
 → Invoke SpecCritique skill (with AskUserQuestion loop)
@@ -326,7 +326,7 @@ collab.spec-critique BRE-191
 
 ## Design Rationale
 
-This command follows the proven `collab.blindqa` pattern:
+This command follows the proven `gravitas.blindqa` pattern:
 - **Deterministic signals** via explicit echo/bun calls (not hooks)
 - **Orchestration boundary** separated from skill logic
 - **Mode-aware execution** prevents AskUserQuestion blocking in headless pipeline runs

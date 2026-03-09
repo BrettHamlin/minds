@@ -17,7 +17,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 You are operating in an orchestrated pipeline. The orchestrator waits for your signal to advance. Whenever you have **finished all work for this phase and all tests pass**, run:
 
 ```bash
-bun .collab/scripts/verify-and-complete.ts implement "Implementation phase finished"
+bun .gravitas/scripts/verify-and-complete.ts implement "Implementation phase finished"
 ```
 
 This verification script will check that all tasks are complete and automatically emit the signal.
@@ -33,7 +33,7 @@ You do not need to wait for step 10. Any time your response represents "this pha
 
 ## Outline
 
-1. Run `bun .collab/scripts/resolve-feature.ts --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list.
+1. Run `bun .gravitas/scripts/resolve-feature.ts --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list.
 
 1b. **Parse Phase Scope** (if `$ARGUMENTS` contains `phase:N` or `phase:N-M`):
    - `phase:3` → execute only Phase 3 from tasks.md
@@ -48,7 +48,7 @@ You do not need to wait for step 10. Any time your response represents "this pha
    Where `{ticket_id}` is extracted from `$ARGUMENTS` or the current branch name.
 
    ```bash
-   PHASE_DATA=$(bun .collab/scripts/analyze-task-phases.ts {ticket_id})
+   PHASE_DATA=$(bun .gravitas/scripts/analyze-task-phases.ts {ticket_id})
    ```
 
    Parse JSON to get `totalPhases`, `phases[]`, and `nextIncompletePhase`.
@@ -180,7 +180,7 @@ You do not need to wait for step 10. Any time your response represents "this pha
     Run the verification script to confirm tasks are complete and automatically emit the completion signal:
 
     ```bash
-    bun .collab/scripts/verify-and-complete.ts implement "Implementation phase finished"
+    bun .gravitas/scripts/verify-and-complete.ts implement "Implementation phase finished"
     ```
 
     This script will:
@@ -193,4 +193,4 @@ You do not need to wait for step 10. Any time your response represents "this pha
 
     **If the orchestrator sends a rejection (⛔ NO EXCUSES):** Fix all identified issues, re-run the full test suite to confirm 0 failures, then run the verification script again to re-emit the signal. Do NOT consider the task done until you have successfully run the verification script after fixing.
 
-Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/collab.tasks` first to regenerate the task list.
+Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/gravitas.tasks` first to regenerate the task list.

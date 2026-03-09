@@ -18,12 +18,12 @@ Verify the iOS feature described in the ticket spec by navigating the running si
 
 ### 1. Validate Input
 
-Parse `ticket_id` from `$ARGUMENTS`. If missing, output "Usage: /collab.iosverify <ticket-id>" and stop.
+Parse `ticket_id` from `$ARGUMENTS`. If missing, output "Usage: /gravitas.iosverify <ticket-id>" and stop.
 
 ### 2. Verify Registry State
 
 ```bash
-REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts ${ticket_id} registry)
+REGISTRY_PATH=$(bun .gravitas/scripts/orchestrator/resolve-path.ts ${ticket_id} registry)
 test -f "$REGISTRY_PATH" || { echo "Not in orchestrated mode"; exit 1; }
 ```
 
@@ -35,7 +35,7 @@ cat "$REGISTRY_PATH" | grep '"current_step".*"iosverify"' || echo "Warning: not 
 ### 3. Read Build Output Artifact
 
 ```bash
-cat .collab/state/build-output-${ticket_id}.json
+cat .gravitas/state/build-output-${ticket_id}.json
 ```
 
 **Required fields from build output:**
@@ -45,7 +45,7 @@ cat .collab/state/build-output-${ticket_id}.json
 
 **If the file is missing or result != "success":**
 ```bash
-bun .collab/handlers/emit-verify-signal.ts blocked "build-output-${ticket_id}.json missing or build did not succeed. Run iosbuild first."
+bun .gravitas/handlers/emit-verify-signal.ts blocked "build-output-${ticket_id}.json missing or build did not succeed. Run iosbuild first."
 ```
 Stop.
 
@@ -64,7 +64,7 @@ Look for an `## iOS Verification` section with:
 
 **If any required verification field is missing:**
 ```bash
-bun .collab/handlers/emit-verify-signal.ts needs_clarification "Verification spec incomplete. Add '## iOS Verification' section to specs/${ticket_id}/spec.md§Spec has correct iOS Verification section (Recommended)§Skip verification"
+bun .gravitas/handlers/emit-verify-signal.ts needs_clarification "Verification spec incomplete. Add '## iOS Verification' section to specs/${ticket_id}/spec.md§Spec has correct iOS Verification section (Recommended)§Skip verification"
 ```
 Stop.
 
@@ -92,24 +92,24 @@ The skill handles: app launch, navigation (fuzzy/semantic), arrival confirmation
 
 **On `pass`:**
 ```bash
-bun .collab/handlers/emit-verify-signal.ts pass "{summary of what was verified with evidence}"
+bun .gravitas/handlers/emit-verify-signal.ts pass "{summary of what was verified with evidence}"
 ```
 
 **On `fail`:**
 ```bash
-bun .collab/handlers/emit-verify-signal.ts fail "{which criteria failed and why}"
+bun .gravitas/handlers/emit-verify-signal.ts fail "{which criteria failed and why}"
 ```
 Pipeline routes back to implement phase for the agent to fix the code.
 
 **On `blocked`:**
 ```bash
-bun .collab/handlers/emit-verify-signal.ts blocked "{reason verification was blocked, e.g. simulator crash}"
+bun .gravitas/handlers/emit-verify-signal.ts blocked "{reason verification was blocked, e.g. simulator crash}"
 ```
 Pipeline retries iosverify.
 
 **On `needs_clarification`:**
 ```bash
-bun .collab/handlers/emit-verify-signal.ts needs_clarification "Question text§Option A (Recommended)§Option B"
+bun .gravitas/handlers/emit-verify-signal.ts needs_clarification "Question text§Option A (Recommended)§Option B"
 ```
 Orchestrator answers, then iosverify is re-dispatched.
 

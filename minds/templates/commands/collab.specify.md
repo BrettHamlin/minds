@@ -19,7 +19,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-The text the user typed after `/collab.specify` in the triggering message **is** the feature description. Assume you always have it available in this conversation even if `$ARGUMENTS` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
+The text the user typed after `/gravitas.specify` in the triggering message **is** the feature description. Assume you always have it available in this conversation even if `$ARGUMENTS` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
 
 **IMPORTANT**: If $ARGUMENTS matches the pattern `[A-Z]+-[0-9]+` (e.g., BRE-202, JIRA-456), it's a ticket ID. You MUST:
 1. Fetch the ticket from Linear using `get_issue` with `includeRelations: true`
@@ -65,7 +65,7 @@ Given that feature description, do this:
       - If `--source-repo` was passed, use it directly as `SOURCE_REPO`. Done.
       - Otherwise, if `--repo` was passed:
         ```bash
-        SOURCE_REPO=$(collab repo resolve {repo_id})
+        SOURCE_REPO=$(gravitas repo resolve {repo_id})
         ```
         If exit 0, use the result. If exit 1, skip.
       - If no `--repo` was provided, skip.
@@ -166,7 +166,7 @@ Given that feature description, do this:
       
       ## Notes
       
-      - Items marked incomplete require spec updates before `/collab.plan`
+      - Items marked incomplete require spec updates before `/gravitas.plan`
       ```
 
    b. **Run Validation Check**: Review the spec against each checklist item:
@@ -196,9 +196,9 @@ Given that feature description, do this:
 
    d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
 
-7. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/collab.plan`).
+7. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/gravitas.plan`).
 
-**NOTE:** The script creates a git worktree and initializes the spec file before writing. The spec is created inside the worktree directory and the JSON output includes `WORKTREE_DIR` for reference. **Do NOT change directory** — stay in the main repo so you can run `/collab.run` as the orchestrator. The agent pane will automatically spawn in the worktree.
+**NOTE:** The script creates a git worktree and initializes the spec file before writing. The spec is created inside the worktree directory and the JSON output includes `WORKTREE_DIR` for reference. **Do NOT change directory** — stay in the main repo so you can run `/gravitas.run` as the orchestrator. The agent pane will automatically spawn in the worktree.
 
 ## General Guidelines
 

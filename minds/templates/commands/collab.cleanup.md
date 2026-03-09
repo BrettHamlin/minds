@@ -2,7 +2,7 @@
 description: Clean up feature branch or worktree after completion
 ---
 
-# Collab Cleanup Command
+# Gravitas Cleanup Command
 
 Clean up a completed feature by removing the branch or worktree, tmux pane, registry, and spec directories. Checks merge status and prompts for confirmation before destructive operations.
 
@@ -18,8 +18,8 @@ Clean up a completed feature by removing the branch or worktree, tmux pane, regi
 TICKET_ID="$ARGUMENTS"
 
 if [ -z "$TICKET_ID" ]; then
-    echo "Usage: /collab.cleanup <ticket-id>"
-    echo "Example: /collab.cleanup BRE-191"
+    echo "Usage: /gravitas.cleanup <ticket-id>"
+    echo "Example: /gravitas.cleanup BRE-191"
     exit 1
 fi
 
@@ -125,10 +125,10 @@ if (!MERGED) {
 ### 5. Kill Tmux Pane
 
 ```bash
-SCRIPTS=.collab/scripts/orchestrator
+SCRIPTS=.gravitas/scripts/orchestrator
 
 # Find agent pane from registry
-REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts ${TICKET_ID} registry)
+REGISTRY_PATH=$(bun .gravitas/scripts/orchestrator/resolve-path.ts ${TICKET_ID} registry)
 if [ -f "$REGISTRY_PATH" ]; then
     AGENT_PANE=$(jq -r '.agent_pane_id' "$REGISTRY_PATH" 2>/dev/null)
 
@@ -180,7 +180,7 @@ fi
 
 ```bash
 # Remove pipeline registry
-REGISTRY_PATH=$(bun .collab/scripts/orchestrator/resolve-path.ts ${TICKET_ID} registry)
+REGISTRY_PATH=$(bun .gravitas/scripts/orchestrator/resolve-path.ts ${TICKET_ID} registry)
 if [ -f "$REGISTRY_PATH" ]; then
     rm -f "$REGISTRY_PATH"
     echo "✅ Removed registry"
@@ -235,10 +235,10 @@ echo ""
 <!-- lint:ok: user-facing examples showing what the human types, not AI skill invocations -->
 ```bash
 # Cleanup merged feature
-/collab.cleanup BRE-191
+/gravitas.cleanup BRE-191
 
 # Cleanup unmerged feature (will prompt)
-/collab.cleanup BRE-192
+/gravitas.cleanup BRE-192
 ```
 
 ## Notes

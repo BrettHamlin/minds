@@ -17,14 +17,14 @@ Expected format: `<ticket-id>` (e.g., BRE-349)
 > - failure signal — structural failure or visual diff exceeds threshold
 > - error signal — config missing, dev server failed, Playwright missing
 >
-> Signal is emitted via `bun .collab/handlers/emit-signal.ts <pass|fail|error> "detail"`.
+> Signal is emitted via `bun .gravitas/handlers/emit-signal.ts <pass|fail|error> "detail"`.
 > Signal format: `[SIGNAL:TICKET_ID:NONCE] {PHASE}_COMPLETE | detail text`
 >
 > Signal MUST be written to signal-queue file BEFORE tmux send-keys (pipeline persistence contract).
 
 ## Goal
 
-Verify a web frontend against structural DOM expectations and reference screenshots. Reads configuration from `.collab/config/visual-verify.json`, starts the dev server if configured, runs two-layer verification (structural + visual diff), and emits a pass/fail signal.
+Verify a web frontend against structural DOM expectations and reference screenshots. Reads configuration from `.gravitas/config/visual-verify.json`, starts the dev server if configured, runs two-layer verification (structural + visual diff), and emits a pass/fail signal.
 
 ## Execution Steps
 
@@ -35,24 +35,24 @@ Parse arguments to extract:
 
 If no ticket ID provided, emit error signal and exit:
 ```bash
-bun .collab/handlers/emit-signal.ts error "No ticket ID provided"
+bun .gravitas/handlers/emit-signal.ts error "No ticket ID provided"
 ```
 
 ### 2. Start Dev Server (if configured)
 
-Read `.collab/config/visual-verify.json`. If `startCommand` is configured, start the dev server as a background process BEFORE calling the executor. Poll `baseUrl + readyPath` until it returns HTTP 200 (up to `readyTimeout` seconds).
+Read `.gravitas/config/visual-verify.json`. If `startCommand` is configured, start the dev server as a background process BEFORE calling the executor. Poll `baseUrl + readyPath` until it returns HTTP 200 (up to `readyTimeout` seconds).
 
 If the server fails to start or times out, emit error:
 ```bash
-bun .collab/handlers/emit-signal.ts error "Dev server failed to start within 30s"
+bun .gravitas/handlers/emit-signal.ts error "Dev server failed to start within 30s"
 ```
 
 ### 3. Layer 1 — Deterministic Structural Checks (Executor)
 
-Call the deterministic visual verify executor. This script reads `.collab/config/visual-verify.json`, fetches each configured route, checks DOM selectors, and prints a single verdict line to stdout.
+Call the deterministic visual verify executor. This script reads `.gravitas/config/visual-verify.json`, fetches each configured route, checks DOM selectors, and prints a single verdict line to stdout.
 
 ```bash
-bun .collab/scripts/visual-verify-executor.ts --cwd <worktree-path> 2>&1
+bun .gravitas/scripts/visual-verify-executor.ts --cwd <worktree-path> 2>&1
 ```
 
 Capture:
@@ -63,12 +63,12 @@ Do NOT duplicate executor logic inline — config validation, route fetching, an
 
 **Exit 2 — Emit error signal and STOP:**
 ```bash
-bun .collab/handlers/emit-signal.ts error "${verdict_detail}"
+bun .gravitas/handlers/emit-signal.ts error "${verdict_detail}"
 ```
 
 **Exit 1 — Emit failure signal and STOP:**
 ```bash
-bun .collab/handlers/emit-signal.ts fail "${verdict_detail}"
+bun .gravitas/handlers/emit-signal.ts fail "${verdict_detail}"
 ```
 
 **Exit 0 — Structural checks passed. Proceed to Layer 2.**
@@ -82,14 +82,14 @@ Only reached when Layer 1 passes (exit 0). For routes with reference screenshots
 
 If any visual diff exceeds threshold, emit failure:
 ```bash
-bun .collab/handlers/emit-signal.ts fail "Visual diff: ${details}"
+bun .gravitas/handlers/emit-signal.ts fail "Visual diff: ${details}"
 ```
 
 ### 5. Emit Success Signal
 
 If both Layer 1 and Layer 2 pass:
 ```bash
-bun .collab/handlers/emit-signal.ts pass "All structural and visual checks passed"
+bun .gravitas/handlers/emit-signal.ts pass "All structural and visual checks passed"
 ```
 
 ### 6. On failure — Remediation
@@ -100,7 +100,7 @@ Retry loop is managed by the orchestrator (max 3 attempts).
 
 ## Design Rationale
 
-This command follows the proven `collab.run-tests` pattern:
+This command follows the proven `gravitas.run-tests` pattern:
 - **Deterministic signals** via explicit handler calls (not hooks)
 - **Two-layer verification** — structural DOM checks + visual pixel diff
 - **Project-agnostic** — configured per-project via visual-verify.json
