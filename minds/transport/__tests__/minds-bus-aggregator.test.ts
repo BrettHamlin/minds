@@ -36,7 +36,7 @@ function createMockBus(): MockBus {
     idleTimeout: 0,
     fetch(req) {
       const url = new URL(req.url);
-      if (url.pathname === "/subscribe/status") {
+      if (url.pathname.startsWith("/subscribe/")) {
         let ctrl!: ReadableStreamDefaultController<Uint8Array>;
         const stream = new ReadableStream<Uint8Array>({
           start(c) {

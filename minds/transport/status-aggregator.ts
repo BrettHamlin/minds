@@ -273,7 +273,8 @@ export class StatusAggregator {
           headers["Last-Event-ID"] = conn.lastEventId;
         }
 
-        const res = await fetch(`${conn.busUrl}/subscribe/status`, {
+        const channel = conn.ticketId.startsWith("minds-") ? conn.ticketId : "status";
+        const res = await fetch(`${conn.busUrl}/subscribe/${channel}`, {
           headers,
           signal: conn.abortController.signal,
         });

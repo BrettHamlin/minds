@@ -137,7 +137,9 @@ export class MindsStateTracker {
   private subscribers: Set<(state: MindsState) => void> = new Set();
 
   applyEvent(msg: MindsBusMessage): void {
-    const state = this.getOrCreate(msg.ticketId);
+    const ticketId = msg.ticketId ?? msg.channel?.replace(/^minds-/, "");
+    if (!ticketId) return;
+    const state = this.getOrCreate(ticketId);
     const now = new Date().toISOString();
     const payload = (msg.payload ?? {}) as Record<string, unknown>;
 

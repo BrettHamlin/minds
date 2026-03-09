@@ -67,6 +67,16 @@ export function createMindsRouteHandler(
 
       const stream = new ReadableStream({
         start(controller) {
+          // Send current state as snapshot on connect
+          for (const state of tracker.getAllActive()) {
+            try {
+              const data = JSON.stringify(state);
+              controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+            } catch {
+              // Client disconnected
+            }
+          }
+
           unsubscribe = tracker.subscribe((state) => {
             try {
               const data = JSON.stringify(state);
