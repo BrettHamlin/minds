@@ -42,7 +42,16 @@ const PORTABLE_MINDS = [
 
 /** Shared infrastructure files/directories to copy into .minds/ */
 const SHARED_INFRA_DIRS = ["shared", "contracts"] as const;
-const SHARED_INFRA_FILES = ["server-base.ts", "mind.ts"] as const;
+const SHARED_INFRA_FILES = [
+  "server-base.ts",
+  "mind.ts",
+  "intent.ts",
+  "bm25.ts",
+  "router.ts",
+  "discovery.ts",
+  "embeddings.ts",
+  "dispatch.ts",
+] as const;
 
 export interface MindsInstallResult {
   copied: string[];
@@ -55,7 +64,7 @@ export interface MindsInstallResult {
 /**
  * Copy portable Minds and shared infrastructure to .minds/ in the target repo.
  * Generate tsconfig.json with @minds/* path alias.
- * Generate initial .minds/minds.json registry placeholder.
+ * Populate .minds/minds.json from pre-generated portable registry.
  * Verify Bun runtime is installed.
  */
 export function installCoreMinds(
@@ -144,12 +153,18 @@ export function installCoreMinds(
     result.errors.push(`tsconfig.json: ${(err as Error).message}`);
   }
 
-  // Generate initial .minds/minds.json registry placeholder
+  // Generate .minds/minds.json from pre-generated portable registry
   const mindsJsonPath = join(destMindsDir, "minds.json");
+  const portableRegistryPath = join(dirname(_dir), "installer", "portable-minds-registry.json");
   if (!existsSync(mindsJsonPath) || force) {
-    writeFileSync(mindsJsonPath, "[]\n");
+    if (existsSync(portableRegistryPath)) {
+      copyFileSync(portableRegistryPath, mindsJsonPath);
+      log("  Populated .minds/minds.json from portable registry");
+    } else {
+      writeFileSync(mindsJsonPath, "[]\n");
+      log("  Generated .minds/minds.json registry placeholder (portable registry not found)");
+    }
     result.copied.push(".minds/minds.json");
-    log("  Generated .minds/minds.json registry placeholder");
   } else {
     result.skipped.push(".minds/minds.json");
   }
@@ -184,22 +199,6 @@ export function installCoreMinds(
     }
   } else if (!result.bunVerified && existsSync(dashboardPkgJson)) {
     result.errors.push("Dashboard not built: Bun runtime not available");
-  }
-
-  // Populate minds.json registry by running generate-registry.ts
-  const generateRegistryScript = join(mindsSourceDir, "generate-registry.ts");
-  if (result.bunVerified && existsSync(generateRegistryScript)) {
-    log("  Populating .minds/minds.json registry...");
-    const registryProc = spawnSync(
-      "bun",
-      [generateRegistryScript, "--minds-dir", destMindsDir, "--output", join(destMindsDir, "minds.json")],
-      { stdio: "pipe" }
-    );
-    if (registryProc.status !== 0) {
-      result.errors.push("Registry population failed: generate-registry.ts returned non-zero exit code");
-    } else {
-      log("  Registry populated: .minds/minds.json");
-    }
   }
 
   return result;

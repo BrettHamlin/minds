@@ -1,0 +1,239 @@
+[
+  {
+    "name": "transport",
+    "domain": "Transport interface, TmuxTransport, BusTransport, bus-server, status aggregation, and transport resolution.",
+    "keywords": [
+      "transport",
+      "tmux",
+      "bus",
+      "publish",
+      "subscribe",
+      "channel",
+      "message",
+      "status",
+      "resolve"
+    ],
+    "owns_files": [
+      ".minds/transport/"
+    ],
+    "capabilities": [
+      "publish message via transport",
+      "resolve transport implementation path",
+      "get transport status"
+    ],
+    "exposes": [
+      "publish message via transport",
+      "resolve transport implementation path",
+      "get transport status"
+    ],
+    "consumes": []
+  },
+  {
+    "name": "memory",
+    "domain": "Per-Mind memory provisioning, daily log writes, curated MEMORY.md updates, SQLite-backed FTS5 search indexing, and hygiene (promotion + pruning). Owns all memory directories for all Minds.",
+    "keywords": [
+      "memory",
+      "provision",
+      "search",
+      "index",
+      "hygiene",
+      "daily log",
+      "MEMORY.md",
+      "FTS5",
+      "BM25",
+      "vector"
+    ],
+    "owns_files": [
+      ".minds/memory/"
+    ],
+    "capabilities": [
+      "provision mind memory",
+      "provision all minds memory",
+      "search memory",
+      "append daily log",
+      "update memory md",
+      "sync index",
+      "promote to memory md",
+      "prune stale entries",
+      "warm session"
+    ],
+    "exposes": [
+      "memoryDir",
+      "memoryMdPath",
+      "dailyLogPath",
+      "provisionMind",
+      "provisionAllMinds",
+      "appendDailyLog",
+      "updateMemoryMd",
+      "createIndex",
+      "syncIndex",
+      "warmSession",
+      "searchMemory",
+      "promoteToMemoryMd",
+      "pruneStaleEntries"
+    ],
+    "consumes": []
+  },
+  {
+    "name": "signals",
+    "domain": "Signal emission handlers, transport dispatch, token resolution, and phase signal utilities.",
+    "keywords": [
+      "signal",
+      "emit",
+      "phase",
+      "event",
+      "queue",
+      "token",
+      "resolve",
+      "handler"
+    ],
+    "owns_files": [
+      ".minds/signals/"
+    ],
+    "capabilities": [
+      "emit signal",
+      "resolve signal name",
+      "emit phase signal"
+    ],
+    "exposes": [
+      "emit signal",
+      "resolve signal name",
+      "emit phase signal"
+    ],
+    "consumes": [
+      "pipeline_core/loadPipelineForTicket",
+      "pipeline_core/signal",
+      "transport/resolveTransportPath"
+    ]
+  },
+  {
+    "name": "observability",
+    "domain": "Metrics, run classification, draft PR, gate accuracy, autonomy rate, dashboard, and statusline.",
+    "keywords": [
+      "metrics",
+      "gate",
+      "accuracy",
+      "dashboard",
+      "autonomy",
+      "classify",
+      "run",
+      "pr",
+      "statusline",
+      "observability"
+    ],
+    "owns_files": [
+      ".minds/observability/"
+    ],
+    "capabilities": [
+      "record gate result",
+      "create draft pr",
+      "complete run",
+      "classify run",
+      "show dashboard",
+      "check gate accuracy",
+      "log observability metrics",
+      "evaluate gate",
+      "view pipeline metrics"
+    ],
+    "exposes": [
+      "record gate result",
+      "create draft pr",
+      "complete run",
+      "classify run",
+      "show dashboard",
+      "check gate accuracy"
+    ],
+    "consumes": [
+      "pipeline_core/getRepoRoot",
+      "pipeline_core/validateTicketIdArg",
+      "pipeline_core/readJsonFile"
+    ]
+  },
+  {
+    "name": "dashboard",
+    "domain": "Minds Live Dashboard: React SPA visualization, state aggregation from bus events, and aggregator route extensions for Minds-specific data.",
+    "keywords": [
+      "dashboard",
+      "minds",
+      "state",
+      "wave",
+      "drone",
+      "contract",
+      "sse",
+      "react",
+      "visualization"
+    ],
+    "owns_files": [
+      ".minds/dashboard/"
+    ],
+    "capabilities": [
+      "build minds state from event",
+      "get minds state",
+      "serve dashboard"
+    ],
+    "exposes": [
+      "MindsState types",
+      "MindsStateBuilder"
+    ],
+    "consumes": [
+      "transport/MindsEventType",
+      "transport/MindsBusMessage"
+    ]
+  },
+  {
+    "name": "integrations",
+    "domain": "External service adapters: Slack (and future Discord, Teams). Handles messaging, channel management, and user lookups.",
+    "keywords": [
+      "slack",
+      "integration",
+      "channel",
+      "message",
+      "post",
+      "user",
+      "notify",
+      "discord",
+      "teams"
+    ],
+    "owns_files": [
+      ".minds/integrations/"
+    ],
+    "capabilities": [
+      "post message to Slack channel",
+      "create Slack channel",
+      "get Slack user info",
+      "send notification",
+      "connect to integration",
+      "list integrations"
+    ],
+    "exposes": [
+      "post message to Slack channel",
+      "create Slack channel",
+      "get Slack user info",
+      "send notification"
+    ],
+    "consumes": []
+  },
+  {
+    "name": "instantiate",
+    "domain": "Mind lifecycle \u2014 scaffolding new Minds in any repo. Creates MIND.md, server.ts, and lib/ directory, and registers the new Mind in minds.json.",
+    "keywords": [
+      "instantiate",
+      "scaffold",
+      "create",
+      "mind",
+      "new",
+      "generate",
+      "init"
+    ],
+    "owns_files": [
+      ".minds/instantiate/"
+    ],
+    "capabilities": [
+      "create mind"
+    ],
+    "exposes": [
+      "create mind"
+    ],
+    "consumes": []
+  }
+]
