@@ -37,6 +37,7 @@ const PORTABLE_MINDS = [
   "dashboard",
   "integrations",
   "observability",
+  "instantiate",
 ] as const;
 
 /** Shared infrastructure files/directories to copy into .minds/ */
@@ -183,6 +184,22 @@ export function installCoreMinds(
     }
   } else if (!result.bunVerified && existsSync(dashboardPkgJson)) {
     result.errors.push("Dashboard not built: Bun runtime not available");
+  }
+
+  // Populate minds.json registry by running generate-registry.ts
+  const generateRegistryScript = join(mindsSourceDir, "generate-registry.ts");
+  if (result.bunVerified && existsSync(generateRegistryScript)) {
+    log("  Populating .minds/minds.json registry...");
+    const registryProc = spawnSync(
+      "bun",
+      [generateRegistryScript, "--minds-dir", destMindsDir, "--output", join(destMindsDir, "minds.json")],
+      { stdio: "pipe" }
+    );
+    if (registryProc.status !== 0) {
+      result.errors.push("Registry population failed: generate-registry.ts returned non-zero exit code");
+    } else {
+      log("  Registry populated: .minds/minds.json");
+    }
   }
 
   return result;

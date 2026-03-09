@@ -52,20 +52,20 @@ This command executes implementation for the **collab repo itself**, where work 
    bun minds/lib/update-claude-section.ts "$MIND_CLAUDE" '## Active Mind Review'
    ```
 
-1. **Load Mind registry**: Read `.collab/minds.json` from the repo root.
+1. **Load Mind registry**: Read `.minds/minds.json` from the repo root.
 
    ```bash
-   cat .collab/minds.json
+   cat .minds/minds.json
    ```
 
    Parse the JSON array of `MindDescription` objects. Each entry has `name`, `domain`, `owns_files`, `capabilities`, `exposes`, and `consumes`.
 
-   If `.collab/minds.json` does not exist, run `bun minds/generate-registry.ts` first to create it, then read it.
+   If `.minds/minds.json` does not exist, run `bun minds/generate-registry.ts` first to create it, then read it.
 
 2. **Resolve feature directory**: Run to locate tasks.md:
 
    ```bash
-   bun .collab/scripts/resolve-feature.ts --require-tasks --include-tasks
+   bun .minds/scripts/resolve-feature.ts --require-tasks --include-tasks
    ```
 
    Parse `FEATURE_DIR` from the output. If `$ARGUMENTS` contains a ticket ID, pass it as the argument.
@@ -115,7 +115,7 @@ This command executes implementation for the **collab repo itself**, where work 
 5b. **Lint contracts**: Run the deterministic contract linter before dispatching any drones:
 
     ```bash
-    bun minds/lib/contracts.ts lint {FEATURE_DIR}/tasks.md .collab/minds.json
+    bun minds/lib/contracts.ts lint {FEATURE_DIR}/tasks.md .minds/minds.json
     ```
 
     Parse the JSON output. If there are errors:
@@ -136,7 +136,7 @@ This command executes implementation for the **collab repo itself**, where work 
     Then read the bus URL from the state file (the start command persists state automatically):
 
     ```bash
-    cat .collab/state/minds-bus-{ticket_id}.json
+    cat .minds/state/minds-bus-{ticket_id}.json
     ```
 
     Parse `busUrl` from the JSON. Store `BUS_URL` for use throughout steps 6–11.
@@ -154,7 +154,7 @@ This command executes implementation for the **collab repo itself**, where work 
     Print the **dashboard** URL (NOT the bus URL) for the user:
 
     ```bash
-    cat .collab/aggregator-port
+    cat .minds/aggregator-port
     ```
 
     Print: `Dashboard: http://localhost:{aggregator-port}/minds`
@@ -229,7 +229,7 @@ This command executes implementation for the **collab repo itself**, where work 
       bun minds/transport/minds-publish.ts --channel minds-{ticket_id} --type DRONE_COMPLETE --payload '{"mindName":"{mind_name}","waveId":"{wave_id}"}'
       ```
 
-      The bus URL is resolved automatically from `BUS_URL` env var or `.collab/bus-port`.
+      The bus URL is resolved automatically from `BUS_URL` env var or `.minds/bus-port`.
       EOF
       ```
 
