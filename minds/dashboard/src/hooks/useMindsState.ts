@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { mockStates } from "../data/mockData";
 
 export interface Drone {
   mindName: string;
@@ -56,9 +55,7 @@ interface UseMindsStateResult {
 
 export function useMindsState(): UseMindsStateResult {
   const [states, setStates] = useState<MindsState[]>([]);
-  const [activeTicket, setActiveTicket] = useState<string | null>(
-    mockStates[0]?.ticketId ?? null
-  );
+  const [activeTicket, setActiveTicket] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
