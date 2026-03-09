@@ -38,7 +38,7 @@ The clarify phase uses a **push-based, non-polling** question/answer flow:
 2. Agent writes `findings/clarify-round-N.json` via `emit-findings.ts` CLI
 3. Agent emits `CLARIFY_QUESTIONS` signal and **ends its response** (no polling)
 4. Orchestrator receives signal → gathers context → writes `resolutions/clarify-round-N.json`
-5. Orchestrator re-dispatches `/collab.clarify` to the agent pane
+5. Orchestrator re-dispatches `/gravitas.clarify` to the agent pane
 6. On re-entry, agent detects resolutions file → applies answers → emits `CLARIFY_COMPLETE`
 
 ### Interactive Mode — Manual Runs
