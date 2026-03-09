@@ -55,7 +55,7 @@ interface UseMindsStateResult {
 }
 
 export function useMindsState(): UseMindsStateResult {
-  const [states, setStates] = useState<MindsState[]>(mockStates);
+  const [states, setStates] = useState<MindsState[]>([]);
   const [activeTicket, setActiveTicket] = useState<string | null>(
     mockStates[0]?.ticketId ?? null
   );

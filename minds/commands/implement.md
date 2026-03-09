@@ -147,6 +147,10 @@ This command executes implementation for the **collab repo itself**, where work 
     WAVE_ID="wave-$(date +%s)"
     ```
 
+    ```bash
+    bun minds/transport/wave-event.ts start --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID
+    ```
+
     Print the **dashboard** URL (NOT the bus URL) for the user:
 
     ```bash
@@ -162,7 +166,7 @@ This command executes implementation for the **collab repo itself**, where work 
    a. **Create Mind+Drone pair** using `drone-pane.ts`:
 
       ```bash
-      bun minds/lib/drone-pane.ts --mind {mind_name} --ticket {ticket_id} --bus-url $BUS_URL
+      bun minds/lib/drone-pane.ts --mind {mind_name} --ticket {ticket_id} --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID
       ```
 
       Parse the JSON output:
@@ -263,6 +267,10 @@ This command executes implementation for the **collab repo itself**, where work 
    The drone will send `DRONE_COMPLETE` to this pane when done. When you see it, continue to the next step.
 
    Track which Minds have reported completion. Do not start Wave N+1 until all Minds in Wave N have reported.
+
+   ```bash
+   bun minds/transport/wave-event.ts complete --bus-url $BUS_URL --channel minds-{ticket_id} --wave-id $WAVE_ID
+   ```
 
 7b. **Between-waves cleanup**: After all drones in a wave complete, BEFORE launching the next wave, for each drone in the wave:
 
