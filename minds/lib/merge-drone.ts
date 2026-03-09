@@ -6,7 +6,7 @@
  *   bun minds/lib/merge-drone.ts <worktree-path> <target-branch> [--message 'commit msg'] [--log-content 'text'] [--bus-url <url> --channel <channel> --wave-id <id> --mind <name>]
  */
 
-import { mindsPublish } from "../transport/minds-publish.ts";
+import { publishMindsEvent } from "../transport/publish-event.ts";
 
 export interface MergeResult {
   success: boolean;
@@ -77,10 +77,13 @@ export async function mergeDrone(options: {
 
   // Publish DRONE_MERGING at the start of merge logic (non-critical)
   if (options.busUrl && options.channel && options.waveId && options.mindName) {
-    mindsPublish(options.busUrl, options.channel, "DRONE_MERGING", {
-      waveId: options.waveId,
-      mindName: options.mindName,
-    }).catch(() => {});
+    const ticketId = options.channel.replace(/^minds-/, "");
+    publishMindsEvent(options.busUrl, options.channel, {
+      type: "DRONE_MERGING",
+      source: "orchestrator",
+      ticketId,
+      payload: { waveId: options.waveId, mindName: options.mindName },
+    });
   }
 
   // b. Get the drone's branch name.
@@ -192,10 +195,13 @@ export async function mergeDrone(options: {
 
   // Publish DRONE_MERGED after successful merge (non-critical)
   if (options.busUrl && options.channel && options.waveId && options.mindName) {
-    mindsPublish(options.busUrl, options.channel, "DRONE_MERGED", {
-      waveId: options.waveId,
-      mindName: options.mindName,
-    }).catch(() => {});
+    const ticketId2 = options.channel.replace(/^minds-/, "");
+    publishMindsEvent(options.busUrl, options.channel, {
+      type: "DRONE_MERGED",
+      source: "orchestrator",
+      ticketId: ticketId2,
+      payload: { waveId: options.waveId, mindName: options.mindName },
+    });
   }
 
   // f. Write learning entry to daily log if provided.

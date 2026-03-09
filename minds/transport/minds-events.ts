@@ -29,3 +29,27 @@ export interface MindsBusMessage {
   /** Mind name that produced this message (e.g. `transport`) */
   mindName: string;
 }
+
+// ---------------------------------------------------------------------------
+// Hook event types (BRE-457)
+// ---------------------------------------------------------------------------
+
+export interface MindsHookEvent {
+  source: string;        // "drone:signals" or "mind:orchestrator"
+  sessionId: string;     // Claude Code session ID (from hook data)
+  hookType: string;      // "SubagentStart" | "PostToolUse" | "Stop" | etc.
+  toolName?: string;     // For tool events: "Bash", "Read", "Write", etc.
+  timestamp: number;     // ms epoch
+  payload: Record<string, unknown>;  // Raw hook data
+}
+
+export const HOOK_TYPES = {
+  SUBAGENT_START: "SubagentStart",
+  SUBAGENT_STOP: "SubagentStop",
+  PRE_TOOL_USE: "PreToolUse",
+  POST_TOOL_USE: "PostToolUse",
+  POST_TOOL_USE_FAILURE: "PostToolUseFailure",
+  SESSION_START: "SessionStart",
+  SESSION_END: "SessionEnd",
+  STOP: "Stop",
+} as const;

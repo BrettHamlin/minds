@@ -32,7 +32,7 @@ import { execSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { basename, resolve } from "path";
 import { injectBusEnv } from "../transport/minds-bus-lifecycle.ts";
-import { mindsPublish } from "../transport/minds-publish.ts";
+import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
@@ -47,13 +47,13 @@ export async function publishDroneSpawned(params: {
   branch: string;
 }): Promise<void> {
   const { busUrl, channel, waveId, mindName, paneId, worktree, branch } = params;
-  await mindsPublish(busUrl, channel, MindsEventType.DRONE_SPAWNED, {
-    mindName,
-    waveId,
-    paneId,
-    worktree,
-    branch,
-  }).catch(() => {});
+  const ticketId = channel.replace(/^minds-/, "");
+  await publishMindsEvent(busUrl, channel, {
+    type: MindsEventType.DRONE_SPAWNED,
+    source: "orchestrator",
+    ticketId,
+    payload: { mindName, waveId, paneId, worktree, branch },
+  });
 }
 
 // ─── CLI entry point ──────────────────────────────────────────────────────────
@@ -271,6 +271,38 @@ if (import.meta.main) { (async () => {
     : assembleClaudeContent(repoRoot, mindName!, ticketId!);
 
   writeFileSync(resolve(claudeDir, "CLAUDE.md"), claudeContent);
+
+  // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
+
+  const settingsPath = resolve(worktreePath, ".claude", "settings.json");
+  const hookScriptPath = resolve(repoRoot, "minds", "transport", "hooks", "send-event.ts");
+  const hookCommand = `bun ${hookScriptPath} --source-app drone:${mindName}`;
+
+  const hookEntry = { type: "command", command: hookCommand };
+  const hooksConfig: Record<string, unknown[]> = {
+    SubagentStart: [hookEntry],
+    SubagentStop: [hookEntry],
+    PreToolUse: [hookEntry],
+    PostToolUse: [hookEntry],
+    PostToolUseFailure: [hookEntry],
+    Stop: [hookEntry],
+  };
+
+  let existingSettings: Record<string, unknown> = {};
+  if (existsSync(settingsPath)) {
+    try {
+      existingSettings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    } catch {
+      // Malformed settings — overwrite
+    }
+  }
+
+  const worktreeClaudeDir = resolve(worktreePath, ".claude");
+  mkdirSync(worktreeClaudeDir, { recursive: true });
+  writeFileSync(
+    settingsPath,
+    JSON.stringify({ ...existingSettings, hooks: hooksConfig }, null, 2),
+  );
 
   // ─── Write DRONE-BRIEF.md BEFORE launching ────────────────────────────────────
 
