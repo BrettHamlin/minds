@@ -1,7 +1,7 @@
 /**
- * paths.ts — Portable path utilities for the Minds system.
+ * paths.ts — Path utilities for the Minds system.
  *
- * Provides mindsRoot() and metricsDbPath() so portable Minds
+ * Provides mindsRoot() and metricsDbPath() so core Minds
  * never hardcode .minds/ paths.
  */
 

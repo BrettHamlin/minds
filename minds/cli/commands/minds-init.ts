@@ -7,7 +7,7 @@ export interface MindsInitOptions {
 }
 
 /**
- * Install portable Minds into the current git repo's .minds/ directory.
+ * Install core Minds into the current git repo's .minds/ directory.
  */
 export async function runMindsInit(options: MindsInitOptions = {}): Promise<void> {
   const { force = false, quiet = false } = options;

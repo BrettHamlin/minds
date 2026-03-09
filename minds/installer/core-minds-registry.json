@@ -235,5 +235,40 @@
       "create mind"
     ],
     "consumes": []
+  },
+  {
+    "name": "fission",
+    "domain": "Codebase analysis and domain decomposition: extracts import graphs, detects hub files, clusters modules into domain boundaries, and scaffolds domain-specific Minds for near-100% file coverage.",
+    "keywords": [
+      "fission",
+      "decompose",
+      "domain",
+      "cluster",
+      "import graph",
+      "hub",
+      "boundary",
+      "leiden",
+      "scaffold",
+      "coverage"
+    ],
+    "owns_files": [
+      ".minds/fission/"
+    ],
+    "capabilities": [
+      "extract import graph",
+      "detect hub files",
+      "cluster modules into domains",
+      "name domain minds",
+      "scaffold domain minds"
+    ],
+    "exposes": [
+      "extract import graph",
+      "detect hub files",
+      "cluster modules into domains",
+      "scaffold domain minds"
+    ],
+    "consumes": [
+      "instantiate/create mind"
+    ]
   }
 ]

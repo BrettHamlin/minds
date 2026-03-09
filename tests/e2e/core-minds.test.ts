@@ -1,11 +1,11 @@
 /**
- * tests/e2e/portable-minds.test.ts
+ * tests/e2e/core-minds.test.ts
  *
  * E2E validation: fresh repo → installCoreMinds → scaffoldMind → discover.
  *
  * Flow:
  *   1. Create isolated temp directory with git init
- *   2. installCoreMinds() → .minds/ with all portable Minds
+ *   2. installCoreMinds() → .minds/ with all core Minds
  *   3. Verify .minds/ structure and minds.json registry
  *   4. scaffoldMind("test-mind") → .minds/test-mind/
  *   5. Verify scaffold files and minds.json updated
@@ -27,7 +27,7 @@ import { findChildServerFiles } from "../../minds/discovery";
 // Test setup
 // ---------------------------------------------------------------------------
 
-const PORTABLE_MINDS = [
+const CORE_MINDS = [
   "router",
   "memory",
   "transport",
@@ -35,6 +35,7 @@ const PORTABLE_MINDS = [
   "dashboard",
   "integrations",
   "observability",
+  "fission",
 ] as const;
 
 let tmpDir: string;
@@ -43,14 +44,14 @@ let mindsJsonPath: string;
 
 beforeAll(() => {
   // Create isolated temp dir
-  tmpDir = mkdtempSync("/tmp/portable-minds-e2e-");
+  tmpDir = mkdtempSync("/tmp/core-minds-e2e-");
   mindsDir = join(tmpDir, ".minds");
   mindsJsonPath = join(mindsDir, "minds.json");
 
   // Initialize a bare git repo so collab tooling resolves git root correctly
   execSync("git init", { cwd: tmpDir, stdio: "ignore" });
 
-  // Install portable Minds using the dev source directory
+  // Install core Minds using the dev source directory
   const mindsSourceDir = getMindsSourceDir();
   installCoreMinds(mindsSourceDir, tmpDir, { quiet: true });
 });
@@ -65,12 +66,12 @@ afterAll(() => {
 // 1. .minds/ directory structure after install
 // ---------------------------------------------------------------------------
 
-describe("e2e/portable-minds: installCoreMinds", () => {
+describe("e2e/core-minds: installCoreMinds", () => {
   test("1. .minds/ directory exists after install", () => {
     expect(existsSync(mindsDir)).toBe(true);
   });
 
-  test.each(PORTABLE_MINDS)(
+  test.each(CORE_MINDS)(
     "2. .minds/%s directory exists",
     (mindName) => {
       expect(existsSync(join(mindsDir, mindName))).toBe(true);
@@ -92,7 +93,7 @@ describe("e2e/portable-minds: installCoreMinds", () => {
 // 2. scaffoldMind creates a custom Mind in .minds/
 // ---------------------------------------------------------------------------
 
-describe("e2e/portable-minds: scaffoldMind", () => {
+describe("e2e/core-minds: scaffoldMind", () => {
   let scaffoldResult: Awaited<ReturnType<typeof scaffoldMind>>;
 
   beforeAll(async () => {
@@ -148,7 +149,7 @@ describe("e2e/portable-minds: scaffoldMind", () => {
 // 3. findChildServerFiles discovers minds from .minds/
 // ---------------------------------------------------------------------------
 
-describe("e2e/portable-minds: findChildServerFiles", () => {
+describe("e2e/core-minds: findChildServerFiles", () => {
   test("13. findChildServerFiles returns server.ts paths from .minds/", () => {
     const files = findChildServerFiles(tmpDir, mindsDir);
     expect(files.length).toBeGreaterThan(0);

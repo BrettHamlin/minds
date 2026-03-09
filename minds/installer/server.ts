@@ -1,7 +1,7 @@
 /**
  * Installer Mind — Minds architecture installation and distribution.
  *
- * Owns: installCoreMinds (core.ts) for portable Minds installation.
+ * Owns: installCoreMinds (core.ts) for core Minds installation.
  *
  * Leaf Mind: no children.
  */

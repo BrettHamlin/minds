@@ -2,7 +2,7 @@
 
 ## Domain
 
-The `minds` CLI: installs portable Minds into target repositories. Minimal surface area with a single `init` command.
+The `minds` CLI: installs core Minds into target repositories. Minimal surface area with a single `init` command.
 
 ## Conventions
 
