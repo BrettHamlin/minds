@@ -6,13 +6,13 @@ description: Generate Mind-aware tasks for collab development. Decomposes work a
 
 ## Path Detection
 
-Determine the Minds source directory before running any commands. In installed repos everything lives under `.minds/`; in the dev repo it lives under `minds/`.
+Determine the Minds source directory before running any commands. In the dev repo (has `minds/cli/`), use `minds/`. In installed repos, use `.minds/`.
 
 ```bash
-if [ -d ".minds" ]; then MINDS_DIR=".minds"; else MINDS_DIR="minds"; fi
+if [ -d "minds/cli" ]; then MINDS_DIR="minds"; else MINDS_DIR=".minds"; fi
 ```
 
-Use `{MINDS_DIR}` for all script paths below. The registry always lives at `.minds/minds.json`.
+Use `{MINDS_DIR}` for all script paths below. The registry lives at `{MINDS_DIR}/minds.json`.
 
 ## User Input
 
@@ -28,7 +28,7 @@ This command generates tasks for developing the **collab repo itself**, where wo
 
 ## Outline
 
-1. **Load Mind registry**: Read `.minds/minds.json` from the repo root (pre-populated by the installer; in the dev repo, generate with `bun {MINDS_DIR}/generate-registry.ts` if missing). Parse the JSON array of MindDescription objects. Each Mind has:
+1. **Load Mind registry**: Read `{MINDS_DIR}/minds.json` from the repo root (pre-populated by the installer; in the dev repo, generate with `bun {MINDS_DIR}/generate-registry.ts` if missing). Parse the JSON array of MindDescription objects. Each Mind has:
    - `name` — the Mind's identifier (e.g., `signals`, `pipeline_core`)
    - `domain` — what this Mind is responsible for
    - `owns_files` — directories/files this Mind owns exclusively
@@ -36,7 +36,7 @@ This command generates tasks for developing the **collab repo itself**, where wo
    - `exposes` — public interfaces offered to other Minds
    - `consumes` — dependencies on other Minds' interfaces
 
-   If `.minds/minds.json` does not exist, run `bun {MINDS_DIR}/generate-registry.ts` first to create it, then read it.
+   If `{MINDS_DIR}/minds.json` does not exist, run `bun {MINDS_DIR}/generate-registry.ts` first to create it, then read it.
 
 2. **Load design documents**: Read from the feature directory (run `bun {MINDS_DIR}/scripts/resolve-feature.ts` if needed):
    - **Required**: plan.md (tech stack, structure), spec.md (user stories, AC)
