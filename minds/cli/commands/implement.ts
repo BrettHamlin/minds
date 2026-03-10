@@ -574,6 +574,7 @@ export async function runImplement(
     await teardownMindsBus({
       busServerPid: busInfo.busServerPid,
       bridgePid: busInfo.bridgePid,
+      aggregatorPid: busInfo.aggregatorPid,
       repoRoot,
       ticketId,
     });
@@ -603,4 +604,7 @@ export async function runImplement(
   } else {
     console.log("\nImplementation complete. All waves merged successfully.");
   }
+
+  // Explicit exit — open handles (SSE readers, timers) keep the event loop alive
+  process.exit(result.ok ? 0 : 1);
 }
