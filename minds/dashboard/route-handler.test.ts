@@ -138,4 +138,44 @@ describe("createMindsRouteHandler", () => {
 
     expect(res).toBeNull();
   });
+
+  // T004: /api/minds/events SSE endpoint tests
+  describe("GET /api/minds/events", () => {
+    test("returns text/event-stream Content-Type", () => {
+      const tracker = new MindsStateTracker();
+      const handler = createMindsRouteHandler(tracker);
+      const res = handler(makeRequest("/api/minds/events?ticket=TEST-1"));
+
+      expect(res).not.toBeNull();
+      expect(res!.headers.get("content-type")).toBe("text/event-stream");
+    });
+
+    test("returns no-cache Cache-Control", () => {
+      const tracker = new MindsStateTracker();
+      const handler = createMindsRouteHandler(tracker);
+      const res = handler(makeRequest("/api/minds/events?ticket=TEST-1"));
+
+      expect(res).not.toBeNull();
+      expect(res!.headers.get("cache-control")).toBe("no-cache");
+    });
+
+    test("returns 400 when ticket query param is missing", async () => {
+      const tracker = new MindsStateTracker();
+      const handler = createMindsRouteHandler(tracker);
+      const res = handler(makeRequest("/api/minds/events"));
+
+      expect(res).not.toBeNull();
+      expect(res!.status).toBe(400);
+      const body = await res!.json();
+      expect(body.error).toBeTruthy();
+    });
+
+    test("unknown route still returns null (regression)", () => {
+      const tracker = new MindsStateTracker();
+      const handler = createMindsRouteHandler(tracker);
+      const res = handler(makeRequest("/api/minds/events-other"));
+
+      expect(res).toBeNull();
+    });
+  });
 });
