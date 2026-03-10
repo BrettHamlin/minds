@@ -147,20 +147,14 @@ export function installDroneStopHook(worktreePath: string): void {
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
   // Write a local settings.json with a Stop hook that creates the sentinel file
-  const settings = {
-    hooks: {
-      Stop: [
-        {
-          matcher: "",
-          hooks: [
-            {
-              type: "command" as const,
-              command: `touch ${JSON.stringify(sentinelPath)}`,
-            },
-          ],
-        },
-      ],
-    },
+  const sentinelHookEntry = {
+    matcher: "",
+    hooks: [
+      {
+        type: "command" as const,
+        command: `touch ${JSON.stringify(sentinelPath)}`,
+      },
+    ],
   };
 
   const settingsPath = join(claudeDir, "settings.json");
@@ -175,11 +169,21 @@ export function installDroneStopHook(worktreePath: string): void {
     }
   }
 
+  // Preserve existing Stop hooks -- append our sentinel hook instead of replacing
+  const existingHooks = (existing.hooks as Record<string, unknown[]> | undefined) ?? {};
+  const existingStopHooks = Array.isArray(existingHooks.Stop) ? existingHooks.Stop : [];
+
+  // Remove any previous sentinel hook (idempotent -- prevents duplicates on reinstall)
+  const filteredStopHooks = existingStopHooks.filter((entry: any) => {
+    if (!entry || !Array.isArray(entry.hooks)) return true;
+    return !entry.hooks.some((h: any) => h.command?.includes(SENTINEL_FILENAME));
+  });
+
   const merged = {
     ...existing,
     hooks: {
-      ...(existing.hooks as Record<string, unknown> ?? {}),
-      ...settings.hooks,
+      ...existingHooks,
+      Stop: [...filteredStopHooks, sentinelHookEntry],
     },
   };
 
