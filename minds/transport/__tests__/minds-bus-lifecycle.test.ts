@@ -125,9 +125,12 @@ describe("startMindsBus + teardownMindsBus — integration", () => {
       await teardownMindsBus({
         busServerPid: info.busServerPid,
         bridgePid: info.bridgePid,
+        aggregatorPid: info.aggregatorPid,
         repoRoot,
         ticketId: "BRE-TEST-LIFECYCLE",
       });
+      // Wait for aggregator port to be released
+      await Bun.sleep(500);
     }
   }, 10000); // 10s timeout for subprocess startup
 
@@ -147,6 +150,7 @@ describe("startMindsBus + teardownMindsBus — integration", () => {
     await teardownMindsBus({
       busServerPid: info.busServerPid,
       bridgePid: info.bridgePid,
+      aggregatorPid: info.aggregatorPid,
       repoRoot,
       ticketId: "BRE-TEST-TEARDOWN",
     });

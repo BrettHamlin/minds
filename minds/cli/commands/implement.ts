@@ -380,6 +380,7 @@ export async function runImplement(
       await teardownMindsBus({
         busServerPid: busInfo.busServerPid,
         bridgePid: busInfo.bridgePid,
+        aggregatorPid: busInfo.aggregatorPid,
         repoRoot,
         ticketId,
       });

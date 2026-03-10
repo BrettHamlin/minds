@@ -26,6 +26,7 @@ export interface MindsBusLifecycleInfo {
   busUrl: string;
   busServerPid: number;
   bridgePid: number;
+  aggregatorPid: number | null;
 }
 
 export interface MindsBusState {
@@ -246,7 +247,7 @@ function spawnBridge(
  *
  * Returns the port the aggregator is listening on.
  */
-export async function ensureAggregator(repoRoot: string): Promise<number> {
+export async function ensureAggregator(repoRoot: string): Promise<{ port: number; pid: number | null }> {
   const portFile = path.join(resolveMindsDir(repoRoot), "aggregator-port");
 
   // Check if already running
@@ -257,7 +258,7 @@ export async function ensureAggregator(repoRoot: string): Promise<number> {
       const resp = await fetch(`http://localhost:${port}/status`, {
         signal: AbortSignal.timeout(2000),
       });
-      if (resp.ok) return port;
+      if (resp.ok) return { port, pid: null }; // reusing existing — PID unknown
     }
   } catch {
     // Not running or stale port file
@@ -278,8 +279,10 @@ export async function ensureAggregator(repoRoot: string): Promise<number> {
     stderrBuf += data.toString();
   });
 
+  const aggregatorPid = proc.pid ?? null;
+
   // Wait for AGGREGATOR_READY
-  return new Promise<number>((resolve, reject) => {
+  return new Promise<{ port: number; pid: number | null }>((resolve, reject) => {
     let resolved = false;
     const timeout = setTimeout(() => {
       if (resolved) return;
@@ -296,7 +299,7 @@ export async function ensureAggregator(repoRoot: string): Promise<number> {
         clearTimeout(timeout);
         const port = parseInt(match[1], 10);
         console.log(`Dashboard running on http://localhost:${port}/minds`);
-        resolve(port);
+        resolve({ port, pid: aggregatorPid });
       }
     });
 
@@ -340,7 +343,7 @@ export async function startMindsBus(
 ): Promise<MindsBusLifecycleInfo> {
   // Ensure aggregator is running before starting the bus — otherwise events
   // emitted before the aggregator connects would be missed.
-  await ensureAggregator(repoRoot);
+  const aggregator = await ensureAggregator(repoRoot);
 
   const thisDir = path.dirname(new URL(import.meta.url).pathname);
   const serverPath = path.join(thisDir, "bus-server.ts");
@@ -363,7 +366,7 @@ export async function startMindsBus(
     startedAt: new Date().toISOString(),
   });
 
-  return { busUrl, busServerPid, bridgePid };
+  return { busUrl, busServerPid, bridgePid, aggregatorPid: aggregator.pid };
 }
 
 // ---------------------------------------------------------------------------
@@ -371,14 +374,16 @@ export async function startMindsBus(
 // ---------------------------------------------------------------------------
 
 /**
- * Kill the bus server and signal bridge processes started by startMindsBus.
- * Reuses BusTransport's teardown logic (SIGTERM with logging per pid).
+ * Kill the bus server, signal bridge, and aggregator processes started by
+ * startMindsBus. Also removes port discovery files (bus-port, aggregator-port)
+ * so the next run starts clean.
  *
  * @param pids - PIDs returned by startMindsBus
  */
 export async function teardownMindsBus(pids: {
   busServerPid: number;
   bridgePid: number;
+  aggregatorPid?: number | null;
   repoRoot?: string;
   ticketId?: string;
 }): Promise<void> {
@@ -387,6 +392,24 @@ export async function teardownMindsBus(pids: {
     bridgePid: pids.bridgePid,
   });
   await transport.teardown();
+
+  // Kill aggregator if we have its PID
+  if (pids.aggregatorPid) {
+    try {
+      process.kill(pids.aggregatorPid, "SIGTERM");
+      console.log(`Killed aggregator (pid ${pids.aggregatorPid})`);
+    } catch {
+      // Already dead — that's fine
+    }
+  }
+
+  if (pids.repoRoot) {
+    const mindsDir = resolveMindsDir(pids.repoRoot);
+    // Remove port discovery files so the next run doesn't find stale ports
+    for (const file of ["bus-port", "aggregator-port"]) {
+      try { await fs.unlink(path.join(mindsDir, file)); } catch { /* may not exist */ }
+    }
+  }
 
   if (pids.repoRoot && pids.ticketId) {
     await clearBusState(pids.repoRoot, pids.ticketId);
