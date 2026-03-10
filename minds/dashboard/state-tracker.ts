@@ -222,7 +222,7 @@ export class MindsStateTracker {
           break;
         }
 
-        case MindsEventType.DRONE_COMPLETE: {
+        case MindsEventType.MIND_COMPLETE: {
           const p = payload as unknown as DroneEventPayload;
           const drone = this.findDrone(state, p.waveId, p.mindName);
           if (drone) {

@@ -112,7 +112,7 @@ describe("resolveBusUrl — bus-port file", () => {
 
 describe("mindsPublish — POST body construction", () => {
   test("publishes to the correct endpoint with channel, type, payload", async () => {
-    await mindsPublish(busUrl, "minds-BRE-444", "DRONE_COMPLETE", { mindName: "transport" });
+    await mindsPublish(busUrl, "minds-BRE-444", "MIND_COMPLETE", { mindName: "transport" });
 
     // Verify message landed on the bus by checking /status
     const statusRes = await fetch(`${busUrl}/status`);
@@ -203,7 +203,7 @@ describe("mindsPublish — POST body construction", () => {
   test("throws error with context when server returns non-ok status", async () => {
     // Publish to a non-existent path on the live server → 404 Not Found (non-ok status)
     await expect(
-      mindsPublish(`${busUrl}/bad-endpoint`, "minds-BRE-444", "DRONE_COMPLETE", null),
+      mindsPublish(`${busUrl}/bad-endpoint`, "minds-BRE-444", "MIND_COMPLETE", null),
     ).rejects.toThrow("mindsPublish failed");
   });
 });

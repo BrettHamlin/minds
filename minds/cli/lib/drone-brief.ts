@@ -3,7 +3,7 @@
  *
  * The brief is what each drone receives as its work instructions.
  * It includes the tasks assigned to the drone's mind, contract info,
- * and the bus publish command for DRONE_COMPLETE signaling.
+ * and the bus publish command for MIND_COMPLETE signaling.
  */
 
 import type { MindTask, MindTaskGroup } from "./implement-types.ts";
@@ -77,7 +77,7 @@ This tells the orchestrator you are finished. Do NOT forget this step.
 }
 
 /**
- * Build the bus publish command string for DRONE_COMPLETE.
+ * Build the bus publish command string for MIND_COMPLETE.
  */
 export function buildBusPublishCmd(
   mindsDir: string,
@@ -88,7 +88,7 @@ export function buildBusPublishCmd(
   return [
     `bun ${mindsDir}/transport/minds-publish.ts`,
     `--channel ${channel}`,
-    `--type DRONE_COMPLETE`,
+    `--type MIND_COMPLETE`,
     `--payload '${JSON.stringify({ mindName, waveId })}'`,
   ].join(" ");
 }

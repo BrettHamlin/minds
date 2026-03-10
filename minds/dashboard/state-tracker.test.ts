@@ -76,7 +76,7 @@ describe("MindsStateTracker", () => {
     expect(drone.startedAt).toBeTruthy();
   });
 
-  test("DRONE_COMPLETE marks drone complete", () => {
+  test("MIND_COMPLETE marks drone complete", () => {
     const tracker = new MindsStateTracker();
     tracker.applyEvent(
       makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" })
@@ -88,7 +88,7 @@ describe("MindsStateTracker", () => {
       })
     );
     tracker.applyEvent(
-      makeMsg(MindsEventType.DRONE_COMPLETE, {
+      makeMsg(MindsEventType.MIND_COMPLETE, {
         waveId: "1",
         mindName: "transport",
         tasksComplete: 4,

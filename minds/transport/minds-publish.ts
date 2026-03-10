@@ -2,7 +2,7 @@
 // minds-publish.ts — Publish a Minds bus event (BRE-444)
 //
 // CLI usage:
-//   bun minds/transport/minds-publish.ts --channel minds-BRE-444 --type DRONE_COMPLETE --payload '{"mindName":"transport"}'
+//   bun minds/transport/minds-publish.ts --channel minds-BRE-444 --type MIND_COMPLETE --payload '{"mindName":"transport"}'
 //
 // BUS_URL resolution (in priority order):
 //   1. BUS_URL env var
@@ -10,7 +10,7 @@
 //
 // Programmatic usage:
 //   import { mindsPublish } from "./minds-publish.ts";
-//   await mindsPublish(busUrl, "minds-BRE-444", "DRONE_COMPLETE", { mindName: "transport" });
+//   await mindsPublish(busUrl, "minds-BRE-444", "MIND_COMPLETE", { mindName: "transport" });
 
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -47,7 +47,7 @@ export function resolveBusUrl(cwd?: string): string | undefined {
  *
  * @param busUrl  - URL of the running bus server (e.g. "http://localhost:7777")
  * @param channel - Minds channel (e.g. "minds-BRE-444")
- * @param type    - Event type string (e.g. "DRONE_COMPLETE")
+ * @param type    - Event type string (e.g. "MIND_COMPLETE")
  * @param payload - Arbitrary event payload
  */
 export async function mindsPublish(

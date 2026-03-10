@@ -159,11 +159,11 @@ export async function dispatchToMind(
 }
 
 /**
- * Wait for a drone to emit DRONE_COMPLETE on the bus (preferred)
+ * Wait for a drone to emit MIND_COMPLETE on the bus (preferred)
  * or by polling tmux capture-pane (legacy fallback).
  *
  * When busUrl + channel are provided in options, subscribes to the bus and
- * waits for a DRONE_COMPLETE event with payload.mindName === mindName.
+ * waits for a MIND_COMPLETE event with payload.mindName === mindName.
  *
  * Otherwise falls back to polling tmux capture-pane for the legacy
  * `MIND_COMPLETE @{mindName}` signal.
@@ -179,7 +179,7 @@ export async function waitForCompletion(
   return waitForCompletionTmux(paneId, mindName, options);
 }
 
-/** Bus-based completion wait: subscribe to SSE channel, resolve on DRONE_COMPLETE. */
+/** Bus-based completion wait: subscribe to SSE channel, resolve on MIND_COMPLETE. */
 async function waitForCompletionBus(
   mindName: string,
   busUrl: string,
@@ -207,7 +207,7 @@ async function waitForCompletionBus(
     const timer = setTimeout(() => done({ success: false }), timeoutMs);
 
     const unsub = await bus.subscribe(channel, (msg: Message) => {
-      if (msg.type === "DRONE_COMPLETE") {
+      if (msg.type === "MIND_COMPLETE") {
         const payload = msg.payload as Record<string, unknown>;
         if (payload?.mindName === mindName) {
           clearTimeout(timer);

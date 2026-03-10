@@ -74,14 +74,14 @@ describe("MindsStateTracker persistence", () => {
       makeMsg(MindsEventType.DRONE_SPAWNED, { waveId: "1", mindName: "signals" })
     );
     tracker.applyEvent(
-      makeMsg(MindsEventType.DRONE_COMPLETE, { waveId: "1", mindName: "signals" })
+      makeMsg(MindsEventType.MIND_COMPLETE, { waveId: "1", mindName: "signals" })
     );
 
     const history = tracker.getHistory("TEST-1");
     expect(history.length).toBe(3);
     expect(history[0].event_type).toBe(MindsEventType.WAVE_STARTED);
     expect(history[1].event_type).toBe(MindsEventType.DRONE_SPAWNED);
-    expect(history[2].event_type).toBe(MindsEventType.DRONE_COMPLETE);
+    expect(history[2].event_type).toBe(MindsEventType.MIND_COMPLETE);
   });
 
   test("getHistory with limit returns subset", () => {
@@ -115,7 +115,7 @@ describe("MindsStateTracker persistence", () => {
       makeMsg(MindsEventType.DRONE_SPAWNED, { waveId: "1", mindName: "cli" })
     );
     tracker1.applyEvent(
-      makeMsg(MindsEventType.DRONE_COMPLETE, { waveId: "1", mindName: "cli", tasksComplete: 5 })
+      makeMsg(MindsEventType.MIND_COMPLETE, { waveId: "1", mindName: "cli", tasksComplete: 5 })
     );
 
     const tracker2 = new MindsStateTracker(TEST_DB);

@@ -42,7 +42,7 @@ describe("buildBusPublishCmd", () => {
 
     expect(cmd).toContain("bun minds/transport/minds-publish.ts");
     expect(cmd).toContain("--channel minds-BRE-123");
-    expect(cmd).toContain("--type DRONE_COMPLETE");
+    expect(cmd).toContain("--type MIND_COMPLETE");
     expect(cmd).toContain('"mindName":"pipeline_core"');
     expect(cmd).toContain('"waveId":"wave-1"');
   });
@@ -114,7 +114,7 @@ describe("buildDroneBrief", () => {
     });
 
     expect(brief).toContain("minds-publish.ts");
-    expect(brief).toContain("DRONE_COMPLETE");
+    expect(brief).toContain("MIND_COMPLETE");
     expect(brief).toContain("Completion Signal");
   });
 
