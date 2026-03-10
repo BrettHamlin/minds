@@ -63,6 +63,8 @@ export interface SupervisorResult {
   approvedWithWarnings: boolean;
   findings: ReviewFinding[];
   dronePaneId?: string;
+  /** All drone pane IDs spawned across iterations (tracked for cleanup). */
+  allPaneIds: string[];
   worktree: string;
   branch: string;
   errors: string[];

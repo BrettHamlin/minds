@@ -255,6 +255,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
     approved: false,
     approvedWithWarnings: false,
     findings: [],
+    allPaneIds: [],
     worktree: config.worktreePath,
     branch: "",
     errors: [],
@@ -501,7 +502,10 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
     result.errors.push(msg);
     result.ok = false;
   } finally {
-    // Cleanup: kill ALL spawned drone panes
+    // Record all tracked panes in the result for observability
+    result.allPaneIds = [...allSpawnedPanes];
+
+    // Cleanup: kill ALL spawned drone panes (not just the last one)
     for (const paneId of allSpawnedPanes) {
       killPane(paneId);
     }
