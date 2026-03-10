@@ -62,7 +62,7 @@ describe("mind-pane: assembleClaudeContent()", () => {
 
   test("5. review loop contains drone spawn command inline", () => {
     const content = assembleClaudeContent(fakeRepoRoot, "signals", "BRE-500");
-    expect(content).toContain("subagent_type: 'drone'");
+    expect(content).toContain("subagent_type: '🛸'");
     expect(content).toContain("Agent({ resume: '{agentId}'");
   });
 

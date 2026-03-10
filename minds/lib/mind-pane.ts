@@ -200,7 +200,7 @@ ${signalBlock(busPublishCmds?.started)}
 
 ━━━ 3. SPAWN ━━━
 \`\`\`
-Agent({ subagent_type: 'drone', prompt: 'Read DRONE-BRIEF.md and complete all tasks. Commit when done.' })
+Agent({ subagent_type: '🛸', prompt: 'Read DRONE-BRIEF.md and complete all tasks. Commit when done.' })
 \`\`\`
 Save the returned agent ID.
 
@@ -221,12 +221,34 @@ Evaluate against the **full Review Checklist** in Engineering Standards below.
 ━━━ 7. VERDICT ━━━
 
 **❌ ANY issues found (including minor ones — unused imports, inefficiencies, missing edge cases, style violations):**
-Every finding is a fix. Do NOT approve with known issues. Send ALL findings back to the drone.
+Every finding is a fix. Do NOT approve with known issues.
+
+Write ALL findings to a checklist file so the drone can track progress:
+\`\`\`bash
+# Write REVIEW-FEEDBACK-{n}.md at the worktree root (n = review iteration, starting at 1)
+# Use this exact checklist format:
+cat > REVIEW-FEEDBACK-1.md << 'FEEDBACK'
+# Review Feedback (Round 1)
+
+- [ ] Issue 1: description of the issue, what file, what to fix
+- [ ] Issue 2: description of the issue, what file, what to fix
+- [ ] Issue 3: ...
+FEEDBACK
+\`\`\`
+Increment the number for each round (REVIEW-FEEDBACK-1.md, REVIEW-FEEDBACK-2.md, etc.).
+
 ${signalBlock(busPublishCmds?.reviewFeedback)}
-Then resume 🛸 Drone with specific, actionable feedback:
+Then resume 🛸 Drone. Use this EXACT prompt (replace {n} with the round number):
 \`\`\`
-Agent({ resume: '{agentId}', prompt: 'Fix these issues:\\n1. {issue}\\n2. {issue}' })
+Agent({ resume: '{agentId}', prompt: 'Read REVIEW-FEEDBACK-{n}.md at the worktree root. It contains a checklist of issues to fix. For each item: fix the issue, then edit the file to check off the checkbox (change [ ] to [x]). Commit when all items are checked off.' })
 \`\`\`
+Do NOT paraphrase or summarize the issues in the prompt — the feedback file IS the prompt.
+
+| ✅ Correct resume prompt | ❌ Wrong resume prompt |
+|--------------------------|----------------------|
+| \`'Read REVIEW-FEEDBACK-1.md at the worktree root...'\` | \`'Fix the async bug and DRY violation'\` |
+| | \`'Fix review feedback round 1'\` |
+| | \`'Fix these issues: 1. ...'\` |
 → Go to step 5.
 
 **✅ Approved (ONLY when zero issues found):**
@@ -408,7 +430,7 @@ if (import.meta.main) { (async () => {
   const excludePath = resolve(excludeDir, "exclude");
   mkdirSync(excludeDir, { recursive: true });
 
-  const excludeEntries = ["MIND-BRIEF.md", "DRONE-BRIEF.md", "CLAUDE.md"];
+  const excludeEntries = ["MIND-BRIEF.md", "DRONE-BRIEF.md", "CLAUDE.md", "REVIEW-FEEDBACK-*.md"];
   let existingExclude = "";
   if (existsSync(excludePath)) {
     existingExclude = readFileSync(excludePath, "utf-8");
@@ -496,7 +518,7 @@ if (import.meta.main) { (async () => {
 
   // ─── Launch Claude Code Opus ──────────────────────────────────────────────────
 
-  const initialPrompt = `You are a 🧠 Mind supervisor. Your CLAUDE.md has been replaced with your operating manual — read it now. Then read MIND-BRIEF.md for your tasks. Follow the Review Loop exactly: do NOT implement tasks yourself. Spawn a 🛸 Drone via Agent({ subagent_type: 'drone' }) to do the work.`;
+  const initialPrompt = `You are a 🧠 Mind supervisor. Your CLAUDE.md has been replaced with your operating manual — read it now. Then read MIND-BRIEF.md for your tasks. Follow the Review Loop exactly: do NOT implement tasks yourself. Spawn a 🛸 Drone via Agent({ subagent_type: '🛸' }) to do the work.`;
   let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model opus ${JSON.stringify(initialPrompt)}`;
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
