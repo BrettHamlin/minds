@@ -34,6 +34,7 @@ import { basename, resolve } from "path";
 import { injectBusEnv } from "../transport/minds-bus-lifecycle.ts";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
+import { resolveMindsDir } from "../shared/paths.js";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -62,8 +63,10 @@ if (import.meta.main) { (async () => {
   // ─── CLAUDE.md assembly ─────────────────────────────────────────────────────
 
   function assembleClaudeContent(repoRoot: string, mindName: string, ticketId: string): string {
+    const mindsBase = resolveMindsDir(repoRoot);
+
     // Load minds.json and find entry for this mind
-    const mindsJsonPath = resolve(repoRoot, ".minds", "minds.json");
+    const mindsJsonPath = resolve(mindsBase, "minds.json");
     let domain = "";
     let ownsFiles: string[] = [];
 
@@ -85,15 +88,15 @@ if (import.meta.main) { (async () => {
     }
 
     // Load STANDARDS.md (generic — ships with installer)
-    const standardsPath = resolve(repoRoot, "minds", "STANDARDS.md");
+    const standardsPath = resolve(mindsBase, "STANDARDS.md");
     const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
 
     // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
-    const projectStandardsPath = resolve(repoRoot, "minds", "STANDARDS-project.md");
+    const projectStandardsPath = resolve(mindsBase, "STANDARDS-project.md");
     const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
 
     // Load MIND.md (optional)
-    const mindMdPath = resolve(repoRoot, "minds", mindName, "MIND.md");
+    const mindMdPath = resolve(mindsBase, mindName, "MIND.md");
     const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
 
     const ownsFilesSection =
@@ -284,8 +287,7 @@ if (import.meta.main) { (async () => {
   // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
 
   const settingsPath = resolve(worktreePath, ".claude", "settings.json");
-  const hooksBase = existsSync(resolve(repoRoot, ".minds")) ? ".minds" : "minds";
-  const hookScriptPath = resolve(repoRoot, hooksBase, "transport", "hooks", "send-event.ts");
+  const hookScriptPath = resolve(resolveMindsDir(repoRoot), "transport", "hooks", "send-event.ts");
   const hookCommand = `bun ${hookScriptPath} --source-app drone:${mindName}`;
 
   // Claude Code hooks use matcher-based format: { matcher?: string, hooks: [{ type, command }] }
