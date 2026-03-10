@@ -27,34 +27,44 @@ export function resolveMindsDir(repoRoot: string): string {
 }
 
 /**
+ * Cached result for mindsRoot() so git rev-parse is only called once.
+ */
+let _cachedMindsRoot: string | null = null;
+
+/**
  * Resolve the Minds data root directory.
  *
  * Priority:
- *   1. MINDS_ROOT env var (explicit override)
- *   2. .minds/ directory discovery (walk up from cwd)
- *   3. git root with dev-repo-aware detection
+ *   1. MINDS_ROOT env var (explicit override, not cached)
+ *   2. git rev-parse --show-toplevel → resolveMindsDir(root)
+ *   3. Fallback: cwd + .minds/
+ *
+ * Result is cached after first resolution (unless MINDS_ROOT env var is set,
+ * which is checked fresh each call to allow runtime overrides).
  */
 export function mindsRoot(): string {
-  // 1. Explicit env var
+  // 1. Explicit env var — always checked fresh (allows runtime override)
   if (process.env.MINDS_ROOT) return process.env.MINDS_ROOT;
 
-  // 2. Walk up from cwd looking for .minds/ directory
-  let dir = process.cwd();
-  while (true) {
-    const candidate = join(dir, ".minds");
-    if (existsSync(candidate)) return candidate;
-    const parent = join(dir, "..");
-    if (parent === dir) break;
-    dir = parent;
-  }
+  // 2. Return cached result if available
+  if (_cachedMindsRoot !== null) return _cachedMindsRoot;
 
-  // 3. Fallback: use git root with dev-repo detection
+  // 3. Use git rev-parse to find repo root, then resolveMindsDir
   try {
     const root = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
-    return resolveMindsDir(root);
+    _cachedMindsRoot = resolveMindsDir(root);
+    return _cachedMindsRoot;
   } catch {
-    return join(process.cwd(), ".minds");
+    _cachedMindsRoot = join(process.cwd(), ".minds");
+    return _cachedMindsRoot;
   }
+}
+
+/**
+ * Clear the cached mindsRoot() value. Useful for testing.
+ */
+export function _resetMindsRootCache(): void {
+  _cachedMindsRoot = null;
 }
 
 /**

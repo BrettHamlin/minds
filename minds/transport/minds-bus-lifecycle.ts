@@ -267,10 +267,16 @@ export async function ensureAggregator(repoRoot: string): Promise<number> {
   const aggregatorPath = path.join(path.dirname(new URL(import.meta.url).pathname), "status-aggregator.ts");
   const proc = spawn("bun", [aggregatorPath, "--port", "3737"], {
     cwd: repoRoot,
-    stdio: ["ignore", "pipe", "ignore"],
+    stdio: ["ignore", "pipe", "pipe"],
     detached: true,
   });
   proc.unref();
+
+  // Collect stderr for diagnostics (port conflicts, missing deps, etc.)
+  let stderrBuf = "";
+  proc.stderr!.on("data", (data: Buffer) => {
+    stderrBuf += data.toString();
+  });
 
   // Wait for AGGREGATOR_READY
   return new Promise<number>((resolve, reject) => {
@@ -278,7 +284,8 @@ export async function ensureAggregator(repoRoot: string): Promise<number> {
     const timeout = setTimeout(() => {
       if (resolved) return;
       resolved = true;
-      reject(new Error("Aggregator startup timeout (5s)"));
+      const detail = stderrBuf.trim() ? `\nstderr: ${stderrBuf.trim()}` : "";
+      reject(new Error(`Aggregator startup timeout (5s)${detail}`));
     }, 5000);
 
     proc.stdout!.on("data", (data: Buffer) => {
@@ -298,6 +305,14 @@ export async function ensureAggregator(repoRoot: string): Promise<number> {
       resolved = true;
       clearTimeout(timeout);
       reject(new Error(`Aggregator spawn error: ${err.message}`));
+    });
+
+    proc.on("exit", (code) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      const detail = stderrBuf.trim() ? `\nstderr: ${stderrBuf.trim()}` : "";
+      reject(new Error(`Aggregator exited unexpectedly (code ${code})${detail}`));
     });
   });
 }
