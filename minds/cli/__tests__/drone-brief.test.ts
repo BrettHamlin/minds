@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildDroneBrief, buildBusPublishCmd } from "../lib/drone-brief.ts";
+import { buildDroneBrief } from "../lib/drone-brief.ts";
 import type { MindTask } from "../lib/implement-types.ts";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -29,46 +29,9 @@ const SAMPLE_TASKS_WITH_CONTRACTS: MindTask[] = [
   },
 ];
 
-// ─── buildBusPublishCmd ──────────────────────────────────────────────────────
-
-describe("buildBusPublishCmd", () => {
-  it("builds a valid bus publish command", () => {
-    const cmd = buildBusPublishCmd(
-      "minds",
-      "minds-BRE-123",
-      "pipeline_core",
-      "wave-1",
-    );
-
-    expect(cmd).toContain("bun minds/transport/minds-publish.ts");
-    expect(cmd).toContain("--channel minds-BRE-123");
-    expect(cmd).toContain("--type MIND_COMPLETE");
-    expect(cmd).toContain('"mindName":"pipeline_core"');
-    expect(cmd).toContain('"waveId":"wave-1"');
-  });
-
-  it("uses the correct mindsDir prefix", () => {
-    const cmd = buildBusPublishCmd(
-      "/home/user/.minds",
-      "minds-BRE-456",
-      "signals",
-      "wave-2",
-    );
-
-    expect(cmd).toContain("bun /home/user/.minds/transport/minds-publish.ts");
-  });
-});
-
 // ─── buildDroneBrief ────────────────────────────────────────────────────────
 
 describe("buildDroneBrief", () => {
-  const publishCmd = buildBusPublishCmd(
-    "minds",
-    "minds-BRE-123",
-    "pipeline_core",
-    "wave-1",
-  );
-
   it("includes the mind name and ticket ID", () => {
     const brief = buildDroneBrief({
       ticketId: "BRE-123",
@@ -76,7 +39,6 @@ describe("buildDroneBrief", () => {
       waveId: "wave-1",
       tasks: SAMPLE_TASKS,
       dependencies: [],
-      busPublishCmd: publishCmd,
       featureDir: "specs/BRE-123-feature",
     });
 
@@ -92,7 +54,6 @@ describe("buildDroneBrief", () => {
       waveId: "wave-1",
       tasks: SAMPLE_TASKS,
       dependencies: [],
-      busPublishCmd: publishCmd,
       featureDir: "specs/BRE-123-feature",
     });
 
@@ -102,20 +63,20 @@ describe("buildDroneBrief", () => {
     expect(brief).toContain("[P]");
   });
 
-  it("includes the bus publish command for completion", () => {
+  it("has no bus or signal references", () => {
     const brief = buildDroneBrief({
       ticketId: "BRE-123",
       mindName: "pipeline_core",
       waveId: "wave-1",
       tasks: SAMPLE_TASKS,
       dependencies: [],
-      busPublishCmd: publishCmd,
       featureDir: "specs/BRE-123-feature",
     });
 
-    expect(brief).toContain("minds-publish.ts");
-    expect(brief).toContain("MIND_COMPLETE");
-    expect(brief).toContain("Completion Signal");
+    expect(brief).not.toContain("minds-publish.ts");
+    expect(brief).not.toContain("MIND_COMPLETE");
+    expect(brief).not.toContain("Completion Signal");
+    expect(brief).not.toContain("bus");
   });
 
   it("omits dependencies section when no deps", () => {
@@ -125,7 +86,6 @@ describe("buildDroneBrief", () => {
       waveId: "wave-1",
       tasks: SAMPLE_TASKS,
       dependencies: [],
-      busPublishCmd: publishCmd,
       featureDir: "specs/BRE-123-feature",
     });
 
@@ -139,7 +99,6 @@ describe("buildDroneBrief", () => {
       waveId: "wave-2",
       tasks: SAMPLE_TASKS_WITH_CONTRACTS,
       dependencies: ["pipeline_core", "signals"],
-      busPublishCmd: publishCmd,
       featureDir: "specs/BRE-123-feature",
     });
 
@@ -156,7 +115,6 @@ describe("buildDroneBrief", () => {
       waveId: "wave-1",
       tasks: SAMPLE_TASKS,
       dependencies: [],
-      busPublishCmd: publishCmd,
       featureDir: "specs/BRE-123-feature",
     });
 
@@ -171,7 +129,6 @@ describe("buildDroneBrief", () => {
       waveId: "wave-1",
       tasks: SAMPLE_TASKS,
       dependencies: [],
-      busPublishCmd: publishCmd,
       featureDir: "specs/BRE-123-feature",
     });
 

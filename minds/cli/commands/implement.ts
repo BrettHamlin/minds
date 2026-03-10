@@ -23,7 +23,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, unlink
 import { join, resolve, dirname } from "path";
 import { parseAndGroupTasks } from "../lib/task-parser.ts";
 import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
-import { buildDroneBrief, buildBusPublishCmd } from "../lib/drone-brief.ts";
+import { buildDroneBrief } from "../lib/drone-brief.ts";
 import { waitForWaveCompletion } from "../lib/bus-listener.ts";
 import { promptConfirmation } from "../lib/prompt.ts";
 import {
@@ -436,23 +436,12 @@ export async function runImplement(
         continue;
       }
 
-      // Build brief — use mindsDir (.minds/) for the bus publish cmd
-      // so the drone runs the script from the installed location
-      const mindsDirRelative = existsSync(join(repoRoot, ".minds")) ? ".minds" : "minds";
-      const busPublishCmd = buildBusPublishCmd(
-        mindsDirRelative,
-        channel,
-        mindName,
-        wave.id,
-      );
-
       const briefContent = buildDroneBrief({
         ticketId,
         mindName,
         waveId: wave.id,
         tasks: group.tasks,
         dependencies: group.dependencies,
-        busPublishCmd,
         featureDir,
       });
 

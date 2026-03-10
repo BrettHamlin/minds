@@ -2,8 +2,7 @@
  * drone-brief.ts -- Build DRONE-BRIEF.md content as a TypeScript template.
  *
  * The brief is what each drone receives as its work instructions.
- * It includes the tasks assigned to the drone's mind, contract info,
- * and the bus publish command for MIND_COMPLETE signaling.
+ * It includes the tasks assigned to the drone's mind and contract info.
  */
 
 import type { MindTask, MindTaskGroup } from "./implement-types.ts";
@@ -14,7 +13,6 @@ export interface DroneBriefParams {
   waveId: string;
   tasks: MindTask[];
   dependencies: string[];
-  busPublishCmd: string;
   featureDir: string;
 }
 
@@ -40,7 +38,6 @@ export function buildDroneBrief(params: DroneBriefParams): string {
     waveId,
     tasks,
     dependencies,
-    busPublishCmd,
     featureDir,
   } = params;
 
@@ -69,32 +66,5 @@ ${depsSection}
 3. Write tests for each change (TDD: red -> green -> refactor).
 4. Run \`bun test minds/${mindName}/\` to verify your changes pass.
 5. Commit your work with a descriptive message referencing ${ticketId}.
-
-## Completion Signal
-
-When ALL tasks are done and tests pass, run this command to signal completion:
-
-\`\`\`bash
-${busPublishCmd}
-\`\`\`
-
-This tells the orchestrator you are finished. Do NOT forget this step.
 `;
-}
-
-/**
- * Build the bus publish command string for MIND_COMPLETE.
- */
-export function buildBusPublishCmd(
-  mindsDir: string,
-  channel: string,
-  mindName: string,
-  waveId: string,
-): string {
-  return [
-    `bun ${mindsDir}/transport/minds-publish.ts`,
-    `--channel ${channel}`,
-    `--type MIND_COMPLETE`,
-    `--payload '${JSON.stringify({ mindName, waveId })}'`,
-  ].join(" ");
 }
