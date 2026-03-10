@@ -5,6 +5,7 @@
 
 import { join } from "path";
 import type { MindsStateTracker } from "./state-tracker.js";
+import { serializeEventForSSE } from "@minds/transport/minds-events.js";
 
 const DIST_DIR = join(import.meta.dir, "dist");
 
@@ -58,6 +59,44 @@ export function createMindsRouteHandler(
         return Response.json({ error: "Not found" }, { status: 404 });
       }
       return Response.json({ contracts: state.contracts });
+    }
+
+    // --- Raw events SSE endpoint ---
+
+    if (path === "/api/minds/events") {
+      const ticketId = url.searchParams.get("ticket");
+      if (!ticketId) {
+        return Response.json({ error: "Missing ticket param" }, { status: 400 });
+      }
+
+      let unsubscribeRaw: (() => void) | null = null;
+
+      const stream = new ReadableStream({
+        start(controller) {
+          unsubscribeRaw = tracker.subscribeRaw((event) => {
+            const eventTicketId = event.ticketId ?? event.channel?.replace(/^minds-/, "");
+            if (eventTicketId !== ticketId) return;
+            try {
+              controller.enqueue(
+                new TextEncoder().encode(serializeEventForSSE(event))
+              );
+            } catch {
+              // Client disconnected
+            }
+          });
+        },
+        cancel() {
+          if (unsubscribeRaw) unsubscribeRaw();
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
     }
 
     // --- SSE endpoint ---

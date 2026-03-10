@@ -144,6 +144,7 @@ function calculateStats(state: MindsState): MindsStateStats {
 export class MindsStateTracker {
   private states: Map<string, MindsState> = new Map();
   private subscribers: Set<(state: MindsState) => void> = new Set();
+  private rawSubscribers: Set<(event: MindsBusMessage) => void> = new Set();
   private db: MindsDb | null = null;
 
   constructor(dbPath?: string) {
@@ -153,6 +154,11 @@ export class MindsStateTracker {
   }
 
   applyEvent(msg: MindsBusMessage): void {
+    // Notify raw subscribers BEFORE any state mutation
+    for (const cb of this.rawSubscribers) {
+      cb(msg);
+    }
+
     const ticketId = msg.ticketId ?? msg.channel?.replace(/^minds-/, "");
     if (!ticketId) return;
     const state = this.getOrCreate(ticketId);
@@ -391,6 +397,17 @@ export class MindsStateTracker {
     this.subscribers.add(cb);
     return () => {
       this.subscribers.delete(cb);
+    };
+  }
+
+  /**
+   * Subscribe to raw bus events BEFORE state processing.
+   * Returns an unsubscribe function.
+   */
+  subscribeRaw(callback: (event: MindsBusMessage) => void): () => void {
+    this.rawSubscribers.add(callback);
+    return () => {
+      this.rawSubscribers.delete(callback);
     };
   }
 
