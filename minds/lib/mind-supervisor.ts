@@ -429,8 +429,10 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         });
       }
 
-      // Accumulate findings across all iterations
-      allFindings.push(...verdict.findings);
+      // Accumulate findings across all iterations, tagging each with its iteration
+      for (const finding of verdict.findings) {
+        allFindings.push({ ...finding, iteration });
+      }
       result.findings = allFindings;
 
       // ---- Step 7: Verdict ----

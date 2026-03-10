@@ -47,6 +47,8 @@ export interface ReviewFinding {
   line: number;
   severity: "error" | "warning";
   message: string;
+  /** Which supervisor iteration produced this finding (1-based). */
+  iteration?: number;
 }
 
 export interface ReviewVerdict {
