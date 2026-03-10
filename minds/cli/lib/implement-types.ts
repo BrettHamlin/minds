@@ -48,12 +48,21 @@ export interface DroneInfo {
   branch: string;
 }
 
+/** Tracking info for a spawned Mind. */
+export interface MindInfo {
+  mindName: string;
+  waveId: string;
+  paneId: string;
+  worktree: string;
+  branch: string;
+}
+
 /** Result of the full implement run. */
 export interface ImplementResult {
   ok: boolean;
   wavesCompleted: number;
   totalWaves: number;
-  dronesSpawned: DroneInfo[];
+  mindsSpawned: MindInfo[];
   mergeResults: Array<{ mind: string; ok: boolean; error?: string }>;
   errors: string[];
 }

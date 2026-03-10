@@ -135,23 +135,24 @@ export function removeOrphanedClaudeDirs(repoRoot: string): CleanupResult {
 }
 
 /**
- * Remove DRONE-BRIEF.md from a worktree directory.
+ * Remove DRONE-BRIEF.md and MIND-BRIEF.md from a worktree directory.
  */
 export function removeDroneBrief(worktreePath: string): CleanupResult {
   const result: CleanupResult = { ok: true, removed: [], skipped: [], errors: [] };
-  const briefPath = join(worktreePath, "DRONE-BRIEF.md");
 
-  if (!existsSync(briefPath)) {
-    result.skipped.push(briefPath);
-    return result;
-  }
-
-  try {
-    unlinkSync(briefPath);
-    result.removed.push(briefPath);
-  } catch (err: unknown) {
-    result.ok = false;
-    result.errors.push({ path: briefPath, error: String(err) });
+  for (const filename of ["DRONE-BRIEF.md", "MIND-BRIEF.md"]) {
+    const briefPath = join(worktreePath, filename);
+    if (!existsSync(briefPath)) {
+      result.skipped.push(briefPath);
+      continue;
+    }
+    try {
+      unlinkSync(briefPath);
+      result.removed.push(briefPath);
+    } catch (err: unknown) {
+      result.ok = false;
+      result.errors.push({ path: briefPath, error: String(err) });
+    }
   }
 
   return result;

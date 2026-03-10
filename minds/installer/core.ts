@@ -52,6 +52,7 @@ const SHARED_INFRA_FILES = [
   "discovery.ts",
   "embeddings.ts",
   "dispatch.ts",
+  "STANDARDS.md",
 ] as const;
 
 export interface MindsInstallResult {

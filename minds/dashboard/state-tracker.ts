@@ -91,6 +91,10 @@ interface DroneEventPayload {
   violations?: number;
 }
 
+interface MindSignalPayload {
+  mindName: string;
+}
+
 interface ContractFulfilledPayload {
   producer: string;
   consumer: string;
@@ -222,7 +226,7 @@ export class MindsStateTracker {
           break;
         }
 
-        case MindsEventType.DRONE_COMPLETE: {
+        case MindsEventType.MIND_COMPLETE: {
           const p = payload as unknown as DroneEventPayload;
           const drone = this.findDrone(state, p.waveId, p.mindName);
           if (drone) {
@@ -231,6 +235,35 @@ export class MindsStateTracker {
             if (p.tasksComplete !== undefined) {
               drone.tasksComplete = p.tasksComplete;
             }
+          }
+          break;
+        }
+
+        case MindsEventType.MIND_STARTED: {
+          const p = payload as unknown as MindSignalPayload;
+          const drone = this.findDroneByMindName(state, p.mindName);
+          if (drone) {
+            drone.status = "active";
+            drone.startedAt = drone.startedAt ?? now;
+          }
+          break;
+        }
+
+        case MindsEventType.REVIEW_STARTED: {
+          const p = payload as unknown as MindSignalPayload;
+          const drone = this.findDroneByMindName(state, p.mindName);
+          if (drone) {
+            drone.status = "reviewing";
+          }
+          break;
+        }
+
+        case MindsEventType.REVIEW_FEEDBACK: {
+          const p = payload as unknown as MindSignalPayload;
+          const drone = this.findDroneByMindName(state, p.mindName);
+          if (drone) {
+            drone.status = "active";
+            drone.reviewAttempts = (drone.reviewAttempts ?? 0) + 1;
           }
           break;
         }

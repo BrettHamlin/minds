@@ -1,10 +1,10 @@
 /**
  * bus-listener.ts -- SSE listener that subscribes to the bus and waits
- * for DRONE_COMPLETE events from all expected minds in a wave.
+ * for MIND_COMPLETE events from all expected minds in a wave.
  *
  * Uses fetch() SSE to connect to the bus server's /subscribe/:channel
  * endpoint. Parses `data:` lines as JSON and looks for events with
- * type "DRONE_COMPLETE" matching the expected waveId and mindNames.
+ * type "MIND_COMPLETE" matching the expected waveId and mindNames.
  */
 
 import { MindsEventType } from "../../transport/minds-events.ts";
@@ -17,7 +17,7 @@ export interface WaveCompletionResult {
 }
 
 /**
- * Subscribe to the bus and wait for DRONE_COMPLETE from all expected minds.
+ * Subscribe to the bus and wait for MIND_COMPLETE from all expected minds.
  *
  * @param busUrl    - Base URL of the bus server (e.g. "http://localhost:7777")
  * @param channel   - Channel to subscribe to (e.g. "minds-BRE-123")
@@ -33,7 +33,7 @@ export async function waitForWaveCompletion(
   expectedMinds: string[],
   timeoutMs: number = 30 * 60 * 1000,
   signal?: AbortSignal,
-  onDroneComplete?: (mindName: string) => void,
+  onMindComplete?: (mindName: string) => void,
 ): Promise<WaveCompletionResult> {
   const completed = new Set<string>();
   const errors: string[] = [];
@@ -122,16 +122,16 @@ export async function waitForWaveCompletion(
             const event = JSON.parse(jsonStr);
 
             if (
-              event.type === MindsEventType.DRONE_COMPLETE &&
+              event.type === MindsEventType.MIND_COMPLETE &&
               event.payload?.waveId === waveId &&
               event.payload?.mindName &&
               expected.has(event.payload.mindName)
             ) {
               completed.add(event.payload.mindName);
               console.log(
-                `  DRONE_COMPLETE: @${event.payload.mindName} (${completed.size}/${expected.size})`,
+                `  MIND_COMPLETE: @${event.payload.mindName} (${completed.size}/${expected.size})`,
               );
-              onDroneComplete?.(event.payload.mindName);
+              onMindComplete?.(event.payload.mindName);
 
               if (completed.size === expected.size) {
                 clearTimeout(timeout);

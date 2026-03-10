@@ -23,7 +23,8 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, unlink
 import { join, resolve, dirname } from "path";
 import { parseAndGroupTasks } from "../lib/task-parser.ts";
 import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
-import { buildDroneBrief, buildBusPublishCmd } from "../lib/drone-brief.ts";
+import { buildDroneBrief } from "../lib/drone-brief.ts";
+import { buildMindBrief } from "../lib/mind-brief.ts";
 import { waitForWaveCompletion } from "../lib/bus-listener.ts";
 import { promptConfirmation } from "../lib/prompt.ts";
 import {
@@ -39,6 +40,7 @@ import type {
   ImplementResult,
   DispatchPlan,
   DroneInfo,
+  MindInfo,
 } from "../lib/implement-types.ts";
 
 /* ------------------------------------------------------------------ */
@@ -121,10 +123,10 @@ function killPane(paneId: string): void {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Drone spawning                                                     */
+/*  Mind spawning                                                      */
 /* ------------------------------------------------------------------ */
 
-async function spawnDrone(
+async function spawnMind(
   repoRoot: string,
   mindsSourceDir: string,
   mindName: string,
@@ -134,7 +136,7 @@ async function spawnDrone(
   channel: string,
   briefContent: string,
   callerPane: string,
-): Promise<DroneInfo> {
+): Promise<MindInfo> {
   // Write brief to temp file
   const briefPath = join(repoRoot, ".minds", "state", `brief-${mindName}-${waveId}.md`);
   const stateDir = join(repoRoot, ".minds", "state");
@@ -143,10 +145,10 @@ async function spawnDrone(
   }
   writeFileSync(briefPath, briefContent);
 
-  // Spawn drone via drone-pane.ts
-  const dronePanePath = join(mindsSourceDir, "lib", "drone-pane.ts");
+  // Spawn Mind via mind-pane.ts
+  const mindPanePath = join(mindsSourceDir, "lib", "mind-pane.ts");
   const args = [
-    "bun", dronePanePath,
+    "bun", mindPanePath,
     "--mind", mindName,
     "--ticket", ticketId,
     "--pane", callerPane,
@@ -167,23 +169,20 @@ async function spawnDrone(
 
   if (exitCode !== 0) {
     const stderr = await new Response(proc.stderr).text();
-    throw new Error(`drone-pane.ts failed for @${mindName}: ${stderr}`);
+    throw new Error(`mind-pane.ts failed for @${mindName}: ${stderr}`);
   }
 
-  let result: { drone_pane: string; worktree: string; branch: string };
+  let result: { mind_pane: string; worktree: string; branch: string };
   try {
     result = JSON.parse(output.trim());
   } catch {
-    throw new Error(`drone-pane.ts returned invalid JSON for @${mindName}: ${output}`);
+    throw new Error(`mind-pane.ts returned invalid JSON for @${mindName}: ${output}`);
   }
-
-  // The initial prompt is now passed directly to Claude Code via CLI argument
-  // in drone-pane.ts — no separate tmux-send needed.
 
   return {
     mindName,
     waveId,
-    paneId: result.drone_pane,
+    paneId: result.mind_pane,
     worktree: result.worktree,
     branch: result.branch,
   };
@@ -195,7 +194,7 @@ async function spawnDrone(
 
 function mergeDroneWorktree(
   repoRoot: string,
-  drone: DroneInfo,
+  drone: MindInfo,
 ): { ok: boolean; error?: string } {
   const proc = Bun.spawnSync(
     ["git", "-C", repoRoot, "merge", "--no-ff", drone.branch,
@@ -373,13 +372,13 @@ export async function runImplement(
   // ── SIGINT handler ─────────────────────────────────────────────────────────
 
   const abortController = new AbortController();
-  const allDrones: DroneInfo[] = [];
+  const allDrones: MindInfo[] = [];
 
   const cleanup = async () => {
     console.log("\nGraceful shutdown...");
     abortController.abort();
 
-    // Kill all drone panes
+    // Kill all Mind panes
     for (const d of allDrones) {
       killPane(d.paneId);
     }
@@ -413,7 +412,7 @@ export async function runImplement(
     ok: true,
     wavesCompleted: 0,
     totalWaves: waves.length,
-    dronesSpawned: [],
+    mindsSpawned: [],
     mergeResults: [],
     errors: [],
   };
@@ -426,8 +425,8 @@ export async function runImplement(
     // Publish WAVE_STARTED
     await publishWaveStarted(busInfo.busUrl, channel, wave.id);
 
-    // Spawn drones for this wave
-    const waveDrones: DroneInfo[] = [];
+    // Spawn Minds for this wave
+    const waveDrones: MindInfo[] = [];
 
     for (const mindName of wave.minds) {
       const group = groupMap.get(mindName);
@@ -436,29 +435,19 @@ export async function runImplement(
         continue;
       }
 
-      // Build brief — use mindsDir (.minds/) for the bus publish cmd
-      // so the drone runs the script from the installed location
-      const mindsDirRelative = existsSync(join(repoRoot, ".minds")) ? ".minds" : "minds";
-      const busPublishCmd = buildBusPublishCmd(
-        mindsDirRelative,
-        channel,
-        mindName,
-        wave.id,
-      );
-
-      const briefContent = buildDroneBrief({
+      const briefContent = buildMindBrief({
         ticketId,
         mindName,
         waveId: wave.id,
+        featureDir,
         tasks: group.tasks,
         dependencies: group.dependencies,
-        busPublishCmd,
-        featureDir,
+        worktreePath: "(resolved at launch)",
       });
 
-      console.log(`  Spawning drone for @${mindName}...`);
+      console.log(`  Spawning Mind for @${mindName}...`);
       try {
-        const drone = await spawnDrone(
+        const drone = await spawnMind(
           repoRoot,
           mindsSourceDir,
           mindName,
@@ -471,7 +460,7 @@ export async function runImplement(
         );
         waveDrones.push(drone);
         allDrones.push(drone);
-        result.dronesSpawned.push(drone);
+        result.mindsSpawned.push(drone);
         console.log(`  Spawned @${mindName} in pane ${drone.paneId} (worktree: ${drone.worktree})`);
         // Rebalance pane layout after each spawn so panes stay evenly sized
         Bun.spawnSync(
@@ -486,14 +475,14 @@ export async function runImplement(
     }
 
     if (waveDrones.length === 0) {
-      console.warn(`  No drones spawned for ${wave.id}. Skipping.`);
+      console.warn(`  No Minds spawned for ${wave.id}. Skipping.`);
       continue;
     }
 
-    // Wait for all drones in this wave to complete
-    console.log(`\n  Waiting for ${waveDrones.length} drone(s) to complete ${wave.id}...`);
-    // Build a map of mind name → pane ID for per-drone cleanup
-    const dronePaneMap = new Map(waveDrones.map((d) => [d.mindName, d.paneId]));
+    // Wait for all Minds in this wave to complete
+    console.log(`\n  Waiting for ${waveDrones.length} Mind(s) to complete ${wave.id}...`);
+    // Build a map of mind name → pane ID for per-Mind cleanup
+    const mindPaneMap = new Map(waveDrones.map((d) => [d.mindName, d.paneId]));
 
     const completionResult = await waitForWaveCompletion(
       busInfo.busUrl,
@@ -503,8 +492,8 @@ export async function runImplement(
       30 * 60 * 1000, // 30 min timeout
       abortController.signal,
       (mindName) => {
-        // Kill pane immediately when drone completes
-        const paneId = dronePaneMap.get(mindName);
+        // Kill pane immediately when Mind completes
+        const paneId = mindPaneMap.get(mindName);
         if (paneId) killPane(paneId);
       },
     );
@@ -531,7 +520,7 @@ export async function runImplement(
     result.wavesCompleted++;
     console.log(`  Wave ${wave.id} complete.`);
 
-    // Panes are killed individually via onDroneComplete callback above.
+    // Panes are killed individually via onMindComplete callback above.
     // Any stragglers (e.g. from timeout) get cleaned up here.
     for (const d of waveDrones) {
       if (!completionResult.completed.includes(d.mindName)) {
@@ -543,7 +532,7 @@ export async function runImplement(
   // ── Step 9: Merge worktrees ────────────────────────────────────────────────
 
   if (result.ok) {
-    console.log("\n=== Merging drone worktrees ===");
+    console.log("\n=== Merging Mind worktrees ===");
     for (const drone of allDrones) {
       console.log(`  Merging @${drone.mindName} (${drone.branch})...`);
       const mergeResult = mergeDroneWorktree(repoRoot, drone);
@@ -571,7 +560,7 @@ export async function runImplement(
 
   console.log("\n=== Implementation Summary ===");
   console.log(`  Waves completed: ${result.wavesCompleted}/${result.totalWaves}`);
-  console.log(`  Drones spawned: ${result.dronesSpawned.length}`);
+  console.log(`  Minds spawned: ${result.mindsSpawned.length}`);
   console.log(
     `  Merges: ${result.mergeResults.filter((r) => r.ok).length}/${result.mergeResults.length} successful`,
   );

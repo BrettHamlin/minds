@@ -42,6 +42,7 @@ tmp/
 temp/
 # Repo-specific relay installation directories (created by /collab.install)
 .claude/
+!.claude/agents/
 .collab/
 .minds/
 .specify/

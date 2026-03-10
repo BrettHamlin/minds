@@ -35,7 +35,7 @@ export async function handleBusMessage(msg: unknown, orchestratorPane: string): 
     const payload = m.payload as Record<string, unknown> | undefined;
     deliveryText = payload?.signal as string | undefined;
   }
-  // Minds events (DRONE_COMPLETE, WAVE_STARTED, etc.) are handled by the
+  // Minds events (MIND_COMPLETE, WAVE_STARTED, etc.) are handled by the
   // deterministic CLI bus-listener — no need to echo them to the orchestrator pane.
 
   if (!deliveryText) return;

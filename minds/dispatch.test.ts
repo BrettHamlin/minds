@@ -95,7 +95,7 @@ function makeDroneCompleteEvent(mindName: string) {
     id: "test-1",
     channel: MOCK_CHANNEL,
     from: "drone",
-    type: "DRONE_COMPLETE",
+    type: "MIND_COMPLETE",
     payload: { mindName },
     timestamp: Date.now(),
   };
@@ -358,7 +358,7 @@ describe("waitForCompletion (bus mode)", () => {
     fetchSpy?.mockRestore();
   });
 
-  it("returns success when DRONE_COMPLETE event arrives on bus for matching mind", async () => {
+  it("returns success when MIND_COMPLETE event arrives on bus for matching mind", async () => {
     fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
       makeMockFetch([makeDroneCompleteEvent("signals")]) as typeof globalThis.fetch
     );
@@ -422,7 +422,7 @@ describe("waitForCompletion (bus mode)", () => {
     expect(url).toContain(encodeURIComponent(MOCK_CHANNEL));
   });
 
-  it("does not match a different mind's DRONE_COMPLETE event", async () => {
+  it("does not match a different mind's MIND_COMPLETE event", async () => {
     // Event is for "signals" but we're waiting for "pipeline_core"
     fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
       makeMockFetch([makeDroneCompleteEvent("signals")]) as typeof globalThis.fetch
@@ -635,7 +635,7 @@ describe("dispatchWave", () => {
       return makeProcess(0, "");
     });
 
-    // No DRONE_COMPLETE events — timeout immediately
+    // No MIND_COMPLETE events — timeout immediately
     fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
       makeMockFetch([]) as typeof globalThis.fetch
     );
