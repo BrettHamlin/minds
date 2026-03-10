@@ -467,4 +467,97 @@ describe("MindsStateTracker", () => {
     expect(stats.contractsFulfilled).toBe(0);
     expect(stats.contractsTotal).toBe(0);
   });
+
+  // T003: subscribeRaw() tests
+
+  test("subscribeRaw: raw callback fires for each event with the original MindsBusMessage", () => {
+    const tracker = new MindsStateTracker();
+    const received: MindsBusMessage[] = [];
+
+    tracker.subscribeRaw((event) => {
+      received.push(event);
+    });
+
+    const msg1 = makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" });
+    const msg2 = makeMsg(MindsEventType.WAVE_COMPLETE, { waveId: "1" });
+    tracker.applyEvent(msg1);
+    tracker.applyEvent(msg2);
+
+    expect(received).toHaveLength(2);
+    expect(received[0]).toBe(msg1);
+    expect(received[1]).toBe(msg2);
+  });
+
+  test("subscribeRaw: unsubscribe stops delivery", () => {
+    const tracker = new MindsStateTracker();
+    const received: MindsBusMessage[] = [];
+
+    const unsub = tracker.subscribeRaw((event) => {
+      received.push(event);
+    });
+
+    tracker.applyEvent(makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" }));
+    expect(received).toHaveLength(1);
+
+    unsub();
+    tracker.applyEvent(makeMsg(MindsEventType.WAVE_COMPLETE, { waveId: "1" }));
+    expect(received).toHaveLength(1);
+  });
+
+  test("subscribeRaw: multiple raw subscribers work independently", () => {
+    const tracker = new MindsStateTracker();
+    const receivedA: MindsBusMessage[] = [];
+    const receivedB: MindsBusMessage[] = [];
+
+    const unsubA = tracker.subscribeRaw((event) => receivedA.push(event));
+    const unsubB = tracker.subscribeRaw((event) => receivedB.push(event));
+
+    tracker.applyEvent(makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" }));
+    expect(receivedA).toHaveLength(1);
+    expect(receivedB).toHaveLength(1);
+
+    // Unsubscribe A — B should still receive
+    unsubA();
+    tracker.applyEvent(makeMsg(MindsEventType.WAVE_COMPLETE, { waveId: "1" }));
+    expect(receivedA).toHaveLength(1);
+    expect(receivedB).toHaveLength(2);
+
+    unsubB();
+  });
+
+  test("subscribeRaw: raw subscription does not interfere with state subscription (both fire)", () => {
+    const tracker = new MindsStateTracker();
+    const rawReceived: MindsBusMessage[] = [];
+    const stateReceived: string[] = [];
+
+    tracker.subscribeRaw((event) => rawReceived.push(event));
+    tracker.subscribe((state) => stateReceived.push(state.ticketId));
+
+    tracker.applyEvent(makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" }));
+
+    expect(rawReceived).toHaveLength(1);
+    expect(stateReceived).toHaveLength(1);
+    expect(stateReceived[0]).toBe("TEST-1");
+  });
+
+  test("subscribeRaw: raw callback receives event before state is mutated", () => {
+    const tracker = new MindsStateTracker();
+    let waveCountDuringRawCallback = -1;
+
+    tracker.subscribeRaw(() => {
+      // At this point state mutation has NOT yet occurred
+      const state = tracker.getState("TEST-1");
+      waveCountDuringRawCallback = state?.waves.length ?? 0;
+    });
+
+    // Before the event, there's no state for TEST-1
+    expect(tracker.getState("TEST-1")).toBeUndefined();
+
+    tracker.applyEvent(makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" }));
+
+    // The raw callback fired before the wave was added — state was still empty at that point
+    expect(waveCountDuringRawCallback).toBe(0);
+    // After applyEvent completes, the wave exists
+    expect(tracker.getState("TEST-1")!.waves).toHaveLength(1);
+  });
 });
