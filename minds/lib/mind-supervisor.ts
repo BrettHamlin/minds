@@ -1,5 +1,5 @@
 /**
- * mind-supervisor.ts -- Deterministic Mind supervisor state machine.
+ * mind-supervisor.ts -- Deterministic Mind supervisor orchestrator.
  *
  * Replaces the LLM-driven Mind (Claude Code Opus in a tmux pane reading
  * a 300-line CLAUDE.md operating manual). This TypeScript process handles
@@ -7,7 +7,7 @@
  *
  *   1. Publish MIND_STARTED via bus
  *   2. Spawn Drone via drone-pane.ts (tmux pane with Claude Code Sonnet)
- *   3. Wait for Drone completion (poll tmux pane process)
+ *   3. Wait for Drone completion (sentinel file via Stop hook)
  *   4. Run deterministic checks: git diff, bun test (scoped)
  *   5. Publish REVIEW_STARTED
  *   6. Call `claude -p` with structured review prompt (diff + checklist -> JSON verdict)
@@ -16,646 +16,58 @@
  *   9. Max iterations then approve with warnings
  *
  * The LLM is only invoked for the one thing that requires judgment: code review.
+ *
+ * Module structure:
+ *   supervisor-types.ts        — enums, interfaces, constants
+ *   supervisor-state-machine.ts — state machine with validated transitions
+ *   supervisor-review.ts       — review prompt, verdict parsing, feedback
+ *   supervisor-drone.ts        — drone spawning, re-launch, completion detection
+ *   mind-supervisor.ts         — this file: orchestrator entry point
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from "fs";
-import { join, resolve, dirname } from "path";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 import { resolveMindsDir } from "../shared/paths.js";
 import { killPane } from "./tmux-utils.ts";
-import type { MindTask } from "../cli/lib/implement-types.ts";
 import { formatTaskList } from "../cli/lib/drone-brief.ts";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export enum SupervisorState {
-  INIT = "INIT",
-  DRONE_RUNNING = "DRONE_RUNNING",
-  CHECKING = "CHECKING",
-  REVIEWING = "REVIEWING",
-  DONE = "DONE",
-  FAILED = "FAILED",
-}
-
-export interface SupervisorConfig {
-  mindName: string;
-  ticketId: string;
-  waveId: string;
-  tasks: MindTask[];
-  repoRoot: string;
-  busUrl: string;
-  busPort: number;
-  channel: string;
-  worktreePath: string;
-  baseBranch: string;
-  callerPane: string;
-  mindsSourceDir: string;
-  featureDir: string;
-  dependencies: string[];
-  maxIterations: number;
-  droneTimeoutMs: number;
-  reviewTimeoutMs?: number;
-}
-
-export interface ReviewFinding {
-  file: string;
-  line: number;
-  severity: "error" | "warning";
-  message: string;
-}
-
-export interface ReviewVerdict {
-  approved: boolean;
-  findings: ReviewFinding[];
-}
-
-export interface StateMachine {
-  getState(): SupervisorState;
-  transition(to: SupervisorState): void;
-  getIteration(): number;
-  incrementIteration(): number;
-  isMaxIterations(): boolean;
-}
-
-export interface SupervisorResult {
-  ok: boolean;
-  iterations: number;
-  approved: boolean;
-  approvedWithWarnings: boolean;
-  findings: ReviewFinding[];
-  dronePaneId?: string;
-  worktree: string;
-  branch: string;
-  errors: string[];
-}
-
-// ---------------------------------------------------------------------------
-// Valid state transitions
-// ---------------------------------------------------------------------------
-
-const VALID_TRANSITIONS: Record<SupervisorState, SupervisorState[]> = {
-  [SupervisorState.INIT]: [SupervisorState.DRONE_RUNNING, SupervisorState.DONE, SupervisorState.FAILED],
-  [SupervisorState.DRONE_RUNNING]: [SupervisorState.CHECKING, SupervisorState.FAILED],
-  [SupervisorState.CHECKING]: [SupervisorState.REVIEWING, SupervisorState.FAILED],
-  [SupervisorState.REVIEWING]: [SupervisorState.DONE, SupervisorState.DRONE_RUNNING, SupervisorState.FAILED],
-  [SupervisorState.DONE]: [],
-  [SupervisorState.FAILED]: [],
-};
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const DEFAULT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
-// ---------------------------------------------------------------------------
-// State Machine
-// ---------------------------------------------------------------------------
-
-export function createSupervisorStateMachine(config: SupervisorConfig): StateMachine {
-  let state = SupervisorState.INIT;
-  let iteration = 0;
-
-  return {
-    getState() {
-      return state;
-    },
-
-    transition(to: SupervisorState) {
-      const allowed = VALID_TRANSITIONS[state];
-      if (!allowed.includes(to)) {
-        throw new Error(
-          `Invalid transition from ${state} to ${to}. Allowed: [${allowed.join(", ")}]`
-        );
-      }
-      state = to;
-    },
-
-    getIteration() {
-      return iteration;
-    },
-
-    incrementIteration() {
-      iteration++;
-      return iteration;
-    },
-
-    isMaxIterations() {
-      return iteration >= config.maxIterations;
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Review Prompt Construction
-// ---------------------------------------------------------------------------
-
-const MAX_DIFF_CHARS = 50_000;
-
-export interface ReviewPromptParams {
-  diff: string;
-  testOutput: string;
-  standards: string;
-  tasks: MindTask[];
-  iteration: number;
-  previousFeedback?: string;
-}
-
-export function buildReviewPrompt(params: ReviewPromptParams): string {
-  const { diff, testOutput, standards, tasks, iteration, previousFeedback } = params;
-
-  // Truncate very large diffs to avoid exceeding context limits
-  let truncatedDiff = diff;
-  if (diff.length > MAX_DIFF_CHARS) {
-    truncatedDiff = diff.slice(0, MAX_DIFF_CHARS) + "\n\n[truncated — diff exceeded 50k chars]";
-  }
-
-  const taskList = tasks
-    .map((t) => `- ${t.id}: ${t.description}`)
-    .join("\n");
-
-  const previousSection = previousFeedback
-    ? `\n## Previous Feedback (for context)\n\n${previousFeedback}\n`
-    : "";
-
-  return `You are reviewing code changes for iteration ${iteration} of a drone implementation cycle.
-
-## Tasks Assigned
-
-${taskList}
-
-## Git Diff
-
-\`\`\`diff
-${truncatedDiff}
-\`\`\`
-
-## Test Results
-
-\`\`\`
-${testOutput}
-\`\`\`
-
-## Engineering Standards
-
-${standards}
-${previousSection}
-## Instructions
-
-Review the diff against the tasks and engineering standards. Check:
-1. All tasks are implemented
-2. No files modified outside the mind's boundary
-3. No duplicated logic
-4. All new exported functions have tests
-5. All tests pass (check the test output above)
-6. No lint errors or dead code
-7. Error messages include context
-
-Respond with ONLY a JSON object (no markdown, no explanation) in this exact format:
-
-\`\`\`json
-{
-  "approved": true | false,
-  "findings": [
-    {
-      "file": "path/to/file.ts",
-      "line": 42,
-      "severity": "error" | "warning",
-      "message": "Description of the issue"
-    }
-  ]
-}
-\`\`\`
-
-If approved, findings should be an empty array.
-If any issue is found (even minor ones like unused imports), set approved to false and list all findings.`;
-}
-
-// ---------------------------------------------------------------------------
-// Verdict Parsing
-// ---------------------------------------------------------------------------
-
-export function parseReviewVerdict(raw: string): ReviewVerdict {
-  // Strategy 1: Try direct JSON parse
-  try {
-    const parsed = JSON.parse(raw);
-    return normalizeVerdict(parsed);
-  } catch {
-    // Not direct JSON
-  }
-
-  // Strategy 2: Extract from markdown code block
-  const codeBlockMatch = raw.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
-  if (codeBlockMatch) {
-    try {
-      const parsed = JSON.parse(codeBlockMatch[1]);
-      return normalizeVerdict(parsed);
-    } catch {
-      // Code block wasn't valid JSON
-    }
-  }
-
-  // Strategy 3: Find JSON object in the text
-  const jsonMatch = raw.match(/\{[\s\S]*"approved"[\s\S]*\}/);
-  if (jsonMatch) {
-    try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return normalizeVerdict(parsed);
-    } catch {
-      // Matched something that looked like JSON but wasn't
-    }
-  }
-
-  // Fallback: unparseable response => treat as rejection
-  return {
-    approved: false,
-    findings: [
-      {
-        file: "(review)",
-        line: 0,
-        severity: "error",
-        message: `Failed to parse review verdict from LLM response. Raw response starts with: "${raw.slice(0, 100)}..."`,
-      },
-    ],
-  };
-}
-
-function normalizeVerdict(parsed: Record<string, unknown>): ReviewVerdict {
-  const approved = parsed.approved === true;
-  const rawFindings = Array.isArray(parsed.findings) ? parsed.findings : [];
-  const findings: ReviewFinding[] = rawFindings.map((f: Record<string, unknown>) => ({
-    file: String(f.file ?? "(unknown)"),
-    line: typeof f.line === "number" ? f.line : 0,
-    severity: f.severity === "warning" ? "warning" : "error",
-    message: String(f.message ?? "(no message)"),
-  }));
-
-  return { approved, findings };
-}
-
-// ---------------------------------------------------------------------------
-// Feedback File Generation
-// ---------------------------------------------------------------------------
-
-export function buildFeedbackContent(
-  round: number,
-  findings: ReviewFinding[],
-  testFailures?: string,
-): string {
-  let content = `# Review Feedback (Round ${round})\n\n`;
-
-  if (testFailures) {
-    content += `## Test Failures\n\n\`\`\`\n${testFailures}\n\`\`\`\n\n`;
-  }
-
-  if (findings.length > 0) {
-    content += `## Findings\n\n`;
-    for (const f of findings) {
-      const severity = f.severity === "error" ? "[ERROR]" : "[WARNING]";
-      content += `- [ ] ${severity} ${f.file}:${f.line} — ${f.message}\n`;
-    }
-  }
-
-  return content;
-}
-
-// ---------------------------------------------------------------------------
-// Drone Spawning (wrapper around drone-pane.ts — first iteration only)
-// ---------------------------------------------------------------------------
-
-interface DroneSpawnResult {
-  paneId: string;
-  worktree: string;
-  branch: string;
-}
-
-async function spawnDrone(config: SupervisorConfig, briefContent: string): Promise<DroneSpawnResult> {
-  const dronePanePath = join(config.mindsSourceDir, "lib", "drone-pane.ts");
-
-  // Write the drone brief to a temp file
-  const stateDir = join(resolveMindsDir(config.repoRoot), "state");
-  if (!existsSync(stateDir)) {
-    mkdirSync(stateDir, { recursive: true });
-  }
-  const briefPath = join(stateDir, `drone-brief-${config.mindName}-${config.waveId}.md`);
-  writeFileSync(briefPath, briefContent);
-
-  const args = [
-    "bun", dronePanePath,
-    "--mind", config.mindName,
-    "--ticket", config.ticketId,
-    "--pane", config.callerPane,
-    "--brief-file", briefPath,
-    "--bus-url", config.busUrl,
-    "--channel", config.channel,
-    "--wave-id", config.waveId,
-    "--base", config.baseBranch,
-  ];
-
-  const proc = Bun.spawn(args, {
-    cwd: config.repoRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  // Read stdout and stderr concurrently to prevent deadlock
-  const [output, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-
-  if (exitCode !== 0) {
-    throw new Error(`drone-pane.ts failed for @${config.mindName}: ${stderr}`);
-  }
-
-  let result: { drone_pane: string; worktree: string; branch: string };
-  try {
-    result = JSON.parse(output.trim());
-  } catch {
-    throw new Error(`drone-pane.ts returned invalid JSON: ${output}`);
-  }
-
-  return {
-    paneId: result.drone_pane,
-    worktree: result.worktree,
-    branch: result.branch,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Drone Re-launch (reuse existing worktree for retry iterations)
-// ---------------------------------------------------------------------------
-
-/**
- * Re-launch a drone in an existing worktree. This preserves the drone's
- * previous commits and the feedback file we just wrote.
- *
- * Steps:
- *   1. Kill the old drone pane
- *   2. Create a new tmux pane
- *   3. Write the updated DRONE-BRIEF.md to the existing worktree
- *   4. Launch Claude Code in the new pane pointed at the same worktree
- */
-function relaunchDroneInWorktree(opts: {
-  oldPaneId: string;
-  callerPane: string;
-  worktreePath: string;
-  briefContent: string;
-  busUrl: string;
-  mindName: string;
-}): string {
-  const { oldPaneId, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
-
-  // Kill the old drone pane
-  killPane(oldPaneId);
-
-  // Write updated DRONE-BRIEF.md to the SAME worktree
-  writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
-
-  // Create a new tmux pane
-  const splitResult = Bun.spawnSync(
-    ["tmux", "split-window", "-h", "-p", "50", "-t", callerPane, "-P", "-F", "#{pane_id}"],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  if (splitResult.exitCode !== 0) {
-    const stderr = new TextDecoder().decode(splitResult.stderr);
-    throw new Error(`Failed to split tmux pane for drone relaunch: ${stderr}`);
-  }
-  const newPaneId = new TextDecoder().decode(splitResult.stdout).trim();
-
-  // Launch Claude Code in the new pane, pointing at the existing worktree
-  const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
-  const escapedPrompt = JSON.stringify(prompt);
-  let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model sonnet ${escapedPrompt}`;
-  if (busUrl) {
-    launchCmd = `BUS_URL=${busUrl} ${launchCmd}`;
-  }
-  Bun.spawnSync(
-    ["tmux", "send-keys", "-t", newPaneId, launchCmd, "Enter"],
-    { stdout: "ignore", stderr: "ignore" },
-  );
-
-  return newPaneId;
-}
-
-// ---------------------------------------------------------------------------
-// Drone Completion Detection (sentinel file via Stop hook)
-// ---------------------------------------------------------------------------
-
-const SENTINEL_FILENAME = ".drone-complete";
-const DEFAULT_DRONE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-
-/**
- * Install a Claude Code Stop hook in the worktree's `.claude/` directory.
- * When Claude Code exits, the hook writes a sentinel file to the worktree root.
- * This is event-driven (no process-tree polling).
- */
-export function installDroneStopHook(worktreePath: string): void {
-  const claudeDir = join(worktreePath, ".claude");
-  if (!existsSync(claudeDir)) {
-    mkdirSync(claudeDir, { recursive: true });
-  }
-
-  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
-
-  // Write a local settings.json with a Stop hook that creates the sentinel file
-  const settings = {
-    hooks: {
-      Stop: [
-        {
-          matcher: "",
-          hooks: [
-            {
-              type: "command" as const,
-              command: `touch ${JSON.stringify(sentinelPath)}`,
-            },
-          ],
-        },
-      ],
-    },
-  };
-
-  const settingsPath = join(claudeDir, "settings.json");
-
-  // Merge with existing settings if present
-  let existing: Record<string, unknown> = {};
-  if (existsSync(settingsPath)) {
-    try {
-      existing = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    } catch {
-      // Ignore corrupt settings
-    }
-  }
-
-  const merged = {
-    ...existing,
-    hooks: {
-      ...(existing.hooks as Record<string, unknown> ?? {}),
-      ...settings.hooks,
-    },
-  };
-
-  writeFileSync(settingsPath, JSON.stringify(merged, null, 2));
-}
-
-/**
- * Wait for drone completion by watching for a sentinel file.
- *
- * The sentinel file is created by a Claude Code Stop hook installed in
- * the worktree's `.claude/settings.json`. This is event-driven via
- * `fs.watch()` with a poll fallback every 5 seconds.
- *
- * Falls back to pane-existence check if the sentinel never appears
- * (e.g., hook didn't fire due to crash).
- */
-async function waitForDroneCompletion(
-  paneId: string,
-  worktreePath: string,
-  timeoutMs: number,
-  pollIntervalMs: number = 5000,
-): Promise<{ ok: boolean; error?: string }> {
-  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
-
-  // Clean up any stale sentinel from a previous run
-  if (existsSync(sentinelPath)) {
-    try { Bun.spawnSync(["rm", "-f", sentinelPath]); } catch { /* ignore */ }
-  }
-
-  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    let resolved = false;
-    const done = (result: { ok: boolean; error?: string }) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeoutTimer);
-      clearInterval(pollTimer);
-      try { watcher?.close(); } catch { /* ignore */ }
-      resolve(result);
-    };
-
-    // Timeout
-    const timeoutTimer = setTimeout(() => {
-      done({ ok: false, error: `Drone timed out after ${timeoutMs}ms` });
-    }, timeoutMs);
-
-    // fs.watch() on the worktree directory for the sentinel file
-    let watcher: ReturnType<typeof watch> | undefined;
-    try {
-      watcher = watch(worktreePath, (eventType, filename) => {
-        if (filename === SENTINEL_FILENAME && existsSync(sentinelPath)) {
-          done({ ok: true });
-        }
-      });
-    } catch {
-      // fs.watch() may fail on some platforms — fall through to poll
-    }
-
-    // Poll fallback: check sentinel file + pane existence every interval
-    const pollTimer = setInterval(() => {
-      // Primary: sentinel file exists
-      if (existsSync(sentinelPath)) {
-        done({ ok: true });
-        return;
-      }
-
-      // Fallback: pane no longer exists (crash, manual kill)
-      const paneCheck = Bun.spawnSync(
-        ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
-        { stdout: "pipe", stderr: "pipe" },
-      );
-      if (paneCheck.exitCode !== 0) {
-        done({ ok: true });
-        return;
-      }
-    }, pollIntervalMs);
-
-    // Check immediately in case sentinel already exists or pane is already gone
-    if (existsSync(sentinelPath)) {
-      done({ ok: true });
-    }
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Deterministic Checks (git diff + bun test)
-// ---------------------------------------------------------------------------
-
-interface CheckResults {
-  diff: string;
-  testOutput: string;
-  testsPass: boolean;
-}
-
-function runDeterministicChecks(worktreePath: string, baseBranch: string, mindName: string): CheckResults {
-  // Get diff relative to base branch
-  const diffProc = Bun.spawnSync(
-    ["git", "-C", worktreePath, "diff", `${baseBranch}...HEAD`],
-    { stdout: "pipe", stderr: "pipe" }
-  );
-  const diff = new TextDecoder().decode(diffProc.stdout);
-
-  // Run scoped tests
-  const testProc = Bun.spawnSync(
-    ["bun", "test", `minds/${mindName}/`],
-    { cwd: worktreePath, stdout: "pipe", stderr: "pipe", timeout: 120_000 }
-  );
-  const testStdout = new TextDecoder().decode(testProc.stdout);
-  const testStderr = new TextDecoder().decode(testProc.stderr);
-  const testOutput = testStdout + (testStderr ? `\n${testStderr}` : "");
-  const testsPass = testProc.exitCode === 0;
-
-  return { diff, testOutput, testsPass };
-}
-
-// ---------------------------------------------------------------------------
-// LLM Review (claude -p) with timeout
-// ---------------------------------------------------------------------------
-
-const REVIEW_TIMEOUT_ERROR = "Review timed out";
-
-async function callLlmReview(prompt: string, timeoutMs: number = DEFAULT_REVIEW_TIMEOUT_MS): Promise<string> {
-  const proc = Bun.spawn(
-    ["claude", "-p", "--model", "sonnet", "--output-format", "text"],
-    {
-      stdin: new Blob([prompt]),
-      stdout: "pipe",
-      stderr: "pipe",
-    }
-  );
-
-  // Race the process against a timeout, clearing the timer on completion
-  let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutTimer = setTimeout(() => {
-      proc.kill();
-      reject(new Error(`${REVIEW_TIMEOUT_ERROR} after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-
-  // Read stdout and stderr concurrently to prevent deadlock
-  let output: string, stderr: string, exitCode: number;
-  try {
-    [output, stderr, exitCode] = await Promise.race([
-      Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ]),
-      timeoutPromise,
-    ]) as [string, string, number];
-  } finally {
-    clearTimeout(timeoutTimer);
-  }
-
-  if (exitCode !== 0) {
-    throw new Error(`claude -p failed (exit ${exitCode}): ${stderr}`);
-  }
-
-  return output.trim();
-}
+// Re-export types and functions from sub-modules for backward compatibility
+export {
+  SupervisorState,
+  type SupervisorConfig,
+  type ReviewFinding,
+  type ReviewVerdict,
+  type StateMachine,
+  type SupervisorResult,
+  DEFAULT_REVIEW_TIMEOUT_MS,
+  SENTINEL_FILENAME,
+} from "./supervisor-types.ts";
+
+export { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
+export { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
+export type { ReviewPromptParams } from "./supervisor-review.ts";
+export { installDroneStopHook } from "./supervisor-drone.ts";
+
+// Internal imports (not re-exported)
+import {
+  SupervisorState,
+  type SupervisorConfig,
+  type ReviewFinding,
+  type ReviewVerdict,
+  type SupervisorResult,
+  DEFAULT_REVIEW_TIMEOUT_MS,
+  SENTINEL_FILENAME,
+} from "./supervisor-types.ts";
+import { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
+import { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
+import {
+  spawnDrone,
+  relaunchDroneInWorktree,
+  installDroneStopHook,
+  waitForDroneCompletion,
+} from "./supervisor-drone.ts";
 
 // ---------------------------------------------------------------------------
 // Bus Signal Publishing
@@ -752,11 +164,86 @@ ${depsSection}${feedbackSection}
 }
 
 // ---------------------------------------------------------------------------
+// Deterministic Checks (git diff + bun test)
+// ---------------------------------------------------------------------------
+
+interface CheckResults {
+  diff: string;
+  testOutput: string;
+  testsPass: boolean;
+}
+
+function runDeterministicChecks(worktreePath: string, baseBranch: string, mindName: string): CheckResults {
+  // Get diff relative to base branch
+  const diffProc = Bun.spawnSync(
+    ["git", "-C", worktreePath, "diff", `${baseBranch}...HEAD`],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+  const diff = new TextDecoder().decode(diffProc.stdout);
+
+  // Run scoped tests
+  const testProc = Bun.spawnSync(
+    ["bun", "test", `minds/${mindName}/`],
+    { cwd: worktreePath, stdout: "pipe", stderr: "pipe", timeout: 120_000 }
+  );
+  const testStdout = new TextDecoder().decode(testProc.stdout);
+  const testStderr = new TextDecoder().decode(testProc.stderr);
+  const testOutput = testStdout + (testStderr ? `\n${testStderr}` : "");
+  const testsPass = testProc.exitCode === 0;
+
+  return { diff, testOutput, testsPass };
+}
+
+// ---------------------------------------------------------------------------
+// LLM Review (claude -p) with timeout
+// ---------------------------------------------------------------------------
+
+async function callLlmReview(prompt: string, timeoutMs: number = DEFAULT_REVIEW_TIMEOUT_MS): Promise<string> {
+  const proc = Bun.spawn(
+    ["claude", "-p", "--model", "sonnet", "--output-format", "text"],
+    {
+      stdin: new Blob([prompt]),
+      stdout: "pipe",
+      stderr: "pipe",
+    }
+  );
+
+  // Race the process against a timeout, clearing the timer on completion
+  let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutTimer = setTimeout(() => {
+      proc.kill();
+      reject(new Error(`Review timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  // Read stdout and stderr concurrently to prevent deadlock
+  let output: string, stderr: string, exitCode: number;
+  try {
+    [output, stderr, exitCode] = await Promise.race([
+      Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]),
+      timeoutPromise,
+    ]) as [string, string, number];
+  } finally {
+    clearTimeout(timeoutTimer);
+  }
+
+  if (exitCode !== 0) {
+    throw new Error(`claude -p failed (exit ${exitCode}): ${stderr}`);
+  }
+
+  return output.trim();
+}
+
+// ---------------------------------------------------------------------------
 // Main Supervisor Entry Point
 // ---------------------------------------------------------------------------
 
 export async function runMindSupervisor(config: SupervisorConfig): Promise<SupervisorResult> {
-  // Fix #7: Guard against maxIterations < 1
   if (config.maxIterations < 1) {
     throw new Error(`maxIterations must be >= 1, got ${config.maxIterations}`);
   }
@@ -773,10 +260,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
     errors: [],
   };
 
-  // Accumulate all findings across iterations (Fix #9)
   const allFindings: ReviewFinding[] = [];
-
-  // Track ALL spawned pane IDs for cleanup (Fix #10)
   const allSpawnedPanes: string[] = [];
 
   let currentDronePane: string | undefined;
@@ -808,7 +292,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
 
         const briefContent = buildSupervisorDroneBrief(config);
 
-        let drone: DroneSpawnResult;
+        let drone: Awaited<ReturnType<typeof spawnDrone>>;
         try {
           drone = await spawnDrone(config, briefContent);
         } catch (err) {
@@ -833,7 +317,6 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         console.log(`[supervisor] @${config.mindName}: Drone spawned in pane ${drone.paneId}`);
       } else {
         // Subsequent iterations: re-launch drone in the SAME worktree
-        // This preserves the drone's previous commits and feedback files
         console.log(`[supervisor] @${config.mindName}: Iteration ${iteration} -- re-launching drone in existing worktree`);
 
         const feedbackFile = `REVIEW-FEEDBACK-${iteration - 1}.md`;
@@ -894,7 +377,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       sm.transition(SupervisorState.REVIEWING);
       console.log(`[supervisor] @${config.mindName}: Reviewing (iteration ${iteration})`);
 
-      // Read ALL previous feedback files for the reviewer's context (Fix #8)
+      // Read ALL previous feedback files for the reviewer's context
       let previousFeedback: string | undefined;
       if (iteration > 1) {
         const feedbackParts: string[] = [];
@@ -946,7 +429,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         });
       }
 
-      // Accumulate findings across all iterations (Fix #10)
+      // Accumulate findings across all iterations
       allFindings.push(...verdict.findings);
       result.findings = allFindings;
 
@@ -989,13 +472,10 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       );
 
       // Loop continues: relaunchDroneInWorktree at the top of the next iteration
-      // will kill the old pane and create a new one in the same worktree.
     }
 
-    // Handle the edge case where we exit the while loop due to isMaxIterations
-    // being true at the START of an iteration (iteration count was already at max)
+    // Handle edge case where loop exits due to isMaxIterations at START
     if (sm.getState() === SupervisorState.INIT) {
-      // This shouldn't happen with maxIterations >= 1 (validated above), but guard anyway
       sm.transition(SupervisorState.DONE);
       result.ok = true;
       result.approved = true;
@@ -1019,7 +499,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
     result.errors.push(msg);
     result.ok = false;
   } finally {
-    // Cleanup: kill ALL spawned drone panes (Fix #10)
+    // Cleanup: kill ALL spawned drone panes
     for (const paneId of allSpawnedPanes) {
       killPane(paneId);
     }

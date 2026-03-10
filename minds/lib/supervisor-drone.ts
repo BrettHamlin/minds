@@ -1,0 +1,268 @@
+/**
+ * supervisor-drone.ts — Drone spawning, re-launching, completion detection,
+ * and Stop hook installation for the deterministic Mind supervisor.
+ */
+
+import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from "fs";
+import { join } from "path";
+import { resolveMindsDir } from "../shared/paths.js";
+import { killPane } from "./tmux-utils.ts";
+import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
+
+// ---------------------------------------------------------------------------
+// Drone Spawning (wrapper around drone-pane.ts — first iteration only)
+// ---------------------------------------------------------------------------
+
+export interface DroneSpawnResult {
+  paneId: string;
+  worktree: string;
+  branch: string;
+}
+
+export async function spawnDrone(config: SupervisorConfig, briefContent: string): Promise<DroneSpawnResult> {
+  const dronePanePath = join(config.mindsSourceDir, "lib", "drone-pane.ts");
+
+  // Write the drone brief to a temp file
+  const stateDir = join(resolveMindsDir(config.repoRoot), "state");
+  if (!existsSync(stateDir)) {
+    mkdirSync(stateDir, { recursive: true });
+  }
+  const briefPath = join(stateDir, `drone-brief-${config.mindName}-${config.waveId}.md`);
+  writeFileSync(briefPath, briefContent);
+
+  const args = [
+    "bun", dronePanePath,
+    "--mind", config.mindName,
+    "--ticket", config.ticketId,
+    "--pane", config.callerPane,
+    "--brief-file", briefPath,
+    "--bus-url", config.busUrl,
+    "--channel", config.channel,
+    "--wave-id", config.waveId,
+    "--base", config.baseBranch,
+  ];
+
+  const proc = Bun.spawn(args, {
+    cwd: config.repoRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  // Read stdout and stderr concurrently to prevent deadlock
+  const [output, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  if (exitCode !== 0) {
+    throw new Error(`drone-pane.ts failed for @${config.mindName}: ${stderr}`);
+  }
+
+  let result: { drone_pane: string; worktree: string; branch: string };
+  try {
+    result = JSON.parse(output.trim());
+  } catch {
+    throw new Error(`drone-pane.ts returned invalid JSON: ${output}`);
+  }
+
+  return {
+    paneId: result.drone_pane,
+    worktree: result.worktree,
+    branch: result.branch,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Drone Re-launch (reuse existing worktree for retry iterations)
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-launch a drone in an existing worktree. This preserves the drone's
+ * previous commits and the feedback file we just wrote.
+ *
+ * Steps:
+ *   1. Kill the old drone pane
+ *   2. Create a new tmux pane
+ *   3. Write the updated DRONE-BRIEF.md to the existing worktree
+ *   4. Launch Claude Code in the new pane pointed at the same worktree
+ */
+export function relaunchDroneInWorktree(opts: {
+  oldPaneId: string;
+  callerPane: string;
+  worktreePath: string;
+  briefContent: string;
+  busUrl: string;
+  mindName: string;
+}): string {
+  const { oldPaneId, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
+
+  // Kill the old drone pane
+  killPane(oldPaneId);
+
+  // Write updated DRONE-BRIEF.md to the SAME worktree
+  writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
+
+  // Create a new tmux pane
+  const splitResult = Bun.spawnSync(
+    ["tmux", "split-window", "-h", "-p", "50", "-t", callerPane, "-P", "-F", "#{pane_id}"],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  if (splitResult.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(splitResult.stderr);
+    throw new Error(`Failed to split tmux pane for drone relaunch: ${stderr}`);
+  }
+  const newPaneId = new TextDecoder().decode(splitResult.stdout).trim();
+
+  // Launch Claude Code in the new pane, pointing at the existing worktree
+  const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
+  const escapedPrompt = JSON.stringify(prompt);
+  let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model sonnet ${escapedPrompt}`;
+  if (busUrl) {
+    launchCmd = `BUS_URL=${busUrl} ${launchCmd}`;
+  }
+  Bun.spawnSync(
+    ["tmux", "send-keys", "-t", newPaneId, launchCmd, "Enter"],
+    { stdout: "ignore", stderr: "ignore" },
+  );
+
+  return newPaneId;
+}
+
+// ---------------------------------------------------------------------------
+// Drone Stop Hook Installation
+// ---------------------------------------------------------------------------
+
+/**
+ * Install a Claude Code Stop hook in the worktree's `.claude/` directory.
+ * When Claude Code exits, the hook writes a sentinel file to the worktree root.
+ * This is event-driven (no process-tree polling).
+ */
+export function installDroneStopHook(worktreePath: string): void {
+  const claudeDir = join(worktreePath, ".claude");
+  if (!existsSync(claudeDir)) {
+    mkdirSync(claudeDir, { recursive: true });
+  }
+
+  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
+
+  // Write a local settings.json with a Stop hook that creates the sentinel file
+  const settings = {
+    hooks: {
+      Stop: [
+        {
+          matcher: "",
+          hooks: [
+            {
+              type: "command" as const,
+              command: `touch ${JSON.stringify(sentinelPath)}`,
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  const settingsPath = join(claudeDir, "settings.json");
+
+  // Merge with existing settings if present
+  let existing: Record<string, unknown> = {};
+  if (existsSync(settingsPath)) {
+    try {
+      existing = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    } catch {
+      // Ignore corrupt settings
+    }
+  }
+
+  const merged = {
+    ...existing,
+    hooks: {
+      ...(existing.hooks as Record<string, unknown> ?? {}),
+      ...settings.hooks,
+    },
+  };
+
+  writeFileSync(settingsPath, JSON.stringify(merged, null, 2));
+}
+
+// ---------------------------------------------------------------------------
+// Drone Completion Detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Wait for drone completion by watching for a sentinel file.
+ *
+ * The sentinel file is created by a Claude Code Stop hook installed in
+ * the worktree's `.claude/settings.json`. This is event-driven via
+ * `fs.watch()` with a poll fallback every 5 seconds.
+ *
+ * Falls back to pane-existence check if the sentinel never appears
+ * (e.g., hook didn't fire due to crash).
+ */
+export async function waitForDroneCompletion(
+  paneId: string,
+  worktreePath: string,
+  timeoutMs: number,
+  pollIntervalMs: number = 5000,
+): Promise<{ ok: boolean; error?: string }> {
+  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
+
+  // Clean up any stale sentinel from a previous run
+  if (existsSync(sentinelPath)) {
+    try { Bun.spawnSync(["rm", "-f", sentinelPath]); } catch { /* ignore */ }
+  }
+
+  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    let resolved = false;
+    const done = (result: { ok: boolean; error?: string }) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeoutTimer);
+      clearInterval(pollTimer);
+      try { watcher?.close(); } catch { /* ignore */ }
+      resolve(result);
+    };
+
+    // Timeout
+    const timeoutTimer = setTimeout(() => {
+      done({ ok: false, error: `Drone timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
+
+    // fs.watch() on the worktree directory for the sentinel file
+    let watcher: ReturnType<typeof watch> | undefined;
+    try {
+      watcher = watch(worktreePath, (eventType, filename) => {
+        if (filename === SENTINEL_FILENAME && existsSync(sentinelPath)) {
+          done({ ok: true });
+        }
+      });
+    } catch {
+      // fs.watch() may fail on some platforms — fall through to poll
+    }
+
+    // Poll fallback: check sentinel file + pane existence every interval
+    const pollTimer = setInterval(() => {
+      // Primary: sentinel file exists
+      if (existsSync(sentinelPath)) {
+        done({ ok: true });
+        return;
+      }
+
+      // Fallback: pane no longer exists (crash, manual kill)
+      const paneCheck = Bun.spawnSync(
+        ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      if (paneCheck.exitCode !== 0) {
+        done({ ok: true });
+        return;
+      }
+    }, pollIntervalMs);
+
+    // Check immediately in case sentinel already exists or pane is already gone
+    if (existsSync(sentinelPath)) {
+      done({ ok: true });
+    }
+  });
+}
