@@ -12,6 +12,7 @@ import { resolve } from "path";
 import { writeFileSync, renameSync } from "fs";
 import { findChildServerFiles, spawnChild, callDescribe } from "./discovery.js";
 import type { MindDescription } from "./mind.js";
+import { resolveMindsDir } from "./shared/paths.js";
 
 // Detect repo root
 const gitProc = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], { stdout: "pipe" });
@@ -23,7 +24,7 @@ const outputFlagIdx = args.indexOf("--output");
 const outputPath =
   outputFlagIdx !== -1 && args[outputFlagIdx + 1]
     ? resolve(args[outputFlagIdx + 1])
-    : resolve(repoRoot, ".minds/minds.json");
+    : resolve(resolveMindsDir(repoRoot), "minds.json");
 
 const mindsDirFlagIdx = args.indexOf("--minds-dir");
 const mindsDir =

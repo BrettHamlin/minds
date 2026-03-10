@@ -56,3 +56,36 @@ export const HOOK_TYPES = {
   SESSION_END: "SessionEnd",
   STOP: "Stop",
 } as const;
+
+// ---------------------------------------------------------------------------
+// SSE serialization (BRE-482)
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a MindsBusMessage into an SSE-formatted string.
+ *
+ * Output format:
+ *   event: {type}\n
+ *   data: {json}\n
+ *   \n
+ *
+ * The JSON data object includes: type, timestamp (ISO-8601), mindName, waveId
+ * (extracted from payload when present), and the full payload.
+ */
+export function serializeEventForSSE(event: MindsBusMessage): string {
+  const payload = event.payload as Record<string, unknown> | null | undefined;
+  const waveId =
+    payload != null && typeof payload === "object" && "waveId" in payload
+      ? (payload as Record<string, unknown>).waveId
+      : undefined;
+
+  const data = {
+    type: event.type,
+    timestamp: new Date().toISOString(),
+    mindName: event.mindName,
+    ...(waveId !== undefined ? { waveId } : {}),
+    payload: event.payload,
+  };
+
+  return `event: ${event.type}\ndata: ${JSON.stringify(data)}\n\n`;
+}

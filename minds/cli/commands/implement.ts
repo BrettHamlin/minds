@@ -35,6 +35,7 @@ import {
 } from "../../transport/minds-bus-lifecycle.ts";
 import { publishWaveStarted, publishWaveComplete } from "../../transport/wave-event.ts";
 import { cleanupDroneWorktree } from "../../lib/cleanup.ts";
+import { resolveMindsDir } from "../../shared/paths.js";
 import type {
   ImplementOptions,
   ImplementResult,
@@ -42,19 +43,6 @@ import type {
   DroneInfo,
   MindInfo,
 } from "../lib/implement-types.ts";
-
-/* ------------------------------------------------------------------ */
-/*  Path resolution                                                    */
-/* ------------------------------------------------------------------ */
-
-/**
- * Resolve the minds directory: `.minds/` if it exists, else `minds/`.
- */
-function resolveMindsDir(repoRoot: string): string {
-  const dotMinds = join(repoRoot, ".minds");
-  if (existsSync(dotMinds)) return dotMinds;
-  return join(repoRoot, "minds");
-}
 
 /**
  * Resolve the source minds directory (where scripts live).
@@ -138,8 +126,8 @@ async function spawnMind(
   callerPane: string,
 ): Promise<MindInfo> {
   // Write brief to temp file
-  const briefPath = join(repoRoot, ".minds", "state", `brief-${mindName}-${waveId}.md`);
-  const stateDir = join(repoRoot, ".minds", "state");
+  const stateDir = join(resolveMindsDir(repoRoot), "state");
+  const briefPath = join(stateDir, `brief-${mindName}-${waveId}.md`);
   if (!existsSync(stateDir)) {
     mkdirSync(stateDir, { recursive: true });
   }
@@ -328,13 +316,13 @@ export async function runImplement(
 
   // ── Step 5b: Clean stale state from previous runs ─────────────────────────
 
-  const staleStateFile = join(repoRoot, ".minds", "state", `minds-bus-${ticketId}.json`);
+  const staleStateFile = join(mindsDir, "state", `minds-bus-${ticketId}.json`);
   if (existsSync(staleStateFile)) {
     unlinkSync(staleStateFile);
     console.log("  Cleared stale bus state from previous run.");
   }
   // Clear old brief files for this ticket
-  const stateDir = join(repoRoot, ".minds", "state");
+  const stateDir = join(mindsDir, "state");
   if (existsSync(stateDir)) {
     for (const f of readdirSync(stateDir)) {
       if (f.startsWith("brief-") && f.endsWith(".md")) {
@@ -360,7 +348,7 @@ export async function runImplement(
 
   // Read dashboard URL
   try {
-    const portFile = join(repoRoot, ".minds", "aggregator-port");
+    const portFile = join(mindsDir, "aggregator-port");
     if (existsSync(portFile)) {
       const port = readFileSync(portFile, "utf-8").trim();
       console.log(`  Dashboard: http://localhost:${port}/minds`);

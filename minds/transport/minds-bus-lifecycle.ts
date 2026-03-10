@@ -16,7 +16,7 @@ import { BusTransport } from "./BusTransport.ts";
 import * as path from "path";
 import { spawn } from "child_process";
 import { promises as fs } from "fs";
-import { mindsRoot } from "../shared/paths.js";
+import { mindsRoot, resolveMindsDir } from "../shared/paths.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,11 +41,11 @@ export interface MindsBusState {
 // ---------------------------------------------------------------------------
 
 function busStatePath(repoRoot: string, ticketId: string): string {
-  return path.join(repoRoot, ".minds", "state", `minds-bus-${ticketId}.json`);
+  return path.join(resolveMindsDir(repoRoot), "state", `minds-bus-${ticketId}.json`);
 }
 
 export async function writeBusState(repoRoot: string, state: MindsBusState): Promise<void> {
-  const stateDir = path.join(repoRoot, ".minds", "state");
+  const stateDir = path.join(resolveMindsDir(repoRoot), "state");
   await fs.mkdir(stateDir, { recursive: true });
   await fs.writeFile(busStatePath(repoRoot, state.ticketId), JSON.stringify(state, null, 2));
 }
@@ -76,7 +76,7 @@ export async function clearBusState(repoRoot: string, ticketId: string): Promise
  * An entry is orphaned if any of its PIDs no longer respond to kill -0.
  */
 export async function findOrphanedBusStates(repoRoot: string): Promise<MindsBusState[]> {
-  const stateDir = path.join(repoRoot, ".minds", "state");
+  const stateDir = path.join(resolveMindsDir(repoRoot), "state");
   let entries: string[];
   try {
     entries = await fs.readdir(stateDir);
@@ -175,8 +175,8 @@ function spawnBusServer(
       }
     });
 
-    // Strategy 2: poll .minds/bus-port file (bus-server.ts writes this before BUS_READY)
-    const portFile = path.join(cwd, ".minds", "bus-port");
+    // Strategy 2: poll bus-port file (bus-server.ts writes this before BUS_READY)
+    const portFile = path.join(resolveMindsDir(cwd), "bus-port");
     const pollInterval = setInterval(async () => {
       if (resolved) { clearInterval(pollInterval); return; }
       try {
@@ -247,7 +247,7 @@ function spawnBridge(
  * Returns the port the aggregator is listening on.
  */
 export async function ensureAggregator(repoRoot: string): Promise<number> {
-  const portFile = path.join(repoRoot, ".minds", "aggregator-port");
+  const portFile = path.join(resolveMindsDir(repoRoot), "aggregator-port");
 
   // Check if already running
   try {
@@ -332,7 +332,7 @@ export async function startMindsBus(
   const bridgePath = path.join(thisDir, "bus-signal-bridge.ts");
 
   // Remove stale bus-port file so the polling fallback doesn't pick up a dead port
-  const portFile = path.join(repoRoot, ".minds", "bus-port");
+  const portFile = path.join(resolveMindsDir(repoRoot), "bus-port");
   try { await fs.unlink(portFile); } catch { /* may not exist */ }
 
   const { pid: busServerPid, url: busUrl } = await spawnBusServer(serverPath, repoRoot);
