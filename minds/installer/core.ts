@@ -13,7 +13,7 @@ const _dir: string = (import.meta as { dir?: string }).dir
   ?? dirname(fileURLToPath(import.meta.url));
 
 /**
- * Returns the path to the portable Minds source directory (minds/).
+ * Returns the path to the core Minds source directory (minds/).
  * Works in development (Bun, minds/installer/) and production (Node.js, dist/).
  */
 export function getMindsSourceDir(): string {
@@ -28,8 +28,8 @@ export function getMindsSourceDir(): string {
   );
 }
 
-/** The portable Mind subdirectories to copy into .minds/ */
-const PORTABLE_MINDS = [
+/** The core Mind subdirectories to copy into .minds/ */
+const CORE_MINDS = [
   "router",
   "memory",
   "transport",
@@ -38,10 +38,11 @@ const PORTABLE_MINDS = [
   "integrations",
   "observability",
   "instantiate",
+  "fission",
 ] as const;
 
 /** Shared infrastructure files/directories to copy into .minds/ */
-const SHARED_INFRA_DIRS = ["shared", "contracts"] as const;
+const SHARED_INFRA_DIRS = ["shared", "contracts", "cli"] as const;
 const SHARED_INFRA_FILES = [
   "server-base.ts",
   "mind.ts",
@@ -62,9 +63,9 @@ export interface MindsInstallResult {
 }
 
 /**
- * Copy portable Minds and shared infrastructure to .minds/ in the target repo.
+ * Copy core Minds and shared infrastructure to .minds/ in the target repo.
  * Generate tsconfig.json with @minds/* path alias.
- * Populate .minds/minds.json from pre-generated portable registry.
+ * Populate .minds/minds.json from pre-generated core registry.
  * Verify Bun runtime is installed.
  */
 export function installCoreMinds(
@@ -102,11 +103,11 @@ export function installCoreMinds(
     }
   }
 
-  // Copy portable Minds
-  for (const mindName of PORTABLE_MINDS) {
+  // Copy core Minds
+  for (const mindName of CORE_MINDS) {
     const src = join(mindsSourceDir, mindName);
     if (!existsSync(src)) {
-      if (!quiet) console.warn(`  Warning: Portable Mind '${mindName}' not found at ${src}, skipping`);
+      if (!quiet) console.warn(`  Warning: Core Mind '${mindName}' not found at ${src}, skipping`);
       continue;
     }
     const dest = join(destMindsDir, mindName);
@@ -197,16 +198,16 @@ export function installCoreMinds(
     result.errors.push(`tsconfig.json: ${(err as Error).message}`);
   }
 
-  // Generate .minds/minds.json from pre-generated portable registry
+  // Generate .minds/minds.json from pre-generated core registry
   const mindsJsonPath = join(destMindsDir, "minds.json");
-  const portableRegistryPath = join(dirname(_dir), "installer", "portable-minds-registry.json");
+  const coreRegistryPath = join(dirname(_dir), "installer", "core-minds-registry.json");
   if (!existsSync(mindsJsonPath) || force) {
-    if (existsSync(portableRegistryPath)) {
-      copyFileSync(portableRegistryPath, mindsJsonPath);
-      log("  Populated .minds/minds.json from portable registry");
+    if (existsSync(coreRegistryPath)) {
+      copyFileSync(coreRegistryPath, mindsJsonPath);
+      log("  Populated .minds/minds.json from core registry");
     } else {
       writeFileSync(mindsJsonPath, "[]\n");
-      log("  Generated .minds/minds.json registry placeholder (portable registry not found)");
+      log("  Generated .minds/minds.json registry placeholder (core registry not found)");
     }
     result.copied.push(".minds/minds.json");
   } else {

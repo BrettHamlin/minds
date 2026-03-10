@@ -34,13 +34,9 @@ export async function handleBusMessage(msg: unknown, orchestratorPane: string): 
     // Collab pipeline signal: { type: "signal", payload: { signal: "[SIGNAL:...]" } }
     const payload = m.payload as Record<string, unknown> | undefined;
     deliveryText = payload?.signal as string | undefined;
-  } else if (m.from === "minds" && typeof m.type === "string") {
-    // Minds event: { from: "minds", type: "DRONE_COMPLETE", payload: {...} }
-    const payload = m.payload as Record<string, unknown> | undefined;
-    const mindName = (payload?.mindName as string) ?? "";
-    const tag = mindName ? ` @${mindName}` : "";
-    deliveryText = `${m.type}${tag}`;
   }
+  // Minds events (DRONE_COMPLETE, WAVE_STARTED, etc.) are handled by the
+  // deterministic CLI bus-listener — no need to echo them to the orchestrator pane.
 
   if (!deliveryText) return;
 

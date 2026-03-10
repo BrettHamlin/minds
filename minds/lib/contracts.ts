@@ -79,7 +79,7 @@ export function parseTasks(content: string): ParsedTask[] {
   for (const line of lines) {
     // Section header: ## @mind_name Tasks [(depends on: @a, @b)]
     const sectionMatch = line.match(
-      /^##\s+@(\w+)\s+Tasks(?:\s+\(depends on:\s*([^)]+)\))?/
+      /^##\s+@([\w-]+)\s+Tasks(?:\s+\(depends on:\s*([^)]+)\))?/
     );
     if (sectionMatch) {
       if (sectionMatch[2]) {
@@ -96,12 +96,12 @@ export function parseTasks(content: string): ParsedTask[] {
 
     // Task line: - [ ] T001 @mind_name [P]? description
     const taskMatch = line.match(
-      /^\s*-\s+\[[ xX]\]\s+(T\d+)\s+@(\w+)\s+(?:\[P\]\s+)?(.+)$/
+      /^\s*-\s+\[[ xX]\]\s+(T\d+)\s+@([\w-]+)\s+(?:\[P\]\s+)?(.+)$/
     );
     if (!taskMatch) continue;
 
     const [, id, mind, rest] = taskMatch;
-    const parallel = /^\s*-\s+\[[ xX]\]\s+T\d+\s+@\w+\s+\[P\]/.test(line);
+    const parallel = /^\s*-\s+\[[ xX]\]\s+T\d+\s+@[\w-]+\s+\[P\]/.test(line);
 
     // Parse produces annotation: produces: <interface> at <path>
     let produces: ParsedTask["produces"];

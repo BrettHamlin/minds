@@ -2,7 +2,7 @@
 
 ## Domain
 
-Minds architecture installation: copying portable Minds and shared infrastructure into target repos' `.minds/` directory, managing install paths, handling upgrade scenarios.
+Minds architecture installation: copying core Minds and shared infrastructure into target repos' `.minds/` directory, managing install paths, handling upgrade scenarios.
 
 ## Conventions
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 import { program } from "commander";
-import { runMindsInit } from "../commands/minds-init.js";
 
 program
   .name("minds")
@@ -13,7 +12,32 @@ program
   .option("--force", "Overwrite existing files")
   .option("--quiet", "Minimal output")
   .action(async (options: { force?: boolean; quiet?: boolean }) => {
+    const { runMindsInit } = await import("../commands/minds-init.js");
     await runMindsInit(options);
+  });
+
+program
+  .command("fission [target-dir]")
+  .description("Analyze codebase and scaffold domain Minds")
+  .option("--language <lang>", "Language to analyze (default: auto-detect)")
+  .option("--hub-threshold <n>", "Fan-in percentile for hub detection", "95")
+  .option("--resolution <n>", "Leiden resolution parameter", "1.0")
+  .option("--output <path>", "Write proposed map JSON to file")
+  .option("--dry-run", "Show proposed map without scaffolding")
+  .option("--yes", "Skip approval prompt")
+  .option("--offline", "Use deterministic naming (no LLM)")
+  .action(async (targetDir: string | undefined, options) => {
+    const { runFission } = await import("../commands/fission.js");
+    await runFission(targetDir, options);
+  });
+
+program
+  .command("implement <ticket-id>")
+  .description("Dispatch Mind drones to implement tasks for a ticket")
+  .option("--yes", "Skip confirmation prompt")
+  .action(async (ticketId: string, options: { yes?: boolean }) => {
+    const { runImplement } = await import("../commands/implement.js");
+    await runImplement(ticketId, options);
   });
 
 program.parse();
