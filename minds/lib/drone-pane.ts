@@ -254,7 +254,7 @@ if (import.meta.main) { (async () => {
   const excludePath = resolve(excludeDir, "exclude");
   mkdirSync(excludeDir, { recursive: true });
 
-  const excludeEntries = ["DRONE-BRIEF.md"];
+  const excludeEntries = ["DRONE-BRIEF.md", "CLAUDE.md"];
   let existingExclude = "";
   if (existsSync(excludePath)) {
     existingExclude = readFileSync(excludePath, "utf-8");
@@ -277,6 +277,9 @@ if (import.meta.main) { (async () => {
     : assembleClaudeContent(repoRoot, mindName!, ticketId!);
 
   writeFileSync(resolve(claudeDir, "CLAUDE.md"), claudeContent);
+
+  // Also write to worktree root so explicit Read("CLAUDE.md") gets the drone instructions
+  writeFileSync(resolve(worktreePath, "CLAUDE.md"), claudeContent);
 
   // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
 

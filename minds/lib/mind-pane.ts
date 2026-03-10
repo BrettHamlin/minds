@@ -401,7 +401,7 @@ if (import.meta.main) { (async () => {
   const excludePath = resolve(excludeDir, "exclude");
   mkdirSync(excludeDir, { recursive: true });
 
-  const excludeEntries = ["MIND-BRIEF.md"];
+  const excludeEntries = ["MIND-BRIEF.md", "DRONE-BRIEF.md", "CLAUDE.md"];
   let existingExclude = "";
   if (existsSync(excludePath)) {
     existingExclude = readFileSync(excludePath, "utf-8");
@@ -432,6 +432,10 @@ if (import.meta.main) { (async () => {
     : assembleClaudeContent(repoRoot, mindName!, ticketId!, busCmds, baseBranch);
 
   writeFileSync(resolve(claudeDir, "CLAUDE.md"), claudeContent);
+
+  // Also write to worktree root so explicit Read("CLAUDE.md") gets the operating manual
+  // (the repo's checked-in CLAUDE.md is generic; this overwrites it in the worktree only)
+  writeFileSync(resolve(worktreePath, "CLAUDE.md"), claudeContent);
 
   // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
 
@@ -485,7 +489,7 @@ if (import.meta.main) { (async () => {
 
   // ─── Launch Claude Code Opus ──────────────────────────────────────────────────
 
-  const initialPrompt = `Read MIND-BRIEF.md and begin the review loop.`;
+  const initialPrompt = `You are a 🧠 Mind supervisor. Your CLAUDE.md has been replaced with your operating manual — read it now. Then read MIND-BRIEF.md for your tasks. Follow the Review Loop exactly: do NOT implement tasks yourself. Spawn a 🛸 Drone via Agent({ subagent_type: 'drone' }) to do the work.`;
   let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model opus ${JSON.stringify(initialPrompt)}`;
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
