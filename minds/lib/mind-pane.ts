@@ -189,6 +189,11 @@ You supervise a 🛸 Drone that does the implementation work. Follow this proces
 
 ━━━ 1. READ ━━━
 Read MIND-BRIEF.md for your task assignment.
+Read your memory at \`${mindsDir}/${mindName}/memory/MEMORY.md\` for context from previous reviews.
+Search memory for task-relevant context:
+\`\`\`bash
+bun ${mindsDir}/memory/lib/search-cli.ts --mind ${mindName} --query "<keywords from your task>"
+\`\`\`
 
 ━━━ 2. SIGNAL ━━━
 ${signalBlock(busPublishCmds?.started)}
@@ -210,19 +215,21 @@ Verify all tasks from MIND-BRIEF.md are implemented, then evaluate the diff:
 \`\`\`bash
 git diff ${diffBase}...HEAD
 \`\`\`
-Evaluate against the **Review Checklist** in Engineering Standards below.
+Evaluate against the **full Review Checklist** in Engineering Standards below.
+**On re-review after feedback:** Run the COMPLETE checklist again, not just the items you flagged. Fixes can introduce new issues.
 
 ━━━ 7. VERDICT ━━━
 
-**❌ Issues found:**
+**❌ ANY issues found (including minor ones — unused imports, inefficiencies, missing edge cases, style violations):**
+Every finding is a fix. Do NOT approve with known issues. Send ALL findings back to the drone.
 ${signalBlock(busPublishCmds?.reviewFeedback)}
-Then resume 🛸 Drone:
+Then resume 🛸 Drone with specific, actionable feedback:
 \`\`\`
-Agent({ resume: '{agentId}', prompt: 'Fix: {specific feedback}' })
+Agent({ resume: '{agentId}', prompt: 'Fix these issues:\\n1. {issue}\\n2. {issue}' })
 \`\`\`
 → Go to step 5.
 
-**✅ Approved:**
+**✅ Approved (ONLY when zero issues found):**
 a. Flush memory with key insights from this review:
 \`\`\`bash
 bun ${mindsDir}/memory/lib/write-cli.ts --mind ${mindName} --content "<insight>"
