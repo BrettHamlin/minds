@@ -35,6 +35,7 @@ import {
 import { publishWaveStarted, publishWaveComplete } from "../../transport/wave-event.ts";
 import { cleanupDroneWorktree } from "../../lib/cleanup.ts";
 import { resolveMindsDir } from "../../shared/paths.js";
+import { ensureDashboardBuilt } from "../../shared/build-dashboard.js";
 import type {
   ImplementOptions,
   ImplementResult,
@@ -320,6 +321,18 @@ export async function runImplement(
         unlinkSync(join(stateDir, f));
       }
     }
+  }
+
+  // ── Step 5c: Ensure dashboard is built ────────────────────────────────────
+
+  console.log("\nStep 5c: Ensuring dashboard is built...");
+  const dashboardBuild = ensureDashboardBuilt(mindsDir);
+  if (dashboardBuild.skipped) {
+    console.log("  Dashboard already built (or not present).");
+  } else if (dashboardBuild.success) {
+    console.log("  Dashboard built successfully.");
+  } else {
+    console.error(`  Warning: ${dashboardBuild.error} — dashboard may not be available.`);
   }
 
   // ── Step 6: Start bus server ───────────────────────────────────────────────

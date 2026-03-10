@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, writeFi
 import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
+import { ensureDashboardBuilt } from "../shared/build-dashboard.js";
 
 /** Local ensureDir — avoids cross-Mind import from cli/utils/fs. */
 function ensureDir(dir: string): void {
@@ -225,25 +226,17 @@ export function installCoreMinds(
   }
 
   // Build dashboard SPA
-  const dashboardDest = join(destMindsDir, "dashboard");
-  const dashboardPkgJson = join(dashboardDest, "package.json");
-  if (result.bunVerified && existsSync(dashboardPkgJson)) {
-    const stdio = quiet ? "ignore" : "inherit";
-    log("  Installing dashboard dependencies...");
-    const installProc = spawnSync("bun", ["install"], { cwd: dashboardDest, stdio });
-    if (installProc.status !== 0) {
-      result.errors.push("Dashboard build failed: bun install returned non-zero exit code");
+  if (result.bunVerified) {
+    const dashboardBuild = ensureDashboardBuilt(destMindsDir, quiet);
+    if (dashboardBuild.skipped) {
+      log("  Dashboard already built (or not present).");
+    } else if (dashboardBuild.success) {
+      result.dashboardBuilt = true;
+      log("  Dashboard built successfully");
     } else {
-      log("  Building dashboard SPA...");
-      const buildProc = spawnSync("bun", ["run", "build.ts"], { cwd: dashboardDest, stdio });
-      if (buildProc.status !== 0) {
-        result.errors.push("Dashboard build failed: bun run build.ts returned non-zero exit code");
-      } else {
-        result.dashboardBuilt = true;
-        log("  Dashboard built successfully");
-      }
+      result.errors.push(`Dashboard build failed: ${dashboardBuild.error}`);
     }
-  } else if (!result.bunVerified && existsSync(dashboardPkgJson)) {
+  } else if (existsSync(join(destMindsDir, "dashboard", "package.json"))) {
     result.errors.push("Dashboard not built: Bun runtime not available");
   }
 
