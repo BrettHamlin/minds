@@ -19,12 +19,12 @@
  *  11. Cleanup: teardown bus, remove worktrees
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
+import { existsSync, readFileSync, readdirSync, unlinkSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { parseAndGroupTasks } from "../lib/task-parser.ts";
 import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
-import { buildDroneBrief } from "../lib/drone-brief.ts";
-import { buildMindBrief } from "../lib/mind-brief.ts";
+import { runMindSupervisor } from "../../lib/mind-supervisor.ts";
+import type { SupervisorConfig } from "../../lib/mind-supervisor.ts";
 import { waitForWaveCompletion } from "../lib/bus-listener.ts";
 import {
   startMindsBus,
@@ -39,8 +39,6 @@ import { ensureDashboardBuilt } from "../../shared/build-dashboard.js";
 import type {
   ImplementOptions,
   ImplementResult,
-  DispatchPlan,
-  DroneInfo,
   MindInfo,
 } from "../lib/implement-types.ts";
 
@@ -114,66 +112,87 @@ function killPane(paneId: string): void {
 /*  Mind spawning                                                      */
 /* ------------------------------------------------------------------ */
 
-async function spawnMind(
+/**
+ * Launch a deterministic Mind supervisor for a given mind.
+ *
+ * The supervisor handles all control flow: spawning drones, waiting for
+ * completion, running deterministic checks, calling the LLM for review,
+ * handling retries, and publishing MIND_COMPLETE when done.
+ *
+ * Returns a promise that resolves when the supervisor is done AND a
+ * MindInfo object with the initial tracking information. The supervisor
+ * publishes MIND_COMPLETE via the bus, so waitForWaveCompletion() picks
+ * it up as before.
+ */
+function launchMindSupervisor(
   repoRoot: string,
   mindsSourceDir: string,
   mindName: string,
   ticketId: string,
   waveId: string,
   busUrl: string,
+  busPort: number,
   channel: string,
-  briefContent: string,
+  tasks: import("../lib/implement-types.ts").MindTask[],
+  featureDir: string,
+  dependencies: string[],
   callerPane: string,
-): Promise<MindInfo> {
-  // Write brief to temp file
-  const stateDir = join(resolveMindsDir(repoRoot), "state");
-  const briefPath = join(stateDir, `brief-${mindName}-${waveId}.md`);
-  if (!existsSync(stateDir)) {
-    mkdirSync(stateDir, { recursive: true });
-  }
-  writeFileSync(briefPath, briefContent);
+  baseBranch: string,
+): { info: MindInfo; done: Promise<void> } {
+  const supervisorConfig: SupervisorConfig = {
+    mindName,
+    ticketId,
+    waveId,
+    tasks,
+    repoRoot,
+    busUrl,
+    busPort,
+    channel,
+    worktreePath: "(resolved by drone-pane)",
+    baseBranch,
+    callerPane,
+    mindsSourceDir,
+    featureDir,
+    dependencies,
+    maxIterations: 3,
+    droneTimeoutMs: 20 * 60 * 1000, // 20 minutes
+  };
 
-  // Spawn Mind via mind-pane.ts
-  const mindPanePath = join(mindsSourceDir, "lib", "mind-pane.ts");
-  const args = [
-    "bun", mindPanePath,
-    "--mind", mindName,
-    "--ticket", ticketId,
-    "--pane", callerPane,
-    "--brief-file", briefPath,
-    "--bus-url", busUrl,
-    "--channel", channel,
-    "--wave-id", waveId,
-  ];
-
-  const proc = Bun.spawn(args, {
-    cwd: repoRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const output = await new Response(proc.stdout).text();
-  const exitCode = await proc.exited;
-
-  if (exitCode !== 0) {
-    const stderr = await new Response(proc.stderr).text();
-    throw new Error(`mind-pane.ts failed for @${mindName}: ${stderr}`);
-  }
-
-  let result: { mind_pane: string; worktree: string; branch: string };
-  try {
-    result = JSON.parse(output.trim());
-  } catch {
-    throw new Error(`mind-pane.ts returned invalid JSON for @${mindName}: ${output}`);
-  }
-
-  return {
+  // MindInfo placeholder -- will be updated when supervisor provides drone info
+  const info: MindInfo = {
     mindName,
     waveId,
-    paneId: result.mind_pane,
-    worktree: result.worktree,
-    branch: result.branch,
+    paneId: "(supervisor)", // No Mind pane -- the supervisor IS the mind
+    worktree: "(pending)",
+    branch: "(pending)",
   };
+
+  const done = runMindSupervisor(supervisorConfig).then((result) => {
+    // Update info with actual values from the supervisor result
+    info.worktree = result.worktree;
+    info.branch = result.branch;
+    if (result.dronePaneId) {
+      info.paneId = result.dronePaneId;
+    }
+
+    if (!result.ok) {
+      const errorMsg = result.errors.join("; ");
+      console.error(`  Supervisor @${mindName} failed: ${errorMsg}`);
+      throw new Error(`Supervisor failed for @${mindName}: ${errorMsg}`);
+    }
+
+    if (result.approvedWithWarnings) {
+      console.log(
+        `  Supervisor @${mindName}: approved with warnings after ${result.iterations} iteration(s)`,
+      );
+    } else {
+      console.log(
+        `  Supervisor @${mindName}: approved after ${result.iterations} iteration(s)`,
+      );
+    }
+  });
+
+  return { info, done };
 }
 
 /* ------------------------------------------------------------------ */
@@ -418,8 +437,17 @@ export async function runImplement(
     // Publish WAVE_STARTED
     await publishWaveStarted(busInfo.busUrl, channel, wave.id);
 
-    // Spawn Minds for this wave
+    // Launch deterministic supervisors for this wave
     const waveDrones: MindInfo[] = [];
+    const supervisorPromises: Promise<void>[] = [];
+
+    // Extract bus port from URL for supervisor config
+    const busPort = parseInt(new URL(busInfo.busUrl).port, 10);
+    // Resolve base branch for diff comparisons
+    const baseBranch = Bun.spawnSync(["git", "-C", repoRoot, "branch", "--show-current"], {
+      stdout: "pipe",
+    });
+    const baseBranchName = new TextDecoder().decode(baseBranch.stdout).trim() || "dev";
 
     for (const mindName of wave.minds) {
       const group = groupMap.get(mindName);
@@ -428,54 +456,45 @@ export async function runImplement(
         continue;
       }
 
-      const briefContent = buildMindBrief({
-        ticketId,
-        mindName,
-        waveId: wave.id,
-        featureDir,
-        tasks: group.tasks,
-        dependencies: group.dependencies,
-        worktreePath: "(resolved at launch)",
-      });
-
-      console.log(`  Spawning Mind for @${mindName}...`);
+      console.log(`  Launching supervisor for @${mindName}...`);
       try {
-        const drone = await spawnMind(
+        const { info, done } = launchMindSupervisor(
           repoRoot,
           mindsSourceDir,
           mindName,
           ticketId,
           wave.id,
           busInfo.busUrl,
+          busPort,
           channel,
-          briefContent,
+          group.tasks,
+          featureDir,
+          group.dependencies,
           callerPane,
+          baseBranchName,
         );
-        waveDrones.push(drone);
-        allDrones.push(drone);
-        result.mindsSpawned.push(drone);
-        console.log(`  Spawned @${mindName} in pane ${drone.paneId} (worktree: ${drone.worktree})`);
-        // Rebalance pane layout after each spawn so panes stay evenly sized
-        Bun.spawnSync(
-          ["tmux", "select-layout", "-t", callerPane, "tiled"],
-          { stdout: "ignore", stderr: "ignore" },
-        );
+        waveDrones.push(info);
+        allDrones.push(info);
+        result.mindsSpawned.push(info);
+        supervisorPromises.push(done);
+        console.log(`  Supervisor launched for @${mindName}`);
       } catch (err) {
-        console.error(`  Error spawning @${mindName}: ${(err as Error).message}`);
-        result.errors.push(`Spawn failed for @${mindName}: ${(err as Error).message}`);
+        console.error(`  Error launching @${mindName}: ${(err as Error).message}`);
+        result.errors.push(`Launch failed for @${mindName}: ${(err as Error).message}`);
         result.ok = false;
       }
     }
 
     if (waveDrones.length === 0) {
-      console.warn(`  No Minds spawned for ${wave.id}. Skipping.`);
+      console.warn(`  No supervisors launched for ${wave.id}. Skipping.`);
       continue;
     }
 
-    // Wait for all Minds in this wave to complete
-    console.log(`\n  Waiting for ${waveDrones.length} Mind(s) to complete ${wave.id}...`);
-    // Build a map of mind name → pane ID for per-Mind cleanup
-    const mindPaneMap = new Map(waveDrones.map((d) => [d.mindName, d.paneId]));
+    // Wait for all supervisors in this wave to complete.
+    // The supervisors publish MIND_COMPLETE via the bus, so waitForWaveCompletion
+    // will pick those up. We also track the supervisor promises directly as a
+    // fallback to detect failures that don't reach the bus.
+    console.log(`\n  Waiting for ${waveDrones.length} supervisor(s) to complete ${wave.id}...`);
 
     const completionResult = await waitForWaveCompletion(
       busInfo.busUrl,
@@ -484,11 +503,6 @@ export async function runImplement(
       waveDrones.map((d) => d.mindName),
       30 * 60 * 1000, // 30 min timeout
       abortController.signal,
-      (mindName) => {
-        // Kill pane immediately when Mind completes
-        const paneId = mindPaneMap.get(mindName);
-        if (paneId) killPane(paneId);
-      },
     );
 
     if (!completionResult.ok) {
@@ -513,13 +527,10 @@ export async function runImplement(
     result.wavesCompleted++;
     console.log(`  Wave ${wave.id} complete.`);
 
-    // Panes are killed individually via onMindComplete callback above.
-    // Any stragglers (e.g. from timeout) get cleaned up here.
-    for (const d of waveDrones) {
-      if (!completionResult.completed.includes(d.mindName)) {
-        killPane(d.paneId);
-      }
-    }
+    // Supervisors handle their own drone pane cleanup.
+    // Wait for any supervisor promises that haven't resolved yet (edge case:
+    // bus got the MIND_COMPLETE but the supervisor promise is still settling).
+    await Promise.allSettled(supervisorPromises);
   }
 
   // ── Step 9: Merge worktrees ────────────────────────────────────────────────
