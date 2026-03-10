@@ -33,7 +33,7 @@ export async function waitForWaveCompletion(
   expectedMinds: string[],
   timeoutMs: number = 30 * 60 * 1000,
   signal?: AbortSignal,
-  onDroneComplete?: (mindName: string) => void,
+  onMindComplete?: (mindName: string) => void,
 ): Promise<WaveCompletionResult> {
   const completed = new Set<string>();
   const errors: string[] = [];
@@ -131,7 +131,7 @@ export async function waitForWaveCompletion(
               console.log(
                 `  MIND_COMPLETE: @${event.payload.mindName} (${completed.size}/${expected.size})`,
               );
-              onDroneComplete?.(event.payload.mindName);
+              onMindComplete?.(event.payload.mindName);
 
               if (completed.size === expected.size) {
                 clearTimeout(timeout);

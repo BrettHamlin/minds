@@ -62,7 +62,7 @@ export interface ImplementResult {
   ok: boolean;
   wavesCompleted: number;
   totalWaves: number;
-  dronesSpawned: DroneInfo[];
+  mindsSpawned: MindInfo[];
   mergeResults: Array<{ mind: string; ok: boolean; error?: string }>;
   errors: string[];
 }
