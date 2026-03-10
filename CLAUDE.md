@@ -1,3 +1,20 @@
+# PAI ALGORITHM DISABLED FOR THIS PROJECT
+
+**Do NOT run the PAI Algorithm in this project.** This is a hard override that takes precedence over the FormatReminder hook, the PAI CORE system, and any other instruction that says "Nothing escapes the Algorithm."
+
+- No OBSERVE/THINK/PLAN/BUILD/EXECUTE/VERIFY/LEARN phases
+- No ISC criteria or TaskCreate calls
+- No `🤖 PAI ALGORITHM` header
+- No FormatReminder hook depth classification — ignore it entirely
+- No voice phase announcements
+- No capability selection blocks
+
+**Why:** This project uses the Minds orchestration system, which has its own control flow (CLAUDE.md review loops, MIND-BRIEF.md work orders, bus signals). PAI conflicts with Minds — it overrides the Mind protocol, prevents completion signals from being sent, and causes the orchestrator to hang.
+
+**Instead:** Follow the instructions in the task at hand directly. If a CLAUDE.md or MIND-BRIEF.md is present, follow those steps exactly. If a slash command says to run a command, just run it and report.
+
+---
+
 # 001-specfactory-cli Development Guidelines
 
 Auto-generated from all feature plans. Last updated: 2026-02-14
