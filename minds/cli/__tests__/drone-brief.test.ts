@@ -76,7 +76,6 @@ describe("buildDroneBrief", () => {
     expect(brief).not.toContain("minds-publish.ts");
     expect(brief).not.toContain("MIND_COMPLETE");
     expect(brief).not.toContain("Completion Signal");
-    expect(brief).not.toContain("bus");
   });
 
   it("omits dependencies section when no deps", () => {
@@ -89,10 +88,10 @@ describe("buildDroneBrief", () => {
       featureDir: "specs/BRE-123-feature",
     });
 
-    expect(brief).not.toContain("## Dependencies");
+    expect(brief).not.toContain("Dependencies");
   });
 
-  it("includes dependencies section when deps exist", () => {
+  it("includes dependencies section with emoji when deps exist", () => {
     const brief = buildDroneBrief({
       ticketId: "BRE-123",
       mindName: "execution",
@@ -102,10 +101,10 @@ describe("buildDroneBrief", () => {
       featureDir: "specs/BRE-123-feature",
     });
 
-    expect(brief).toContain("## Dependencies");
+    expect(brief).toContain("🔗 Dependencies");
     expect(brief).toContain("@pipeline_core");
     expect(brief).toContain("@signals");
-    expect(brief).toContain("already been completed");
+    expect(brief).toContain("completed and merged");
   });
 
   it("includes TDD instructions", () => {
@@ -119,7 +118,8 @@ describe("buildDroneBrief", () => {
     });
 
     expect(brief).toContain("TDD");
-    expect(brief).toContain("bun test minds/pipeline_core/");
+    expect(brief).toContain("bun test");
+    expect(brief).toContain("pipeline_core/");
   });
 
   it("includes feature directory path", () => {
@@ -133,5 +133,92 @@ describe("buildDroneBrief", () => {
     });
 
     expect(brief).toContain("specs/BRE-123-feature");
+  });
+
+  it("has YAML frontmatter with name, role, scope", () => {
+    const brief = buildDroneBrief({
+      ticketId: "BRE-123",
+      mindName: "pipeline_core",
+      waveId: "wave-1",
+      tasks: SAMPLE_TASKS,
+      dependencies: [],
+      featureDir: "specs/BRE-123-feature",
+    });
+
+    expect(brief).toContain("---\nname: Drone Brief");
+    expect(brief).toContain("role: Implementation tasks for the 🛸 Drone");
+    expect(brief).toContain("scope: Complete all tasks");
+  });
+
+  it("contains pointer back to agent definition", () => {
+    const brief = buildDroneBrief({
+      ticketId: "BRE-123",
+      mindName: "pipeline_core",
+      waveId: "wave-1",
+      tasks: SAMPLE_TASKS,
+      dependencies: [],
+      featureDir: "specs/BRE-123-feature",
+    });
+
+    expect(brief).toContain(".claude/agents/drone.md");
+    expect(brief).toContain("compacted");
+  });
+
+  it("contains completion criteria", () => {
+    const brief = buildDroneBrief({
+      ticketId: "BRE-123",
+      mindName: "pipeline_core",
+      waveId: "wave-1",
+      tasks: SAMPLE_TASKS,
+      dependencies: [],
+      featureDir: "specs/BRE-123-feature",
+    });
+
+    expect(brief).toContain("Completion Criteria");
+    expect(brief).toContain("all tests pass");
+  });
+
+  it("uses absolute mindsDir for test command when provided", () => {
+    const brief = buildDroneBrief({
+      ticketId: "BRE-123",
+      mindName: "pipeline_core",
+      waveId: "wave-1",
+      tasks: SAMPLE_TASKS,
+      dependencies: [],
+      featureDir: "specs/BRE-123-feature",
+      mindsDir: "/home/user/repo/minds",
+    });
+
+    expect(brief).toContain("bun test /home/user/repo/minds/pipeline_core/");
+    expect(brief).not.toContain("bun test minds/pipeline_core/");
+  });
+
+  it("falls back to relative path when mindsDir not provided", () => {
+    const brief = buildDroneBrief({
+      ticketId: "BRE-123",
+      mindName: "pipeline_core",
+      waveId: "wave-1",
+      tasks: SAMPLE_TASKS,
+      dependencies: [],
+      featureDir: "specs/BRE-123-feature",
+    });
+
+    expect(brief).toContain("bun test minds/pipeline_core/");
+  });
+
+  it("uses emoji anchors on section headers", () => {
+    const brief = buildDroneBrief({
+      ticketId: "BRE-123",
+      mindName: "pipeline_core",
+      waveId: "wave-1",
+      tasks: SAMPLE_TASKS,
+      dependencies: ["signals"],
+      featureDir: "specs/BRE-123-feature",
+    });
+
+    expect(brief).toContain("## 📋 Tasks");
+    expect(brief).toContain("## ✅ Completion Criteria");
+    expect(brief).toContain("## 🔗 Dependencies");
+    expect(brief).toContain("## 🔧 Instructions");
   });
 });

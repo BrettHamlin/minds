@@ -14,6 +14,7 @@ export interface DroneBriefParams {
   tasks: MindTask[];
   dependencies: string[];
   featureDir: string;
+  mindsDir?: string; // absolute path to minds/ dir for test commands
 }
 
 /**
@@ -39,13 +40,15 @@ export function buildDroneBrief(params: DroneBriefParams): string {
     tasks,
     dependencies,
     featureDir,
+    mindsDir,
   } = params;
 
   const taskList = formatTaskList(tasks);
+  const testPath = mindsDir ? `${mindsDir}/${mindName}/` : `minds/${mindName}/`;
 
   const depsSection =
     dependencies.length > 0
-      ? `## Dependencies\n\nThis mind depends on: ${dependencies.map((d) => `@${d}`).join(", ")}.\nTheir work has already been completed and merged in previous waves.\n`
+      ? `\n---\n\n## 🔗 Dependencies\n\n${dependencies.map((d) => `@${d}`).join(", ")} — completed and merged in previous waves.\n`
       : "";
 
   return `---
@@ -53,6 +56,8 @@ name: Drone Brief
 role: Implementation tasks for the 🛸 Drone code worker
 scope: Complete all tasks, commit when done
 ---
+
+Your agent definition is in \`.claude/agents/drone.md\`. If you've compacted, re-read this file.
 
 # 🛸 Drone Brief: @${mindName}
 
@@ -64,17 +69,22 @@ scope: Complete all tasks, commit when done
 
 ---
 
-## Tasks
+## 📋 Tasks
 
 ${taskList}
 
+---
+
+## ✅ Completion Criteria
+
+All tasks above are checked off AND all tests pass.
 ${depsSection}
-## Instructions
+## 🔧 Instructions
 
 1. Read and understand each task above.
 2. Implement ALL tasks in order (unless marked [P] for parallel-safe).
 3. Write tests for each change (TDD: red -> green -> refactor).
-4. Run \`bun test minds/${mindName}/\` to verify your changes pass.
+4. Run \`bun test ${testPath}\` to verify your changes pass.
 5. Commit your work with a descriptive message referencing ${ticketId}.
 `;
 }
