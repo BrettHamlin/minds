@@ -24,7 +24,6 @@ program
   .option("--resolution <n>", "Leiden resolution parameter", "1.0")
   .option("--output <path>", "Write proposed map JSON to file")
   .option("--dry-run", "Show proposed map without scaffolding")
-  .option("--yes", "Skip approval prompt")
   .option("--offline", "Use deterministic naming (no LLM)")
   .action(async (targetDir: string | undefined, options) => {
     const { runFission } = await import("../commands/fission.js");
@@ -34,8 +33,7 @@ program
 program
   .command("implement <ticket-id>")
   .description("Dispatch Mind drones to implement tasks for a ticket")
-  .option("--yes", "Skip confirmation prompt")
-  .action(async (ticketId: string, options: { yes?: boolean }) => {
+  .action(async (ticketId: string, options: Record<string, unknown>) => {
     const { runImplement } = await import("../commands/implement.js");
     await runImplement(ticketId, options);
   });

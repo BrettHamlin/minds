@@ -11,7 +11,6 @@ import { runPipeline, detectLanguage } from "../../fission/lib/pipeline.js";
 import { nameAndValidate, type NamingInput } from "../../fission/naming/naming.js";
 import { displayProposedMap, displaySummary } from "../../fission/lib/display.js";
 import { scaffoldAllMinds } from "../../fission/lib/scaffold-minds.js";
-import { promptConfirmation } from "../lib/prompt.js";
 import type { PipelineResult } from "../../fission/lib/pipeline.js";
 
 /* ------------------------------------------------------------------ */
@@ -123,19 +122,7 @@ export async function runFission(
     return;
   }
 
-  // 10. Prompt for confirmation unless --yes
-  if (!options.yes) {
-    const totalMinds = proposedMap.minds.length + 1; // +1 for foundation
-    const confirmed = await promptConfirmation(
-      `Scaffold ${totalMinds} Minds? [y/N] `,
-    );
-    if (!confirmed) {
-      console.log("Aborted.");
-      return;
-    }
-  }
-
-  // 11. Scaffold all Minds
+  // 10. Scaffold all Minds
   console.log("\nScaffolding Minds...");
   const scaffoldResult = await scaffoldAllMinds(proposedMap);
 

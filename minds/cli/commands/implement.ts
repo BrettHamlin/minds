@@ -10,7 +10,7 @@
  *   2. Resolve feature directory (scan specs/ for ticket ID match)
  *   3. Parse and group tasks from tasks.md
  *   4. Compute execution waves
- *   5. Display dispatch plan, prompt for confirmation (unless --yes)
+ *   5. Display dispatch plan
  *   6. Start bus server
  *   7. For each wave, dispatch drones and wait for completion
  *   8. Between waves: kill drone panes (keep worktrees for merge)
@@ -26,7 +26,6 @@ import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
 import { buildDroneBrief } from "../lib/drone-brief.ts";
 import { buildMindBrief } from "../lib/mind-brief.ts";
 import { waitForWaveCompletion } from "../lib/bus-listener.ts";
-import { promptConfirmation } from "../lib/prompt.ts";
 import {
   startMindsBus,
   teardownMindsBus,
@@ -304,15 +303,7 @@ export async function runImplement(
   console.log(formatWavePlan(waves, taskGroups));
   console.log("--- End Plan ---\n");
 
-  if (!options.yes) {
-    const confirmed = await promptConfirmation(
-      `Dispatch ${totalTasks} tasks across ${waves.length} wave(s)? [y/N] `,
-    );
-    if (!confirmed) {
-      console.log("Aborted.");
-      return;
-    }
-  }
+
 
   // ── Step 5b: Clean stale state from previous runs ─────────────────────────
 
