@@ -43,7 +43,17 @@ Shell one-liners for non-trivial logic are a code smell — write a TypeScript u
 - If integration tests fail, the issue is triaged back to the responsible Mind(s) for fixing.
 - **Every feature must have real-world test coverage.** Unit tests alone are not sufficient to ship.
 
+## Minds Directory Resolution (CRITICAL)
+
+Never hardcode `minds/` or `.minds/` paths. Always use `resolveMindsDir(repoRoot)` from `minds/shared/paths.ts` to get the correct Minds directory. This function detects whether the repo is a dev repo (`minds/cli/` exists → `minds/`) or an installed repo (→ `.minds/`). Hardcoding either path breaks one of the two environments.
+
+```typescript
+import { resolveMindsDir } from "minds/shared/paths.js";
+const mindsDir = resolveMindsDir(repoRoot);
+```
+
 ## Additional Review Checklist Items
 
 - [ ] `import type` used for type-only imports
 - [ ] Deterministic-first: no shell one-liners for non-trivial logic — use TypeScript utilities with tests
+- [ ] No hardcoded `minds/` or `.minds/` paths — use `resolveMindsDir(repoRoot)` from `minds/shared/paths.ts`
