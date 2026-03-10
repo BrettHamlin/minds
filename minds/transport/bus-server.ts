@@ -132,51 +132,68 @@ function handlePublish(req: Request): Response {
 }
 
 function handleSubscribe(channel: string, req: Request): Response {
-  const lastEventIdHeader = req.headers.get("Last-Event-ID");
-  const lastSeq = lastEventIdHeader !== null ? parseInt(lastEventIdHeader, 10) : -1;
+  // Fix 4: Wrap entire subscribe handler in try-catch
+  try {
+    const lastEventIdHeader = req.headers.get("Last-Event-ID");
+    const lastSeq = lastEventIdHeader !== null ? parseInt(lastEventIdHeader, 10) : -1;
 
-  const channelSubs = getSubscribers(channel);
-  const buffered = getBuffer(channel)
-    .filter((m) => isNaN(lastSeq) || m.seq > lastSeq)
-    .slice(); // snapshot of ring buffer, filtered for resume
+    const channelSubs = getSubscribers(channel);
+    const buffered = getBuffer(channel)
+      .filter((m) => isNaN(lastSeq) || m.seq > lastSeq)
+      .slice(); // snapshot of ring buffer, filtered for resume
 
-  let controller!: SseController;
+    let controller!: SseController;
 
-  const isNewConnection = lastSeq === -1;
+    const isNewConnection = lastSeq === -1;
 
-  const stream = new ReadableStream<Uint8Array>({
-    start(ctrl) {
-      controller = ctrl;
+    // Fix 3: Precompute snapshot BEFORE creating ReadableStream
+    // If buildSnapshot() throws, we catch it here instead of inside the stream
+    let snapshotEvent: Uint8Array | null = null;
+    if (channel === "status" && isNewConnection) {
+      const dir = registryDir ?? join(mindsRoot(), "state/pipeline-registry");
+      const snapshot = buildSnapshot(dir);
+      snapshotEvent = formatSnapshotEvent(snapshot, ++seqCounter);
+    }
 
-      // Snapshot-on-connect for status channel — new connections only (BRE-397)
-      // Injected BEFORE channelSubs.add() so live events cannot interleave
-      if (channel === "status" && isNewConnection) {
-        const dir = registryDir ?? join(mindsRoot(), "state/pipeline-registry");
-        const snapshot = buildSnapshot(dir);
-        ctrl.enqueue(formatSnapshotEvent(snapshot, ++seqCounter));
-      }
+    const stream = new ReadableStream<Uint8Array>({
+      start(ctrl) {
+        controller = ctrl;
 
-      channelSubs.add(ctrl);
+        // Snapshot-on-connect for status channel — new connections only (BRE-397)
+        // Injected BEFORE channelSubs.add() so live events cannot interleave
+        if (snapshotEvent) {
+          ctrl.enqueue(snapshotEvent);
+        }
 
-      // Replay ring buffer to new subscriber
-      for (const msg of buffered) {
-        ctrl.enqueue(sseEvent(msg));
-      }
-    },
-    cancel() {
-      channelSubs.delete(controller);
-    },
-  });
+        channelSubs.add(ctrl);
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-      "Access-Control-Allow-Origin": "*",
-    },
-  });
+        // Replay ring buffer to new subscriber
+        for (const msg of buffered) {
+          ctrl.enqueue(sseEvent(msg));
+        }
+      },
+      cancel() {
+        channelSubs.delete(controller);
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[bus-server] handleSubscribe: failed for channel "${channel}" — ${msg}`);
+    return new Response(
+      JSON.stringify({ ok: false, error: `handleSubscribe: ${msg}` }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
 }
 
 function handleStatus(): Response {
@@ -216,6 +233,13 @@ export function createServer(opts: ServerConfig = {}) {
   const server = Bun.serve({
     port,
     idleTimeout: 0,
+    // Fix 2: Bun.serve error handler — catch server-level errors
+    error(err) {
+      console.error(
+        `[bus-server] Bun.serve error: ${err?.message ?? err}`,
+      );
+      return new Response("Internal Server Error", { status: 500 });
+    },
     async fetch(req) {
       const url = new URL(req.url);
       const path = url.pathname;
@@ -255,6 +279,22 @@ export function createServer(opts: ServerConfig = {}) {
 // writes the chosen port to .minds/bus-port.
 
 if (import.meta.main) {
+  // Fix 1: Global error handlers — keep the bus alive on unhandled errors
+  process.on("uncaughtException", (err) => {
+    console.error(
+      `[bus-server] uncaughtException — bus staying alive: ${err?.message ?? err}`,
+    );
+    if (err?.stack) console.error(err.stack);
+  });
+  process.on("unhandledRejection", (reason) => {
+    const msg =
+      reason instanceof Error ? reason.message : String(reason ?? "unknown");
+    console.error(
+      `[bus-server] unhandledRejection — bus staying alive: ${msg}`,
+    );
+    if (reason instanceof Error && reason.stack) console.error(reason.stack);
+  });
+
   // Parse --registry-dir CLI flag for snapshot-on-connect (FR-010)
   const args = process.argv.slice(2);
   const regDirIdx = args.indexOf("--registry-dir");
