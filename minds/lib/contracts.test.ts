@@ -86,7 +86,8 @@ describe("parseTasks", () => {
   it("handles tasks with no produces/consumes (plain tasks)", () => {
     const tasks = parseTasks(TASKS_PLAIN);
 
-    expect(tasks).toHaveLength(2);
+    // T002 is checked [x] so it's skipped — only T001 remains
+    expect(tasks).toHaveLength(1);
 
     const t001 = tasks[0];
     expect(t001.id).toBe("T001");
@@ -94,10 +95,6 @@ describe("parseTasks", () => {
     expect(t001.parallel).toBe(false);
     expect(t001.produces).toBeUndefined();
     expect(t001.consumes).toBeUndefined();
-
-    const t002 = tasks[1];
-    expect(t002.parallel).toBe(true);
-    expect(t002.produces).toBeUndefined();
   });
 });
 

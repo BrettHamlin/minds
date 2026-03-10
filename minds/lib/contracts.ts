@@ -95,13 +95,16 @@ export function parseTasks(content: string): ParsedTask[] {
     }
 
     // Task line: - [ ] T001 @mind_name [P]? description
+    // Skip checked tasks: - [x] or - [X] means already complete
+    if (/^\s*-\s+\[[xX]\]/.test(line)) continue;
+
     const taskMatch = line.match(
-      /^\s*-\s+\[[ xX]\]\s+(T\d+)\s+@([\w-]+)\s+(?:\[P\]\s+)?(.+)$/
+      /^\s*-\s+\[[ ]\]\s+(T\d+)\s+@([\w-]+)\s+(?:\[P\]\s+)?(.+)$/
     );
     if (!taskMatch) continue;
 
     const [, id, mind, rest] = taskMatch;
-    const parallel = /^\s*-\s+\[[ xX]\]\s+T\d+\s+@[\w-]+\s+\[P\]/.test(line);
+    const parallel = /^\s*-\s+\[ \]\s+T\d+\s+@[\w-]+\s+\[P\]/.test(line);
 
     // Parse produces annotation: produces: <interface> at <path>
     let produces: ParsedTask["produces"];
