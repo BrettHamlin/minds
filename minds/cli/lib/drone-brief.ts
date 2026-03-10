@@ -19,6 +19,18 @@ export interface DroneBriefParams {
 }
 
 /**
+ * Format a list of MindTasks into a markdown checklist string.
+ */
+export function formatTaskList(tasks: MindTask[]): string {
+  return tasks
+    .map((t) => {
+      const pTag = t.parallel ? " [P]" : "";
+      return `- [ ] ${t.id}${pTag} ${t.description}`;
+    })
+    .join("\n");
+}
+
+/**
  * Build the DRONE-BRIEF.md content for a drone.
  */
 export function buildDroneBrief(params: DroneBriefParams): string {
@@ -32,13 +44,7 @@ export function buildDroneBrief(params: DroneBriefParams): string {
     featureDir,
   } = params;
 
-  const taskList = tasks
-    .map((t) => {
-      const pTag = t.parallel ? " [P]" : "";
-      let line = `- [ ] ${t.id}${pTag} ${t.description}`;
-      return line;
-    })
-    .join("\n");
+  const taskList = formatTaskList(tasks);
 
   const depsSection =
     dependencies.length > 0
