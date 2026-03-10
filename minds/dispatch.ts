@@ -14,6 +14,7 @@ import type { MindDescription } from "./mind.js";
 import { mindsPublish } from "./transport/minds-publish.ts";
 import { BusTransport } from "./transport/BusTransport.ts";
 import type { Message } from "./transport/Transport.ts";
+import { resolveMindsDir } from "./shared/paths.js";
 
 // --- Types ---
 
@@ -84,7 +85,7 @@ export async function dispatchToMind(
   options: DispatchOptions = {}
 ): Promise<DispatchResult> {
   const repoRoot = options.repoRoot ?? detectRepoRoot();
-  const registryPath = resolve(repoRoot, ".minds/minds.json");
+  const registryPath = resolve(resolveMindsDir(repoRoot), "minds.json");
   const registry = loadMindsRegistry(registryPath);
 
   const mind = registry.find((m) => m.name === mindName);

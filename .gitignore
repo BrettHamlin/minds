@@ -52,3 +52,9 @@ specs/
 
 # Drone work files (per-worktree, not for committing)
 DRONE-BRIEF.md
+
+# Minds runtime files (generated, not source)
+minds/minds.json
+minds/state/
+minds/bus-port
+minds/aggregator-port

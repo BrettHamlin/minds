@@ -143,10 +143,11 @@ describe("CLAUDE.md (assembleClaudeContent) completeness", () => {
 
   it("uses absolute paths for all commands", () => {
     const content = assembleClaudeContent(fakeRepoRoot, "signals", "BRE-477");
-    // All CLI paths should be absolute
-    expect(content).toContain(`${fakeRepoRoot}/minds/memory/lib/search-cli.ts`);
-    expect(content).toContain(`${fakeRepoRoot}/minds/memory/lib/write-cli.ts`);
-    expect(content).toContain(`${fakeRepoRoot}/minds/signals/`);
+    // All CLI paths should be absolute.
+    // fakeRepoRoot has no minds/cli/ → resolves to .minds/ (installed-repo convention)
+    expect(content).toContain(`${fakeRepoRoot}/.minds/memory/lib/search-cli.ts`);
+    expect(content).toContain(`${fakeRepoRoot}/.minds/memory/lib/write-cli.ts`);
+    expect(content).toContain(`${fakeRepoRoot}/.minds/signals/`);
   });
 });
 

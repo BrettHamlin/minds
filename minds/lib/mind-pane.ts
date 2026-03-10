@@ -34,6 +34,7 @@ import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 import { buildMindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import type { MindBusPublishCmds } from "../cli/lib/mind-brief.ts";
+import { resolveMindsDir } from "../shared/paths.js";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -66,11 +67,10 @@ export function assembleClaudeContent(
   baseBranch?: string,
 ): string {
   // Resolve minds/ vs .minds/ — single source of truth for all paths
-  const mindsBase = existsSync(resolve(repoRoot, ".minds")) ? ".minds" : "minds";
-  const mindsDir = resolve(repoRoot, mindsBase);
+  const mindsDir = resolveMindsDir(repoRoot);
 
   // Load minds.json and find entry for this mind
-  const mindsJsonPath = resolve(repoRoot, mindsBase, "minds.json");
+  const mindsJsonPath = resolve(mindsDir, "minds.json");
   let domain = "";
   let ownsFiles: string[] = [];
   let exposes: string[] = [];
@@ -98,15 +98,15 @@ export function assembleClaudeContent(
   }
 
   // Load STANDARDS.md (generic — ships with installer)
-  const standardsPath = resolve(repoRoot, mindsBase, "STANDARDS.md");
+  const standardsPath = resolve(mindsDir, "STANDARDS.md");
   const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
 
   // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
-  const projectStandardsPath = resolve(repoRoot, mindsBase, "STANDARDS-project.md");
+  const projectStandardsPath = resolve(mindsDir, "STANDARDS-project.md");
   const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
 
   // Load MIND.md (optional)
-  const mindMdPath = resolve(repoRoot, mindsBase, mindName, "MIND.md");
+  const mindMdPath = resolve(mindsDir, mindName, "MIND.md");
   const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
 
   // ── Build sections ──────────────────────────────────────────────────────────
@@ -159,7 +159,26 @@ ${contractsTable}
 ---`
     : "";
 
-  // #4: Resolve base branch for git diff
+  // #4: Build deterministic contract check command (runs check-contracts.ts)
+  // The script parses produces:/consumes: annotations from MIND-BRIEF.md
+  // and verifies actual source files match. Exit 0 = pass, exit 1 = violation.
+  const checkContractsPath = resolve(mindsDir, "lib", "check-contracts.ts");
+  const hasContractChecker = existsSync(checkContractsPath);
+  const contractCheckCmd = hasContractChecker
+    ? `
+**📋 Contract Check (MANDATORY — run before manual review):**
+\`\`\`bash
+bun ${mindsDir}/lib/check-contracts.ts --mind ${mindName} --tasks MIND-BRIEF.md --repo-root .
+\`\`\`
+If this script exits with code 1, there are contract violations. These are **blocking**:
+1. Copy the script's violation output **verbatim** into REVIEW-FEEDBACK-{n}.md as checklist items
+2. The output tells the drone exactly what's wrong and how to fix it (which file, which function, import vs local)
+3. Do NOT approve with contract violations — resume the drone to fix them
+If it exits with code 0, contracts are verified — proceed with manual review.
+`
+    : "";
+
+  // #5: Resolve base branch for git diff
   const diffBase = baseBranch ?? "main";
 
   return `---
@@ -189,13 +208,18 @@ You supervise a 🛸 Drone that does the implementation work. Follow this proces
 
 ━━━ 1. READ ━━━
 Read MIND-BRIEF.md for your task assignment.
+Read your memory at \`${mindsDir}/${mindName}/memory/MEMORY.md\` for context from previous reviews.
+Search memory for task-relevant context:
+\`\`\`bash
+bun ${mindsDir}/memory/lib/search-cli.ts --mind ${mindName} --query "<keywords from your task>"
+\`\`\`
 
 ━━━ 2. SIGNAL ━━━
 ${signalBlock(busPublishCmds?.started)}
 
 ━━━ 3. SPAWN ━━━
 \`\`\`
-Agent({ subagent_type: 'drone', prompt: 'Read DRONE-BRIEF.md and complete all tasks. Commit when done.' })
+Agent({ subagent_type: '🛸', prompt: 'Read DRONE-BRIEF.md and complete all tasks. Commit when done.' })
 \`\`\`
 Save the returned agent ID.
 
@@ -210,19 +234,43 @@ Verify all tasks from MIND-BRIEF.md are implemented, then evaluate the diff:
 \`\`\`bash
 git diff ${diffBase}...HEAD
 \`\`\`
-Evaluate against the **Review Checklist** in Engineering Standards below.
+${contractCheckCmd}Evaluate against the **full Review Checklist** in Engineering Standards below.
+**On re-review after feedback:** Run the COMPLETE checklist again, not just the items you flagged. Fixes can introduce new issues.
 
 ━━━ 7. VERDICT ━━━
 
-**❌ Issues found:**
+**❌ ANY issues found (including minor ones — unused imports, inefficiencies, missing edge cases, style violations):**
+Every finding is a fix. Do NOT approve with known issues.
+
+Write ALL findings to a checklist file so the drone can track progress:
+\`\`\`bash
+# Write REVIEW-FEEDBACK-{n}.md at the worktree root (n = review iteration, starting at 1)
+# Use this exact checklist format:
+cat > REVIEW-FEEDBACK-1.md << 'FEEDBACK'
+# Review Feedback (Round 1)
+
+- [ ] Issue 1: description of the issue, what file, what to fix
+- [ ] Issue 2: description of the issue, what file, what to fix
+- [ ] Issue 3: ...
+FEEDBACK
+\`\`\`
+Increment the number for each round (REVIEW-FEEDBACK-1.md, REVIEW-FEEDBACK-2.md, etc.).
+
 ${signalBlock(busPublishCmds?.reviewFeedback)}
-Then resume 🛸 Drone:
+Then resume 🛸 Drone. Use this EXACT prompt (replace {n} with the round number):
 \`\`\`
-Agent({ resume: '{agentId}', prompt: 'Fix: {specific feedback}' })
+Agent({ resume: '{agentId}', prompt: 'Read REVIEW-FEEDBACK-{n}.md at the worktree root. It contains a checklist of issues to fix. For each item: fix the issue, then edit the file to check off the checkbox (change [ ] to [x]). Commit when all items are checked off.' })
 \`\`\`
+Do NOT paraphrase or summarize the issues in the prompt — the feedback file IS the prompt.
+
+| ✅ Correct resume prompt | ❌ Wrong resume prompt |
+|--------------------------|----------------------|
+| \`'Read REVIEW-FEEDBACK-1.md at the worktree root...'\` | \`'Fix the async bug and DRY violation'\` |
+| | \`'Fix review feedback round 1'\` |
+| | \`'Fix these issues: 1. ...'\` |
 → Go to step 5.
 
-**✅ Approved:**
+**✅ Approved (ONLY when zero issues found):**
 a. Flush memory with key insights from this review:
 \`\`\`bash
 bun ${mindsDir}/memory/lib/write-cli.ts --mind ${mindName} --content "<insight>"
@@ -401,7 +449,7 @@ if (import.meta.main) { (async () => {
   const excludePath = resolve(excludeDir, "exclude");
   mkdirSync(excludeDir, { recursive: true });
 
-  const excludeEntries = ["MIND-BRIEF.md", "DRONE-BRIEF.md", "CLAUDE.md"];
+  const excludeEntries = ["MIND-BRIEF.md", "DRONE-BRIEF.md", "CLAUDE.md", "REVIEW-FEEDBACK-*.md"];
   let existingExclude = "";
   if (existsSync(excludePath)) {
     existingExclude = readFileSync(excludePath, "utf-8");
@@ -421,8 +469,7 @@ if (import.meta.main) { (async () => {
 
   // ─── Resolve minds dir and build bus commands ────────────────────────────────
 
-  const hooksBase = existsSync(resolve(repoRoot, ".minds")) ? ".minds" : "minds";
-  const mindsDir = resolve(repoRoot, hooksBase);
+  const mindsDir = resolveMindsDir(repoRoot);
   const busCmds = (channel && waveId)
     ? buildMindBusPublishCmds(mindsDir, channel, mindName!, waveId)
     : undefined;
@@ -440,7 +487,7 @@ if (import.meta.main) { (async () => {
   // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
 
   const settingsPath = resolve(worktreePath, ".claude", "settings.json");
-  const hookScriptPath = resolve(repoRoot, hooksBase, "transport", "hooks", "send-event.ts");
+  const hookScriptPath = resolve(mindsDir, "transport", "hooks", "send-event.ts");
   const hookCommand = `bun ${hookScriptPath} --source-app mind:${mindName}`;
 
   // Claude Code hooks use matcher-based format: { matcher?: string, hooks: [{ type, command }] }
@@ -489,7 +536,7 @@ if (import.meta.main) { (async () => {
 
   // ─── Launch Claude Code Opus ──────────────────────────────────────────────────
 
-  const initialPrompt = `You are a 🧠 Mind supervisor. Your CLAUDE.md has been replaced with your operating manual — read it now. Then read MIND-BRIEF.md for your tasks. Follow the Review Loop exactly: do NOT implement tasks yourself. Spawn a 🛸 Drone via Agent({ subagent_type: 'drone' }) to do the work.`;
+  const initialPrompt = `You are a 🧠 Mind supervisor. Your CLAUDE.md has been replaced with your operating manual — read it now. Then read MIND-BRIEF.md for your tasks. Follow the Review Loop exactly: do NOT implement tasks yourself. Spawn a 🛸 Drone via Agent({ subagent_type: '🛸' }) to do the work.`;
   let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model opus ${JSON.stringify(initialPrompt)}`;
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);

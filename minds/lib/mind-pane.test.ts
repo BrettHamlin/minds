@@ -62,7 +62,7 @@ describe("mind-pane: assembleClaudeContent()", () => {
 
   test("5. review loop contains drone spawn command inline", () => {
     const content = assembleClaudeContent(fakeRepoRoot, "signals", "BRE-500");
-    expect(content).toContain("subagent_type: 'drone'");
+    expect(content).toContain("subagent_type: '🛸'");
     expect(content).toContain("Agent({ resume: '{agentId}'");
   });
 
@@ -105,12 +105,12 @@ describe("mind-pane: assembleClaudeContent()", () => {
   });
 
   test("10b. paths use absolute mindsDir (resolves minds/ vs .minds/)", () => {
-    // With fake repo root (no .minds/ dir), resolves to absolute /tmp/.../minds
+    // fakeRepoRoot has no minds/cli/ → resolves to .minds/ (installed-repo convention)
     const content = assembleClaudeContent(fakeRepoRoot, "signals", "BRE-500");
     // All paths should be absolute (start with /)
-    expect(content).toContain(`bun ${fakeRepoRoot}/minds/memory/lib/search-cli.ts`);
-    expect(content).toContain(`bun ${fakeRepoRoot}/minds/memory/lib/write-cli.ts`);
-    expect(content).toContain(`bun test ${fakeRepoRoot}/minds/signals/`);
+    expect(content).toContain(`bun ${fakeRepoRoot}/.minds/memory/lib/search-cli.ts`);
+    expect(content).toContain(`bun ${fakeRepoRoot}/.minds/memory/lib/write-cli.ts`);
+    expect(content).toContain(`bun test ${fakeRepoRoot}/.minds/signals/`);
   });
 
   test("10c. git diff uses resolved base branch, not {base} placeholder", () => {
