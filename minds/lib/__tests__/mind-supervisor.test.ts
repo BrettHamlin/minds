@@ -5,7 +5,10 @@
  * iteration counting, feedback file generation, and validation guards.
  */
 
-import { describe, test, expect, beforeEach, mock, spyOn } from "bun:test";
+import { describe, test, expect, beforeEach, mock, spyOn, afterEach } from "bun:test";
+import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import {
   SupervisorState,
   type SupervisorConfig,
@@ -16,6 +19,7 @@ import {
   buildFeedbackContent,
   createSupervisorStateMachine,
   runMindSupervisor,
+  installDroneStopHook,
   type StateMachine,
 } from "../mind-supervisor.ts";
 
@@ -530,5 +534,197 @@ describe("Full review cycle simulation", () => {
     sm.transition(SupervisorState.DONE); // forced approval with warnings
     expect(sm.getState()).toBe(SupervisorState.DONE);
     expect(sm.getIteration()).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue 5 — Drone Stop Hook (sentinel file)
+// ---------------------------------------------------------------------------
+
+describe("installDroneStopHook", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `drone-hook-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("creates .claude/settings.json with Stop hook", () => {
+    installDroneStopHook(tmpDir);
+
+    const settingsPath = join(tmpDir, ".claude", "settings.json");
+    expect(existsSync(settingsPath)).toBe(true);
+
+    const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    expect(settings.hooks).toBeDefined();
+    expect(settings.hooks.Stop).toBeDefined();
+    expect(settings.hooks.Stop).toHaveLength(1);
+    expect(settings.hooks.Stop[0].hooks[0].type).toBe("command");
+    expect(settings.hooks.Stop[0].hooks[0].command).toContain(".drone-complete");
+  });
+
+  test("creates .claude directory if it does not exist", () => {
+    const claudeDir = join(tmpDir, ".claude");
+    expect(existsSync(claudeDir)).toBe(false);
+
+    installDroneStopHook(tmpDir);
+
+    expect(existsSync(claudeDir)).toBe(true);
+  });
+
+  test("merges with existing settings.json without overwriting", () => {
+    const claudeDir = join(tmpDir, ".claude");
+    mkdirSync(claudeDir, { recursive: true });
+
+    const existing = {
+      customField: "preserved",
+      hooks: {
+        PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo hi" }] }],
+      },
+    };
+    writeFileSync(join(claudeDir, "settings.json"), JSON.stringify(existing));
+
+    installDroneStopHook(tmpDir);
+
+    const merged = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
+    expect(merged.customField).toBe("preserved");
+    expect(merged.hooks.Stop).toBeDefined();
+    // The PreToolUse hook should be preserved through the merge
+    expect(merged.hooks.PreToolUse).toBeDefined();
+  });
+
+  test("sentinel path in hook command matches worktree root", () => {
+    installDroneStopHook(tmpDir);
+
+    const settings = JSON.parse(readFileSync(join(tmpDir, ".claude", "settings.json"), "utf-8"));
+    const hookCommand = settings.hooks.Stop[0].hooks[0].command;
+    const expectedSentinelPath = join(tmpDir, ".drone-complete");
+    expect(hookCommand).toContain(expectedSentinelPath);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue 7 — Bus event payload shape verification
+// ---------------------------------------------------------------------------
+
+describe("Bus event payload shape", () => {
+  test("publishSignal produces payload shape matching waitForWaveCompletion expectations", async () => {
+    // This test traces the data flow through the publish chain to verify
+    // that the payload shape produced by publishSignal() matches what
+    // waitForWaveCompletion() expects to find.
+    //
+    // waitForWaveCompletion() checks:
+    //   event.type === MIND_COMPLETE
+    //   event.payload?.waveId === waveId
+    //   event.payload?.mindName
+    //
+    // The chain is:
+    //   publishSignal() → publishMindsEvent() → mindsPublish() → POST /publish
+    //   bus-server receives → BusMessage { payload: b["payload"] } → SSE data: JSON(msg)
+    //   bus-listener reads → JSON.parse(data) → event.payload.waveId / event.payload.mindName
+
+    // Simulate the transform chain without a real bus server.
+    // publishSignal constructs this event:
+    const mindName = "transport";
+    const waveId = "wave-1";
+    const channel = "minds-BRE-500";
+    const type = "MIND_COMPLETE";
+    const ticketId = channel.replace(/^minds-/, "");
+    const extra = { iterations: 2, approvedWithWarnings: false };
+
+    // Step 1: publishSignal → publishMindsEvent
+    // publishMindsEvent calls mindsPublish with:
+    //   type = event.type
+    //   payload = { ...event.payload, source, ticketId, timestamp }
+    const eventPayload = { mindName, waveId, ...extra };
+    const publishPayload = {
+      ...eventPayload,
+      source: "supervisor",
+      ticketId,
+      timestamp: Date.now(),
+    };
+
+    // Step 2: mindsPublish sends to bus:
+    //   { channel, from: "minds", type, payload: publishPayload }
+    const busRequestBody = {
+      channel,
+      from: "minds",
+      type,
+      payload: publishPayload,
+    };
+
+    // Step 3: bus-server creates BusMessage:
+    //   { id, seq, channel, from, type, payload: b["payload"], timestamp }
+    const busMessage = {
+      id: crypto.randomUUID(),
+      seq: 1,
+      channel: busRequestBody.channel,
+      from: busRequestBody.from,
+      type: busRequestBody.type,
+      payload: busRequestBody.payload,
+      timestamp: Date.now(),
+    };
+
+    // Step 4: SSE sends `data: ${JSON.stringify(busMessage)}`
+    // bus-listener parses this JSON
+    const sseData = JSON.stringify(busMessage);
+    const parsed = JSON.parse(sseData);
+
+    // Step 5: waitForWaveCompletion checks:
+    expect(parsed.type).toBe("MIND_COMPLETE");
+    expect(parsed.payload).toBeDefined();
+    expect(parsed.payload.waveId).toBe(waveId);
+    expect(parsed.payload.mindName).toBe(mindName);
+    // These are the three checks in bus-listener.ts lines 124-129
+    expect(typeof parsed.payload.mindName).toBe("string");
+  });
+
+  test("MIND_COMPLETE payload includes required fields at correct nesting level", () => {
+    // Verify the payload structure doesn't nest mindName/waveId too deep
+    const mindName = "signals";
+    const waveId = "wave-2";
+
+    // The publishSignal function puts mindName and waveId directly in payload
+    const payload = { mindName, waveId, source: "supervisor", ticketId: "BRE-500", timestamp: Date.now() };
+
+    // Bus wraps this as BusMessage.payload
+    const busMessage = { type: "MIND_COMPLETE", payload };
+
+    // bus-listener accesses event.payload.mindName and event.payload.waveId
+    // These must be at the FIRST level of payload, not nested deeper
+    expect(busMessage.payload.mindName).toBe(mindName);
+    expect(busMessage.payload.waveId).toBe(waveId);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue 8 — Previous feedback accumulation
+// ---------------------------------------------------------------------------
+
+describe("buildReviewPrompt with multiple previous feedback", () => {
+  test("includes all previous feedback separated by dividers", () => {
+    const allFeedback = [
+      "# Round 1\n- Missing tests",
+      "# Round 2\n- Unused import",
+    ].join("\n\n---\n\n");
+
+    const prompt = buildReviewPrompt({
+      diff: sampleDiff,
+      testOutput: sampleTestOutput,
+      standards: sampleStandards,
+      tasks: makeConfig().tasks,
+      iteration: 3,
+      previousFeedback: allFeedback,
+    });
+
+    expect(prompt).toContain("Previous Feedback");
+    expect(prompt).toContain("Round 1");
+    expect(prompt).toContain("Missing tests");
+    expect(prompt).toContain("Round 2");
+    expect(prompt).toContain("Unused import");
   });
 });

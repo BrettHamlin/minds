@@ -18,7 +18,7 @@
  * The LLM is only invoked for the one thing that requires judgment: code review.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from "fs";
 import { join, resolve, dirname } from "path";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
@@ -443,60 +443,140 @@ function relaunchDroneInWorktree(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Drone Completion Detection
+// Drone Completion Detection (sentinel file via Stop hook)
 // ---------------------------------------------------------------------------
 
+const SENTINEL_FILENAME = ".drone-complete";
+const DEFAULT_DRONE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
 /**
- * Poll a tmux pane to detect when the Claude Code process has exited.
+ * Install a Claude Code Stop hook in the worktree's `.claude/` directory.
+ * When Claude Code exits, the hook writes a sentinel file to the worktree root.
+ * This is event-driven (no process-tree polling).
+ */
+export function installDroneStopHook(worktreePath: string): void {
+  const claudeDir = join(worktreePath, ".claude");
+  if (!existsSync(claudeDir)) {
+    mkdirSync(claudeDir, { recursive: true });
+  }
+
+  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
+
+  // Write a local settings.json with a Stop hook that creates the sentinel file
+  const settings = {
+    hooks: {
+      Stop: [
+        {
+          matcher: "",
+          hooks: [
+            {
+              type: "command" as const,
+              command: `touch ${JSON.stringify(sentinelPath)}`,
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  const settingsPath = join(claudeDir, "settings.json");
+
+  // Merge with existing settings if present
+  let existing: Record<string, unknown> = {};
+  if (existsSync(settingsPath)) {
+    try {
+      existing = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    } catch {
+      // Ignore corrupt settings
+    }
+  }
+
+  const merged = {
+    ...existing,
+    hooks: {
+      ...(existing.hooks as Record<string, unknown> ?? {}),
+      ...settings.hooks,
+    },
+  };
+
+  writeFileSync(settingsPath, JSON.stringify(merged, null, 2));
+}
+
+/**
+ * Wait for drone completion by watching for a sentinel file.
  *
- * Detection strategy: Check if the pane's foreground process (the shell's
- * child) is still a `claude` or `bun` process. When Claude Code exits,
- * the pane either shows a shell prompt (zsh/bash) or the pane itself dies.
+ * The sentinel file is created by a Claude Code Stop hook installed in
+ * the worktree's `.claude/settings.json`. This is event-driven via
+ * `fs.watch()` with a poll fallback every 5 seconds.
  *
- * We use `tmux list-panes -t {paneId} -F '#{pane_pid}'` to get the shell PID,
- * then check if that shell has a child process that's still claude/bun.
+ * Falls back to pane-existence check if the sentinel never appears
+ * (e.g., hook didn't fire due to crash).
  */
 async function waitForDroneCompletion(
   paneId: string,
+  worktreePath: string,
   timeoutMs: number,
   pollIntervalMs: number = 5000,
 ): Promise<{ ok: boolean; error?: string }> {
-  const start = Date.now();
+  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
-  while (Date.now() - start < timeoutMs) {
-    // Check if pane still exists
-    const paneCheck = Bun.spawnSync(
-      ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
-      { stdout: "pipe", stderr: "pipe" }
-    );
-
-    if (paneCheck.exitCode !== 0) {
-      // Pane no longer exists — drone finished (pane was killed or exited)
-      return { ok: true };
-    }
-
-    const shellPid = new TextDecoder().decode(paneCheck.stdout).trim();
-    if (!shellPid) {
-      return { ok: true };
-    }
-
-    // Check if the shell has any child processes (claude/bun).
-    // This is the authoritative signal — when pgrep finds no children,
-    // Claude Code has exited and the shell is idle.
-    const childCheck = Bun.spawnSync(
-      ["pgrep", "-P", shellPid],
-      { stdout: "pipe", stderr: "pipe" }
-    );
-
-    if (childCheck.exitCode !== 0) {
-      // No child processes — Claude Code has exited
-      return { ok: true };
-    }
-
-    await Bun.sleep(pollIntervalMs);
+  // Clean up any stale sentinel from a previous run
+  if (existsSync(sentinelPath)) {
+    try { Bun.spawnSync(["rm", "-f", sentinelPath]); } catch { /* ignore */ }
   }
 
-  return { ok: false, error: `Drone timed out after ${timeoutMs}ms` };
+  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    let resolved = false;
+    const done = (result: { ok: boolean; error?: string }) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeoutTimer);
+      clearInterval(pollTimer);
+      try { watcher?.close(); } catch { /* ignore */ }
+      resolve(result);
+    };
+
+    // Timeout
+    const timeoutTimer = setTimeout(() => {
+      done({ ok: false, error: `Drone timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
+
+    // fs.watch() on the worktree directory for the sentinel file
+    let watcher: ReturnType<typeof watch> | undefined;
+    try {
+      watcher = watch(worktreePath, (eventType, filename) => {
+        if (filename === SENTINEL_FILENAME && existsSync(sentinelPath)) {
+          done({ ok: true });
+        }
+      });
+    } catch {
+      // fs.watch() may fail on some platforms — fall through to poll
+    }
+
+    // Poll fallback: check sentinel file + pane existence every interval
+    const pollTimer = setInterval(() => {
+      // Primary: sentinel file exists
+      if (existsSync(sentinelPath)) {
+        done({ ok: true });
+        return;
+      }
+
+      // Fallback: pane no longer exists (crash, manual kill)
+      const paneCheck = Bun.spawnSync(
+        ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      if (paneCheck.exitCode !== 0) {
+        done({ ok: true });
+        return;
+      }
+    }, pollIntervalMs);
+
+    // Check immediately in case sentinel already exists or pane is already gone
+    if (existsSync(sentinelPath)) {
+      done({ ok: true });
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -693,8 +773,11 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
     errors: [],
   };
 
-  // Accumulate all findings across iterations (Fix #10)
+  // Accumulate all findings across iterations (Fix #9)
   const allFindings: ReviewFinding[] = [];
+
+  // Track ALL spawned pane IDs for cleanup (Fix #10)
+  const allSpawnedPanes: string[] = [];
 
   let currentDronePane: string | undefined;
   let currentWorktree = config.worktreePath;
@@ -737,11 +820,15 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         }
 
         currentDronePane = drone.paneId;
+        allSpawnedPanes.push(drone.paneId);
         currentWorktree = drone.worktree;
         currentBranch = drone.branch;
         result.dronePaneId = drone.paneId;
         result.worktree = drone.worktree;
         result.branch = drone.branch;
+
+        // Install the Stop hook for sentinel-based completion detection
+        installDroneStopHook(drone.worktree);
 
         console.log(`[supervisor] @${config.mindName}: Drone spawned in pane ${drone.paneId}`);
       } else {
@@ -762,7 +849,11 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
             mindName: config.mindName,
           });
           currentDronePane = newPaneId;
+          allSpawnedPanes.push(newPaneId);
           result.dronePaneId = newPaneId;
+
+          // Reinstall the Stop hook (sentinel file was consumed by previous iteration)
+          installDroneStopHook(currentWorktree);
         } catch (err) {
           const msg = `Failed to re-launch drone: ${(err as Error).message}`;
           console.error(`[supervisor] @${config.mindName}: ${msg}`);
@@ -775,7 +866,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       }
 
       // ---- Step 3: Wait for Drone completion ----
-      const completion = await waitForDroneCompletion(currentDronePane!, config.droneTimeoutMs);
+      const completion = await waitForDroneCompletion(currentDronePane!, currentWorktree, config.droneTimeoutMs);
       if (!completion.ok) {
         const msg = completion.error ?? "Drone failed";
         console.error(`[supervisor] @${config.mindName}: ${msg}`);
@@ -803,12 +894,18 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       sm.transition(SupervisorState.REVIEWING);
       console.log(`[supervisor] @${config.mindName}: Reviewing (iteration ${iteration})`);
 
-      // Read previous feedback for the reviewer's context (Fix #4)
+      // Read ALL previous feedback files for the reviewer's context (Fix #8)
       let previousFeedback: string | undefined;
       if (iteration > 1) {
-        const prevFeedbackPath = join(currentWorktree, `REVIEW-FEEDBACK-${iteration - 1}.md`);
-        if (existsSync(prevFeedbackPath)) {
-          previousFeedback = readFileSync(prevFeedbackPath, "utf-8");
+        const feedbackParts: string[] = [];
+        for (let i = 1; i < iteration; i++) {
+          const fbPath = join(currentWorktree, `REVIEW-FEEDBACK-${i}.md`);
+          if (existsSync(fbPath)) {
+            feedbackParts.push(readFileSync(fbPath, "utf-8"));
+          }
+        }
+        if (feedbackParts.length > 0) {
+          previousFeedback = feedbackParts.join("\n\n---\n\n");
         }
       }
 
@@ -922,9 +1019,15 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
     result.errors.push(msg);
     result.ok = false;
   } finally {
-    // Cleanup: kill drone pane if still alive
-    if (currentDronePane) {
-      killPane(currentDronePane);
+    // Cleanup: kill ALL spawned drone panes (Fix #10)
+    for (const paneId of allSpawnedPanes) {
+      killPane(paneId);
+    }
+
+    // Clean up sentinel file if present
+    const sentinelPath = join(currentWorktree, SENTINEL_FILENAME);
+    if (existsSync(sentinelPath)) {
+      try { Bun.spawnSync(["rm", "-f", sentinelPath]); } catch { /* ignore */ }
     }
   }
 
