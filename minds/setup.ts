@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, symlinkSync, unlinkSync, realpathSync, lstatSync
 import { join, resolve } from "path";
 import { execSync } from "child_process";
 
-const repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+const repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
 const commandsDir = join(process.env.HOME ?? "/root", ".claude", "commands");
 
 // Mapping: target symlink name → source file (relative to repo root)

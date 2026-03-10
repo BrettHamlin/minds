@@ -262,7 +262,7 @@ async function rebuildBorderFormat(targetPane: string): Promise<void> {
     const { execSync } = await import("child_process");
     let repoRoot: string;
     try {
-      repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+      repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
     } catch {
       repoRoot = process.cwd();
     }

@@ -30,6 +30,7 @@ function getRepoRoot(cwd?: string): string {
     return execSync("git rev-parse --show-toplevel", {
       encoding: "utf-8",
       cwd: cwd || process.cwd(),
+      stdio: ["pipe", "pipe", "pipe"],
     }).trim();
   } catch {
     return cwd || process.cwd();

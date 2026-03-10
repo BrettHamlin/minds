@@ -16,7 +16,7 @@ import { loadPipelineForTicket } from "@minds/pipeline_core/pipeline"; // CROSS-
 // Detect repo root and use local state directory
 function getRepoRoot(): string {
   try {
-    return execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+    return execSync("git rev-parse --show-toplevel", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
   } catch {
     return process.cwd();
   }

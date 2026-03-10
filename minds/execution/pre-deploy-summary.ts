@@ -26,6 +26,7 @@ function getRepoRoot(cwd?: string): string {
     return execSync("git rev-parse --show-toplevel", {
       encoding: "utf-8",
       cwd: cwd || process.cwd(),
+      stdio: ["pipe", "pipe", "pipe"],
     }).trim();
   } catch {
     return cwd || process.cwd();
@@ -91,6 +92,7 @@ function getChangedFileCount(repoRoot: string): number | null {
     const output = execSync("git diff --stat HEAD~1", {
       encoding: "utf-8",
       cwd: repoRoot,
+      stdio: ["pipe", "pipe", "pipe"],
     });
     const lines = output.trim().split("\n");
     if (lines.length === 0) return 0;
@@ -128,6 +130,7 @@ function getBranch(repoRoot: string): string | null {
     return execSync("git rev-parse --abbrev-ref HEAD", {
       encoding: "utf-8",
       cwd: repoRoot,
+      stdio: ["pipe", "pipe", "pipe"],
     }).trim();
   } catch {
     return null;

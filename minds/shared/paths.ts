@@ -51,7 +51,7 @@ export function mindsRoot(): string {
 
   // 3. Use git rev-parse to find repo root, then resolveMindsDir
   try {
-    const root = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
+    const root = execSync("git rev-parse --show-toplevel", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
     _cachedMindsRoot = resolveMindsDir(root);
     return _cachedMindsRoot;
   } catch {

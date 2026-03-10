@@ -17,7 +17,7 @@ import { resolveTransportPath } from "@minds/transport/resolve-transport"; // CR
 
 function getRepoRoot(): string {
   try {
-    return execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+    return execSync("git rev-parse --show-toplevel", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
   } catch {
     return process.cwd();
   }

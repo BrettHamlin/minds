@@ -15,7 +15,7 @@ export async function runMindsInit(options: MindsInitOptions = {}): Promise<void
 
   let repoRoot: string;
   try {
-    repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+    repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
   } catch {
     console.error("Error: Not in a git repository. Run `git init` first.");
     process.exit(1);

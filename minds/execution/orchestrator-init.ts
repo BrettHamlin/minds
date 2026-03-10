@@ -438,6 +438,7 @@ export function resolvePaths(ctx: InitContext): PathResolution {
     const superRoot = execSync("git rev-parse --show-superproject-working-tree", {
       encoding: "utf-8",
       cwd: ctx.repoRoot,
+      stdio: ["pipe", "pipe", "pipe"],
     }).trim();
     repoRoot = superRoot || ctx.repoRoot;
   } catch {

@@ -38,7 +38,7 @@ export function mindsSourceDir(): string {
 
   // Dev fallback: minds/ relative to git root
   try {
-    const root = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
+    const root = execSync("git rev-parse --show-toplevel", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
     return join(root, "minds");
   } catch {
     return join(process.cwd(), "minds");
