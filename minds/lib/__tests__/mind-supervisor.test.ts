@@ -2,7 +2,7 @@
  * mind-supervisor.test.ts -- Tests for the deterministic Mind supervisor.
  *
  * Tests the state machine, review prompt construction, verdict parsing,
- * iteration counting, and feedback file generation.
+ * iteration counting, feedback file generation, and validation guards.
  */
 
 import { describe, test, expect, beforeEach, mock, spyOn } from "bun:test";
@@ -15,6 +15,7 @@ import {
   parseReviewVerdict,
   buildFeedbackContent,
   createSupervisorStateMachine,
+  runMindSupervisor,
   type StateMachine,
 } from "../mind-supervisor.ts";
 
@@ -109,6 +110,12 @@ describe("SupervisorStateMachine", () => {
     expect(sm.getState()).toBe(SupervisorState.DRONE_RUNNING);
   });
 
+  test("valid transitions from INIT to DONE", () => {
+    const sm = createSupervisorStateMachine(makeConfig());
+    sm.transition(SupervisorState.DONE);
+    expect(sm.getState()).toBe(SupervisorState.DONE);
+  });
+
   test("valid transitions from DRONE_RUNNING to CHECKING", () => {
     const sm = createSupervisorStateMachine(makeConfig());
     sm.transition(SupervisorState.DRONE_RUNNING);
@@ -145,13 +152,6 @@ describe("SupervisorStateMachine", () => {
   test("invalid transition from INIT to REVIEWING throws", () => {
     const sm = createSupervisorStateMachine(makeConfig());
     expect(() => sm.transition(SupervisorState.REVIEWING)).toThrow(
-      /Invalid transition/
-    );
-  });
-
-  test("invalid transition from INIT to DONE throws", () => {
-    const sm = createSupervisorStateMachine(makeConfig());
-    expect(() => sm.transition(SupervisorState.DONE)).toThrow(
       /Invalid transition/
     );
   });
@@ -297,6 +297,30 @@ describe("buildReviewPrompt", () => {
     expect(prompt.length).toBeLessThan(200_000);
     expect(prompt).toContain("[truncated");
   });
+
+  test("includes previousFeedback when provided", () => {
+    const prompt = buildReviewPrompt({
+      diff: sampleDiff,
+      testOutput: sampleTestOutput,
+      standards: sampleStandards,
+      tasks: makeConfig().tasks,
+      iteration: 2,
+      previousFeedback: "## Round 1 findings\n- Missing error handling in sse.ts",
+    });
+    expect(prompt).toContain("Previous Feedback");
+    expect(prompt).toContain("Missing error handling in sse.ts");
+  });
+
+  test("does not include previousFeedback section when not provided", () => {
+    const prompt = buildReviewPrompt({
+      diff: sampleDiff,
+      testOutput: sampleTestOutput,
+      standards: sampleStandards,
+      tasks: makeConfig().tasks,
+      iteration: 1,
+    });
+    expect(prompt).not.toContain("Previous Feedback");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -424,6 +448,22 @@ describe("buildFeedbackContent", () => {
     ], "1 fail\nExpected: 200, Received: 500");
     expect(content).toContain("Test Failures");
     expect(content).toContain("Expected: 200");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// maxIterations validation (Fix #7)
+// ---------------------------------------------------------------------------
+
+describe("runMindSupervisor validation", () => {
+  test("throws when maxIterations is 0", async () => {
+    const config = makeConfig({ maxIterations: 0 });
+    await expect(runMindSupervisor(config)).rejects.toThrow(/maxIterations must be >= 1/);
+  });
+
+  test("throws when maxIterations is negative", async () => {
+    const config = makeConfig({ maxIterations: -1 });
+    await expect(runMindSupervisor(config)).rejects.toThrow(/maxIterations must be >= 1/);
   });
 });
 

@@ -26,6 +26,7 @@ import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
 import { runMindSupervisor } from "../../lib/mind-supervisor.ts";
 import type { SupervisorConfig } from "../../lib/mind-supervisor.ts";
 import { waitForWaveCompletion } from "../lib/bus-listener.ts";
+import { killPane } from "../../lib/tmux-utils.ts";
 import {
   startMindsBus,
   teardownMindsBus,
@@ -100,13 +101,7 @@ function getCurrentPane(): string {
   }
 }
 
-function killPane(paneId: string): void {
-  try {
-    Bun.spawnSync(["tmux", "kill-pane", "-t", paneId], { stdout: "ignore", stderr: "ignore" });
-  } catch {
-    // Pane may already be gone
-  }
-}
+// killPane imported from ../../lib/tmux-utils.ts
 
 /* ------------------------------------------------------------------ */
 /*  Mind spawning                                                      */

@@ -12,7 +12,7 @@
  *   5. Publish REVIEW_STARTED
  *   6. Call `claude -p` with structured review prompt (diff + checklist -> JSON verdict)
  *   7. If approved: publish MIND_COMPLETE, exit
- *   8. If rejected: write REVIEW-FEEDBACK-{n}.md, re-launch drone, go to step 3
+ *   8. If rejected: write REVIEW-FEEDBACK-{n}.md, re-launch drone IN SAME WORKTREE, go to step 3
  *   9. Max iterations then approve with warnings
  *
  * The LLM is only invoked for the one thing that requires judgment: code review.
@@ -23,6 +23,7 @@ import { join, resolve, dirname } from "path";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 import { resolveMindsDir } from "../shared/paths.js";
+import { killPane } from "./tmux-utils.ts";
 import type { MindTask } from "../cli/lib/implement-types.ts";
 import { formatTaskList } from "../cli/lib/drone-brief.ts";
 
@@ -56,6 +57,7 @@ export interface SupervisorConfig {
   dependencies: string[];
   maxIterations: number;
   droneTimeoutMs: number;
+  reviewTimeoutMs?: number;
 }
 
 export interface ReviewFinding {
@@ -95,13 +97,19 @@ export interface SupervisorResult {
 // ---------------------------------------------------------------------------
 
 const VALID_TRANSITIONS: Record<SupervisorState, SupervisorState[]> = {
-  [SupervisorState.INIT]: [SupervisorState.DRONE_RUNNING, SupervisorState.FAILED],
+  [SupervisorState.INIT]: [SupervisorState.DRONE_RUNNING, SupervisorState.DONE, SupervisorState.FAILED],
   [SupervisorState.DRONE_RUNNING]: [SupervisorState.CHECKING, SupervisorState.FAILED],
   [SupervisorState.CHECKING]: [SupervisorState.REVIEWING, SupervisorState.FAILED],
   [SupervisorState.REVIEWING]: [SupervisorState.DONE, SupervisorState.DRONE_RUNNING, SupervisorState.FAILED],
   [SupervisorState.DONE]: [],
   [SupervisorState.FAILED]: [],
 };
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const DEFAULT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 // ---------------------------------------------------------------------------
 // State Machine
@@ -315,7 +323,7 @@ export function buildFeedbackContent(
 }
 
 // ---------------------------------------------------------------------------
-// Drone Spawning (wrapper around drone-pane.ts)
+// Drone Spawning (wrapper around drone-pane.ts — first iteration only)
 // ---------------------------------------------------------------------------
 
 interface DroneSpawnResult {
@@ -353,11 +361,14 @@ async function spawnDrone(config: SupervisorConfig, briefContent: string): Promi
     stderr: "pipe",
   });
 
-  const output = await new Response(proc.stdout).text();
-  const exitCode = await proc.exited;
+  // Read stdout and stderr concurrently to prevent deadlock
+  const [output, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
 
   if (exitCode !== 0) {
-    const stderr = await new Response(proc.stderr).text();
     throw new Error(`drone-pane.ts failed for @${config.mindName}: ${stderr}`);
   }
 
@@ -373,6 +384,62 @@ async function spawnDrone(config: SupervisorConfig, briefContent: string): Promi
     worktree: result.worktree,
     branch: result.branch,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Drone Re-launch (reuse existing worktree for retry iterations)
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-launch a drone in an existing worktree. This preserves the drone's
+ * previous commits and the feedback file we just wrote.
+ *
+ * Steps:
+ *   1. Kill the old drone pane
+ *   2. Create a new tmux pane
+ *   3. Write the updated DRONE-BRIEF.md to the existing worktree
+ *   4. Launch Claude Code in the new pane pointed at the same worktree
+ */
+function relaunchDroneInWorktree(opts: {
+  oldPaneId: string;
+  callerPane: string;
+  worktreePath: string;
+  briefContent: string;
+  busUrl: string;
+  mindName: string;
+}): string {
+  const { oldPaneId, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
+
+  // Kill the old drone pane
+  killPane(oldPaneId);
+
+  // Write updated DRONE-BRIEF.md to the SAME worktree
+  writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
+
+  // Create a new tmux pane
+  const splitResult = Bun.spawnSync(
+    ["tmux", "split-window", "-h", "-p", "50", "-t", callerPane, "-P", "-F", "#{pane_id}"],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  if (splitResult.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(splitResult.stderr);
+    throw new Error(`Failed to split tmux pane for drone relaunch: ${stderr}`);
+  }
+  const newPaneId = new TextDecoder().decode(splitResult.stdout).trim();
+
+  // Launch Claude Code in the new pane, pointing at the existing worktree
+  const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
+  const escapedPrompt = JSON.stringify(prompt);
+  let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model sonnet ${escapedPrompt}`;
+  if (busUrl) {
+    launchCmd = `BUS_URL=${busUrl} ${launchCmd}`;
+  }
+  Bun.spawnSync(
+    ["tmux", "send-keys", "-t", newPaneId, launchCmd, "Enter"],
+    { stdout: "ignore", stderr: "ignore" },
+  );
+
+  return newPaneId;
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +480,9 @@ async function waitForDroneCompletion(
       return { ok: true };
     }
 
-    // Check if the shell has any child processes (claude/bun)
+    // Check if the shell has any child processes (claude/bun).
+    // This is the authoritative signal — when pgrep finds no children,
+    // Claude Code has exited and the shell is idle.
     const childCheck = Bun.spawnSync(
       ["pgrep", "-P", shellPid],
       { stdout: "pipe", stderr: "pipe" }
@@ -422,20 +491,6 @@ async function waitForDroneCompletion(
     if (childCheck.exitCode !== 0) {
       // No child processes — Claude Code has exited
       return { ok: true };
-    }
-
-    // Also check the last lines of the pane for completion indicators
-    const captureResult = Bun.spawnSync(
-      ["tmux", "capture-pane", "-t", paneId, "-p", "-S", "-5"],
-      { stdout: "pipe", stderr: "pipe" }
-    );
-
-    if (captureResult.exitCode === 0) {
-      const lastLines = new TextDecoder().decode(captureResult.stdout);
-      // Claude Code shows the $ prompt when done, or shows specific exit messages
-      if (/\$\s*$/.test(lastLines.trim()) || /claude.*exited/i.test(lastLines)) {
-        return { ok: true };
-      }
     }
 
     await Bun.sleep(pollIntervalMs);
@@ -476,24 +531,46 @@ function runDeterministicChecks(worktreePath: string, baseBranch: string, mindNa
 }
 
 // ---------------------------------------------------------------------------
-// LLM Review (claude -p)
+// LLM Review (claude -p) with timeout
 // ---------------------------------------------------------------------------
 
-async function callLlmReview(prompt: string): Promise<string> {
+const REVIEW_TIMEOUT_ERROR = "Review timed out";
+
+async function callLlmReview(prompt: string, timeoutMs: number = DEFAULT_REVIEW_TIMEOUT_MS): Promise<string> {
   const proc = Bun.spawn(
     ["claude", "-p", "--model", "sonnet", "--output-format", "text"],
     {
-      stdin: new Response(prompt),
+      stdin: new Blob([prompt]),
       stdout: "pipe",
       stderr: "pipe",
     }
   );
 
-  const output = await new Response(proc.stdout).text();
-  const exitCode = await proc.exited;
+  // Race the process against a timeout, clearing the timer on completion
+  let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutTimer = setTimeout(() => {
+      proc.kill();
+      reject(new Error(`${REVIEW_TIMEOUT_ERROR} after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  // Read stdout and stderr concurrently to prevent deadlock
+  let output: string, stderr: string, exitCode: number;
+  try {
+    [output, stderr, exitCode] = await Promise.race([
+      Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]),
+      timeoutPromise,
+    ]) as [string, string, number];
+  } finally {
+    clearTimeout(timeoutTimer);
+  }
 
   if (exitCode !== 0) {
-    const stderr = await new Response(proc.stderr).text();
     throw new Error(`claude -p failed (exit ${exitCode}): ${stderr}`);
   }
 
@@ -595,22 +672,15 @@ ${depsSection}${feedbackSection}
 }
 
 // ---------------------------------------------------------------------------
-// Kill tmux pane helper
-// ---------------------------------------------------------------------------
-
-function killPane(paneId: string): void {
-  try {
-    Bun.spawnSync(["tmux", "kill-pane", "-t", paneId], { stdout: "ignore", stderr: "ignore" });
-  } catch {
-    // Pane may already be gone
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Main Supervisor Entry Point
 // ---------------------------------------------------------------------------
 
 export async function runMindSupervisor(config: SupervisorConfig): Promise<SupervisorResult> {
+  // Fix #7: Guard against maxIterations < 1
+  if (config.maxIterations < 1) {
+    throw new Error(`maxIterations must be >= 1, got ${config.maxIterations}`);
+  }
+
   const sm = createSupervisorStateMachine(config);
   const result: SupervisorResult = {
     ok: false,
@@ -623,10 +693,14 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
     errors: [],
   };
 
+  // Accumulate all findings across iterations (Fix #10)
+  const allFindings: ReviewFinding[] = [];
+
   let currentDronePane: string | undefined;
   let currentWorktree = config.worktreePath;
   let currentBranch = "";
 
+  const reviewTimeoutMs = config.reviewTimeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
   const standards = loadStandards(config.repoRoot);
 
   try {
@@ -640,42 +714,73 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
 
     // ---- Main loop ----
     while (!sm.isMaxIterations()) {
-      // ---- Step 2: Spawn Drone ----
+      // ---- Step 2: Spawn or re-launch Drone ----
       sm.transition(SupervisorState.DRONE_RUNNING);
       const iteration = sm.incrementIteration();
       result.iterations = iteration;
-      console.log(`[supervisor] @${config.mindName}: Iteration ${iteration} -- spawning drone`);
 
-      const feedbackFile = iteration > 1 ? `REVIEW-FEEDBACK-${iteration - 1}.md` : undefined;
-      const briefContent = buildSupervisorDroneBrief(config, feedbackFile);
+      if (iteration === 1) {
+        // First iteration: spawn drone via drone-pane.ts (creates worktree)
+        console.log(`[supervisor] @${config.mindName}: Iteration ${iteration} -- spawning drone`);
 
-      let drone: DroneSpawnResult;
-      try {
-        drone = await spawnDrone(config, briefContent);
-      } catch (err) {
-        const msg = `Failed to spawn drone: ${(err as Error).message}`;
-        console.error(`[supervisor] @${config.mindName}: ${msg}`);
-        result.errors.push(msg);
-        sm.transition(SupervisorState.FAILED);
-        break;
+        const briefContent = buildSupervisorDroneBrief(config);
+
+        let drone: DroneSpawnResult;
+        try {
+          drone = await spawnDrone(config, briefContent);
+        } catch (err) {
+          const msg = `Failed to spawn drone: ${(err as Error).message}`;
+          console.error(`[supervisor] @${config.mindName}: ${msg}`);
+          result.errors.push(msg);
+          sm.transition(SupervisorState.FAILED);
+          break;
+        }
+
+        currentDronePane = drone.paneId;
+        currentWorktree = drone.worktree;
+        currentBranch = drone.branch;
+        result.dronePaneId = drone.paneId;
+        result.worktree = drone.worktree;
+        result.branch = drone.branch;
+
+        console.log(`[supervisor] @${config.mindName}: Drone spawned in pane ${drone.paneId}`);
+      } else {
+        // Subsequent iterations: re-launch drone in the SAME worktree
+        // This preserves the drone's previous commits and feedback files
+        console.log(`[supervisor] @${config.mindName}: Iteration ${iteration} -- re-launching drone in existing worktree`);
+
+        const feedbackFile = `REVIEW-FEEDBACK-${iteration - 1}.md`;
+        const briefContent = buildSupervisorDroneBrief(config, feedbackFile);
+
+        try {
+          const newPaneId = relaunchDroneInWorktree({
+            oldPaneId: currentDronePane!,
+            callerPane: config.callerPane,
+            worktreePath: currentWorktree,
+            briefContent,
+            busUrl: config.busUrl,
+            mindName: config.mindName,
+          });
+          currentDronePane = newPaneId;
+          result.dronePaneId = newPaneId;
+        } catch (err) {
+          const msg = `Failed to re-launch drone: ${(err as Error).message}`;
+          console.error(`[supervisor] @${config.mindName}: ${msg}`);
+          result.errors.push(msg);
+          sm.transition(SupervisorState.FAILED);
+          break;
+        }
+
+        console.log(`[supervisor] @${config.mindName}: Drone re-launched in pane ${currentDronePane}`);
       }
 
-      currentDronePane = drone.paneId;
-      currentWorktree = drone.worktree;
-      currentBranch = drone.branch;
-      result.dronePaneId = drone.paneId;
-      result.worktree = drone.worktree;
-      result.branch = drone.branch;
-
-      console.log(`[supervisor] @${config.mindName}: Drone spawned in pane ${drone.paneId}`);
-
       // ---- Step 3: Wait for Drone completion ----
-      const completion = await waitForDroneCompletion(drone.paneId, config.droneTimeoutMs);
+      const completion = await waitForDroneCompletion(currentDronePane!, config.droneTimeoutMs);
       if (!completion.ok) {
         const msg = completion.error ?? "Drone failed";
         console.error(`[supervisor] @${config.mindName}: ${msg}`);
         result.errors.push(msg);
-        killPane(drone.paneId);
+        killPane(currentDronePane!);
         sm.transition(SupervisorState.FAILED);
         break;
       }
@@ -698,22 +803,30 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       sm.transition(SupervisorState.REVIEWING);
       console.log(`[supervisor] @${config.mindName}: Reviewing (iteration ${iteration})`);
 
-      // If tests fail, that's an automatic rejection -- but still get the LLM review
-      // for additional findings
+      // Read previous feedback for the reviewer's context (Fix #4)
+      let previousFeedback: string | undefined;
+      if (iteration > 1) {
+        const prevFeedbackPath = join(currentWorktree, `REVIEW-FEEDBACK-${iteration - 1}.md`);
+        if (existsSync(prevFeedbackPath)) {
+          previousFeedback = readFileSync(prevFeedbackPath, "utf-8");
+        }
+      }
+
       const prompt = buildReviewPrompt({
         diff: checks.diff,
         testOutput: checks.testOutput,
         standards,
         tasks: config.tasks,
         iteration,
+        previousFeedback,
       });
 
       let verdict: ReviewVerdict;
       try {
-        const rawResponse = await callLlmReview(prompt);
+        const rawResponse = await callLlmReview(prompt, reviewTimeoutMs);
         verdict = parseReviewVerdict(rawResponse);
       } catch (err) {
-        // LLM call failed -- treat as rejection with error finding
+        // LLM call failed or timed out -- treat as rejection with error finding
         verdict = {
           approved: false,
           findings: [{
@@ -736,7 +849,9 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         });
       }
 
-      result.findings = verdict.findings;
+      // Accumulate findings across all iterations (Fix #10)
+      allFindings.push(...verdict.findings);
+      result.findings = allFindings;
 
       // ---- Step 7: Verdict ----
       if (verdict.approved) {
@@ -759,7 +874,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         break;
       }
 
-      // ---- Step 8: Write feedback and prepare for re-launch ----
+      // ---- Step 8: Write feedback to the SAME worktree ----
       console.log(
         `[supervisor] @${config.mindName}: REJECTED (${verdict.findings.length} findings). Writing feedback.`
       );
@@ -776,18 +891,14 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         { iteration, findingsCount: verdict.findings.length },
       );
 
-      // Kill the old drone pane before re-launching
-      killPane(drone.paneId);
-
-      // Loop continues: the transition to DRONE_RUNNING happens at the top
-      // of the next iteration. Current state is REVIEWING, which is allowed
-      // to transition to DRONE_RUNNING.
+      // Loop continues: relaunchDroneInWorktree at the top of the next iteration
+      // will kill the old pane and create a new one in the same worktree.
     }
 
     // Handle the edge case where we exit the while loop due to isMaxIterations
     // being true at the START of an iteration (iteration count was already at max)
     if (sm.getState() === SupervisorState.INIT) {
-      // This shouldn't happen with maxIterations >= 1, but guard anyway
+      // This shouldn't happen with maxIterations >= 1 (validated above), but guard anyway
       sm.transition(SupervisorState.DONE);
       result.ok = true;
       result.approved = true;
