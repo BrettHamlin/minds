@@ -15,10 +15,11 @@
  * - Barrel index.ts resolution
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import { join, resolve, relative, dirname, extname } from "path";
 import type { Extractor } from "./extractor.js";
 import type { DependencyGraph, GraphEdge } from "../lib/types.js";
+import { walkDir } from "./walk.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -184,51 +185,6 @@ function isBareSpecifier(specifier: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// File discovery
-// ---------------------------------------------------------------------------
-
-function walkDir(dir: string, rootDir: string, files: string[]): void {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return;
-  }
-
-  for (const entry of entries) {
-    // Skip excluded and dot-prefixed directories
-    if (EXCLUDED_DIRS.has(entry) || entry.startsWith(".")) {
-      const fullPath = join(dir, entry);
-      try {
-        if (statSync(fullPath).isDirectory()) continue;
-      } catch {
-        continue;
-      }
-    }
-
-    const fullPath = join(dir, entry);
-    let stat;
-    try {
-      stat = statSync(fullPath);
-    } catch {
-      continue;
-    }
-
-    if (stat.isDirectory()) {
-      // Also check dot-prefix for the directory name itself
-      if (!entry.startsWith(".")) {
-        walkDir(fullPath, rootDir, files);
-      }
-    } else if (stat.isFile()) {
-      const ext = extname(entry);
-      if (SOURCE_EXTENSIONS.includes(ext)) {
-        files.push(relative(rootDir, fullPath));
-      }
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Import parsing
 // ---------------------------------------------------------------------------
 
@@ -327,9 +283,10 @@ export class TypeScriptExtractor implements Extractor {
     const tsConfig = loadTsConfigPaths(absRoot);
 
     // 1. Discover all source files
-    const files: string[] = [];
-    walkDir(absRoot, absRoot, files);
-    files.sort();
+    const files = walkDir(absRoot, absRoot, {
+      extensions: SOURCE_EXTENSIONS,
+      excludedDirs: EXCLUDED_DIRS,
+    });
 
     // 2. Parse each file and resolve imports
     const edgeMap = new Map<string, GraphEdge>();

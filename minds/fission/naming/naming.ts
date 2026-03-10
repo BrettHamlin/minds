@@ -47,9 +47,26 @@ export async function nameAndValidate(
   options?: NamingOptions,
 ): Promise<ProposedMindMap> {
   const { clusters, foundation, graph } = input;
+  const offline = options?.offline ?? false;
 
-  // Generate raw names for each cluster
-  const rawNames = clusters.map((c) => deriveClusterName(c.files));
+  // Try LLM naming first unless explicitly offline
+  let llmResults: Map<number, LLMNamingResult> | null = null;
+  if (!offline && clusters.length > 0) {
+    const claudeAvailable = await isClaudeAvailable();
+    if (claudeAvailable) {
+      process.stderr.write(`  Using LLM naming for ${clusters.length} clusters...\n`);
+      llmResults = await llmNameClusters(clusters);
+      process.stderr.write(`  LLM named ${llmResults.size}/${clusters.length} clusters.\n`);
+    } else {
+      process.stderr.write(`  Claude CLI not found, using offline naming.\n`);
+    }
+  }
+
+  // Generate names: prefer LLM results, fall back to offline for any gaps
+  const rawNames = clusters.map((c) => {
+    const llm = llmResults?.get(c.clusterId);
+    return llm ? llm.name : deriveClusterName(c.files);
+  });
 
   // Deduplicate names
   const names = deduplicateNames(rawNames);
@@ -65,24 +82,31 @@ export async function nameAndValidate(
     const name = names[i];
     const files = c.files.sort();
     const ownsFiles = generateOwnsPatterns(files);
-    const keywords = extractKeywords(files);
-    const domain = generateDomain(name, files);
+    const llm = llmResults?.get(c.clusterId);
+    const keywords = llm?.keywords?.length ? llm.keywords : extractKeywords(files);
+    const domain = llm?.domain ?? generateDomain(name, files);
 
-    // Compute exposes/consumes from edges
-    const exposes: string[] = [];
-    const consumes: string[] = [];
-    const fileSet = new Set(files);
+    // Compute exposes/consumes from edges (or use LLM results)
+    let exposes: string[];
+    let consumes: string[];
 
-    for (const edge of graph.edges) {
-      if (fileSet.has(edge.to) && !fileSet.has(edge.from)) {
-        // Incoming from outside: this cluster exposes something
-        const stem = basename(edge.to, extname(edge.to));
-        if (!exposes.includes(stem)) exposes.push(stem);
-      }
-      if (fileSet.has(edge.from) && !fileSet.has(edge.to)) {
-        // Outgoing to outside: this cluster consumes something
-        const stem = basename(edge.to, extname(edge.to));
-        if (!consumes.includes(stem)) consumes.push(stem);
+    if (llm?.exposes?.length || llm?.consumes?.length) {
+      exposes = llm.exposes ?? [];
+      consumes = llm.consumes ?? [];
+    } else {
+      exposes = [];
+      consumes = [];
+      const fileSet = new Set(files);
+
+      for (const edge of graph.edges) {
+        if (fileSet.has(edge.to) && !fileSet.has(edge.from)) {
+          const stem = basename(edge.to, extname(edge.to));
+          if (!exposes.includes(stem)) exposes.push(stem);
+        }
+        if (fileSet.has(edge.from) && !fileSet.has(edge.to)) {
+          const stem = basename(edge.to, extname(edge.to));
+          if (!consumes.includes(stem)) consumes.push(stem);
+        }
       }
     }
 
@@ -411,17 +435,117 @@ export function prepareClusterData(
 }
 
 /* ------------------------------------------------------------------ */
-/*  LLM naming (future)                                                */
+/*  LLM naming                                                         */
 /* ------------------------------------------------------------------ */
 
-// TODO: Implement LLM-based naming when inference tooling is available.
-//
-// The LLM path should:
-// 1. Call prepareClusterData() to summarize clusters.
-// 2. Call buildNamingPrompt() to create the naming prompt.
-// 3. Send prompt to inference (e.g., `Bun.spawn(["bun", "Tools/Inference.ts", "fast"])`).
-// 4. Parse JSON response and map to ProposedMind[].
-// 5. Call buildRecommendationPrompt() for LLM-powered recommendations.
-// 6. Merge LLM recommendations with deterministic ones (split/merge).
-//
-// The offline path remains the fallback when no LLM is available.
+/** Max clusters per LLM batch to stay within context limits. */
+const LLM_BATCH_SIZE = 50;
+
+interface LLMNamingResult {
+  clusterId: number;
+  name: string;
+  domain: string;
+  keywords: string[];
+  exposes: string[];
+  consumes: string[];
+}
+
+/**
+ * Check if the `claude` CLI is available on the system.
+ */
+async function isClaudeAvailable(): Promise<boolean> {
+  try {
+    const proc = Bun.spawn(["which", "claude"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await proc.exited;
+    return proc.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Send a naming prompt to the Claude CLI and parse the JSON response.
+ * Uses `claude -p` (print mode) for non-interactive single-shot inference.
+ */
+async function callClaude(prompt: string): Promise<LLMNamingResult[]> {
+  const proc = Bun.spawn(["claude", "-p", "--output-format", "json", prompt], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const stdout = await new Response(proc.stdout).text();
+  await proc.exited;
+
+  if (proc.exitCode !== 0) {
+    throw new Error(`claude CLI exited with code ${proc.exitCode}`);
+  }
+
+  // The claude CLI with --output-format json wraps the response in a JSON object.
+  // Extract the actual content from the response.
+  let content = stdout.trim();
+
+  // Try to parse as claude JSON output format first
+  try {
+    const wrapper = JSON.parse(content);
+    if (wrapper.result) {
+      content = wrapper.result;
+    }
+  } catch {
+    // Not a JSON wrapper, use raw content
+  }
+
+  // Extract JSON array from the content (may be wrapped in markdown code fences)
+  const jsonMatch = content.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    throw new Error("No JSON array found in LLM response");
+  }
+
+  return JSON.parse(jsonMatch[0]);
+}
+
+/**
+ * Name clusters using the Claude CLI in batches.
+ * Falls back to offline naming for any batch that fails.
+ */
+async function llmNameClusters(
+  clusters: ClusterAssignment[],
+): Promise<Map<number, LLMNamingResult>> {
+  const clusterData = prepareClusterData(clusters);
+  const results = new Map<number, LLMNamingResult>();
+
+  // Process in batches
+  for (let i = 0; i < clusterData.length; i += LLM_BATCH_SIZE) {
+    const batch = clusterData.slice(i, i + LLM_BATCH_SIZE);
+    const batchNum = Math.floor(i / LLM_BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(clusterData.length / LLM_BATCH_SIZE);
+
+    process.stderr.write(
+      `  Naming batch ${batchNum}/${totalBatches} (${batch.length} clusters)...\n`,
+    );
+
+    try {
+      const prompt = buildNamingPrompt(batch);
+      const batchResults = await callClaude(prompt);
+
+      for (const result of batchResults) {
+        // Validate the result has required fields
+        if (result.clusterId != null && result.name) {
+          results.set(result.clusterId, {
+            ...result,
+            name: sanitizeName(result.name),
+          });
+        }
+      }
+    } catch (err) {
+      process.stderr.write(
+        `  Warning: LLM naming failed for batch ${batchNum}: ${(err as Error).message}\n` +
+        `  Falling back to offline naming for this batch.\n`,
+      );
+    }
+  }
+
+  return results;
+}

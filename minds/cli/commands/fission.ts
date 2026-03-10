@@ -7,11 +7,11 @@
 
 import { resolve } from "path";
 import { existsSync, writeFileSync } from "fs";
-import { createInterface } from "readline";
 import { runPipeline, detectLanguage } from "../../fission/lib/pipeline.js";
 import { nameAndValidate, type NamingInput } from "../../fission/naming/naming.js";
 import { displayProposedMap, displaySummary } from "../../fission/lib/display.js";
 import { scaffoldAllMinds } from "../../fission/lib/scaffold-minds.js";
+import { promptConfirmation } from "../lib/prompt.js";
 import type { PipelineResult } from "../../fission/lib/pipeline.js";
 
 /* ------------------------------------------------------------------ */
@@ -99,9 +99,9 @@ export async function runFission(
     },
   };
 
-  // 6. Run naming (offline by default since LLM isn't wired yet)
+  // 6. Run naming (LLM by default if claude CLI is available, --offline to disable)
   const proposedMap = await nameAndValidate(namingInput, {
-    offline: options.offline ?? true,
+    offline: options.offline ?? false,
   });
 
   // 7. Display results
@@ -167,17 +167,3 @@ export async function runFission(
 /* ------------------------------------------------------------------ */
 /*  Internal helpers                                                   */
 /* ------------------------------------------------------------------ */
-
-function promptConfirmation(question: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const rl = createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
-    });
-  });
-}

@@ -504,7 +504,7 @@ if (import.meta.main) {
   const cliPort =
     portIdx !== -1 && args[portIdx + 1]
       ? parseInt(args[portIdx + 1], 10)
-      : 0;
+      : 3737;
 
   const regDirIdx = args.indexOf("--registry-dir");
   const cliRegistryDir =

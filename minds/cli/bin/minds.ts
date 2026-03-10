@@ -1,7 +1,5 @@
 #!/usr/bin/env bun
 import { program } from "commander";
-import { runMindsInit } from "../commands/minds-init.js";
-import { runFission } from "../commands/fission.js";
 
 program
   .name("minds")
@@ -14,6 +12,7 @@ program
   .option("--force", "Overwrite existing files")
   .option("--quiet", "Minimal output")
   .action(async (options: { force?: boolean; quiet?: boolean }) => {
+    const { runMindsInit } = await import("../commands/minds-init.js");
     await runMindsInit(options);
   });
 
@@ -28,7 +27,17 @@ program
   .option("--yes", "Skip approval prompt")
   .option("--offline", "Use deterministic naming (no LLM)")
   .action(async (targetDir: string | undefined, options) => {
+    const { runFission } = await import("../commands/fission.js");
     await runFission(targetDir, options);
+  });
+
+program
+  .command("implement <ticket-id>")
+  .description("Dispatch Mind drones to implement tasks for a ticket")
+  .option("--yes", "Skip confirmation prompt")
+  .action(async (ticketId: string, options: { yes?: boolean }) => {
+    const { runImplement } = await import("../commands/implement.js");
+    await runImplement(ticketId, options);
   });
 
 program.parse();

@@ -42,7 +42,7 @@ const CORE_MINDS = [
 ] as const;
 
 /** Shared infrastructure files/directories to copy into .minds/ */
-const SHARED_INFRA_DIRS = ["shared", "contracts"] as const;
+const SHARED_INFRA_DIRS = ["shared", "contracts", "cli"] as const;
 const SHARED_INFRA_FILES = [
   "server-base.ts",
   "mind.ts",

@@ -11,6 +11,14 @@
 import { existsSync } from "fs";
 import { join } from "path";
 import { TypeScriptExtractor } from "../extractors/typescript.js";
+import { GoExtractor } from "../extractors/go.js";
+import { PythonExtractor } from "../extractors/python.js";
+import { RustExtractor } from "../extractors/rust.js";
+import { SwiftExtractor } from "../extractors/swift.js";
+import { KotlinExtractor } from "../extractors/kotlin.js";
+import { JavaExtractor } from "../extractors/java.js";
+import { CSharpExtractor } from "../extractors/csharp.js";
+import { CppExtractor } from "../extractors/cpp.js";
 import { detectHubs } from "../analysis/hubs.js";
 import { leiden } from "../analysis/leiden.js";
 import { mergeSmallClusters } from "../analysis/merge.js";
@@ -75,8 +83,13 @@ export function detectLanguage(targetDir: string): string {
     ["go.mod", "go"],
     ["Cargo.toml", "rust"],
     ["Package.swift", "swift"],
+    ["build.gradle.kts", "kotlin"],
+    ["build.gradle", "kotlin"],
     ["pyproject.toml", "python"],
     ["setup.py", "python"],
+    ["pom.xml", "java"],
+    ["CMakeLists.txt", "cpp"],
+    ["Makefile", "cpp"],
   ];
 
   for (const [file, language] of markers) {
@@ -261,8 +274,24 @@ function selectExtractor(language: string) {
     case "typescript":
     case "javascript":
       return new TypeScriptExtractor();
+    case "go":
+      return new GoExtractor();
+    case "python":
+      return new PythonExtractor();
+    case "rust":
+      return new RustExtractor();
+    case "swift":
+      return new SwiftExtractor();
+    case "kotlin":
+      return new KotlinExtractor();
+    case "java":
+      return new JavaExtractor();
+    case "csharp":
+      return new CSharpExtractor();
+    case "cpp":
+    case "c":
+      return new CppExtractor();
     default:
-      // Only TypeScript is supported for now; default to it
       return new TypeScriptExtractor();
   }
 }

@@ -4,6 +4,8 @@
 // DB file: .minds/state/minds-dashboard.db
 
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "fs";
+import { dirname } from "path";
 
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS events (
@@ -36,6 +38,7 @@ export class MindsDb {
   private db: Database;
 
   constructor(dbPath: string) {
+    mkdirSync(dirname(dbPath), { recursive: true });
     this.db = new Database(dbPath);
     this.db.exec("PRAGMA journal_mode=WAL");
     for (const stmt of SCHEMA_STATEMENTS) {

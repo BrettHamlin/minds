@@ -265,7 +265,7 @@ export async function ensureAggregator(repoRoot: string): Promise<number> {
 
   // Spawn aggregator
   const aggregatorPath = path.join(path.dirname(new URL(import.meta.url).pathname), "status-aggregator.ts");
-  const proc = spawn("bun", [aggregatorPath, "--port", "0"], {
+  const proc = spawn("bun", [aggregatorPath, "--port", "3737"], {
     cwd: repoRoot,
     stdio: ["ignore", "pipe", "ignore"],
     detached: true,
