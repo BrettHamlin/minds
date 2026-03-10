@@ -34,6 +34,7 @@ import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 import { buildMindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import type { MindBusPublishCmds } from "../cli/lib/mind-brief.ts";
+import { resolveMindsDir } from "../shared/paths.js";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -66,11 +67,10 @@ export function assembleClaudeContent(
   baseBranch?: string,
 ): string {
   // Resolve minds/ vs .minds/ — single source of truth for all paths
-  const mindsBase = existsSync(resolve(repoRoot, ".minds")) ? ".minds" : "minds";
-  const mindsDir = resolve(repoRoot, mindsBase);
+  const mindsDir = resolveMindsDir(repoRoot);
 
   // Load minds.json and find entry for this mind
-  const mindsJsonPath = resolve(repoRoot, mindsBase, "minds.json");
+  const mindsJsonPath = resolve(mindsDir, "minds.json");
   let domain = "";
   let ownsFiles: string[] = [];
   let exposes: string[] = [];
@@ -98,15 +98,15 @@ export function assembleClaudeContent(
   }
 
   // Load STANDARDS.md (generic — ships with installer)
-  const standardsPath = resolve(repoRoot, mindsBase, "STANDARDS.md");
+  const standardsPath = resolve(mindsDir, "STANDARDS.md");
   const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
 
   // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
-  const projectStandardsPath = resolve(repoRoot, mindsBase, "STANDARDS-project.md");
+  const projectStandardsPath = resolve(mindsDir, "STANDARDS-project.md");
   const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
 
   // Load MIND.md (optional)
-  const mindMdPath = resolve(repoRoot, mindsBase, mindName, "MIND.md");
+  const mindMdPath = resolve(mindsDir, mindName, "MIND.md");
   const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
 
   // ── Build sections ──────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ ${contractsTable}
   // #4: Build deterministic contract check command (runs check-contracts.ts)
   // The script parses produces:/consumes: annotations from MIND-BRIEF.md
   // and verifies actual source files match. Exit 0 = pass, exit 1 = violation.
-  const checkContractsPath = resolve(repoRoot, mindsBase, "lib", "check-contracts.ts");
+  const checkContractsPath = resolve(mindsDir, "lib", "check-contracts.ts");
   const hasContractChecker = existsSync(checkContractsPath);
   const contractCheckCmd = hasContractChecker
     ? `
@@ -469,8 +469,7 @@ if (import.meta.main) { (async () => {
 
   // ─── Resolve minds dir and build bus commands ────────────────────────────────
 
-  const hooksBase = existsSync(resolve(repoRoot, ".minds")) ? ".minds" : "minds";
-  const mindsDir = resolve(repoRoot, hooksBase);
+  const mindsDir = resolveMindsDir(repoRoot);
   const busCmds = (channel && waveId)
     ? buildMindBusPublishCmds(mindsDir, channel, mindName!, waveId)
     : undefined;
@@ -488,7 +487,7 @@ if (import.meta.main) { (async () => {
   // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
 
   const settingsPath = resolve(worktreePath, ".claude", "settings.json");
-  const hookScriptPath = resolve(repoRoot, hooksBase, "transport", "hooks", "send-event.ts");
+  const hookScriptPath = resolve(mindsDir, "transport", "hooks", "send-event.ts");
   const hookCommand = `bun ${hookScriptPath} --source-app mind:${mindName}`;
 
   // Claude Code hooks use matcher-based format: { matcher?: string, hooks: [{ type, command }] }
