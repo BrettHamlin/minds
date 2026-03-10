@@ -48,11 +48,21 @@ export function buildDroneBrief(params: DroneBriefParams): string {
       ? `## Dependencies\n\nThis mind depends on: ${dependencies.map((d) => `@${d}`).join(", ")}.\nTheir work has already been completed and merged in previous waves.\n`
       : "";
 
-  return `# Drone Brief: @${mindName}
+  return `---
+name: Drone Brief
+role: Implementation tasks for the 🛸 Drone code worker
+scope: Complete all tasks, commit when done
+---
 
-Ticket: ${ticketId}
-Wave: ${waveId}
-Feature: ${featureDir}
+# 🛸 Drone Brief: @${mindName}
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ${ticketId} |
+| **Wave** | ${waveId} |
+| **Feature** | ${featureDir} |
+
+---
 
 ## Tasks
 

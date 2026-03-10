@@ -1,9 +1,11 @@
 /**
  * mind-brief.ts -- Build MIND-BRIEF.md content as a TypeScript template.
  *
- * The brief is what each Mind receives as its work instructions.
- * It includes the tasks assigned to the mind, review loop instructions,
- * and bus publish commands for signaling pipeline events.
+ * The brief is the task-specific work order for a Mind. It contains ONLY
+ * what changes per run: tasks, dependencies, and bus commands.
+ *
+ * Identity, standards, review process, and memory access are in CLAUDE.md
+ * (assembled by mind-pane.ts). The brief should not duplicate those.
  */
 
 import type { MindTask } from "./implement-types.ts";
@@ -23,11 +25,7 @@ export interface MindBriefParams {
   featureDir: string;
   tasks: MindTask[];
   dependencies: string[];
-  mindMdPath: string;
-  memoryMdPath: string;
-  maxReviewIterations?: number;
   worktreePath: string;
-  busPublishCmds: MindBusPublishCmds;
 }
 
 /**
@@ -41,103 +39,44 @@ export function buildMindBrief(params: MindBriefParams): string {
     featureDir,
     tasks,
     dependencies,
-    mindMdPath,
-    memoryMdPath,
-    maxReviewIterations = 3,
     worktreePath,
-    busPublishCmds,
   } = params;
 
   const taskList = formatTaskList(tasks);
 
-  const depsSection =
-    dependencies.length > 0
-      ? `## Dependencies\n\nThis mind depends on: ${dependencies.map((d) => `@${d}`).join(", ")}.\nTheir work has already been completed and merged in previous waves.\n\n`
-      : "";
+  const depsSection = dependencies.length > 0
+    ? `\n---\n\n## 🔗 Dependencies\n\n${dependencies.map((d) => `@${d}`).join(", ")} — completed and merged in previous waves.\n`
+    : "";
 
-  return `# Mind Brief: @${mindName}
+  return `---
+name: Work Order
+role: Ephemeral task assignment — tasks, dependencies, metadata
+scope: Changes per run — this is your current assignment
+---
 
-Ticket: ${ticketId}
-Wave: ${waveId}
-Feature: ${featureDir}
-Worktree: ${worktreePath}
+Process this work order using the Review Loop in your operating manual (CLAUDE.md).
 
-## Domain Context
+# 📋 Work Order: @${mindName}
 
-Read your MIND.md at: ${mindMdPath}
+| Field | Value |
+|-------|-------|
+| **Ticket** | ${ticketId} |
+| **Wave** | ${waveId} |
+| **Feature** | ${featureDir} |
+| **Worktree** | ${worktreePath} |
 
-## Memory
+---
 
-Read your MEMORY.md at: ${memoryMdPath}
-
-## Drone Tasks
+## 🛸 Drone Tasks
 
 ${taskList}
 
-${depsSection}## Review Loop Instructions
+---
 
-You are the supervising Mind. Your job is to spawn a drone, review its work, and approve or request fixes.
+## ✅ Completion Criteria
 
-### Spawning the drone
-
-\`\`\`typescript
-const result = await Agent({
-  subagent_type: 'drone',
-  prompt: 'Read DRONE-BRIEF.md and complete all tasks. Commit when done.'
-});
-const agentId = result.agentId;
-\`\`\`
-
-### Reviewing drone output
-
-After the drone returns, review its work with \`git diff\`. Check that:
-- All tasks are completed
-- Tests pass
-- Code follows project conventions
-
-### If issues are found
-
-\`\`\`typescript
-const result = await Agent({
-  subagent_type: 'drone',
-  resume: agentId,
-  prompt: 'Fix: {feedback}'
-});
-\`\`\`
-
-Maximum iterations: ${maxReviewIterations}. After reaching the maximum, approve with warnings and note remaining issues in your memory update.
-
-## Bus Commands
-
-Signal pipeline events by running these commands at the appropriate times:
-
-**Mind started:**
-\`\`\`bash
-${busPublishCmds.started}
-\`\`\`
-
-**Review started:**
-\`\`\`bash
-${busPublishCmds.reviewStarted}
-\`\`\`
-
-**Review feedback sent to drone:**
-\`\`\`bash
-${busPublishCmds.reviewFeedback}
-\`\`\`
-
-**Mind complete (run after final approval):**
-\`\`\`bash
-${busPublishCmds.complete}
-\`\`\`
-
-## Memory Update
-
-After approving the drone's work, update your MEMORY.md at ${memoryMdPath} with:
-- What patterns worked well in this review
-- Any recurring issues the drone encountered
-- Conventions or pitfalls relevant to this domain
-`;
+All tasks above are checked off AND all tests pass.
+${depsSection}`;
 }
 
 /**

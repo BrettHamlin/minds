@@ -20,7 +20,7 @@
  *     [--bus-url <url>]             # when provided, injects BUS_URL env var into Claude Code spawn command
  *     [--channel <channel>]          # Minds bus channel (e.g. minds-BRE-456)
  *     [--wave-id <id>]               # wave ID for DRONE_SPAWNED event correlation
- *     [--max-iterations <n>]         # max review iterations before approving with warnings (default: 3)
+ *     [--max-iterations <n>]         # max review iterations before approving with warnings (default: 10)
  *
  * Output: JSON to stdout
  *   { mind_pane, worktree, branch, base, claude_dir }
@@ -32,6 +32,8 @@ import { basename, resolve } from "path";
 import { injectBusEnv } from "../transport/minds-bus-lifecycle.ts";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
+import { buildMindBusPublishCmds } from "../cli/lib/mind-brief.ts";
+import type { MindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -60,12 +62,19 @@ export function assembleClaudeContent(
   repoRoot: string,
   mindName: string,
   ticketId: string,
-  maxIterations: number = 3,
+  busPublishCmds?: MindBusPublishCmds,
+  baseBranch?: string,
 ): string {
+  // Resolve minds/ vs .minds/ — single source of truth for all paths
+  const mindsBase = existsSync(resolve(repoRoot, ".minds")) ? ".minds" : "minds";
+  const mindsDir = resolve(repoRoot, mindsBase);
+
   // Load minds.json and find entry for this mind
-  const mindsJsonPath = resolve(repoRoot, ".minds", "minds.json");
+  const mindsJsonPath = resolve(repoRoot, mindsBase, "minds.json");
   let domain = "";
   let ownsFiles: string[] = [];
+  let exposes: string[] = [];
+  let consumes: string[] = [];
 
   if (existsSync(mindsJsonPath)) {
     try {
@@ -73,89 +82,204 @@ export function assembleClaudeContent(
         name: string;
         domain?: string;
         owns_files?: string[];
+        exposes?: string[];
+        consumes?: string[];
       }>;
       const entry = minds.find((m) => m.name === mindName);
       if (entry) {
         domain = entry.domain ?? "";
         ownsFiles = entry.owns_files ?? [];
+        exposes = entry.exposes ?? [];
+        consumes = entry.consumes ?? [];
       }
     } catch {
       // If parse fails, continue with empty values
     }
   }
 
-  // Load STANDARDS.md
-  const standardsPath = resolve(repoRoot, "minds", "STANDARDS.md");
+  // Load STANDARDS.md (generic — ships with installer)
+  const standardsPath = resolve(repoRoot, mindsBase, "STANDARDS.md");
   const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
 
+  // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
+  const projectStandardsPath = resolve(repoRoot, mindsBase, "STANDARDS-project.md");
+  const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
+
   // Load MIND.md (optional)
-  const mindMdPath = resolve(repoRoot, "minds", mindName, "MIND.md");
+  const mindMdPath = resolve(repoRoot, mindsBase, mindName, "MIND.md");
   const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
 
-  const ownsFilesSection =
-    ownsFiles.length > 0
-      ? ownsFiles.map((f) => `- ${f}`).join("\n")
-      : "(no file boundaries defined)";
+  // ── Build sections ──────────────────────────────────────────────────────────
 
-  const domainLine = domain ? `Domain: ${domain}` : "";
+  const ownsFilesSection = ownsFiles.length > 0
+    ? ownsFiles.map((f) => `- \`${f}\``).join("\n")
+    : "(no file boundaries defined)";
+
+  const contractRows: string[] = [];
+  for (const e of exposes) contractRows.push(`| **Exposes** | \`${e}\` |`);
+  for (const c of consumes) contractRows.push(`| **Consumes** | \`${c}\` |`);
+  const contractsTable = contractRows.length > 0
+    ? `| Direction | Path |\n|-----------|------|\n${contractRows.join("\n")}`
+    : "(none defined)";
+
+  const signalBlock = (cmd: string | undefined): string =>
+    cmd ? `\`\`\`bash\n${cmd}\n\`\`\`` : "(bus not configured)";
 
   const mindProfileSection = mindMd
-    ? `## Mind Profile (@${mindName})\n${mindMd}`
+    ? `---\n\n# 🧬 Mind Profile (@${mindName})\n\n${mindMd}`
     : "";
 
-  return [
-    `## Mind Identity`,
-    ``,
-    `You are the @${mindName} Mind (supervisor) for ticket ${ticketId}.`,
-    domainLine,
-    ``,
-    `Your file boundary (only touch files in these paths):`,
-    ownsFilesSection,
-    ``,
-    `## Engineering Standards`,
-    standards,
-    mindProfileSection,
-    `## Review Loop Instructions`,
-    ``,
-    `You supervise drone agents that do the implementation work. Follow this loop:`,
-    ``,
-    `1. **Spawn a drone** using the Agent tool:`,
-    `   \`\`\``,
-    `   Agent({ subagent_type: 'drone', prompt: 'Read DRONE-BRIEF.md and complete all tasks. Commit when done.' })`,
-    `   \`\`\``,
-    `   Save the returned agent ID for later use.`,
-    ``,
-    `2. **Review the diff** after the drone returns:`,
-    `   \`\`\``,
-    `   git diff {base}...HEAD`,
-    `   \`\`\``,
-    `   Evaluate correctness, test coverage, and adherence to standards.`,
-    ``,
-    `3. **If issues are found**, resume the agent with specific feedback:`,
-    `   \`\`\``,
-    `   Agent({ resume: '{agentId}', prompt: 'Fix: {specific feedback}' })`,
-    `   \`\`\``,
-    `   Then re-review the diff.`,
-    ``,
-    `4. **Max iterations:** ${maxIterations}. After ${maxIterations} review cycles, approve with warnings if issues remain.`,
-    ``,
-    `5. **Send bus events** using the publish commands defined in MIND-BRIEF.md to report`,
-    `   progress and completion back to the orchestrating Mind.`,
-    ``,
-    `## Test Command`,
-    ``,
-    `Run only your Mind's tests — never bare \`bun test\`:`,
-    `\`\`\``,
-    `bun test minds/${mindName}/`,
-    `\`\`\``,
-    ``,
-    `## Active Task`,
-    `Your current task brief is in MIND-BRIEF.md at the worktree root.`,
-    `If you've compacted or lost context, re-read that file.`,
-  ]
-    .filter((line) => line !== null)
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n");
+  const projectStandardsSection = projectStandards
+    ? `\n\n## Project-Specific Standards\n\n${projectStandards}`
+    : "";
+
+  // #2+#3: Conditional file boundary section
+  const fileBoundarySection = ownsFiles.length > 0
+    ? `# 🚨 File Boundary
+
+**NEVER modify files outside your \`owns_files\` boundary.**
+
+${ownsFilesSection}
+
+---`
+    : `# 🚨 File Boundary
+
+This Mind has unrestricted file access. No \`owns_files\` boundary is defined.
+
+---`;
+
+  // #2+#3: Conditional contracts section
+  const contractsSection = contractRows.length > 0
+    ? `# 📋 Contracts
+
+${contractsTable}
+
+**Honor these exactly.** Exposes are exported at their declared paths. Consumes are imported, never reimplemented.
+
+---`
+    : "";
+
+  // #4: Resolve base branch for git diff
+  const diffBase = baseBranch ?? "main";
+
+  return `---
+name: Mind Operating Manual
+role: Static identity, process, and standards for the 🧠 Mind supervisor
+scope: Same across all tasks for this Mind — re-read after compaction
+---
+
+${fileBoundarySection}
+
+# 🧠 Mind Identity
+
+You are the 🧠 @${mindName} Mind (supervisor) for ticket ${ticketId}.
+${domain ? `Domain: ${domain}\n` : ""}
+| Role | Emoji | Example |
+|------|-------|---------|
+| **You** (supervisor) | 🧠 | "🧠 I reviewed the diff", "🧠 Found a DRY violation" |
+| **Drone** (code worker) | 🛸 | "🛸 Drone missed...", "🛸 Drone's changes..." |
+
+---
+
+${contractsSection}
+
+# 🔁 Review Loop
+
+You supervise a 🛸 Drone that does the implementation work. Follow this process exactly (max 10 iterations).
+
+━━━ 1. READ ━━━
+Read MIND-BRIEF.md for your task assignment.
+
+━━━ 2. SIGNAL ━━━
+${signalBlock(busPublishCmds?.started)}
+
+━━━ 3. SPAWN ━━━
+\`\`\`
+Agent({ subagent_type: 'drone', prompt: 'Read DRONE-BRIEF.md and complete all tasks. Commit when done.' })
+\`\`\`
+Save the returned agent ID.
+
+━━━ 4. WAIT ━━━
+🛸 Drone works autonomously. When it returns → step 5.
+
+━━━ 5. SIGNAL ━━━
+${signalBlock(busPublishCmds?.reviewStarted)}
+
+━━━ 6. REVIEW ━━━
+Verify all tasks from MIND-BRIEF.md are implemented, then evaluate the diff:
+\`\`\`bash
+git diff ${diffBase}...HEAD
+\`\`\`
+Evaluate against the **Review Checklist** in Engineering Standards below.
+
+━━━ 7. VERDICT ━━━
+
+**❌ Issues found:**
+${signalBlock(busPublishCmds?.reviewFeedback)}
+Then resume 🛸 Drone:
+\`\`\`
+Agent({ resume: '{agentId}', prompt: 'Fix: {specific feedback}' })
+\`\`\`
+→ Go to step 5.
+
+**✅ Approved:**
+a. Flush memory with key insights from this review:
+\`\`\`bash
+bun ${mindsDir}/memory/lib/write-cli.ts --mind ${mindName} --content "<insight>"
+\`\`\`
+b. Signal completion:
+${signalBlock(busPublishCmds?.complete)}
+
+**⚠️ Max iterations (10) reached:**
+Approve with warnings. Flush unresolved issues to memory (step 7a), then signal completion (step 7b).
+
+---
+
+# ⚙️ Engineering Standards
+
+${standards}${projectStandardsSection}
+
+${mindProfileSection}
+
+---
+
+# 💾 Memory
+
+Your curated memory: \`${mindsDir}/${mindName}/memory/MEMORY.md\` — read at start of each task.
+
+\`\`\`bash
+# Search (hybrid BM25 + vector)
+bun ${mindsDir}/memory/lib/search-cli.ts --mind ${mindName} --query "<search text>"
+
+# Write (append to daily log — same command as Review Loop step 7a)
+bun ${mindsDir}/memory/lib/write-cli.ts --mind ${mindName} --content "<insight>"
+\`\`\`
+
+| ✅ Write | ❌ Don't Write |
+|----------|---------------|
+| Architectural decisions | Trivial passes |
+| Pattern violations found | Session-specific context |
+| DRY opportunities identified | In-progress state |
+| Contract gaps discovered | Won't apply to future reviews |
+
+**🛸 Drone does NOT have memory access. Memory is 🧠 Mind-only.**
+
+---
+
+# 🧪 Test Command
+
+\`\`\`
+bun test ${mindsDir}/${mindName}/
+\`\`\`
+
+**Never bare \`bun test\`.** It runs all tests across the entire repo.
+
+---
+
+# 📎 Active Task
+
+Your current task brief is in **MIND-BRIEF.md** at the worktree root.
+If you've compacted or lost context, re-read that file.`.replace(/\n{3,}/g, "\n\n");
 }
 
 // ─── CLI entry point ──────────────────────────────────────────────────────────
@@ -205,7 +329,7 @@ if (import.meta.main) { (async () => {
   const busUrl = getArg("--bus-url");
   const channel = getArg("--channel");
   const waveId = getArg("--wave-id");
-  const maxIterations = parseInt(getArg("--max-iterations") ?? "3", 10);
+  const maxIterations = parseInt(getArg("--max-iterations") ?? "10", 10);
 
   // ─── Repo context ────────────────────────────────────────────────────────────
 
@@ -295,16 +419,23 @@ if (import.meta.main) { (async () => {
   const claudeDir = resolve(process.env.HOME ?? "/root", ".claude", "projects", encoded);
   mkdirSync(claudeDir, { recursive: true });
 
+  // ─── Resolve minds dir and build bus commands ────────────────────────────────
+
+  const hooksBase = existsSync(resolve(repoRoot, ".minds")) ? ".minds" : "minds";
+  const mindsDir = resolve(repoRoot, hooksBase);
+  const busCmds = (channel && waveId)
+    ? buildMindBusPublishCmds(mindsDir, channel, mindName!, waveId)
+    : undefined;
+
   const claudeContent = claudeFile && existsSync(claudeFile)
     ? readFileSync(claudeFile, "utf-8")
-    : assembleClaudeContent(repoRoot, mindName!, ticketId!, maxIterations);
+    : assembleClaudeContent(repoRoot, mindName!, ticketId!, busCmds, baseBranch);
 
   writeFileSync(resolve(claudeDir, "CLAUDE.md"), claudeContent);
 
   // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
 
   const settingsPath = resolve(worktreePath, ".claude", "settings.json");
-  const hooksBase = existsSync(resolve(repoRoot, ".minds")) ? ".minds" : "minds";
   const hookScriptPath = resolve(repoRoot, hooksBase, "transport", "hooks", "send-event.ts");
   const hookCommand = `bun ${hookScriptPath} --source-app mind:${mindName}`;
 

@@ -1,19 +1,12 @@
 import { describe, it, expect } from "bun:test";
 import { buildMindBrief, buildMindBusPublishCmds } from "./mind-brief.ts";
-import type { MindBriefParams, MindBusPublishCmds } from "./mind-brief.ts";
+import type { MindBriefParams } from "./mind-brief.ts";
 import type { MindTask } from "./implement-types.ts";
 
 const TASKS: MindTask[] = [
   { id: "T1", mind: "signals", description: "Add emit method", parallel: false },
   { id: "T2", mind: "signals", description: "Write unit tests", parallel: true },
 ];
-
-const BUS_CMDS: MindBusPublishCmds = {
-  started: "bun minds/transport/minds-publish.ts --channel ch --type MIND_STARTED --payload '{}'",
-  reviewStarted: "bun minds/transport/minds-publish.ts --channel ch --type REVIEW_STARTED --payload '{}'",
-  reviewFeedback: "bun minds/transport/minds-publish.ts --channel ch --type REVIEW_FEEDBACK --payload '{}'",
-  complete: "bun minds/transport/minds-publish.ts --channel ch --type MIND_COMPLETE --payload '{}'",
-};
 
 const BASE_PARAMS: MindBriefParams = {
   ticketId: "BRE-471",
@@ -22,86 +15,86 @@ const BASE_PARAMS: MindBriefParams = {
   featureDir: "features/BRE-471",
   tasks: TASKS,
   dependencies: [],
-  mindMdPath: "/repo/minds/signals/MIND.md",
-  memoryMdPath: "/repo/minds/signals/MEMORY.md",
-  maxReviewIterations: 3,
   worktreePath: "/tmp/worktree-signals",
-  busPublishCmds: BUS_CMDS,
 };
 
 describe("buildMindBrief", () => {
-  it("contains the header with ticket, wave, and mind name", () => {
+  it("has YAML frontmatter with name, role, scope", () => {
     const output = buildMindBrief(BASE_PARAMS);
-    expect(output).toContain("# Mind Brief: @signals");
-    expect(output).toContain("Ticket: BRE-471");
-    expect(output).toContain("Wave: wave-1");
+    expect(output).toContain("---\nname: Work Order");
+    expect(output).toContain("role: Ephemeral task assignment");
+    expect(output).toContain("scope: Changes per run");
   });
 
-  it("contains domain context section referencing mindMdPath", () => {
+  it("contains Work Order header with mind name", () => {
     const output = buildMindBrief(BASE_PARAMS);
-    expect(output).toContain("## Domain Context");
-    expect(output).toContain("Read your MIND.md at: /repo/minds/signals/MIND.md");
+    expect(output).toContain("Work Order: @signals");
   });
 
-  it("contains memory section referencing memoryMdPath", () => {
+  it("contains metadata table with ticket, wave, feature, worktree", () => {
     const output = buildMindBrief(BASE_PARAMS);
-    expect(output).toContain("## Memory");
-    expect(output).toContain("Read your MEMORY.md at: /repo/minds/signals/MEMORY.md");
+    expect(output).toContain("| **Ticket** | BRE-471 |");
+    expect(output).toContain("| **Wave** | wave-1 |");
+    expect(output).toContain("| **Feature** | features/BRE-471 |");
+    expect(output).toContain("| **Worktree** | /tmp/worktree-signals |");
+  });
+
+  it("does not contain domain context or memory sections (moved to CLAUDE.md)", () => {
+    const output = buildMindBrief(BASE_PARAMS);
+    expect(output).not.toContain("## Domain Context");
+    expect(output).not.toContain("## Memory");
+    expect(output).not.toContain("MIND.md");
+    expect(output).not.toContain("MEMORY.md");
+  });
+
+  it("does not contain review loop instructions (moved to CLAUDE.md)", () => {
+    const output = buildMindBrief(BASE_PARAMS);
+    expect(output).not.toContain("## Review Loop");
+    expect(output).not.toContain("subagent_type");
+    expect(output).not.toContain("Maximum iterations");
+  });
+
+  it("does not contain memory update section (moved to CLAUDE.md)", () => {
+    const output = buildMindBrief(BASE_PARAMS);
+    expect(output).not.toContain("## Memory Update");
+  });
+
+  it("does not contain bus commands section (moved to CLAUDE.md)", () => {
+    const output = buildMindBrief(BASE_PARAMS);
+    expect(output).not.toContain("## Bus Commands");
+    expect(output).not.toContain("MIND_STARTED");
+    expect(output).not.toContain("MIND_COMPLETE");
   });
 
   it("contains drone tasks section with formatted task list", () => {
     const output = buildMindBrief(BASE_PARAMS);
-    expect(output).toContain("## Drone Tasks");
+    expect(output).toContain("Drone Tasks");
     expect(output).toContain("- [ ] T1 Add emit method");
     expect(output).toContain("- [ ] T2 [P] Write unit tests");
   });
 
-  it("contains review loop instructions referencing subagent_type: 'drone'", () => {
-    const output = buildMindBrief(BASE_PARAMS);
-    expect(output).toContain("## Review Loop Instructions");
-    expect(output).toContain("subagent_type: 'drone'");
-  });
-
-  it("contains maxReviewIterations in review loop instructions", () => {
-    const output = buildMindBrief(BASE_PARAMS);
-    expect(output).toContain("Maximum iterations: 3");
-
-    const customOutput = buildMindBrief({ ...BASE_PARAMS, maxReviewIterations: 5 });
-    expect(customOutput).toContain("Maximum iterations: 5");
-  });
-
-  it("uses default maxReviewIterations of 3 when not specified", () => {
-    const params = { ...BASE_PARAMS };
-    delete (params as any).maxReviewIterations;
-    const output = buildMindBrief(params);
-    expect(output).toContain("Maximum iterations: 3");
-  });
-
-  it("contains bus commands section with all 4 commands", () => {
-    const output = buildMindBrief(BASE_PARAMS);
-    expect(output).toContain("## Bus Commands");
-    expect(output).toContain(BUS_CMDS.started);
-    expect(output).toContain(BUS_CMDS.reviewStarted);
-    expect(output).toContain(BUS_CMDS.reviewFeedback);
-    expect(output).toContain(BUS_CMDS.complete);
-  });
-
-  it("contains memory update section", () => {
-    const output = buildMindBrief(BASE_PARAMS);
-    expect(output).toContain("## Memory Update");
-    expect(output).toContain("/repo/minds/signals/MEMORY.md");
-  });
-
   it("includes dependencies section when dependencies are present", () => {
     const output = buildMindBrief({ ...BASE_PARAMS, dependencies: ["transport", "router"] });
-    expect(output).toContain("## Dependencies");
+    expect(output).toContain("Dependencies");
     expect(output).toContain("@transport");
     expect(output).toContain("@router");
   });
 
   it("omits dependencies section when no dependencies", () => {
     const output = buildMindBrief({ ...BASE_PARAMS, dependencies: [] });
-    expect(output).not.toContain("## Dependencies");
+    expect(output).not.toContain("Dependencies");
+  });
+
+  it("contains pointer back to CLAUDE.md operating manual", () => {
+    const output = buildMindBrief(BASE_PARAMS);
+    expect(output).toContain("CLAUDE.md");
+    expect(output).toContain("Review Loop");
+  });
+
+  it("contains completion criteria section", () => {
+    const output = buildMindBrief(BASE_PARAMS);
+    expect(output).toContain("Completion Criteria");
+    expect(output).toContain("all tests pass");
   });
 });
 

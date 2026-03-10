@@ -24,7 +24,7 @@ import { join, resolve, dirname } from "path";
 import { parseAndGroupTasks } from "../lib/task-parser.ts";
 import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
 import { buildDroneBrief } from "../lib/drone-brief.ts";
-import { buildMindBrief, buildMindBusPublishCmds } from "../lib/mind-brief.ts";
+import { buildMindBrief } from "../lib/mind-brief.ts";
 import { waitForWaveCompletion } from "../lib/bus-listener.ts";
 import { promptConfirmation } from "../lib/prompt.ts";
 import {
@@ -435,7 +435,6 @@ export async function runImplement(
         continue;
       }
 
-      const busPublishCmds = buildMindBusPublishCmds(mindsSourceDir, channel, mindName, wave.id);
       const briefContent = buildMindBrief({
         ticketId,
         mindName,
@@ -443,10 +442,7 @@ export async function runImplement(
         featureDir,
         tasks: group.tasks,
         dependencies: group.dependencies,
-        mindMdPath: `minds/${mindName}/MIND.md`,
-        memoryMdPath: `minds/${mindName}/MEMORY.md`,
         worktreePath: "(resolved at launch)",
-        busPublishCmds,
       });
 
       console.log(`  Spawning Mind for @${mindName}...`);

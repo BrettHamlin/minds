@@ -84,9 +84,13 @@ if (import.meta.main) { (async () => {
       }
     }
 
-    // Load STANDARDS.md
+    // Load STANDARDS.md (generic — ships with installer)
     const standardsPath = resolve(repoRoot, "minds", "STANDARDS.md");
     const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
+
+    // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
+    const projectStandardsPath = resolve(repoRoot, "minds", "STANDARDS-project.md");
+    const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
 
     // Load MIND.md (optional)
     const mindMdPath = resolve(repoRoot, "minds", mindName, "MIND.md");
@@ -114,6 +118,8 @@ if (import.meta.main) { (async () => {
       ``,
       `## Engineering Standards`,
       standards,
+      projectStandards ? `## Project-Specific Standards` : null,
+      projectStandards || null,
       mindProfileSection,
       `## Test Command`,
       ``,
