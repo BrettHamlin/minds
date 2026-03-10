@@ -322,6 +322,125 @@ describe("MindsStateTracker", () => {
     expect(ids).toEqual(["A-1", "B-2"]);
   });
 
+  test("MIND_STARTED sets drone status to active and records startedAt", () => {
+    const tracker = new MindsStateTracker();
+    tracker.applyEvent(
+      makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" })
+    );
+    tracker.applyEvent(
+      makeMsg(MindsEventType.DRONE_SPAWNED, {
+        waveId: "1",
+        mindName: "transport",
+      })
+    );
+    // Manually set status to something else to verify it gets reset
+    const drone = tracker.getState("TEST-1")!.waves[0].drones[0];
+    drone.status = "pending";
+
+    tracker.applyEvent(
+      makeMsg(MindsEventType.MIND_STARTED, { mindName: "transport" })
+    );
+
+    const updated = tracker.getState("TEST-1")!.waves[0].drones[0];
+    expect(updated.status).toBe("active");
+    expect(updated.startedAt).toBeTruthy();
+  });
+
+  test("REVIEW_STARTED sets drone status to reviewing", () => {
+    const tracker = new MindsStateTracker();
+    tracker.applyEvent(
+      makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" })
+    );
+    tracker.applyEvent(
+      makeMsg(MindsEventType.DRONE_SPAWNED, {
+        waveId: "1",
+        mindName: "signals",
+      })
+    );
+    tracker.applyEvent(
+      makeMsg(MindsEventType.REVIEW_STARTED, { mindName: "signals" })
+    );
+
+    const drone = tracker.getState("TEST-1")!.waves[0].drones[0];
+    expect(drone.status).toBe("reviewing");
+  });
+
+  test("REVIEW_FEEDBACK sets drone status to active and increments reviewAttempts", () => {
+    const tracker = new MindsStateTracker();
+    tracker.applyEvent(
+      makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" })
+    );
+    tracker.applyEvent(
+      makeMsg(MindsEventType.DRONE_SPAWNED, {
+        waveId: "1",
+        mindName: "dashboard",
+      })
+    );
+    tracker.applyEvent(
+      makeMsg(MindsEventType.REVIEW_STARTED, { mindName: "dashboard" })
+    );
+    tracker.applyEvent(
+      makeMsg(MindsEventType.REVIEW_FEEDBACK, { mindName: "dashboard" })
+    );
+
+    const drone = tracker.getState("TEST-1")!.waves[0].drones[0];
+    expect(drone.status).toBe("active");
+    expect(drone.reviewAttempts).toBe(1);
+
+    // Second feedback increments again
+    tracker.applyEvent(
+      makeMsg(MindsEventType.REVIEW_STARTED, { mindName: "dashboard" })
+    );
+    tracker.applyEvent(
+      makeMsg(MindsEventType.REVIEW_FEEDBACK, { mindName: "dashboard" })
+    );
+
+    const drone2 = tracker.getState("TEST-1")!.waves[0].drones[0];
+    expect(drone2.status).toBe("active");
+    expect(drone2.reviewAttempts).toBe(2);
+  });
+
+  test("MIND_STARTED → REVIEW_STARTED → REVIEW_FEEDBACK → MIND_COMPLETE full lifecycle", () => {
+    const tracker = new MindsStateTracker();
+    tracker.applyEvent(
+      makeMsg(MindsEventType.WAVE_STARTED, { waveId: "1" })
+    );
+    tracker.applyEvent(
+      makeMsg(MindsEventType.DRONE_SPAWNED, {
+        waveId: "1",
+        mindName: "transport",
+      })
+    );
+    tracker.applyEvent(
+      makeMsg(MindsEventType.MIND_STARTED, { mindName: "transport" })
+    );
+    expect(tracker.getState("TEST-1")!.waves[0].drones[0].status).toBe("active");
+
+    tracker.applyEvent(
+      makeMsg(MindsEventType.REVIEW_STARTED, { mindName: "transport" })
+    );
+    expect(tracker.getState("TEST-1")!.waves[0].drones[0].status).toBe("reviewing");
+
+    tracker.applyEvent(
+      makeMsg(MindsEventType.REVIEW_FEEDBACK, { mindName: "transport" })
+    );
+    const afterFeedback = tracker.getState("TEST-1")!.waves[0].drones[0];
+    expect(afterFeedback.status).toBe("active");
+    expect(afterFeedback.reviewAttempts).toBe(1);
+
+    tracker.applyEvent(
+      makeMsg(MindsEventType.MIND_COMPLETE, {
+        waveId: "1",
+        mindName: "transport",
+        tasksComplete: 3,
+      })
+    );
+    const final = tracker.getState("TEST-1")!.waves[0].drones[0];
+    expect(final.status).toBe("complete");
+    expect(final.completedAt).toBeTruthy();
+    expect(final.tasksComplete).toBe(3);
+  });
+
   test("stats are recalculated on each event", () => {
     const tracker = new MindsStateTracker();
     tracker.applyEvent(
