@@ -159,7 +159,26 @@ ${contractsTable}
 ---`
     : "";
 
-  // #4: Resolve base branch for git diff
+  // #4: Build deterministic contract check command (runs check-contracts.ts)
+  // The script parses produces:/consumes: annotations from MIND-BRIEF.md
+  // and verifies actual source files match. Exit 0 = pass, exit 1 = violation.
+  const checkContractsPath = resolve(repoRoot, mindsBase, "lib", "check-contracts.ts");
+  const hasContractChecker = existsSync(checkContractsPath);
+  const contractCheckCmd = hasContractChecker
+    ? `
+**📋 Contract Check (MANDATORY — run before manual review):**
+\`\`\`bash
+bun ${mindsDir}/lib/check-contracts.ts --mind ${mindName} --tasks MIND-BRIEF.md --repo-root .
+\`\`\`
+If this script exits with code 1, there are contract violations. These are **blocking**:
+1. Copy the script's violation output **verbatim** into REVIEW-FEEDBACK-{n}.md as checklist items
+2. The output tells the drone exactly what's wrong and how to fix it (which file, which function, import vs local)
+3. Do NOT approve with contract violations — resume the drone to fix them
+If it exits with code 0, contracts are verified — proceed with manual review.
+`
+    : "";
+
+  // #5: Resolve base branch for git diff
   const diffBase = baseBranch ?? "main";
 
   return `---
@@ -215,7 +234,7 @@ Verify all tasks from MIND-BRIEF.md are implemented, then evaluate the diff:
 \`\`\`bash
 git diff ${diffBase}...HEAD
 \`\`\`
-Evaluate against the **full Review Checklist** in Engineering Standards below.
+${contractCheckCmd}Evaluate against the **full Review Checklist** in Engineering Standards below.
 **On re-review after feedback:** Run the COMPLETE checklist again, not just the items you flagged. Fixes can introduce new issues.
 
 ━━━ 7. VERDICT ━━━
