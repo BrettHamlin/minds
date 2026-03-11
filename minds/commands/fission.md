@@ -25,10 +25,12 @@ If the user provided a target directory, use it. Otherwise use the current worki
 Run the deterministic analysis pipeline. This extracts the dependency graph, detects hub files, clusters with Leiden, and outputs structured JSON. All the heavy lifting is deterministic code — no LLM needed for this step.
 
 ```bash
-bun ${MINDS_DIR}/fission/run-pipeline.ts [TARGET_DIR]
+bun ${MINDS_DIR}/fission/run-pipeline.ts [TARGET_DIR] 2>/dev/null | tee /tmp/fission-pipeline.json
 ```
 
-Save the JSON output. If the pipeline fails or finds no source files, report the error and stop.
+The pipeline JSON is saved to `/tmp/fission-pipeline.json` so the scaffolder can compute `owns_files` for boundary checking. Progress messages go to stderr (suppressed above so stdout is clean JSON).
+
+If the pipeline fails or finds no source files, report the error and stop. You can re-run without `2>/dev/null` to see error details.
 
 ## Step 2: Name the clusters
 

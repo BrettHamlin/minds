@@ -33,16 +33,23 @@ if (result.graph.totalNodes === 0) {
 }
 
 // Enrich clusters with naming-ready data (directories, sample filenames)
-const clusterData = result.clusters.length > 0
-  ? prepareClusterData(result.clusters.map(c => ({
-      ...c,
-      clusterId: c.clusterId,
-      files: c.files,
-      internalEdges: c.internalEdges,
-      externalEdges: c.externalEdges,
-      cohesion: c.cohesion,
-    })))
+const rawClusters = result.clusters.map(c => ({
+  ...c,
+  clusterId: c.clusterId,
+  files: c.files,
+  internalEdges: c.internalEdges,
+  externalEdges: c.externalEdges,
+  cohesion: c.cohesion,
+}));
+const enriched = rawClusters.length > 0
+  ? prepareClusterData(rawClusters)
   : [];
+
+// Merge original files back into enriched cluster data (for owns_files computation)
+const clusterData = enriched.map((e, i) => ({
+  ...e,
+  files: rawClusters[i].files,
+}));
 
 const output = {
   graph: result.graph,

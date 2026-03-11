@@ -262,7 +262,7 @@ function deduplicateNames(names: string[]): string[] {
 /*  Ownership patterns                                                 */
 /* ------------------------------------------------------------------ */
 
-function generateOwnsPatterns(files: string[]): string[] {
+export function generateOwnsPatterns(files: string[]): string[] {
   // Group files by directory
   const dirFiles = new Map<string, string[]>();
   for (const f of files) {

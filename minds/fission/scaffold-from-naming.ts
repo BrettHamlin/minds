@@ -19,6 +19,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { mindsRoot } from "../shared/paths.js";
 import { scaffoldMind, validateMindName, mindsJsonPath } from "../instantiate/lib/scaffold.js";
+import { generateOwnsPatterns } from "./naming/naming.js";
 
 interface NamingEntry {
   clusterId: number;
@@ -30,10 +31,16 @@ interface NamingEntry {
   owns_files?: string[];
 }
 
+interface PipelineCluster {
+  clusterId: number;
+  files: string[];
+}
+
 // Parse args
 const namingPath = process.argv[2];
+const targetDir = process.argv[3]; // optional, used for pipeline JSON lookup
 if (!namingPath) {
-  console.error("Usage: bun scaffold-from-naming.ts <naming-json-path>");
+  console.error("Usage: bun scaffold-from-naming.ts <naming-json-path> [target-dir]");
   process.exit(1);
 }
 
@@ -46,6 +53,39 @@ try {
 } catch (err) {
   console.error(`Failed to parse naming JSON: ${(err as Error).message}`);
   process.exit(1);
+}
+
+// Try to read pipeline JSON for cluster file lists (to compute owns_files).
+// Checks: (1) explicit FISSION_PIPELINE_JSON env var, (2) /tmp/fission-pipeline.json convention
+let pipelineClusters: PipelineCluster[] | undefined;
+const pipelinePaths = [
+  process.env.FISSION_PIPELINE_JSON,
+  "/tmp/fission-pipeline.json",
+].filter(Boolean) as string[];
+for (const pp of pipelinePaths) {
+  try {
+    const pipelineRaw = readFileSync(resolve(pp), "utf8");
+    const pipeline = JSON.parse(pipelineRaw);
+    if (pipeline.clusters && Array.isArray(pipeline.clusters)) {
+      pipelineClusters = pipeline.clusters;
+      break;
+    }
+  } catch {
+    // Try next path
+  }
+}
+
+// Enrich entries with owns_files from pipeline cluster files when not provided
+if (pipelineClusters) {
+  const clusterMap = new Map(pipelineClusters.map((c) => [c.clusterId, c]));
+  for (const entry of entries) {
+    if (!entry.owns_files?.length) {
+      const cluster = clusterMap.get(entry.clusterId);
+      if (cluster?.files?.length) {
+        entry.owns_files = generateOwnsPatterns(cluster.files);
+      }
+    }
+  }
 }
 
 // Validate all names first
