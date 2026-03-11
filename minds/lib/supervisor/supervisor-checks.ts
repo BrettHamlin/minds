@@ -150,7 +150,7 @@ export function runDeterministicChecksDefault(worktreePath: string, baseBranch: 
 
     const annotations = parseAnnotations(tasksText, mindName);
     if (annotations.length > 0) {
-      const contractResult = verifyContracts(annotations, worktreePath, mindName);
+      const contractResult = verifyContracts(annotations, worktreePath, mindName, ownsFiles);
       result.contractsPass = contractResult.pass;
       result.contractFindings = contractResult.violations.map((v) => ({
         file: v.annotation.filePath,

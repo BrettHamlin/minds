@@ -71,6 +71,7 @@ export function verifyContracts(
   annotations: ContractAnnotation[],
   repoRoot: string,
   mindName?: string,
+  ownsFiles?: string[],
 ): { pass: boolean; violations: Violation[] } {
   const violations: Violation[] = [];
 
@@ -80,7 +81,7 @@ export function verifyContracts(
     if (ann.type === "produces") {
       verifyProduces(ann, repoRoot, violations);
     } else if (ann.type === "consumes") {
-      verifyConsumes(ann, repoRoot, effectiveMindName, violations);
+      verifyConsumes(ann, repoRoot, effectiveMindName, violations, ownsFiles);
     }
   }
 
@@ -128,20 +129,36 @@ function verifyConsumes(
   repoRoot: string,
   mindName: string,
   violations: Violation[],
+  ownsFiles?: string[],
 ): void {
-  // Find the consuming mind's source files using the canonical minds dir
+  // Collect source files from the mind directory AND owns_files directories.
+  // For fission-scaffolded minds the actual source lives outside .minds/
+  // (e.g., src/middleware/cors/) so we must scan owns_files too.
+  const tsFiles: string[] = [];
+
   const mindsDir = resolveMindsDir(repoRoot);
   const mindDir = resolve(mindsDir, mindName);
+  if (existsSync(mindDir)) {
+    tsFiles.push(...findTsFiles(mindDir));
+  }
 
-  if (!existsSync(mindDir)) {
+  // Also scan owns_files directories (strip trailing globs)
+  if (ownsFiles?.length) {
+    for (const pattern of ownsFiles) {
+      const dirPath = resolve(repoRoot, pattern.replace(/\*+$/, "").replace(/\/+$/, ""));
+      if (existsSync(dirPath)) {
+        tsFiles.push(...findTsFiles(dirPath));
+      }
+    }
+  }
+
+  if (tsFiles.length === 0) {
     violations.push({
       annotation: ann,
-      reason: `Mind directory not found for @${mindName}`,
+      reason: `No source files found for @${mindName}`,
     });
     return;
   }
-
-  const tsFiles = findTsFiles(mindDir);
   let foundLocalDef = false;
   let localDefFile = "";
 
