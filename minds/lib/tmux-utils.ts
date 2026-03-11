@@ -1,6 +1,18 @@
 /**
- * tmux-utils.ts — Shared tmux utilities for Mind/Drone lifecycle management.
+ * tmux-utils.ts -- Shared tmux utilities for Mind/Drone lifecycle management.
+ *
+ * `shellQuote` is a general-purpose utility (not tmux-specific).
+ * `killPane`, `splitPane`, and `launchClaudeInPane` delegate to a
+ * TerminalMultiplexer instance for the actual tmux calls. They remain
+ * exported for backward compatibility with callers that don't yet
+ * receive a multiplexer via dependency injection.
  */
+
+import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
+import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
+
+/** Default multiplexer instance used by the convenience functions below. */
+const defaultMux: TerminalMultiplexer = new TmuxMultiplexer();
 
 /**
  * Shell-quote a string for safe interpolation in shell commands sent via tmux send-keys.
@@ -14,39 +26,33 @@ export function shellQuote(s: string): string {
  * Kill a tmux pane by ID. Silently ignores errors (pane may already be gone).
  */
 export function killPane(paneId: string): void {
-  try {
-    Bun.spawnSync(["tmux", "kill-pane", "-t", paneId], { stdout: "ignore", stderr: "ignore" });
-  } catch {
-    // Pane may already be gone
-  }
+  defaultMux.killPane(paneId);
 }
 
 /**
  * Launch Claude Code in an existing tmux pane (send-keys approach).
  * Used for re-launching a drone in an existing worktree without creating a new one.
+ *
+ * Accepts an optional multiplexer for dependency injection; falls back to
+ * the default TmuxMultiplexer.
  */
-export function launchClaudeInPane(opts: {
-  paneId: string;
-  worktreePath: string;
-  model?: string;
-  prompt: string;
-  busUrl?: string;
-}): void {
+export function launchClaudeInPane(
+  opts: {
+    paneId: string;
+    worktreePath: string;
+    model?: string;
+    prompt: string;
+    busUrl?: string;
+  },
+  mux: TerminalMultiplexer = defaultMux,
+): void {
   const { paneId, worktreePath, model = "sonnet", prompt, busUrl } = opts;
   const escapedPrompt = JSON.stringify(prompt);
   let cmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model ${model} ${escapedPrompt}`;
   if (busUrl) {
     cmd = `BUS_URL=${shellQuote(busUrl)} ${cmd}`;
   }
-  // Use send-keys to execute in the existing pane
-  const result = Bun.spawnSync(
-    ["tmux", "send-keys", "-t", paneId, cmd, "Enter"],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  if (result.exitCode !== 0) {
-    const stderr = new TextDecoder().decode(result.stderr);
-    throw new Error(`Failed to send-keys to pane ${paneId}: ${stderr}`);
-  }
+  mux.sendKeys(paneId, cmd);
 }
 
 /**
@@ -54,13 +60,5 @@ export function launchClaudeInPane(opts: {
  * Returns the new pane ID.
  */
 export function splitPane(sourcePane: string): string {
-  const result = Bun.spawnSync(
-    ["tmux", "split-window", "-h", "-p", "50", "-t", sourcePane, "-P", "-F", "#{pane_id}"],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  if (result.exitCode !== 0) {
-    const stderr = new TextDecoder().decode(result.stderr);
-    throw new Error(`Failed to split tmux pane from ${sourcePane}: ${stderr}`);
-  }
-  return new TextDecoder().decode(result.stdout).trim();
+  return defaultMux.splitPane(sourcePane);
 }

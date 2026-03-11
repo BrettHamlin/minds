@@ -36,6 +36,8 @@ import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 import { resolveMindsDir } from "../shared/paths.js";
 import { shellQuote } from "./tmux-utils.ts";
+import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
+import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -61,6 +63,8 @@ export async function publishDroneSpawned(params: {
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 
 if (import.meta.main) { (async () => {
+  const mux: TerminalMultiplexer = new TmuxMultiplexer();
+
   // ─── CLAUDE.md assembly ─────────────────────────────────────────────────────
 
   function assembleClaudeContent(repoRoot: string, mindName: string, ticketId: string): string {
@@ -177,8 +181,7 @@ if (import.meta.main) { (async () => {
 
   const callerPane =
     getArg("--pane") ??
-    process.env.TMUX_PANE ??
-    run("tmux display-message -p '#{pane_id}'");
+    mux.getCurrentPane();
 
   const mindPane = getArg("--mind-pane") ?? callerPane;
 
@@ -330,7 +333,7 @@ if (import.meta.main) { (async () => {
 
   let dronePane: string;
   try {
-    dronePane = run(`tmux split-window -h -p 50 -t ${shellQuote(callerPane)} -P -F '#{pane_id}'`);
+    dronePane = mux.splitPane(callerPane);
   } catch (err) {
     fail(`Failed to split tmux pane: ${err}`);
   }
@@ -342,7 +345,7 @@ if (import.meta.main) { (async () => {
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
   }
-  run(`tmux send-keys -t ${shellQuote(dronePane)} ${shellQuote(launchCmd)} Enter`);
+  mux.sendKeys(dronePane, launchCmd);
 
   // ─── Publish DRONE_SPAWNED if bus is configured ────────────────────────────────
 

@@ -1,10 +1,15 @@
 #!/usr/bin/env bun
 
 /**
- * tmux-send.ts — Send text to a tmux pane and submit it.
+ * tmux-send.ts -- Send text to a tmux pane and submit it.
  *
  * Handles the two-step send pattern: send text, wait 1s, send C-m to submit.
  * Claude Code needs the delay between text entry and submit.
+ *
+ * NOTE: This intentionally does NOT use TerminalMultiplexer.sendKeys() because
+ * it needs the delay between text entry and Enter submission. The multiplexer's
+ * sendKeys sends text + Enter atomically in a single call, which doesn't work
+ * for Claude Code's input handling.
  *
  * Usage:
  *   bun tmux-send.ts <pane-id> <text>

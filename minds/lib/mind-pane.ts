@@ -36,6 +36,8 @@ import { buildMindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import type { MindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import { resolveMindsDir } from "../shared/paths.js";
 import { shellQuote } from "./tmux-utils.ts";
+import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
+import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -334,6 +336,8 @@ If you've compacted or lost context, re-read that file.`.replace(/\n{3,}/g, "\n\
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 
 if (import.meta.main) { (async () => {
+  const mux: TerminalMultiplexer = new TmuxMultiplexer();
+
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   function run(cmd: string): string {
@@ -370,8 +374,7 @@ if (import.meta.main) { (async () => {
 
   const callerPane =
     getArg("--pane") ??
-    process.env.TMUX_PANE ??
-    run("tmux display-message -p '#{pane_id}'");
+    mux.getCurrentPane();
 
   const claudeFile = getArg("--claude-file");
   const briefFile = getArg("--brief-file");
@@ -530,7 +533,7 @@ if (import.meta.main) { (async () => {
 
   let mindPane: string;
   try {
-    mindPane = run(`tmux split-window -h -p 50 -t ${shellQuote(callerPane)} -P -F '#{pane_id}'`);
+    mindPane = mux.splitPane(callerPane);
   } catch (err) {
     fail(`Failed to split tmux pane: ${err}`);
   }
@@ -542,7 +545,7 @@ if (import.meta.main) { (async () => {
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
   }
-  run(`tmux send-keys -t ${shellQuote(mindPane)} ${shellQuote(launchCmd)} Enter`);
+  mux.sendKeys(mindPane, launchCmd);
 
   // ─── Publish DRONE_SPAWNED if bus is configured ────────────────────────────────
 

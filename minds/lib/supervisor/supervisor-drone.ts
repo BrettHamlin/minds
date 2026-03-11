@@ -7,7 +7,12 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from "fs";
 import { join } from "path";
 import { resolveMindsDir } from "../../shared/paths.js";
 import { killPane, splitPane, launchClaudeInPane, shellQuote } from "../tmux-utils.ts";
+import type { TerminalMultiplexer } from "../terminal-multiplexer.ts";
+import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
 import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
+
+/** Default multiplexer instance for pane-alive checks in waitForDroneCompletion. */
+const defaultMux: TerminalMultiplexer = new TmuxMultiplexer();
 
 // ---------------------------------------------------------------------------
 // Drone Spawning (wrapper around drone-pane.ts — first iteration only)
@@ -210,11 +215,7 @@ export async function waitForDroneCompletion(
   // TOCTOU guard: if the sentinel already exists AND the pane is already gone,
   // the drone completed before we started watching. Return success immediately.
   if (existsSync(sentinelPath)) {
-    const paneCheck = Bun.spawnSync(
-      ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    if (paneCheck.exitCode !== 0) {
+    if (!defaultMux.isPaneAlive(paneId)) {
       // Pane is gone + sentinel exists = drone completed successfully before we started watching
       return { ok: true };
     }
@@ -266,11 +267,7 @@ export async function waitForDroneCompletion(
 
       // Fallback: pane no longer exists (crash, manual kill)
       // If sentinel was NOT written but pane is gone, the drone crashed.
-      const paneCheck = Bun.spawnSync(
-        ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
-        { stdout: "pipe", stderr: "pipe" },
-      );
-      if (paneCheck.exitCode !== 0) {
+      if (!defaultMux.isPaneAlive(paneId)) {
         done({ ok: false, error: `Drone pane ${paneId} died without writing sentinel — likely crashed` });
         return;
       }

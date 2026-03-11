@@ -26,7 +26,8 @@ import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
 import { runMindSupervisor } from "../../lib/supervisor/mind-supervisor.ts";
 import type { SupervisorConfig } from "../../lib/supervisor/mind-supervisor.ts";
 import { waitForWaveCompletion, type WaveCompletionResult } from "../lib/bus-listener.ts";
-import { killPane } from "../../lib/tmux-utils.ts";
+import { TmuxMultiplexer } from "../../lib/tmux-multiplexer.ts";
+import type { TerminalMultiplexer } from "../../lib/terminal-multiplexer.ts";
 import {
   startMindsBus,
   teardownMindsBus,
@@ -83,23 +84,10 @@ function resolveFeatureDir(repoRoot: string, ticketId: string): string | null {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tmux helpers                                                       */
+/*  Terminal multiplexer                                                */
 /* ------------------------------------------------------------------ */
 
-function getCurrentPane(): string {
-  // Prefer $TMUX_PANE — it's set per-pane and always identifies the pane
-  // where the process is running. tmux display-message returns the FOCUSED
-  // pane which may be a completely different window.
-  if (process.env.TMUX_PANE) return process.env.TMUX_PANE;
-  try {
-    const proc = Bun.spawnSync(["tmux", "display-message", "-p", "#{pane_id}"], {
-      stdout: "pipe",
-    });
-    return new TextDecoder().decode(proc.stdout).trim() || "";
-  } catch {
-    return "";
-  }
-}
+const mux: TerminalMultiplexer = new TmuxMultiplexer();
 
 /* ------------------------------------------------------------------ */
 /*  Mind spawning                                                      */
@@ -350,7 +338,7 @@ export async function runImplement(
   // ── Step 6: Start bus server ───────────────────────────────────────────────
 
   console.log("\nStep 6: Starting bus server...");
-  const callerPane = getCurrentPane();
+  const callerPane = mux.getCurrentPane();
   let busInfo;
   try {
     busInfo = await startMindsBus(repoRoot, callerPane, ticketId);
@@ -384,7 +372,7 @@ export async function runImplement(
 
     // Kill all Mind panes
     for (const d of allDrones) {
-      killPane(d.paneId);
+      mux.killPane(d.paneId);
     }
 
     // Teardown bus
