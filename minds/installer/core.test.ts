@@ -437,3 +437,45 @@ describe("installCoreMinds — settings.json generation", () => {
     expect(settings.hooks.Stop).toHaveLength(1);
   });
 });
+
+describe("installCoreMinds — shouldSkipEntry applied to hooks", () => {
+  beforeEach(() => {
+    rmSync(TMP, { recursive: true, force: true });
+  });
+
+  afterEach(() => {
+    rmSync(TMP, { recursive: true, force: true });
+  });
+
+  it("skips hook files matching skip patterns (e.g. .test.ts) but copies legitimate hooks", () => {
+    const { srcDir, repoRoot } = setupTmpDirs();
+    const hooksSrc = join(srcDir, "hooks");
+    mkdirSync(hooksSrc, { recursive: true });
+
+    // Legitimate hook file — should be copied
+    writeFileSync(join(hooksSrc, "PreToolUse.validate.ts"), "#!/usr/bin/env bun\nconsole.log('ok')");
+
+    // Files matching skip patterns — should NOT be copied
+    writeFileSync(join(hooksSrc, "something.test.ts"), "// test file that should be skipped");
+    writeFileSync(join(hooksSrc, "another.test.js"), "// js test file that should be skipped");
+    writeFileSync(join(hooksSrc, "smoke-result.json"), "{}");
+
+    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+
+    // Legitimate hook should be present
+    const destHooksDir = join(repoRoot, ".claude", "hooks");
+    expect(existsSync(join(destHooksDir, "PreToolUse.validate.ts"))).toBe(true);
+    expect(result.copied).toContain(".claude/hooks/PreToolUse.validate.ts");
+
+    // Skip-pattern files should NOT be present
+    expect(existsSync(join(destHooksDir, "something.test.ts"))).toBe(false);
+    expect(existsSync(join(destHooksDir, "another.test.js"))).toBe(false);
+    expect(existsSync(join(destHooksDir, "smoke-result.json"))).toBe(false);
+
+    // None of the skipped files should appear in copied list
+    const copiedStr = result.copied.join("\n");
+    expect(copiedStr).not.toContain("something.test.ts");
+    expect(copiedStr).not.toContain("another.test.js");
+    expect(copiedStr).not.toContain("smoke-result.json");
+  });
+});
