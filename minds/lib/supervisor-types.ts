@@ -4,6 +4,7 @@
  */
 
 import type { MindTask } from "../cli/lib/implement-types.ts";
+import type { MindsEventType } from "../transport/minds-events.ts";
 
 // ---------------------------------------------------------------------------
 // State enum
@@ -80,6 +81,73 @@ export interface StateMachine {
   getIteration(): number;
   incrementIteration(): number;
   isMaxIterations(): boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Dependency injection interface (for testing)
+// ---------------------------------------------------------------------------
+
+export interface CheckResults {
+  diff: string;
+  testOutput: string;
+  testsPass: boolean;
+  findings: ReviewFinding[];
+}
+
+/**
+ * Injectable dependencies for runMindSupervisor. Production code uses the
+ * real implementations; tests inject mocks for isolated integration testing.
+ */
+export interface SupervisorDeps {
+  /** Spawn a drone in a new worktree (first iteration). */
+  spawnDrone: (config: SupervisorConfig, briefContent: string) => Promise<{
+    paneId: string;
+    worktree: string;
+    branch: string;
+  }>;
+
+  /** Re-launch a drone in an existing worktree (subsequent iterations). */
+  relaunchDroneInWorktree: (opts: {
+    oldPaneId: string;
+    callerPane: string;
+    worktreePath: string;
+    briefContent: string;
+    busUrl: string;
+    mindName: string;
+  }) => string;
+
+  /** Wait for drone completion (sentinel file + poll). */
+  waitForDroneCompletion: (
+    paneId: string,
+    worktreePath: string,
+    timeoutMs: number,
+  ) => Promise<{ ok: boolean; error?: string }>;
+
+  /** Publish a signal to the bus. */
+  publishSignal: (
+    busUrl: string,
+    channel: string,
+    type: MindsEventType,
+    mindName: string,
+    waveId: string,
+    extra?: Record<string, unknown>,
+  ) => Promise<void>;
+
+  /** Run deterministic checks (git diff + bun test). */
+  runDeterministicChecks: (
+    worktreePath: string,
+    baseBranch: string,
+    mindName: string,
+  ) => CheckResults;
+
+  /** Call LLM for code review. */
+  callLlmReview: (prompt: string, timeoutMs: number) => Promise<string>;
+
+  /** Install the drone Stop hook for sentinel-based completion detection. */
+  installDroneStopHook: (worktreePath: string) => void;
+
+  /** Kill a tmux pane. */
+  killPane: (paneId: string) => void;
 }
 
 // ---------------------------------------------------------------------------

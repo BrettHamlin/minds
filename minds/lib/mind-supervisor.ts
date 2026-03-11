@@ -30,13 +30,15 @@ import { join } from "path";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 import { resolveMindsDir } from "../shared/paths.js";
-import { killPane } from "./tmux-utils.ts";
+import { killPane as killPaneImpl } from "./tmux-utils.ts";
 import { formatTaskList } from "../cli/lib/drone-brief.ts";
 
 // Re-export types and functions from sub-modules for backward compatibility
 export {
   SupervisorState,
   type SupervisorConfig,
+  type SupervisorDeps,
+  type CheckResults,
   type ReviewFinding,
   type ReviewVerdict,
   type StateMachine,
@@ -54,6 +56,8 @@ export { installDroneStopHook } from "./supervisor-drone.ts";
 import {
   SupervisorState,
   type SupervisorConfig,
+  type SupervisorDeps,
+  type CheckResults,
   type ReviewFinding,
   type ReviewVerdict,
   type SupervisorResult,
@@ -63,17 +67,17 @@ import {
 import { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
 import { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
 import {
-  spawnDrone,
-  relaunchDroneInWorktree,
-  installDroneStopHook,
-  waitForDroneCompletion,
+  spawnDrone as spawnDroneImpl,
+  relaunchDroneInWorktree as relaunchDroneImpl,
+  installDroneStopHook as installDroneStopHookImpl,
+  waitForDroneCompletion as waitForDroneCompletionImpl,
 } from "./supervisor-drone.ts";
 
 // ---------------------------------------------------------------------------
 // Bus Signal Publishing
 // ---------------------------------------------------------------------------
 
-async function publishSignal(
+async function publishSignalDefault(
   busUrl: string,
   channel: string,
   type: MindsEventType,
@@ -167,14 +171,7 @@ ${depsSection}${feedbackSection}
 // Deterministic Checks (git diff + bun test)
 // ---------------------------------------------------------------------------
 
-interface CheckResults {
-  diff: string;
-  testOutput: string;
-  testsPass: boolean;
-  findings: ReviewFinding[];
-}
-
-function runDeterministicChecks(worktreePath: string, baseBranch: string, mindName: string): CheckResults {
+function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string): CheckResults {
   const findings: ReviewFinding[] = [];
 
   // Get diff relative to base branch
@@ -209,10 +206,10 @@ function runDeterministicChecks(worktreePath: string, baseBranch: string, mindNa
 }
 
 // ---------------------------------------------------------------------------
-// LLM Review (claude -p) with timeout
+// LLM Review (claude -p) with timeout — Item 2: proper process cleanup
 // ---------------------------------------------------------------------------
 
-async function callLlmReview(prompt: string, timeoutMs: number = DEFAULT_REVIEW_TIMEOUT_MS): Promise<string> {
+async function callLlmReviewDefault(prompt: string, timeoutMs: number = DEFAULT_REVIEW_TIMEOUT_MS): Promise<string> {
   const proc = Bun.spawn(
     ["claude", "-p", "--model", "sonnet", "--output-format", "text"],
     {
@@ -224,14 +221,14 @@ async function callLlmReview(prompt: string, timeoutMs: number = DEFAULT_REVIEW_
 
   // Race the process against a timeout, clearing the timer on completion
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutTimer = setTimeout(() => {
-      proc.kill();
+      timedOut = true;
       reject(new Error(`Review timed out after ${timeoutMs}ms`));
     }, timeoutMs);
   });
 
-  // Read stdout and stderr concurrently to prevent deadlock
   let output: string, stderr: string, exitCode: number;
   try {
     [output, stderr, exitCode] = await Promise.race([
@@ -242,6 +239,18 @@ async function callLlmReview(prompt: string, timeoutMs: number = DEFAULT_REVIEW_
       ]),
       timeoutPromise,
     ]) as [string, string, number];
+  } catch (err) {
+    // On ANY error (timeout or read failure), ensure the process is killed.
+    // First try SIGTERM, then escalate to SIGKILL after a short window.
+    try { proc.kill("SIGTERM"); } catch { /* already dead */ }
+    // Give the process 2 seconds to die from SIGTERM before escalating
+    const killTimer = setTimeout(() => {
+      try { proc.kill("SIGKILL"); } catch { /* already dead */ }
+    }, 2000);
+    // Wait for the process to actually exit so we don't orphan it
+    try { await proc.exited; } catch { /* ignore */ }
+    clearTimeout(killTimer);
+    throw err;
   } finally {
     clearTimeout(timeoutTimer);
   }
@@ -254,13 +263,35 @@ async function callLlmReview(prompt: string, timeoutMs: number = DEFAULT_REVIEW_
 }
 
 // ---------------------------------------------------------------------------
+// Default dependencies (production implementations)
+// ---------------------------------------------------------------------------
+
+function createDefaultDeps(): SupervisorDeps {
+  return {
+    spawnDrone: spawnDroneImpl,
+    relaunchDroneInWorktree: relaunchDroneImpl,
+    waitForDroneCompletion: waitForDroneCompletionImpl,
+    publishSignal: publishSignalDefault,
+    runDeterministicChecks: runDeterministicChecksDefault,
+    callLlmReview: callLlmReviewDefault,
+    installDroneStopHook: installDroneStopHookImpl,
+    killPane: killPaneImpl,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main Supervisor Entry Point
 // ---------------------------------------------------------------------------
 
-export async function runMindSupervisor(config: SupervisorConfig): Promise<SupervisorResult> {
+export async function runMindSupervisor(
+  config: SupervisorConfig,
+  depsOverride?: Partial<SupervisorDeps>,
+): Promise<SupervisorResult> {
   if (config.maxIterations < 1) {
     throw new Error(`maxIterations must be >= 1, got ${config.maxIterations}`);
   }
+
+  const deps = { ...createDefaultDeps(), ...depsOverride };
 
   const sm = createSupervisorStateMachine(config);
   const result: SupervisorResult = {
@@ -288,7 +319,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
   try {
     // ---- Step 1: Publish MIND_STARTED ----
     console.log(`[supervisor] @${config.mindName}: Starting (max ${config.maxIterations} iterations)`);
-    await publishSignal(
+    await deps.publishSignal(
       config.busUrl, config.channel,
       MindsEventType.MIND_STARTED,
       config.mindName, config.waveId,
@@ -307,9 +338,9 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
 
         const briefContent = buildSupervisorDroneBrief(config);
 
-        let drone: Awaited<ReturnType<typeof spawnDrone>>;
+        let drone: Awaited<ReturnType<typeof spawnDroneImpl>>;
         try {
-          drone = await spawnDrone(config, briefContent);
+          drone = await deps.spawnDrone(config, briefContent);
         } catch (err) {
           const msg = `Failed to spawn drone: ${(err as Error).message}`;
           console.error(`[supervisor] @${config.mindName}: ${msg}`);
@@ -327,7 +358,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         result.branch = drone.branch;
 
         // Install the Stop hook for sentinel-based completion detection
-        installDroneStopHook(drone.worktree);
+        deps.installDroneStopHook(drone.worktree);
 
         console.log(`[supervisor] @${config.mindName}: Drone spawned in pane ${drone.paneId}`);
       } else {
@@ -338,7 +369,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         const briefContent = buildSupervisorDroneBrief(config, feedbackFile);
 
         try {
-          const newPaneId = relaunchDroneInWorktree({
+          const newPaneId = deps.relaunchDroneInWorktree({
             oldPaneId: currentDronePane!,
             callerPane: config.callerPane,
             worktreePath: currentWorktree,
@@ -351,7 +382,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
           result.dronePaneId = newPaneId;
 
           // Reinstall the Stop hook (sentinel file was consumed by previous iteration)
-          installDroneStopHook(currentWorktree);
+          deps.installDroneStopHook(currentWorktree);
         } catch (err) {
           const msg = `Failed to re-launch drone: ${(err as Error).message}`;
           console.error(`[supervisor] @${config.mindName}: ${msg}`);
@@ -364,12 +395,12 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       }
 
       // ---- Step 3: Wait for Drone completion ----
-      const completion = await waitForDroneCompletion(currentDronePane!, currentWorktree, config.droneTimeoutMs);
+      const completion = await deps.waitForDroneCompletion(currentDronePane!, currentWorktree, config.droneTimeoutMs);
       if (!completion.ok) {
         const msg = completion.error ?? "Drone failed";
         console.error(`[supervisor] @${config.mindName}: ${msg}`);
         result.errors.push(msg);
-        killPane(currentDronePane!);
+        deps.killPane(currentDronePane!);
         sm.transition(SupervisorState.FAILED);
         break;
       }
@@ -378,10 +409,10 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
 
       // ---- Step 4: Deterministic checks ----
       sm.transition(SupervisorState.CHECKING);
-      const checks = runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName);
+      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName);
 
       // ---- Step 5: Publish REVIEW_STARTED ----
-      await publishSignal(
+      await deps.publishSignal(
         config.busUrl, config.channel,
         MindsEventType.REVIEW_STARTED,
         config.mindName, config.waveId,
@@ -418,7 +449,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
 
       let verdict: ReviewVerdict;
       try {
-        const rawResponse = await callLlmReview(prompt, reviewTimeoutMs);
+        const rawResponse = await deps.callLlmReview(prompt, reviewTimeoutMs);
         verdict = parseReviewVerdict(rawResponse);
       } catch (err) {
         // LLM call failed or timed out -- treat as rejection with error finding
@@ -481,7 +512,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       writeFileSync(join(currentWorktree, `REVIEW-FEEDBACK-${iteration}.md`), feedbackContent);
 
       // Publish REVIEW_FEEDBACK signal
-      await publishSignal(
+      await deps.publishSignal(
         config.busUrl, config.channel,
         MindsEventType.REVIEW_FEEDBACK,
         config.mindName, config.waveId,
@@ -501,7 +532,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
 
     // ---- Publish MIND_COMPLETE or MIND_FAILED ----
     if (result.ok) {
-      await publishSignal(
+      await deps.publishSignal(
         config.busUrl, config.channel,
         MindsEventType.MIND_COMPLETE,
         config.mindName, config.waveId,
@@ -509,7 +540,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       );
       console.log(`[supervisor] @${config.mindName}: MIND_COMPLETE published`);
     } else {
-      await publishSignal(
+      await deps.publishSignal(
         config.busUrl, config.channel,
         MindsEventType.MIND_FAILED,
         config.mindName, config.waveId,
@@ -525,7 +556,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
     result.ok = false;
     // Publish MIND_FAILED from catch block so the bus listener doesn't wait
     try {
-      await publishSignal(
+      await deps.publishSignal(
         config.busUrl, config.channel,
         MindsEventType.MIND_FAILED,
         config.mindName, config.waveId,
@@ -541,7 +572,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
 
     // Cleanup: kill ALL spawned drone panes (not just the last one)
     for (const paneId of allSpawnedPanes) {
-      killPane(paneId);
+      deps.killPane(paneId);
     }
 
     // Clean up sentinel file if present (skip if worktree was never resolved)

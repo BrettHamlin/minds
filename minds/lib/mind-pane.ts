@@ -390,7 +390,7 @@ if (import.meta.main) { (async () => {
   const baseBranch = getArg("--base") ?? run("git branch --show-current");
 
   tryRun(`git fetch origin`);
-  tryRun(`git pull origin ${baseBranch}`);
+  tryRun(`git pull origin ${shellQuote(baseBranch)}`);
 
   // ─── Branch and worktree path ─────────────────────────────────────────────────
 
@@ -410,10 +410,10 @@ if (import.meta.main) { (async () => {
   // ─── Create worktree ──────────────────────────────────────────────────────────
 
   // Delete stale branch if it exists from a previous cleaned-up worktree
-  tryRun(`git branch -D "${branchName}" 2>/dev/null`);
+  tryRun(`git branch -D ${shellQuote(branchName)} 2>/dev/null`);
 
   try {
-    run(`git worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`);
+    run(`git worktree add ${shellQuote(worktreePath)} -b ${shellQuote(branchName)} ${shellQuote(baseBranch)}`);
   } catch (err) {
     fail(`Failed to create worktree at ${worktreePath}: ${err}`);
   }
@@ -422,7 +422,7 @@ if (import.meta.main) { (async () => {
 
   // node_modules is gitignored and never present in fresh worktrees
   try {
-    run(`bun install --cwd "${worktreePath}"`);
+    run(`bun install --cwd ${shellQuote(worktreePath)}`);
   } catch (err) {
     // Non-fatal: some Minds don't need node_modules
     process.stderr.write(`Warning: bun install failed: ${err}\n`);
@@ -530,7 +530,7 @@ if (import.meta.main) { (async () => {
 
   let mindPane: string;
   try {
-    mindPane = run(`tmux split-window -h -p 50 -t ${callerPane} -P -F '#{pane_id}'`);
+    mindPane = run(`tmux split-window -h -p 50 -t ${shellQuote(callerPane)} -P -F '#{pane_id}'`);
   } catch (err) {
     fail(`Failed to split tmux pane: ${err}`);
   }
@@ -542,7 +542,7 @@ if (import.meta.main) { (async () => {
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
   }
-  run(`tmux send-keys -t ${mindPane} '${launchCmd}' Enter`);
+  run(`tmux send-keys -t ${shellQuote(mindPane)} ${shellQuote(launchCmd)} Enter`);
 
   // ─── Publish DRONE_SPAWNED if bus is configured ────────────────────────────────
 

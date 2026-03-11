@@ -25,7 +25,7 @@ import { parseAndGroupTasks } from "../lib/task-parser.ts";
 import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
 import { runMindSupervisor } from "../../lib/mind-supervisor.ts";
 import type { SupervisorConfig } from "../../lib/mind-supervisor.ts";
-import { waitForWaveCompletion } from "../lib/bus-listener.ts";
+import { waitForWaveCompletion, type WaveCompletionResult } from "../lib/bus-listener.ts";
 import { killPane } from "../../lib/tmux-utils.ts";
 import {
   startMindsBus,
@@ -329,7 +329,7 @@ export async function runImplement(
   const stateDir = join(mindsDir, "state");
   if (existsSync(stateDir)) {
     for (const f of readdirSync(stateDir)) {
-      if (f.startsWith("brief-") && f.endsWith(".md")) {
+      if ((f.startsWith("brief-") || f.startsWith("drone-brief-")) && f.endsWith(".md")) {
         unlinkSync(join(stateDir, f));
       }
     }
@@ -485,11 +485,12 @@ export async function runImplement(
 
     // Wait for all supervisors in this wave to complete.
     // The supervisors publish MIND_COMPLETE via the bus, so waitForWaveCompletion
-    // will pick those up. We also track the supervisor promises directly as a
-    // fallback to detect failures that don't reach the bus.
+    // will pick those up. We ALSO race against Promise.allSettled(supervisorPromises)
+    // so that if the bus is down (publishSignal silently swallows errors),
+    // we still exit when all supervisors finish rather than hanging for 30 minutes.
     console.log(`\n  Waiting for ${waveDrones.length} supervisor(s) to complete ${wave.id}...`);
 
-    const completionResult = await waitForWaveCompletion(
+    const waveCompletionPromise = waitForWaveCompletion(
       busInfo.busUrl,
       channel,
       wave.id,
@@ -497,6 +498,45 @@ export async function runImplement(
       30 * 60 * 1000, // 30 min timeout
       abortController.signal,
     );
+
+    // Fallback: if all supervisor promises settle (success or failure),
+    // build a completion result from the promise outcomes directly.
+    const supervisorFallbackPromise = Promise.allSettled(supervisorPromises).then(
+      (settlements): WaveCompletionResult => {
+        const completedMinds: string[] = [];
+        const failedErrors: string[] = [];
+
+        for (let i = 0; i < settlements.length; i++) {
+          const mindName = waveDrones[i]?.mindName ?? `unknown-${i}`;
+          const settlement = settlements[i];
+          if (settlement.status === "fulfilled") {
+            completedMinds.push(mindName);
+          } else {
+            failedErrors.push(`@${mindName} supervisor error: ${settlement.reason}`);
+          }
+        }
+
+        const allCompleted = completedMinds.length === waveDrones.length && failedErrors.length === 0;
+        const missingMinds = waveDrones
+          .map((d) => d.mindName)
+          .filter((m) => !completedMinds.includes(m));
+
+        return {
+          ok: allCompleted,
+          completed: completedMinds,
+          missing: missingMinds,
+          errors: failedErrors,
+        };
+      },
+    );
+
+    // Race: whichever resolves first wins. If the bus is working,
+    // waitForWaveCompletion will resolve first via SSE events. If the bus
+    // is down, supervisorFallbackPromise resolves when all supervisors finish.
+    const completionResult = await Promise.race([
+      waveCompletionPromise,
+      supervisorFallbackPromise,
+    ]);
 
     if (!completionResult.ok) {
       console.error(`  Wave ${wave.id} did not complete successfully.`);

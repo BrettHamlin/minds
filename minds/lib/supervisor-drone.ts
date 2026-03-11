@@ -152,7 +152,7 @@ export function installDroneStopHook(worktreePath: string): void {
     hooks: [
       {
         type: "command" as const,
-        command: `touch ${JSON.stringify(sentinelPath)}`,
+        command: `touch ${shellQuote(sentinelPath)}`,
       },
     ],
   };
@@ -212,8 +212,18 @@ export async function waitForDroneCompletion(
 ): Promise<{ ok: boolean; error?: string }> {
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
-  // Clean up any stale sentinel from a previous run
+  // TOCTOU guard: if the sentinel already exists AND the pane is already gone,
+  // the drone completed before we started watching. Return success immediately.
   if (existsSync(sentinelPath)) {
+    const paneCheck = Bun.spawnSync(
+      ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    if (paneCheck.exitCode !== 0) {
+      // Pane is gone + sentinel exists = drone completed successfully before we started watching
+      return { ok: true };
+    }
+    // Pane is still alive — sentinel is stale from a previous run, clean it up
     try { Bun.spawnSync(["rm", "-f", sentinelPath]); } catch { /* ignore */ }
   }
 
@@ -240,6 +250,12 @@ export async function waitForDroneCompletion(
         if (filename === SENTINEL_FILENAME && existsSync(sentinelPath)) {
           done({ ok: true });
         }
+      });
+      watcher.on("error", () => {
+        // On macOS (kqueue), deleting the watched directory emits an error.
+        // Close gracefully and let the poll fallback handle detection.
+        try { watcher?.close(); } catch { /* ignore */ }
+        watcher = undefined;
       });
     } catch {
       // fs.watch() may fail on some platforms — fall through to poll
