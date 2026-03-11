@@ -42,7 +42,10 @@ export async function handleBusMessage(msg: unknown, orchestratorPane: string): 
 
   console.error(`[BusBridge] Delivering: ${deliveryText}`);
 
-  // Send text then C-m separately (Tmux.ts pattern for Claude Code panes).
+  // NOTE: These raw tmux calls intentionally do NOT use TerminalMultiplexer.sendKeys().
+  // The multiplexer's sendKeys sends text + Enter atomically in a single call, but
+  // Claude Code panes require the two-step pattern (send text, then send C-m separately)
+  // with a potential delay between them. Same rationale as tmux-send.ts.
   Bun.spawnSync(["tmux", "send-keys", "-t", orchestratorPane, deliveryText]);
   Bun.spawnSync(["tmux", "send-keys", "-t", orchestratorPane, "C-m"]);
 }

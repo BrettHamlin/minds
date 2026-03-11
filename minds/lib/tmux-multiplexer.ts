@@ -56,13 +56,19 @@ export class TmuxMultiplexer implements TerminalMultiplexer {
 
   /**
    * Check if a pane is still alive by attempting to list it.
+   * Returns false if the pane doesn't exist, tmux server is dead, or tmux binary is missing.
    */
   isPaneAlive(paneId: string): boolean {
-    const result = Bun.spawnSync(
-      ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    return result.exitCode === 0;
+    try {
+      const result = Bun.spawnSync(
+        ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      return result.exitCode === 0;
+    } catch {
+      // tmux binary missing or server unreachable
+      return false;
+    }
   }
 
   /**

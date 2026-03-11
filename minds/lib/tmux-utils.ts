@@ -24,6 +24,9 @@ export function shellQuote(s: string): string {
 
 /**
  * Kill a tmux pane by ID. Silently ignores errors (pane may already be gone).
+ *
+ * Backward-compatibility wrapper — delegates to defaultMux.killPane().
+ * New code should accept a TerminalMultiplexer via dependency injection instead.
  */
 export function killPane(paneId: string): void {
   defaultMux.killPane(paneId);
@@ -58,6 +61,9 @@ export function launchClaudeInPane(
 /**
  * Create a new tmux pane by splitting from a source pane.
  * Returns the new pane ID.
+ *
+ * Backward-compatibility wrapper — delegates to defaultMux.splitPane().
+ * New code should accept a TerminalMultiplexer via dependency injection instead.
  */
 export function splitPane(sourcePane: string): string {
   return defaultMux.splitPane(sourcePane);

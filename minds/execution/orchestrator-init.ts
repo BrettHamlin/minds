@@ -34,6 +34,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { execSync, spawn } from "child_process";
+import { killPane } from "../lib/tmux-utils.ts";
 // TODO(WD): Direct import — replace with parent escalation when Coordination becomes a full Mind in Wave D.
 import { buildAdjacency, detectCycles, buildDependencyHolds, detectImplicitDependencies, type DependencyHold } from "../coordination/coordination-check"; // CROSS-MIND
 import {
@@ -660,12 +661,8 @@ function rollback(rb: RollbackState, repoRoot?: string): void {
   }
 
   if (rb.agentPaneCreated) {
-    try {
-      execSync(`tmux kill-pane -t "${rb.agentPaneCreated}"`, { stdio: "pipe" });
-      console.error(`Killed agent pane: ${rb.agentPaneCreated}`);
-    } catch {
-      // Pane may already be gone
-    }
+    killPane(rb.agentPaneCreated);
+    console.error(`Killed agent pane: ${rb.agentPaneCreated}`);
   }
 
   for (const symlinkPath of [rb.claudeSymlinkCreated, rb.mindsSymlinkCreated, rb.specifySymlinkCreated]) {

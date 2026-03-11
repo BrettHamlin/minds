@@ -27,7 +27,6 @@ import { runMindSupervisor } from "../../lib/supervisor/mind-supervisor.ts";
 import type { SupervisorConfig } from "../../lib/supervisor/mind-supervisor.ts";
 import { waitForWaveCompletion, type WaveCompletionResult } from "../lib/bus-listener.ts";
 import { TmuxMultiplexer } from "../../lib/tmux-multiplexer.ts";
-import type { TerminalMultiplexer } from "../../lib/terminal-multiplexer.ts";
 import {
   startMindsBus,
   teardownMindsBus,
@@ -87,7 +86,7 @@ function resolveFeatureDir(repoRoot: string, ticketId: string): string | null {
 /*  Terminal multiplexer                                                */
 /* ------------------------------------------------------------------ */
 
-const mux: TerminalMultiplexer = new TmuxMultiplexer();
+const mux = new TmuxMultiplexer();
 
 /* ------------------------------------------------------------------ */
 /*  Mind spawning                                                      */
