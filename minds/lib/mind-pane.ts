@@ -35,6 +35,9 @@ import { MindsEventType } from "../transport/minds-events.ts";
 import { buildMindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import type { MindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import { resolveMindsDir } from "../shared/paths.js";
+import { shellQuote } from "./tmux-utils.ts";
+import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
+import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -333,6 +336,8 @@ If you've compacted or lost context, re-read that file.`.replace(/\n{3,}/g, "\n\
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 
 if (import.meta.main) { (async () => {
+  const mux: TerminalMultiplexer = new TmuxMultiplexer();
+
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   function run(cmd: string): string {
@@ -369,8 +374,7 @@ if (import.meta.main) { (async () => {
 
   const callerPane =
     getArg("--pane") ??
-    process.env.TMUX_PANE ??
-    run("tmux display-message -p '#{pane_id}'");
+    mux.getCurrentPane();
 
   const claudeFile = getArg("--claude-file");
   const briefFile = getArg("--brief-file");
@@ -389,7 +393,7 @@ if (import.meta.main) { (async () => {
   const baseBranch = getArg("--base") ?? run("git branch --show-current");
 
   tryRun(`git fetch origin`);
-  tryRun(`git pull origin ${baseBranch}`);
+  tryRun(`git pull origin ${shellQuote(baseBranch)}`);
 
   // ─── Branch and worktree path ─────────────────────────────────────────────────
 
@@ -409,10 +413,10 @@ if (import.meta.main) { (async () => {
   // ─── Create worktree ──────────────────────────────────────────────────────────
 
   // Delete stale branch if it exists from a previous cleaned-up worktree
-  tryRun(`git branch -D "${branchName}" 2>/dev/null`);
+  tryRun(`git branch -D ${shellQuote(branchName)} 2>/dev/null`);
 
   try {
-    run(`git worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`);
+    run(`git worktree add ${shellQuote(worktreePath)} -b ${shellQuote(branchName)} ${shellQuote(baseBranch)}`);
   } catch (err) {
     fail(`Failed to create worktree at ${worktreePath}: ${err}`);
   }
@@ -421,7 +425,7 @@ if (import.meta.main) { (async () => {
 
   // node_modules is gitignored and never present in fresh worktrees
   try {
-    run(`bun install --cwd "${worktreePath}"`);
+    run(`bun install --cwd ${shellQuote(worktreePath)}`);
   } catch (err) {
     // Non-fatal: some Minds don't need node_modules
     process.stderr.write(`Warning: bun install failed: ${err}\n`);
@@ -529,7 +533,7 @@ if (import.meta.main) { (async () => {
 
   let mindPane: string;
   try {
-    mindPane = run(`tmux split-window -h -p 50 -t ${callerPane} -P -F '#{pane_id}'`);
+    mindPane = mux.splitPane(callerPane);
   } catch (err) {
     fail(`Failed to split tmux pane: ${err}`);
   }
@@ -537,11 +541,11 @@ if (import.meta.main) { (async () => {
   // ─── Launch Claude Code Opus ──────────────────────────────────────────────────
 
   const initialPrompt = `You are a 🧠 Mind supervisor. Your CLAUDE.md has been replaced with your operating manual — read it now. Then read MIND-BRIEF.md for your tasks. Follow the Review Loop exactly: do NOT implement tasks yourself. Spawn a 🛸 Drone via Agent({ subagent_type: '🛸' }) to do the work.`;
-  let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model opus ${JSON.stringify(initialPrompt)}`;
+  let launchCmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model opus ${JSON.stringify(initialPrompt)}`;
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
   }
-  run(`tmux send-keys -t ${mindPane} '${launchCmd}' Enter`);
+  mux.sendKeys(mindPane, launchCmd);
 
   // ─── Publish DRONE_SPAWNED if bus is configured ────────────────────────────────
 

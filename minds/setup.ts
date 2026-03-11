@@ -15,9 +15,9 @@
 
 import { existsSync, mkdirSync, symlinkSync, unlinkSync, realpathSync, lstatSync } from "fs";
 import { join, resolve } from "path";
-import { execSync } from "child_process";
+import { getRepoRoot } from "./shared/paths.js";
 
-const repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+const repoRoot = getRepoRoot();
 const commandsDir = join(process.env.HOME ?? "/root", ".claude", "commands");
 
 // Mapping: target symlink name → source file (relative to repo root)
@@ -25,6 +25,7 @@ const LINKS: Array<{ name: string; source: string }> = [
   { name: "minds.tasks.md", source: "minds/commands/tasks.md" },
   { name: "minds.implement.md", source: "minds/commands/implement.md" },
   { name: "drone.launch.md", source: "minds/commands/drone.launch.md" },
+  { name: "minds.fission.md", source: "minds/commands/fission.md" },
 ];
 
 function log(msg: string) {

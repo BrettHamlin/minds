@@ -128,6 +128,7 @@ export async function nameAndValidate(
     name: "foundation" as const,
     domain: generateFoundationDomain(foundation.files),
     files: foundation.files,
+    owns_files: generateOwnsPatterns(foundation.files),
     exposes: foundation.files.map((f) => basename(f, extname(f))),
   };
 
@@ -261,7 +262,7 @@ function deduplicateNames(names: string[]): string[] {
 /*  Ownership patterns                                                 */
 /* ------------------------------------------------------------------ */
 
-function generateOwnsPatterns(files: string[]): string[] {
+export function generateOwnsPatterns(files: string[]): string[] {
   // Group files by directory
   const dirFiles = new Map<string, string[]>();
   for (const f of files) {

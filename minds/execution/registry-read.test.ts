@@ -7,6 +7,7 @@ import { readRegistry } from "./registry-read";
 const REPO_ROOT = execSync("git rev-parse --show-toplevel", {
   encoding: "utf-8",
   cwd: import.meta.dir,
+  stdio: ["pipe", "pipe", "pipe"],
 }).trim();
 
 const REGISTRY_DIR = path.join(REPO_ROOT, ".minds/state/pipeline-registry");

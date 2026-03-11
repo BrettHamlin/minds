@@ -51,7 +51,7 @@ export function mindsRoot(): string {
 
   // 3. Use git rev-parse to find repo root, then resolveMindsDir
   try {
-    const root = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
+    const root = execSync("git rev-parse --show-toplevel", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
     _cachedMindsRoot = resolveMindsDir(root);
     return _cachedMindsRoot;
   } catch {
@@ -65,6 +65,61 @@ export function mindsRoot(): string {
  */
 export function _resetMindsRootCache(): void {
   _cachedMindsRoot = null;
+}
+
+/**
+ * Cached result for getRepoRoot() (default cwd case only).
+ */
+let _cachedRepoRoot: string | null = null;
+
+/**
+ * Detect the git repository root directory.
+ *
+ * @param cwd - Optional working directory to resolve from.
+ *              When provided, the result is NOT cached (different cwd = different root).
+ *              When omitted, uses process.cwd() and caches the result.
+ * @returns The absolute path to the repo root, or cwd/process.cwd() as fallback.
+ */
+export function getRepoRoot(cwd?: string): string {
+  // When no cwd override, return cached result if available
+  if (!cwd && _cachedRepoRoot !== null) return _cachedRepoRoot;
+
+  try {
+    const result = execSync("git rev-parse --show-toplevel", {
+      encoding: "utf-8",
+      cwd: cwd || process.cwd(),
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+
+    // Only cache when using default cwd
+    if (!cwd) _cachedRepoRoot = result;
+    return result;
+  } catch {
+    const fallback = cwd || process.cwd();
+    if (!cwd) _cachedRepoRoot = fallback;
+    return fallback;
+  }
+}
+
+/**
+ * Clear the cached getRepoRoot() value. Useful for testing.
+ */
+export function _resetRepoRootCache(): void {
+  _cachedRepoRoot = null;
+}
+
+/**
+ * Normalize a file path prefix: `.minds/` → `minds/` for string comparison.
+ *
+ * Use this for prefix matching where you need to compare paths regardless
+ * of whether they use the dev (`minds/`) or installed (`.minds/`) layout.
+ * This is a pure string operation — no filesystem access.
+ */
+export function normalizeMindsPrefix(filePath: string): string {
+  if (filePath.startsWith(".minds/")) {
+    return "minds/" + filePath.slice(7);
+  }
+  return filePath;
 }
 
 /**

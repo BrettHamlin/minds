@@ -20,7 +20,7 @@ Signal emission: phase signal handlers, transport dispatch, token resolution, an
 - `minds/signals/emit-signal.ts` — generic CLI signal handler
 - `minds/signals/emit-findings.ts` — FindingsBatch schema enforcement
 - `minds/signals/resolve-tokens.ts` — `{{TOKEN}}` replacement in config strings
-- `minds/signals/question-signal.hook.ts` — Q&A question signal hook
+- `minds/hooks/PreToolUse.question-signal.ts` — Q&A question signal hook (installed to `.claude/hooks/`)
 
 ## Anti-Patterns
 

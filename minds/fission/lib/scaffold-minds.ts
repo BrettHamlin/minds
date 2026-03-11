@@ -44,7 +44,10 @@ export async function scaffoldAllMinds(
 
   // Scaffold Foundation Mind
   try {
-    await scaffoldMind("foundation", map.foundation.domain, opts);
+    await scaffoldMind("foundation", map.foundation.domain, {
+      ...opts,
+      ownsFiles: map.foundation.owns_files,
+    });
     created.push("foundation");
   } catch (err) {
     failed.push("foundation");
@@ -57,7 +60,10 @@ export async function scaffoldAllMinds(
   // Scaffold each domain Mind
   for (const mind of map.minds) {
     try {
-      await scaffoldMind(mind.name, mind.domain, opts);
+      await scaffoldMind(mind.name, mind.domain, {
+        ...opts,
+        ownsFiles: mind.owns_files,
+      });
       created.push(mind.name);
     } catch (err) {
       failed.push(mind.name);

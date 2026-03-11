@@ -38,7 +38,7 @@ This command generates tasks for developing the **collab repo itself**, where wo
 
    If `{MINDS_DIR}/minds.json` does not exist, run `bun {MINDS_DIR}/generate-registry.ts` first to create it, then read it.
 
-2. **Load design documents**: Read from the feature directory (run `bun {MINDS_DIR}/scripts/resolve-feature.ts` if needed):
+2. **Load design documents**: Read from the feature directory (run `bun {MINDS_DIR}/execution/resolve-feature.ts` if needed):
    - **Required**: plan.md (tech stack, structure), spec.md (user stories, AC)
    - **Optional**: data-model.md, contracts/, research.md, quickstart.md
 

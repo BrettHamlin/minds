@@ -21,18 +21,8 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { execSync, spawnSync } from "child_process";
-
-function getRepoRoot(cwd?: string): string {
-  try {
-    return execSync("git rev-parse --show-toplevel", {
-      encoding: "utf-8",
-      cwd: cwd || process.cwd(),
-    }).trim();
-  } catch {
-    return cwd || process.cwd();
-  }
-}
+import { spawnSync } from "child_process";
+import { getRepoRoot } from "../shared/paths.js";
 
 interface Check {
   type: "file_exists" | "file_contains" | "http_200" | "command_succeeds" | "json_field";

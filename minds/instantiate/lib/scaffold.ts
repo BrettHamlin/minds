@@ -6,9 +6,8 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync } from "fs";
-import { join } from "path";
-import { execSync } from "child_process";
-import { mindsRoot } from "@minds/shared/paths.js";
+import { basename, join } from "path";
+import { mindsRoot, getRepoRoot } from "@minds/shared/paths.js";
 import type { MindDescription } from "@minds/mind.js";
 
 // ---------------------------------------------------------------------------
@@ -37,12 +36,7 @@ export function mindsSourceDir(): string {
   }
 
   // Dev fallback: minds/ relative to git root
-  try {
-    const root = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
-    return join(root, "minds");
-  } catch {
-    return join(process.cwd(), "minds");
-  }
+  return join(getRepoRoot(), "minds");
 }
 
 /**
@@ -71,7 +65,7 @@ export function validateMindName(name: string): string | null {
 // Template generators
 // ---------------------------------------------------------------------------
 
-export function generateMindMd(name: string, domain: string): string {
+export function generateMindMd(name: string, domain: string, prefix = "minds"): string {
   return `# @${name} Mind Profile
 
 ## Domain
@@ -84,12 +78,12 @@ ${domain}
 
 ## Key Files
 
-- \`minds/${name}/server.ts\` — Mind server entry point
-- \`minds/${name}/lib/\` — Handler implementations
+- \`${prefix}/${name}/server.ts\` — Mind server entry point
+- \`${prefix}/${name}/lib/\` — Handler implementations
 
 ## Anti-Patterns
 
-- Implementing logic outside \`minds/${name}/lib/\` — keep handlers co-located.
+- Implementing logic outside \`${prefix}/${name}/lib/\` — keep handlers co-located.
 
 ## Review Focus
 
@@ -98,7 +92,7 @@ ${domain}
 `;
 }
 
-export function generateServerTs(name: string, domain: string): string {
+export function generateServerTs(name: string, domain: string, prefix = "minds"): string {
   return `/**
  * ${name} Mind — ${domain}
  *
@@ -122,7 +116,7 @@ export default createMind({
   name: "${name}",
   domain: "${domain}",
   keywords: ["${name}"],
-  owns_files: ["minds/${name}/"],
+  owns_files: ["${prefix}/${name}/"],
   capabilities: [],
   exposes: [],
   consumes: [],
@@ -147,6 +141,8 @@ export interface ScaffoldOptions {
   mindsSrcDir?: string;
   /** Override the minds.json path (for testing) */
   mindsJsonOverride?: string;
+  /** Override owns_files globs (e.g. from fission pipeline). Falls back to `{prefix}/{name}/`. */
+  ownsFiles?: string[];
 }
 
 /**
@@ -171,6 +167,7 @@ export async function scaffoldMind(
 
   const srcDir = opts.mindsSrcDir ?? mindsSourceDir();
   const jsonPath = opts.mindsJsonOverride ?? mindsJsonPath();
+  const prefix = basename(srcDir);  // "minds" or ".minds"
   const mindDir = join(srcDir, name);
 
   // Guard: don't overwrite existing Mind
@@ -183,11 +180,11 @@ export async function scaffoldMind(
 
   // Write MIND.md
   const mindMdPath = join(mindDir, "MIND.md");
-  writeFileSync(mindMdPath, generateMindMd(name, domain), "utf8");
+  writeFileSync(mindMdPath, generateMindMd(name, domain, prefix), "utf8");
 
   // Write server.ts
   const serverTsPath = join(mindDir, "server.ts");
-  writeFileSync(serverTsPath, generateServerTs(name, domain), "utf8");
+  writeFileSync(serverTsPath, generateServerTs(name, domain, prefix), "utf8");
 
   const files = [mindMdPath, serverTsPath];
 
@@ -210,7 +207,7 @@ export async function scaffoldMind(
     name,
     domain,
     keywords: [name],
-    owns_files: [`minds/${name}/`],
+    owns_files: opts.ownsFiles ?? [`${prefix}/${name}/`],
     capabilities: [],
   };
   entries.push(newEntry);

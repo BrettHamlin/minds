@@ -42,7 +42,10 @@ export async function handleCommandMessage(
 
     console.error(`[CmdBridge] Delivering: ${command}`);
 
-    // Send text then C-m (Claude Code submit pattern)
+    // NOTE: These raw tmux calls intentionally do NOT use TerminalMultiplexer.sendKeys().
+    // The multiplexer's sendKeys sends text + Enter atomically in a single call, but
+    // Claude Code panes require the two-step pattern (send text, then send C-m separately)
+    // with a delay between them. Same rationale as tmux-send.ts.
     Bun.spawnSync(["tmux", "send-keys", "-t", agentPane, command]);
     Bun.spawnSync(["tmux", "send-keys", "-t", agentPane, "C-m"]);
 
@@ -67,7 +70,9 @@ export async function handleCommandMessage(
       // Bus unavailable — ignore
     }
   } else if (m.type === "question_response") {
-    // Navigate AskUserQuestion UI: press Down N times (based on steps) then Enter
+    // Navigate AskUserQuestion UI: press Down N times (based on steps) then Enter.
+    // NOTE: Raw tmux calls — same two-step/delay rationale as above. Individual
+    // keystrokes with delays between them are incompatible with the atomic sendKeys interface.
     const payload = m.payload as Record<string, unknown> | undefined;
     const steps = typeof payload?.steps === "number" ? payload.steps : 1;
     for (let i = 0; i < steps; i++) {

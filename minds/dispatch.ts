@@ -14,7 +14,7 @@ import type { MindDescription } from "./mind.js";
 import { mindsPublish } from "./transport/minds-publish.ts";
 import { BusTransport } from "./transport/BusTransport.ts";
 import type { Message } from "./transport/Transport.ts";
-import { resolveMindsDir } from "./shared/paths.js";
+import { resolveMindsDir, getRepoRoot } from "./shared/paths.js";
 
 // --- Types ---
 
@@ -56,8 +56,7 @@ export interface WaitOptions {
 // --- Internal helpers ---
 
 function detectRepoRoot(): string {
-  const proc = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], { stdout: "pipe" });
-  return new TextDecoder().decode(proc.stdout).trim();
+  return getRepoRoot();
 }
 
 /** Load and parse .minds/minds.json from the given path. Exported for testing. */

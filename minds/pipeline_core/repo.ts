@@ -1,13 +1,8 @@
 /**
  * repo.ts — Repository root detection.
+ *
+ * Re-exports getRepoRoot from the canonical shared/paths module.
+ * Kept for backward compatibility — all new code should import from @minds/shared/paths.
  */
 
-import { execSync } from "child_process";
-
-export function getRepoRoot(): string {
-  try {
-    return execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
-  } catch {
-    return process.cwd();
-  }
-}
+export { getRepoRoot } from "../shared/paths.js";

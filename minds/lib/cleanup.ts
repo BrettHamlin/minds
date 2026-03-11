@@ -27,7 +27,6 @@ import {
   lstatSync,
 } from "fs";
 import { join, resolve } from "path";
-import { execSync } from "child_process";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,9 +39,11 @@ export interface CleanupResult {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function tryRun(cmd: string): string {
+function tryRunArgs(args: string[]): string {
   try {
-    return execSync(cmd, { encoding: "utf-8" }).trim();
+    const result = Bun.spawnSync(args, { stdout: "pipe", stderr: "pipe" });
+    if (result.exitCode !== 0) return "";
+    return new TextDecoder().decode(result.stdout).trim();
   } catch {
     return "";
   }
@@ -56,7 +57,7 @@ function encodeProjectPath(absolutePath: string): string {
 
 /** Get the list of active worktree paths from git. */
 function getActiveWorktreePaths(repoRoot: string): Set<string> {
-  const output = tryRun(`git -C "${repoRoot}" worktree list --porcelain`);
+  const output = tryRunArgs(["git", "-C", repoRoot, "worktree", "list", "--porcelain"]);
   const paths = new Set<string>();
   for (const line of output.split("\n")) {
     if (line.startsWith("worktree ")) {
@@ -197,10 +198,14 @@ export function removeWorktree(worktreePath: string, repoRoot: string): CleanupR
   }
 
   try {
-    execSync(`git -C "${repoRoot}" worktree remove --force "${absPath}"`, {
-      encoding: "utf-8",
-      stdio: "pipe",
-    });
+    const proc = Bun.spawnSync(
+      ["git", "-C", repoRoot, "worktree", "remove", "--force", absPath],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    if (proc.exitCode !== 0) {
+      const stderr = new TextDecoder().decode(proc.stderr).trim();
+      throw new Error(stderr || `git worktree remove exited with code ${proc.exitCode}`);
+    }
     result.removed.push(absPath);
   } catch (err: unknown) {
     result.ok = false;
@@ -245,7 +250,7 @@ if (import.meta.main) {
   function repoRootOrCwd(): string {
     return (
       getFlag("--repo-root") ??
-      (tryRun("git rev-parse --show-toplevel") || process.cwd())
+      (tryRunArgs(["git", "rev-parse", "--show-toplevel"]) || process.cwd())
     );
   }
 

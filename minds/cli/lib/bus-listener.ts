@@ -121,6 +121,40 @@ export async function waitForWaveCompletion(
           try {
             const event = JSON.parse(jsonStr);
 
+            // Handle MIND_FAILED -- mark as completed but record the failure
+            if (
+              event.type === MindsEventType.MIND_FAILED &&
+              event.payload?.waveId === waveId &&
+              event.payload?.mindName &&
+              expected.has(event.payload.mindName)
+            ) {
+              const failedMind = event.payload.mindName;
+              const reason = event.payload?.error ?? "unknown failure";
+              errors.push(`@${failedMind} failed: ${reason}`);
+              // Treat as completion so we don't wait the full timeout,
+              // but the wave result will be !ok due to errors
+              completed.add(failedMind);
+              console.log(
+                `  MIND_FAILED: @${failedMind} (${completed.size}/${expected.size})`,
+              );
+
+              // Resolve immediately -- a failed mind means the wave cannot succeed.
+              // NOTE: Other supervisors in the wave may still be running. This is
+              // intentional — they will finish on their own and their results get
+              // discarded. The caller (implement.ts) uses Promise.allSettled(supervisorPromises)
+              // to drain any remaining supervisors before proceeding.
+              clearTimeout(timeout);
+              reader.cancel();
+              const missing = [...expected].filter((m) => !completed.has(m));
+              resolve({
+                ok: false,
+                completed: [...completed],
+                missing,
+                errors,
+              });
+              return;
+            }
+
             if (
               event.type === MindsEventType.MIND_COMPLETE &&
               event.payload?.waveId === waveId &&

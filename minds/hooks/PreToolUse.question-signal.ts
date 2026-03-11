@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * question-signal.hook.ts - Emit PHASE_QUESTION signal to orchestrator
+ * PreToolUse.question-signal.ts - Emit PHASE_QUESTION signal to orchestrator
  *
  * Fires on PreToolUse:AskUserQuestion in orchestrated agent sessions.
  * Enables the orchestrator to navigate AskUserQuestion UIs autonomously
@@ -11,13 +11,15 @@
  *
  * Flow:
  *   1. Read $TMUX_PANE — exit if not in tmux
- *   2. Scan .minds/state/pipeline-registry/ for entry where agent_pane_id matches
- *   3. Send [SIGNAL:{ticket_id}:{nonce}] {PHASE}_QUESTION to orchestrator pane
- *   4. Always exit 0 — never block the UI
+ *   2. Detect repo root via `git rev-parse` and resolve minds dir
+ *   3. Scan {mindsDir}/state/pipeline-registry/ for entry where agent_pane_id matches
+ *   4. Send [SIGNAL:{ticket_id}:{nonce}] {PHASE}_QUESTION to orchestrator pane
+ *   5. Always exit 0 — never block the UI
  */
 
-import { readdirSync, readFileSync, mkdirSync, writeFileSync, renameSync } from "fs";
+import { existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, renameSync } from "fs";
 import { join } from "path";
+import { execSync } from "child_process";
 import { $ } from "bun";
 
 const TMUX_PANE = process.env.TMUX_PANE;
@@ -25,10 +27,18 @@ const TMUX_PANE = process.env.TMUX_PANE;
 // Not in a tmux session — not orchestrated, exit silently
 if (!TMUX_PANE) process.exit(0);
 
-// Registry dir is sibling of this hook's parent dir:
-// .minds/hooks/../state/pipeline-registry = .minds/state/pipeline-registry
-// import.meta.dir resolves symlinks, so this always points to the real .minds/
-const REGISTRY_DIR = join(import.meta.dir, "..", "state", "pipeline-registry");
+// Resolve repo root and minds directory dynamically.
+// This hook lives at .claude/hooks/ in installed repos or minds/hooks/ in dev.
+// Using git is the most reliable way to find the root regardless of location.
+let REGISTRY_DIR: string;
+try {
+  const repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+  const mindsDir = existsSync(join(repoRoot, "minds", "cli")) ? "minds" : ".minds";
+  REGISTRY_DIR = join(repoRoot, mindsDir, "state", "pipeline-registry");
+} catch {
+  // Not in a git repo — can't resolve paths, exit silently
+  process.exit(0);
+}
 
 async function main() {
   try {

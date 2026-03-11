@@ -73,6 +73,19 @@ describe("generateMindMd", () => {
     const md = generateMindMd("test-mind", "Test domain description");
     expect(md).toContain("Test domain description");
   });
+
+  it("defaults to minds/ prefix in paths", () => {
+    const md = generateMindMd("test-mind", "Test domain");
+    expect(md).toContain("`minds/test-mind/server.ts`");
+    expect(md).toContain("`minds/test-mind/lib/`");
+  });
+
+  it("uses .minds/ prefix when specified", () => {
+    const md = generateMindMd("test-mind", "Test domain", ".minds");
+    expect(md).toContain("`.minds/test-mind/server.ts`");
+    expect(md).toContain("`.minds/test-mind/lib/`");
+    expect(md).not.toContain("`minds/test-mind/");
+  });
 });
 
 describe("generateServerTs", () => {
@@ -94,6 +107,17 @@ describe("generateServerTs", () => {
   it("exports default from createMind call", () => {
     const ts = generateServerTs("test-mind", "Test domain");
     expect(ts).toContain("export default createMind(");
+  });
+
+  it("defaults to minds/ prefix in owns_files", () => {
+    const ts = generateServerTs("test-mind", "Test domain");
+    expect(ts).toContain('owns_files: ["minds/test-mind/"]');
+  });
+
+  it("uses .minds/ prefix when specified", () => {
+    const ts = generateServerTs("test-mind", "Test domain", ".minds");
+    expect(ts).toContain('owns_files: [".minds/test-mind/"]');
+    expect(ts).not.toContain('owns_files: ["minds/test-mind/"]');
   });
 });
 
@@ -247,6 +271,56 @@ describe("scaffoldMind", () => {
     await expect(
       scaffoldMind("my-mind", "domain", { mindsSrcDir: srcDir, mindsJsonOverride: jsonPath })
     ).rejects.toThrow("already exists");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Prefix detection (.minds vs minds)
+  // ---------------------------------------------------------------------------
+
+  it("uses .minds prefix when mindsSrcDir basename is .minds", async () => {
+    const dotMindsDir = join(tempDir(), ".minds");
+    mkdirSync(dotMindsDir, { recursive: true });
+
+    try {
+      const result = await scaffoldMind("my-mind", "My domain", {
+        mindsSrcDir: dotMindsDir,
+        mindsJsonOverride: jsonPath,
+      });
+
+      // Generated server.ts should use .minds/ prefix
+      const serverContent = readFileSync(join(result.mindDir, "server.ts"), "utf8");
+      expect(serverContent).toContain('owns_files: [".minds/my-mind/"]');
+
+      // Generated MIND.md should use .minds/ prefix
+      const mindMdContent = readFileSync(join(result.mindDir, "MIND.md"), "utf8");
+      expect(mindMdContent).toContain("`.minds/my-mind/server.ts`");
+
+      // Registry entry should use .minds/ prefix
+      const entries = JSON.parse(readFileSync(jsonPath, "utf8"));
+      expect(entries[0].owns_files).toEqual([".minds/my-mind/"]);
+    } finally {
+      rmSync(join(dotMindsDir, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("uses minds prefix when mindsSrcDir basename is minds", async () => {
+    const mindsDir = join(tempDir(), "minds");
+    mkdirSync(mindsDir, { recursive: true });
+
+    try {
+      const result = await scaffoldMind("my-mind", "My domain", {
+        mindsSrcDir: mindsDir,
+        mindsJsonOverride: jsonPath,
+      });
+
+      const serverContent = readFileSync(join(result.mindDir, "server.ts"), "utf8");
+      expect(serverContent).toContain('owns_files: ["minds/my-mind/"]');
+
+      const entries = JSON.parse(readFileSync(jsonPath, "utf8"));
+      expect(entries[0].owns_files).toEqual(["minds/my-mind/"]);
+    } finally {
+      rmSync(join(mindsDir, ".."), { recursive: true, force: true });
+    }
   });
 });
 

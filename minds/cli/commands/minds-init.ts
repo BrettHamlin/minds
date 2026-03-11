@@ -1,5 +1,5 @@
-import { execSync } from "node:child_process";
 import { getMindsSourceDir, installCoreMinds } from "../../installer/core.js";
+import { getRepoRoot } from "../../shared/paths.js";
 
 export interface MindsInitOptions {
   force?: boolean;
@@ -15,7 +15,13 @@ export async function runMindsInit(options: MindsInitOptions = {}): Promise<void
 
   let repoRoot: string;
   try {
-    repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+    repoRoot = getRepoRoot();
+    // Validate we're actually in a git repo (getRepoRoot falls back to cwd)
+    if (repoRoot === process.cwd()) {
+      // Double-check: try git command to confirm
+      const { execSync } = await import("node:child_process");
+      execSync("git rev-parse --show-toplevel", { stdio: ["pipe", "pipe", "pipe"] });
+    }
   } catch {
     console.error("Error: Not in a git repository. Run `git init` first.");
     process.exit(1);

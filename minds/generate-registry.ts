@@ -12,11 +12,10 @@ import { resolve } from "path";
 import { writeFileSync, renameSync } from "fs";
 import { findChildServerFiles, spawnChild, callDescribe } from "./discovery.js";
 import type { MindDescription } from "./mind.js";
-import { resolveMindsDir } from "./shared/paths.js";
+import { resolveMindsDir, getRepoRoot } from "./shared/paths.js";
 
 // Detect repo root
-const gitProc = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], { stdout: "pipe" });
-const repoRoot = new TextDecoder().decode(gitProc.stdout).trim();
+const repoRoot = getRepoRoot();
 
 // Parse CLI args
 const args = process.argv.slice(2);

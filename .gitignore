@@ -58,3 +58,7 @@ minds/minds.json
 minds/state/
 minds/bus-port
 minds/aggregator-port
+minds/**/smoke-result.json
+
+# PAI backup
+CLAUDE.md.pai

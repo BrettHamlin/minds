@@ -54,6 +54,7 @@ function main(): void {
     const branch = execSync("git rev-parse --abbrev-ref HEAD", {
       cwd: repoRoot,
       encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
     }).trim();
 
     // Create draft PR via gh

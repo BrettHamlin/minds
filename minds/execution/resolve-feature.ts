@@ -14,6 +14,7 @@ import { existsSync, readdirSync, statSync, mkdirSync, copyFileSync, readFileSyn
 import { join, basename } from "path";
 import { execSync } from "child_process";
 import { findFeatureDir } from "../pipeline_core";
+import { getRepoRoot } from "../shared/paths.js";
 
 // --- Argument parsing ---
 const args = new Set(process.argv.slice(2));
@@ -37,11 +38,7 @@ function exec(cmd: string): string {
 }
 
 // --- 1. REPO_ROOT ---
-let repoRoot = exec("git rev-parse --show-toplevel");
-if (!repoRoot) {
-  // Fallback: script location ../../..
-  repoRoot = join(__dirname, "..", "..");
-}
+let repoRoot = getRepoRoot();
 
 // --- 2. BRANCH ---
 let branch = process.env.SPECIFY_FEATURE || "";

@@ -9,18 +9,9 @@
 import { $ } from "bun";
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
 // TODO(WD): Should be requested via parent escalation once Router Mind exists (Wave E).
 import { loadPipelineForTicket } from "@minds/pipeline_core/pipeline"; // CROSS-MIND
-
-// Detect repo root and use local state directory
-function getRepoRoot(): string {
-  try {
-    return execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
-  } catch {
-    return process.cwd();
-  }
-}
+import { getRepoRoot } from "@minds/shared/paths.js";
 
 const REPO_ROOT = getRepoRoot();
 const REGISTRY_DIR = `${REPO_ROOT}/.minds/state/pipeline-registry`;
