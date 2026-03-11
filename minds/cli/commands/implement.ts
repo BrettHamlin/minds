@@ -531,6 +531,19 @@ export async function runImplement(
   if (result.ok) {
     console.log("\n=== Merging Mind worktrees ===");
     for (const drone of allDrones) {
+      // Skip drones whose worktree/branch were never resolved (placeholder values)
+      if (!drone.branch || drone.branch.startsWith("(") || !drone.worktree || drone.worktree.startsWith("(")) {
+        console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved (placeholder).`);
+        result.mergeResults.push({
+          mind: drone.mindName,
+          ok: false,
+          error: "Worktree/branch never resolved -- drone may have failed before spawning",
+        });
+        result.ok = false;
+        result.errors.push(`Merge skipped for @${drone.mindName}: placeholder worktree/branch`);
+        continue;
+      }
+
       console.log(`  Merging @${drone.mindName} (${drone.branch})...`);
       const mergeResult = mergeDroneWorktree(repoRoot, drone);
       result.mergeResults.push({
@@ -587,8 +600,11 @@ export async function runImplement(
     console.warn(`  Warning: Bus teardown error: ${err}`);
   }
 
-  // Remove worktrees
+  // Remove worktrees (skip placeholders that were never resolved)
   for (const drone of allDrones) {
+    if (!drone.worktree || drone.worktree.startsWith("(")) {
+      continue; // Worktree was never created -- nothing to clean up
+    }
     const cleanResult = cleanupDroneWorktree(drone.worktree, repoRoot);
     if (cleanResult.ok) {
       console.log(`  Cleaned worktree: ${drone.worktree}`);

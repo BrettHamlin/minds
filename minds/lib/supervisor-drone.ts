@@ -254,12 +254,13 @@ export async function waitForDroneCompletion(
       }
 
       // Fallback: pane no longer exists (crash, manual kill)
+      // If sentinel was NOT written but pane is gone, the drone crashed.
       const paneCheck = Bun.spawnSync(
         ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
         { stdout: "pipe", stderr: "pipe" },
       );
       if (paneCheck.exitCode !== 0) {
-        done({ ok: true });
+        done({ ok: false, error: `Drone pane ${paneId} died without writing sentinel — likely crashed` });
         return;
       }
     }, pollIntervalMs);

@@ -171,15 +171,29 @@ interface CheckResults {
   diff: string;
   testOutput: string;
   testsPass: boolean;
+  findings: ReviewFinding[];
 }
 
 function runDeterministicChecks(worktreePath: string, baseBranch: string, mindName: string): CheckResults {
+  const findings: ReviewFinding[] = [];
+
   // Get diff relative to base branch
   const diffProc = Bun.spawnSync(
     ["git", "-C", worktreePath, "diff", `${baseBranch}...HEAD`],
     { stdout: "pipe", stderr: "pipe" }
   );
-  const diff = new TextDecoder().decode(diffProc.stdout);
+  let diff = new TextDecoder().decode(diffProc.stdout);
+
+  if (diffProc.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(diffProc.stderr);
+    findings.push({
+      file: "(git diff)",
+      line: 0,
+      severity: "error",
+      message: `git diff failed (exit ${diffProc.exitCode}): ${stderr.trim() || "unknown error"}. Review cannot proceed on an empty diff.`,
+    });
+    diff = "";
+  }
 
   // Run scoped tests
   const testProc = Bun.spawnSync(
@@ -191,7 +205,7 @@ function runDeterministicChecks(worktreePath: string, baseBranch: string, mindNa
   const testOutput = testStdout + (testStderr ? `\n${testStderr}` : "");
   const testsPass = testProc.exitCode === 0;
 
-  return { diff, testOutput, testsPass };
+  return { diff, testOutput, testsPass, findings };
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +499,7 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       result.approvedWithWarnings = true;
     }
 
-    // ---- Publish MIND_COMPLETE ----
+    // ---- Publish MIND_COMPLETE or MIND_FAILED ----
     if (result.ok) {
       await publishSignal(
         config.busUrl, config.channel,
@@ -494,6 +508,14 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
         { iterations: result.iterations, approvedWithWarnings: result.approvedWithWarnings },
       );
       console.log(`[supervisor] @${config.mindName}: MIND_COMPLETE published`);
+    } else {
+      await publishSignal(
+        config.busUrl, config.channel,
+        MindsEventType.MIND_FAILED,
+        config.mindName, config.waveId,
+        { iterations: result.iterations, error: result.errors.join("; ") },
+      );
+      console.log(`[supervisor] @${config.mindName}: MIND_FAILED published`);
     }
 
   } catch (err) {
@@ -501,6 +523,18 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
     console.error(`[supervisor] @${config.mindName}: ${msg}`);
     result.errors.push(msg);
     result.ok = false;
+    // Publish MIND_FAILED from catch block so the bus listener doesn't wait
+    try {
+      await publishSignal(
+        config.busUrl, config.channel,
+        MindsEventType.MIND_FAILED,
+        config.mindName, config.waveId,
+        { error: msg },
+      );
+      console.log(`[supervisor] @${config.mindName}: MIND_FAILED published (from catch)`);
+    } catch {
+      // Best effort -- bus may be down too
+    }
   } finally {
     // Record all tracked panes in the result for observability
     result.allPaneIds = [...allSpawnedPanes];
@@ -510,10 +544,13 @@ export async function runMindSupervisor(config: SupervisorConfig): Promise<Super
       killPane(paneId);
     }
 
-    // Clean up sentinel file if present
-    const sentinelPath = join(currentWorktree, SENTINEL_FILENAME);
-    if (existsSync(sentinelPath)) {
-      try { Bun.spawnSync(["rm", "-f", sentinelPath]); } catch { /* ignore */ }
+    // Clean up sentinel file if present (skip if worktree was never resolved)
+    const isPlaceholderWorktree = !currentWorktree || currentWorktree.startsWith("(");
+    if (!isPlaceholderWorktree) {
+      const sentinelPath = join(currentWorktree, SENTINEL_FILENAME);
+      if (existsSync(sentinelPath)) {
+        try { Bun.spawnSync(["rm", "-f", sentinelPath]); } catch { /* ignore */ }
+      }
     }
   }
 

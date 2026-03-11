@@ -144,16 +144,18 @@ describe("waitForDroneCompletion", () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      // Write sentinel after a short delay to simulate drone completion
+      // Write sentinel after a short delay to simulate drone completion.
+      // Sentinel must appear BEFORE the first poll fires so the sentinel
+      // check resolves before the pane-existence check detects the fake pane.
       timer = setTimeout(() => {
         try { writeFileSync(sentinelPath, "done"); } catch { /* dir may be gone */ }
-      }, 200);
+      }, 50);
 
       const result = await waitForDroneCompletion(
         "fake-pane-id",
         tmpDir,
         10_000, // 10s timeout
-        100,    // 100ms poll interval for fast test
+        200,    // 200ms poll interval -- sentinel at 50ms arrives first
       );
 
       expect(result.ok).toBe(true);
@@ -168,16 +170,17 @@ describe("waitForDroneCompletion", () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      // Create sentinel after cleanup runs (very short delay)
+      // Create sentinel after cleanup runs (very short delay).
+      // Sentinel at 30ms, poll at 200ms -- sentinel wins.
       timer = setTimeout(() => {
         try { writeFileSync(sentinelPath, "done"); } catch { /* dir may be gone */ }
-      }, 50);
+      }, 30);
 
       const result = await waitForDroneCompletion(
         "fake-pane-id",
         tmpDir,
         10_000,
-        100,
+        200,
       );
 
       expect(result.ok).toBe(true);
@@ -189,7 +192,7 @@ describe("waitForDroneCompletion", () => {
   test("resolves ok:false with error on timeout", async () => {
     // Never create the sentinel file -- should timeout.
     // Use a poll interval LONGER than the timeout so the pane-existence
-    // fallback never fires (which would return ok:true for a fake pane).
+    // fallback never fires before the timeout does.
     const result = await waitForDroneCompletion(
       "fake-pane-id",
       tmpDir,
@@ -201,6 +204,23 @@ describe("waitForDroneCompletion", () => {
     expect(result.error).toContain("timed out");
   });
 
+  test("resolves ok:false when pane dies before sentinel is written", async () => {
+    // "nonexistent-pane-id" won't exist in tmux, so the pane-existence
+    // check will detect it as dead -- simulating a crashed drone.
+    // No sentinel file is created, so the only resolution path is the
+    // pane-death detection in the poll fallback.
+    const result = await waitForDroneCompletion(
+      "nonexistent-pane-id",
+      tmpDir,
+      10_000, // Long timeout -- should resolve via pane death, not timeout
+      100,    // Fast poll so the test finishes quickly
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("died");
+    expect(result.error).toContain("nonexistent-pane-id");
+  });
+
   test("cleans up stale sentinel from previous run", async () => {
     const sentinelPath = join(tmpDir, SENTINEL_FILENAME);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -209,17 +229,18 @@ describe("waitForDroneCompletion", () => {
       // Pre-create a stale sentinel
       writeFileSync(sentinelPath, "stale");
 
-      // Start waiting -- the function should clean up the stale sentinel first
-      // Then create a fresh one after a delay
+      // Start waiting -- the function should clean up the stale sentinel first.
+      // Then create a fresh one after a delay. Use poll interval longer than
+      // the sentinel write delay so sentinel check wins over pane-death check.
       timer = setTimeout(() => {
         try { writeFileSync(sentinelPath, "fresh"); } catch { /* dir may be gone */ }
-      }, 300);
+      }, 100);
 
       const result = await waitForDroneCompletion(
         "fake-pane-id",
         tmpDir,
         5_000,
-        100,
+        300,
       );
 
       expect(result.ok).toBe(true);
