@@ -51,17 +51,15 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("buildMindAgentContent", () => {
-  test("produces valid frontmatter with model: opus and correct permissions", () => {
+  test("produces valid frontmatter with model: opus and no tool permissions", () => {
     const content = buildMindAgentContent(makeParams());
 
-    // Check frontmatter structure
+    // Check frontmatter structure — no tool permissions (tool use causes prose responses)
     expect(content.startsWith("---\n")).toBe(true);
     expect(content).toContain("name: Mind");
     expect(content).toContain("model: opus");
-    expect(content).toContain("Bash(git:*)");
-    expect(content).toContain("Read(*)");
-    expect(content).toContain("Grep(*)");
-    expect(content).toContain("Glob(*)");
+    expect(content).not.toContain("Bash(git:*)");
+    expect(content).not.toContain("permissions:");
 
     // Verify frontmatter closes
     const parts = content.split("---");

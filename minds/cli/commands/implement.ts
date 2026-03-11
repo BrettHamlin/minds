@@ -113,6 +113,7 @@ function launchMindSupervisor(
   dependencies: string[],
   callerPane: string,
   baseBranch: string,
+  ownsFiles?: string[],
 ): { info: MindInfo; done: Promise<void> } {
   const supervisorConfig: SupervisorConfig = {
     mindName,
@@ -131,6 +132,7 @@ function launchMindSupervisor(
     dependencies,
     maxIterations: 3,
     droneTimeoutMs: 20 * 60 * 1000, // 20 minutes
+    ownsFiles,
   };
 
   // MindInfo placeholder -- will be updated when supervisor provides drone info
@@ -453,6 +455,11 @@ export async function runImplement(
 
       console.log(`  Launching supervisor for @${mindName}...`);
       try {
+        // Look up owns_files from the main repo's registry (worktrees may not have minds.json)
+        const mindEntry = (registry as Array<{ name: string; owns_files?: string[] }>).find(
+          (m) => m.name === mindName,
+        );
+
         const { info, done } = launchMindSupervisor(
           repoRoot,
           mindsSourceDir,
@@ -467,6 +474,7 @@ export async function runImplement(
           group.dependencies,
           callerPane,
           baseBranchName,
+          mindEntry?.owns_files,
         );
         waveDrones.push(info);
         allDrones.push(info);

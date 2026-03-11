@@ -41,6 +41,8 @@ export interface SupervisorConfig {
   maxIterations: number;
   droneTimeoutMs: number;
   reviewTimeoutMs?: number;
+  /** Pre-resolved owns_files from the main repo's minds.json (worktrees may not have it). */
+  ownsFiles?: string[];
 }
 
 export interface ReviewFinding {
@@ -147,6 +149,7 @@ export interface SupervisorDeps {
     baseBranch: string,
     mindName: string,
     tasks?: import("../../cli/lib/implement-types.ts").MindTask[],
+    configOwnsFiles?: string[],
   ) => CheckResults;
 
   /** Call LLM for code review. */

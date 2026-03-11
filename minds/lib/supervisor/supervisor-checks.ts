@@ -41,7 +41,7 @@ export function loadStandards(repoRoot: string): string {
 // where the full supervisor loop is exercised with mocked deps.
 // ---------------------------------------------------------------------------
 
-export function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string, tasks?: import("../../cli/lib/implement-types.ts").MindTask[]): CheckResults {
+export function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string, tasks?: import("../../cli/lib/implement-types.ts").MindTask[], configOwnsFiles?: string[]): CheckResults {
   const findings: ReviewFinding[] = [];
 
   // Get diff relative to base branch
@@ -62,10 +62,48 @@ export function runDeterministicChecksDefault(worktreePath: string, baseBranch: 
     diff = "";
   }
 
-  // Run scoped tests
-  const mindsRelative = relative(worktreePath, resolveMindsDir(worktreePath));
+  // Run scoped tests — prefer owns_files source dirs, fall back to Mind dir.
+  // owns_files patterns like "src/middleware/rate-limit/**" tell us where the
+  // actual source (and tests) live. The Mind dir (.minds/{name}/) may have no tests.
+  //
+  // owns_files come from three sources (priority order):
+  //   1. configOwnsFiles — pre-resolved from main repo's minds.json (works in worktrees)
+  //   2. worktree's minds.json — fallback if config didn't provide it
+  //   3. default: .minds/{mindName}/
+  const mindsDir = resolveMindsDir(worktreePath);
+  const mindsRelative = relative(worktreePath, mindsDir);
+
+  let ownsFilesResolved = configOwnsFiles;
+  if (!ownsFilesResolved?.length) {
+    try {
+      const mindsJsonPath = join(mindsDir, "minds.json");
+      if (existsSync(mindsJsonPath)) {
+        const registry = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{ name: string; owns_files?: string[] }>;
+        const entry = registry.find((m) => m.name === mindName);
+        if (entry?.owns_files?.length) {
+          ownsFilesResolved = entry.owns_files;
+        }
+      }
+    } catch {
+      // Fall through to default
+    }
+  }
+
+  // Convert glob patterns to directory paths for bun test
+  let testPaths: string[] = [];
+  if (ownsFilesResolved?.length) {
+    testPaths = ownsFilesResolved
+      .map((p) => p.replace(/\*+$/, "").replace(/\/+$/, "") + "/")
+      .filter((p) => p !== "/" && !p.startsWith(".minds/"));
+  }
+
+  // Fall back to the Mind's own directory if no source owns_files found
+  if (testPaths.length === 0) {
+    testPaths = [`${mindsRelative}/${mindName}/`];
+  }
+
   const testProc = Bun.spawnSync(
-    ["bun", "test", `${mindsRelative}/${mindName}/`],
+    ["bun", "test", ...testPaths],
     { cwd: worktreePath, stdout: "pipe", stderr: "pipe", timeout: 120_000 }
   );
   const testStdout = new TextDecoder().decode(testProc.stdout);
@@ -76,25 +114,10 @@ export function runDeterministicChecksDefault(worktreePath: string, baseBranch: 
   const result: CheckResults = { diff, testOutput, testsPass, findings };
 
   // -- Boundary check --------------------------------------------------------
-  let ownsFiles: string[] = [];
-  try {
-    const mindsDir = resolveMindsDir(worktreePath);
-    const mindsJsonPath = join(mindsDir, "minds.json");
-
-    if (existsSync(mindsJsonPath)) {
-      const mindsJsonContent = readFileSync(mindsJsonPath, "utf-8");
-      const registry = JSON.parse(mindsJsonContent) as Array<{ name: string; owns_files?: string[] }>;
-      const entry = registry.find((m) => m.name === mindName);
-      if (entry?.owns_files) {
-        ownsFiles = entry.owns_files;
-      } else {
-        console.log(`[supervisor] @${mindName}: Not found in minds.json — skipping boundary check`);
-      }
-    } else {
-      console.log(`[supervisor] @${mindName}: minds.json not found — skipping boundary check`);
-    }
-  } catch (err) {
-    console.log(`[supervisor] @${mindName}: Failed to read minds.json — skipping boundary check: ${err}`);
+  // Reuse ownsFilesResolved from test scoping (already resolved from config or worktree)
+  const ownsFiles = ownsFilesResolved ?? [];
+  if (!ownsFiles.length) {
+    console.log(`[supervisor] @${mindName}: No owns_files found — skipping boundary check`);
   }
 
   // Pass ownsFiles through so agent generation can use it

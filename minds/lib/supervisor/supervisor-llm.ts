@@ -21,14 +21,26 @@ export async function callLlmReviewDefault(
   if (opts?.agentName) {
     args.push("--agent", opts.agentName);
   } else {
-    args.push("--model", "sonnet", "--output-format", "text");
+    // Default: opus model, text output for standalone review prompts
+    args.push("--model", "opus", "--output-format", "text");
   }
+
+  // Skip global user hooks (e.g. PAI FormatReminder) that inject prose format
+  // instructions conflicting with the review's JSON response format requirement.
+  // Only load project-level and local settings.
+  args.push("--setting-sources", "project,local");
+
+  // Strip CLAUDECODE env var to avoid "nested session" detection when the
+  // supervisor itself runs inside a Claude Code session (e.g. during E2E tests).
+  const env = { ...process.env };
+  delete env.CLAUDECODE;
 
   const proc = Bun.spawn(args, {
     stdin: new Blob([prompt]),
     stdout: "pipe",
     stderr: "pipe",
     cwd: opts?.worktreePath,
+    env,
   });
 
   // Race the process against a timeout, clearing the timer on completion

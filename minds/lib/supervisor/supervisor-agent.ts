@@ -35,15 +35,12 @@ export function buildMindAgentContent(params: MindAgentParams): string {
   const { mindName, standards, ownsFiles, previousFeedback, iteration, mindMdContent } = params;
 
   // Build frontmatter
+  // No tool permissions — the review prompt already contains the diff, test output,
+  // and task list. Tool use causes the model to switch to conversational mode and
+  // return prose instead of the required JSON verdict format.
   const frontmatter = `---
 name: Mind
 model: opus
-permissions:
-  allow:
-    - "Bash(git:*)"
-    - "Read(*)"
-    - "Grep(*)"
-    - "Glob(*)"
 ---`;
 
   // Build body sections
@@ -54,7 +51,7 @@ permissions:
 
 You are reviewing code changes produced by a drone implementation cycle (iteration ${iteration}).
 Your role is to evaluate the diff against the assigned tasks and engineering standards.
-You may use your tools (git, Read, Grep, Glob) to inspect the codebase for deeper context.`);
+The diff, test output, and task list are provided in the prompt — respond with ONLY a JSON verdict.`);
 
   // MIND.md domain expertise (passed in by caller)
   if (mindMdContent) {

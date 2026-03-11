@@ -47,8 +47,7 @@ import {
   errorMessage,
 } from "./supervisor-types.ts";
 import { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
-import { buildAgentReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
-import { writeMindAgentFile, cleanupMindAgentFile } from "./supervisor-agent.ts";
+import { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
 import {
   spawnDrone as spawnDroneImpl,
   relaunchDroneInWorktree as relaunchDroneImpl,
@@ -231,7 +230,7 @@ export async function runMindSupervisor(
 
       // ---- Step 4: Deterministic checks ----
       sm.transition(SupervisorState.CHECKING);
-      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName, config.tasks);
+      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName, config.tasks, config.ownsFiles);
 
       // ---- Step 5: Publish REVIEW_STARTED ----
       await deps.publishSignal(
@@ -260,30 +259,21 @@ export async function runMindSupervisor(
         }
       }
 
-      // Write the Mind agent file for this review iteration
-      writeMindAgentFile({
-        mindName: config.mindName,
-        worktreePath: currentWorktree,
-        repoRoot: config.repoRoot,
-        standards,
-        ownsFiles: checks.ownsFiles ?? [],
-        previousFeedback,
-        iteration,
-      });
-
-      // Build lean prompt (no standards — agent file has them)
-      const prompt = buildAgentReviewPrompt({
+      // Build standalone review prompt (no agent — agent mode provides tools
+      // which cause the model to return prose instead of JSON).
+      const prompt = buildReviewPrompt({
         diff: checks.diff,
         testOutput: checks.testOutput,
+        standards,
         tasks: config.tasks,
         iteration,
+        previousFeedback,
       });
 
       let verdict: ReviewVerdict;
       try {
         const rawResponse = await deps.callLlmReview(prompt, reviewTimeoutMs, {
           worktreePath: currentWorktree,
-          agentName: "Mind",
         });
         verdict = parseReviewVerdict(rawResponse);
       } catch (err) {
@@ -402,13 +392,8 @@ export async function runMindSupervisor(
       deps.killPane(paneId);
     }
 
-    // Clean up Mind agent file
-    const isPlaceholderWorktree = !currentWorktree || currentWorktree.startsWith("(");
-    if (!isPlaceholderWorktree) {
-      cleanupMindAgentFile(currentWorktree);
-    }
-
     // Clean up sentinel file if present (skip if worktree was never resolved)
+    const isPlaceholderWorktree = !currentWorktree || currentWorktree.startsWith("(");
     if (!isPlaceholderWorktree) {
       const sentinelPath = join(currentWorktree, SENTINEL_FILENAME);
       if (existsSync(sentinelPath)) {
