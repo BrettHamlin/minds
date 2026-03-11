@@ -42,6 +42,7 @@ export interface ProposedMindMap {
     name: "foundation";
     domain: string;
     files: string[];
+    owns_files?: string[];
     exposes: string[];
   };
   minds: ProposedMind[];
