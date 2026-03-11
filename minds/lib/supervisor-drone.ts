@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from "fs";
 import { join } from "path";
 import { resolveMindsDir } from "../shared/paths.js";
-import { killPane, shellQuote } from "./tmux-utils.ts";
+import { killPane, splitPane, launchClaudeInPane, shellQuote } from "./tmux-utils.ts";
 import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
 
 // ---------------------------------------------------------------------------
@@ -103,28 +103,17 @@ export function relaunchDroneInWorktree(opts: {
   // Write updated DRONE-BRIEF.md to the SAME worktree
   writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
 
-  // Create a new tmux pane
-  const splitResult = Bun.spawnSync(
-    ["tmux", "split-window", "-h", "-p", "50", "-t", callerPane, "-P", "-F", "#{pane_id}"],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  if (splitResult.exitCode !== 0) {
-    const stderr = new TextDecoder().decode(splitResult.stderr);
-    throw new Error(`Failed to split tmux pane for drone relaunch: ${stderr}`);
-  }
-  const newPaneId = new TextDecoder().decode(splitResult.stdout).trim();
+  // Create a new tmux pane via shared utility
+  const newPaneId = splitPane(callerPane);
 
   // Launch Claude Code in the new pane, pointing at the existing worktree
   const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
-  const escapedPrompt = JSON.stringify(prompt);
-  let launchCmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model sonnet ${escapedPrompt}`;
-  if (busUrl) {
-    launchCmd = `BUS_URL=${shellQuote(busUrl)} ${launchCmd}`;
-  }
-  Bun.spawnSync(
-    ["tmux", "send-keys", "-t", newPaneId, launchCmd, "Enter"],
-    { stdout: "ignore", stderr: "ignore" },
-  );
+  launchClaudeInPane({
+    paneId: newPaneId,
+    worktreePath,
+    prompt,
+    busUrl,
+  });
 
   return newPaneId;
 }

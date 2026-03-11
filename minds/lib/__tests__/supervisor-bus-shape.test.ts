@@ -111,12 +111,46 @@ describe("bus event payload shape", () => {
     expect(parsed.payload?.mindName).toBe("transport");
   });
 
+  test("MIND_FAILED event shape includes mindName, waveId, and error in payload", () => {
+    const mindName = "transport";
+    const waveId = "wave-1";
+    const errorMsg = "Drone pane %10 died without writing sentinel";
+
+    const busMessage = {
+      id: "test-id",
+      seq: 1,
+      channel: "minds-BRE-500",
+      from: "minds",
+      type: MindsEventType.MIND_FAILED as string,
+      payload: {
+        mindName,
+        waveId,
+        error: errorMsg,
+        source: "supervisor",
+        ticketId: "BRE-500",
+        timestamp: Date.now(),
+      },
+      timestamp: Date.now(),
+    };
+
+    const parsed = JSON.parse(JSON.stringify(busMessage));
+
+    // These are the exact checks from waitForWaveCompletion for MIND_FAILED
+    expect(parsed.type).toBe(MindsEventType.MIND_FAILED);
+    expect(parsed.payload?.waveId).toBe(waveId);
+    expect(parsed.payload?.mindName).toBe(mindName);
+    expect(parsed.payload?.error).toBe(errorMsg);
+    expect(typeof parsed.payload?.mindName).toBe("string");
+    expect(typeof parsed.payload?.error).toBe("string");
+  });
+
   test("all supervisor signal types include mindName and waveId in payload", () => {
     const signalTypes = [
       { type: MindsEventType.MIND_STARTED, extra: {} },
       { type: MindsEventType.REVIEW_STARTED, extra: { iteration: 1 } },
       { type: MindsEventType.REVIEW_FEEDBACK, extra: { iteration: 1, findingsCount: 3 } },
       { type: MindsEventType.MIND_COMPLETE, extra: { iterations: 2, approvedWithWarnings: false } },
+      { type: MindsEventType.MIND_FAILED, extra: { error: "drone crashed" } },
     ];
 
     const mindName = "dashboard";

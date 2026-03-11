@@ -45,6 +45,7 @@ export {
   type SupervisorResult,
   DEFAULT_REVIEW_TIMEOUT_MS,
   SENTINEL_FILENAME,
+  errorMessage,
 } from "./supervisor-types.ts";
 
 export { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
@@ -63,6 +64,7 @@ import {
   type SupervisorResult,
   DEFAULT_REVIEW_TIMEOUT_MS,
   SENTINEL_FILENAME,
+  errorMessage,
 } from "./supervisor-types.ts";
 import { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
 import { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
@@ -342,7 +344,7 @@ export async function runMindSupervisor(
         try {
           drone = await deps.spawnDrone(config, briefContent);
         } catch (err) {
-          const msg = `Failed to spawn drone: ${(err as Error).message}`;
+          const msg = `Failed to spawn drone: ${errorMessage(err)}`;
           console.error(`[supervisor] @${config.mindName}: ${msg}`);
           result.errors.push(msg);
           sm.transition(SupervisorState.FAILED);
@@ -384,7 +386,7 @@ export async function runMindSupervisor(
           // Reinstall the Stop hook (sentinel file was consumed by previous iteration)
           deps.installDroneStopHook(currentWorktree);
         } catch (err) {
-          const msg = `Failed to re-launch drone: ${(err as Error).message}`;
+          const msg = `Failed to re-launch drone: ${errorMessage(err)}`;
           console.error(`[supervisor] @${config.mindName}: ${msg}`);
           result.errors.push(msg);
           sm.transition(SupervisorState.FAILED);
@@ -459,7 +461,7 @@ export async function runMindSupervisor(
             file: "(review)",
             line: 0,
             severity: "error",
-            message: `LLM review failed: ${(err as Error).message}`,
+            message: `LLM review failed: ${errorMessage(err)}`,
           }],
         };
       }
@@ -550,7 +552,7 @@ export async function runMindSupervisor(
     }
 
   } catch (err) {
-    const msg = `Supervisor error: ${(err as Error).message}`;
+    const msg = `Supervisor error: ${errorMessage(err)}`;
     console.error(`[supervisor] @${config.mindName}: ${msg}`);
     result.errors.push(msg);
     result.ok = false;

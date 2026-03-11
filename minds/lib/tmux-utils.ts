@@ -39,10 +39,14 @@ export function launchClaudeInPane(opts: {
     cmd = `BUS_URL=${shellQuote(busUrl)} ${cmd}`;
   }
   // Use send-keys to execute in the existing pane
-  Bun.spawnSync(
+  const result = Bun.spawnSync(
     ["tmux", "send-keys", "-t", paneId, cmd, "Enter"],
-    { stdout: "ignore", stderr: "ignore" },
+    { stdout: "pipe", stderr: "pipe" },
   );
+  if (result.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(result.stderr);
+    throw new Error(`Failed to send-keys to pane ${paneId}: ${stderr}`);
+  }
 }
 
 /**

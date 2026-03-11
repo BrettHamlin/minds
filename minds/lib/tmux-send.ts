@@ -14,6 +14,7 @@
  */
 
 import { execSync } from "child_process";
+import { shellQuote } from "./tmux-utils";
 
 const [paneId, text] = process.argv.slice(2);
 
@@ -23,12 +24,12 @@ if (!paneId || !text) {
 }
 
 try {
-  // Step 1: Send the text
-  execSync(`tmux send-keys -t ${paneId} ${JSON.stringify(text)}`, { stdio: "inherit" });
+  // Step 1: Send the text (shellQuote paneId to prevent injection via crafted pane IDs)
+  execSync(`tmux send-keys -t ${shellQuote(paneId)} ${JSON.stringify(text)}`, { stdio: "inherit" });
 
   // Step 2: Wait 1 second, then send C-m to submit
   await Bun.sleep(1000);
-  execSync(`tmux send-keys -t ${paneId} C-m`, { stdio: "inherit" });
+  execSync(`tmux send-keys -t ${shellQuote(paneId)} C-m`, { stdio: "inherit" });
 } catch (err) {
   console.error(JSON.stringify({ error: `Failed to send to pane ${paneId}: ${err}` }));
   process.exit(1);

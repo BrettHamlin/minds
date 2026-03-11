@@ -138,7 +138,11 @@ export async function waitForWaveCompletion(
                 `  MIND_FAILED: @${failedMind} (${completed.size}/${expected.size})`,
               );
 
-              // Resolve immediately -- a failed mind means the wave cannot succeed
+              // Resolve immediately -- a failed mind means the wave cannot succeed.
+              // NOTE: Other supervisors in the wave may still be running. This is
+              // intentional — they will finish on their own and their results get
+              // discarded. The caller (implement.ts) uses Promise.allSettled(supervisorPromises)
+              // to drain any remaining supervisors before proceeding.
               clearTimeout(timeout);
               reader.cancel();
               const missing = [...expected].filter((m) => !completed.has(m));

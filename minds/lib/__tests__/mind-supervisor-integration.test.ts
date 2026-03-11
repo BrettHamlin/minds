@@ -11,7 +11,7 @@
  *   (e) Drone crash mid-flight -> MIND_FAILED
  */
 
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -119,6 +119,10 @@ function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
 
 beforeEach(() => {
   tmpDir = makeTmpDir();
+});
+
+afterEach(() => {
+  try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
 describe("runMindSupervisor integration", () => {

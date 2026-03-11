@@ -5,7 +5,7 @@
 
 import type { MindTask } from "../cli/lib/implement-types.ts";
 import type { ReviewFinding, ReviewVerdict } from "./supervisor-types.ts";
-import { MAX_DIFF_CHARS } from "./supervisor-types.ts";
+import { MAX_DIFF_CHARS, MAX_TEST_OUTPUT_CHARS } from "./supervisor-types.ts";
 
 // ---------------------------------------------------------------------------
 // Review Prompt Construction
@@ -27,6 +27,12 @@ export function buildReviewPrompt(params: ReviewPromptParams): string {
   let truncatedDiff = diff;
   if (diff.length > MAX_DIFF_CHARS) {
     truncatedDiff = diff.slice(0, MAX_DIFF_CHARS) + "\n\n[truncated — diff exceeded 50k chars]";
+  }
+
+  // Truncate verbose test output to avoid blowing the LLM context
+  let truncatedTestOutput = testOutput;
+  if (testOutput.length > MAX_TEST_OUTPUT_CHARS) {
+    truncatedTestOutput = testOutput.slice(0, MAX_TEST_OUTPUT_CHARS) + "\n\n[truncated — test output exceeded 20k chars]";
   }
 
   const taskList = tasks
@@ -52,7 +58,7 @@ ${truncatedDiff}
 ## Test Results
 
 \`\`\`
-${testOutput}
+${truncatedTestOutput}
 \`\`\`
 
 ## Engineering Standards

@@ -154,7 +154,18 @@ export interface SupervisorDeps {
 // Constants
 // ---------------------------------------------------------------------------
 
+/**
+ * Safely extract a message string from an unknown thrown value.
+ * Handles both Error instances and non-Error throws (strings, numbers, etc.).
+ */
+export function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return String(err);
+}
+
 export const DEFAULT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 export const DEFAULT_DRONE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 export const SENTINEL_FILENAME = ".drone-complete";
 export const MAX_DIFF_CHARS = 50_000;
+export const MAX_TEST_OUTPUT_CHARS = 20_000;

@@ -437,10 +437,30 @@ export async function runImplement(
     // Extract bus port from URL for supervisor config
     const busPort = parseInt(new URL(busInfo.busUrl).port, 10);
     // Resolve base branch for diff comparisons
+    // Resolve base branch: current branch, then origin default, then fallback to "dev"
     const baseBranch = Bun.spawnSync(["git", "-C", repoRoot, "branch", "--show-current"], {
-      stdout: "pipe",
+      stdout: "pipe", stderr: "pipe",
     });
-    const baseBranchName = new TextDecoder().decode(baseBranch.stdout).trim() || "dev";
+    let baseBranchName = new TextDecoder().decode(baseBranch.stdout).trim();
+    if (!baseBranchName) {
+      // Detached HEAD — detect the remote default branch
+      const symRef = Bun.spawnSync(
+        ["git", "-C", repoRoot, "symbolic-ref", "refs/remotes/origin/HEAD"],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      const symRefOut = new TextDecoder().decode(symRef.stdout).trim();
+      if (symRef.exitCode === 0 && symRefOut) {
+        // e.g. "refs/remotes/origin/main" -> "main"
+        baseBranchName = symRefOut.replace(/^refs\/remotes\/origin\//, "");
+      } else {
+        // Last resort: check if "main" branch exists, otherwise fall back to "dev"
+        const mainCheck = Bun.spawnSync(
+          ["git", "-C", repoRoot, "rev-parse", "--verify", "refs/heads/main"],
+          { stdout: "pipe", stderr: "pipe" },
+        );
+        baseBranchName = mainCheck.exitCode === 0 ? "main" : "dev";
+      }
+    }
 
     for (const mindName of wave.minds) {
       const group = groupMap.get(mindName);
