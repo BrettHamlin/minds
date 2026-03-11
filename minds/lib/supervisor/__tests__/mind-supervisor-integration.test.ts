@@ -344,6 +344,55 @@ describe("runMindSupervisor integration", () => {
     expect(testFindings.length).toBeGreaterThan(0);
   });
 
+  test("(c2) max iterations with boundary violations: FAILS instead of approving", async () => {
+    const config = makeConfig({ maxIterations: 2 });
+    mkdirSync(join(tmpDir, "worktree"), { recursive: true });
+
+    const boundaryFailChecks: CheckResults = {
+      diff: "diff --git a/file.ts b/file.ts\n+// new code",
+      testOutput: "3 pass, 0 fail",
+      testsPass: true,
+      boundaryPass: false,
+      boundaryFindings: [{ file: "src/hono.ts", line: 0, severity: "error" as const, message: "File outside @etag boundary" }],
+      findings: [],
+    };
+
+    const deps = makeMockDeps({
+      callLlmReview: mock(async () => makeApprovalResponse()), // LLM says approve
+      runDeterministicChecks: mock(() => boundaryFailChecks), // But boundary fails
+      relaunchDroneInWorktree: mock(() => "%14"),
+    });
+
+    const result = await runMindSupervisor(config, deps);
+
+    expect(result.ok).toBe(false);
+    expect(result.approved).toBe(false);
+    expect(result.approvedWithWarnings).toBeFalsy();
+    expect(result.iterations).toBe(2);
+
+    // Verify MIND_FAILED (not MIND_COMPLETE)
+    const publishCalls = (deps.publishSignal as ReturnType<typeof mock>).mock.calls;
+    const signalTypes = publishCalls.map((c: unknown[]) => c[2]);
+    expect(signalTypes).toContain(MindsEventType.MIND_FAILED);
+    expect(signalTypes).not.toContain(MindsEventType.MIND_COMPLETE);
+  });
+
+  test("(c3) max iterations with test failures: FAILS instead of approving", async () => {
+    const config = makeConfig({ maxIterations: 2 });
+    mkdirSync(join(tmpDir, "worktree"), { recursive: true });
+
+    const deps = makeMockDeps({
+      callLlmReview: mock(async () => makeRejectionResponse()),
+      runDeterministicChecks: mock(() => makeFailingChecks()), // Tests always fail
+      relaunchDroneInWorktree: mock(() => "%14"),
+    });
+
+    const result = await runMindSupervisor(config, deps);
+
+    expect(result.ok).toBe(false);
+    expect(result.approved).toBe(false);
+  });
+
   test("LLM review timeout is treated as rejection", async () => {
     const config = makeConfig({ maxIterations: 1 });
     mkdirSync(join(tmpDir, "worktree"), { recursive: true });

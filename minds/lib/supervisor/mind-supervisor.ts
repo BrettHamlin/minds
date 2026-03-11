@@ -309,6 +309,26 @@ export async function runMindSupervisor(
 
       // Check if we're at max iterations after this rejection
       if (sm.isMaxIterations()) {
+        // Hard failures (boundary violations, test failures) cannot be overridden
+        const hasBoundaryViolation = checks.boundaryPass === false;
+        const hasTestFailure = checks.testsPass === false;
+        const hasContractViolation = checks.contractsPass === false;
+
+        if (hasBoundaryViolation || hasTestFailure || hasContractViolation) {
+          const reasons = [
+            hasBoundaryViolation && "boundary violations",
+            hasTestFailure && "test failures",
+            hasContractViolation && "contract violations",
+          ].filter(Boolean).join(", ");
+          console.log(
+            `[supervisor] @${config.mindName}: Max iterations (${config.maxIterations}) reached with hard failures (${reasons}). FAILING.`
+          );
+          sm.transition(SupervisorState.FAILED);
+          result.ok = false;
+          result.approved = false;
+          break;
+        }
+
         console.log(
           `[supervisor] @${config.mindName}: Max iterations (${config.maxIterations}) reached. Approving with warnings.`
         );
