@@ -574,47 +574,43 @@ export async function runImplement(
     // Wait for any supervisor promises that haven't resolved yet (edge case:
     // bus got the MIND_COMPLETE but the supervisor promise is still settling).
     await Promise.allSettled(supervisorPromises);
-  }
 
-  // ── Step 9: Merge worktrees ────────────────────────────────────────────────
-
-  if (result.ok) {
-    console.log("\n=== Merging Mind worktrees ===");
-    for (const drone of allDrones) {
-      // Skip drones whose worktree/branch were never resolved (placeholder values)
+    // ── Per-wave merge ──────────────────────────────────────────────────────
+    // Merge this wave's branches into main BEFORE the next wave starts.
+    // This ensures wave-N+1 worktrees are branched from a main that includes
+    // wave-N's changes (preventing merge conflicts at the end).
+    console.log(`\n  Merging ${wave.id} branches into main...`);
+    let waveMergeOk = true;
+    for (const drone of waveDrones) {
       if (!drone.branch || drone.branch.startsWith("(") || !drone.worktree || drone.worktree.startsWith("(")) {
-        console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved (placeholder).`);
-        result.mergeResults.push({
-          mind: drone.mindName,
-          ok: false,
-          error: "Worktree/branch never resolved -- drone may have failed before spawning",
-        });
-        result.ok = false;
-        result.errors.push(`Merge skipped for @${drone.mindName}: placeholder worktree/branch`);
+        console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved.`);
+        result.mergeResults.push({ mind: drone.mindName, ok: false, error: "Placeholder worktree/branch" });
+        waveMergeOk = false;
         continue;
       }
 
-      console.log(`  Merging @${drone.mindName} (${drone.branch})...`);
+      console.log(`    Merging @${drone.mindName} (${drone.branch})...`);
       const mergeResult = mergeDroneWorktree(repoRoot, drone);
-      result.mergeResults.push({
-        mind: drone.mindName,
-        ok: mergeResult.ok,
-        error: mergeResult.error,
-      });
+      result.mergeResults.push({ mind: drone.mindName, ok: mergeResult.ok, error: mergeResult.error });
 
       if (mergeResult.ok) {
-        console.log(`  Merged @${drone.mindName} successfully.`);
+        console.log(`    Merged @${drone.mindName} successfully.`);
       } else {
-        console.error(
-          `  Merge failed for @${drone.mindName}: ${mergeResult.error}`,
-        );
-        result.ok = false;
-        result.errors.push(
-          `Merge failed for @${drone.mindName}: ${mergeResult.error}`,
-        );
+        console.error(`    Merge failed for @${drone.mindName}: ${mergeResult.error}`);
+        waveMergeOk = false;
       }
     }
+
+    if (!waveMergeOk) {
+      result.ok = false;
+      result.errors.push(`Merge failed for one or more minds in ${wave.id}`);
+      break; // Don't start next wave if merge failed
+    }
   }
+
+  // ── Step 9: Merge summary ──────────────────────────────────────────────────
+  // Per-wave merges already happened above (inside the wave loop).
+  // This section just reports the summary.
 
   // ── Step 10: Report final status ───────────────────────────────────────────
 

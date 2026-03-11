@@ -166,6 +166,29 @@ diff --git a/minds/shared/paths.ts b/minds/shared/paths.ts
     expect(result.violations).toHaveLength(0);
   });
 
+  test("handles glob-suffixed owns_files patterns (e.g. src/middleware/cors/**)", () => {
+    const diff = `diff --git a/src/middleware/cors/index.ts b/src/middleware/cors/index.ts
++++ b/src/middleware/cors/index.ts
+diff --git a/src/middleware/cors/index.test.ts b/src/middleware/cors/index.test.ts
++++ b/src/middleware/cors/index.test.ts`;
+
+    const result = checkBoundary(diff, ["src/middleware/cors/**"], "cors");
+    expect(result.pass).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  test("rejects files outside glob-suffixed boundary", () => {
+    const diff = `diff --git a/src/middleware/cors/index.ts b/src/middleware/cors/index.ts
++++ b/src/middleware/cors/index.ts
+diff --git a/src/middleware/csrf/index.ts b/src/middleware/csrf/index.ts
++++ b/src/middleware/csrf/index.ts`;
+
+    const result = checkBoundary(diff, ["src/middleware/cors/**"], "cors");
+    expect(result.pass).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].file).toBe("src/middleware/csrf/index.ts");
+  });
+
   test("skips ownership check when ownsFiles is empty", () => {
     const diff = `diff --git a/src/anything.ts b/src/anything.ts
 +++ b/src/anything.ts

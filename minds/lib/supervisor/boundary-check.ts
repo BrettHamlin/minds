@@ -61,14 +61,24 @@ export function parseDiffPaths(diff: string): string[] {
 // ── Prefix normalization ───────────────────────────────────────────────────
 
 /**
+ * Strip trailing glob patterns from an owns_files entry to get the directory prefix.
+ * e.g. "src/middleware/cors/**" → "src/middleware/cors/"
+ *      "src/middleware/cors/"   → "src/middleware/cors/"
+ *      "src/middleware/cors"    → "src/middleware/cors"
+ */
+function stripGlob(pattern: string): string {
+  return pattern.replace(/\*+$/, "").replace(/\/+$/, "/");
+}
+
+/**
  * Check whether a file path matches at least one owns_files prefix.
- * Handles `.minds/` vs `minds/` normalization on both sides.
+ * Handles `.minds/` vs `minds/` normalization and glob stripping on both sides.
  */
 function matchesOwnership(filePath: string, ownsFiles: string[]): boolean {
   const normalizedFile = normalizeMindsPrefix(filePath);
 
   for (const prefix of ownsFiles) {
-    const normalizedPrefix = normalizeMindsPrefix(prefix);
+    const normalizedPrefix = stripGlob(normalizeMindsPrefix(prefix));
     if (normalizedFile.startsWith(normalizedPrefix)) {
       return true;
     }
