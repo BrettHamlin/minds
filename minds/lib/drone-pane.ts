@@ -341,7 +341,7 @@ if (import.meta.main) { (async () => {
   // ─── Launch Claude Code Sonnet (no collab/pipeline pack install) ──────────────
 
   const initialPrompt = `Read DRONE-BRIEF.md and complete all tasks. When done, run the completion command at the bottom of the brief.`;
-  let launchCmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model sonnet ${JSON.stringify(initialPrompt)}`;
+  let launchCmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model sonnet --setting-sources project,local ${JSON.stringify(initialPrompt)}`;
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
   }

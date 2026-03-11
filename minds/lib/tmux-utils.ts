@@ -51,7 +51,7 @@ export function launchClaudeInPane(
 ): void {
   const { paneId, worktreePath, model = "sonnet", prompt, busUrl } = opts;
   const escapedPrompt = JSON.stringify(prompt);
-  let cmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model ${model} ${escapedPrompt}`;
+  let cmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model ${model} --setting-sources project,local ${escapedPrompt}`;
   if (busUrl) {
     cmd = `BUS_URL=${shellQuote(busUrl)} ${cmd}`;
   }
