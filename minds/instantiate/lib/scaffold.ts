@@ -141,6 +141,8 @@ export interface ScaffoldOptions {
   mindsSrcDir?: string;
   /** Override the minds.json path (for testing) */
   mindsJsonOverride?: string;
+  /** Override owns_files globs (e.g. from fission pipeline). Falls back to `{prefix}/{name}/`. */
+  ownsFiles?: string[];
 }
 
 /**
@@ -205,7 +207,7 @@ export async function scaffoldMind(
     name,
     domain,
     keywords: [name],
-    owns_files: [`${prefix}/${name}/`],
+    owns_files: opts.ownsFiles ?? [`${prefix}/${name}/`],
     capabilities: [],
   };
   entries.push(newEntry);

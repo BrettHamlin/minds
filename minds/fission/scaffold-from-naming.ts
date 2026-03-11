@@ -27,6 +27,7 @@ interface NamingEntry {
   keywords?: string[];
   exposes?: string[];
   consumes?: string[];
+  owns_files?: string[];
 }
 
 // Parse args
@@ -76,6 +77,7 @@ for (const entry of entries) {
     await scaffoldMind(entry.name, entry.domain, {
       mindsSrcDir: mindsDir,
       mindsJsonOverride: jsonPath,
+      ownsFiles: entry.owns_files,
     });
     created.push(entry.name);
     console.log(`  + ${entry.name}: ${entry.domain}`);
