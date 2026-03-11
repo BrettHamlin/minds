@@ -6,16 +6,15 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
-import { installDroneStopHook, waitForDroneCompletion } from "../supervisor-drone.ts";
+import { installDroneStopHook, waitForDroneCompletion, type HookEntry } from "../supervisor-drone.ts";
 import { SENTINEL_FILENAME } from "../supervisor-types.ts";
+import { makeTestTmpDir } from "./test-helpers.ts";
 
 describe("installDroneStopHook", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = join(tmpdir(), `drone-hook-test-${Date.now()}`);
-    mkdirSync(tmpDir, { recursive: true });
+    tmpDir = makeTestTmpDir("drone-hook");
   });
 
   afterEach(() => {
@@ -34,8 +33,8 @@ describe("installDroneStopHook", () => {
     expect(settings.hooks.Stop.length).toBeGreaterThanOrEqual(1);
 
     // Find the sentinel hook entry
-    const sentinelHook = settings.hooks.Stop.find((entry: any) =>
-      entry.hooks.some((h: any) => h.command.includes(SENTINEL_FILENAME))
+    const sentinelHook = settings.hooks.Stop.find((entry: HookEntry) =>
+      entry.hooks.some((h: HookEntry["hooks"][number]) => h.command.includes(SENTINEL_FILENAME))
     );
     expect(sentinelHook).toBeDefined();
     expect(sentinelHook.hooks[0].type).toBe("command");
@@ -91,14 +90,14 @@ describe("installDroneStopHook", () => {
     expect(merged.hooks.Stop.length).toBe(2);
 
     // Original send-event hook is preserved
-    const sendEventEntry = merged.hooks.Stop.find((entry: any) =>
-      entry.hooks.some((h: any) => h.command.includes("send-event.ts"))
+    const sendEventEntry = merged.hooks.Stop.find((entry: HookEntry) =>
+      entry.hooks.some((h: HookEntry["hooks"][number]) => h.command.includes("send-event.ts"))
     );
     expect(sendEventEntry).toBeDefined();
 
     // Sentinel hook is added
-    const sentinelEntry = merged.hooks.Stop.find((entry: any) =>
-      entry.hooks.some((h: any) => h.command.includes(SENTINEL_FILENAME))
+    const sentinelEntry = merged.hooks.Stop.find((entry: HookEntry) =>
+      entry.hooks.some((h: HookEntry["hooks"][number]) => h.command.includes(SENTINEL_FILENAME))
     );
     expect(sentinelEntry).toBeDefined();
   });
@@ -108,8 +107,8 @@ describe("installDroneStopHook", () => {
     installDroneStopHook(tmpDir);
 
     const settings = JSON.parse(readFileSync(join(tmpDir, ".claude", "settings.json"), "utf-8"));
-    const sentinelHooks = settings.hooks.Stop.filter((entry: any) =>
-      entry.hooks.some((h: any) => h.command.includes(SENTINEL_FILENAME))
+    const sentinelHooks = settings.hooks.Stop.filter((entry: HookEntry) =>
+      entry.hooks.some((h: HookEntry["hooks"][number]) => h.command.includes(SENTINEL_FILENAME))
     );
     expect(sentinelHooks.length).toBe(1);
   });
@@ -118,8 +117,8 @@ describe("installDroneStopHook", () => {
     installDroneStopHook(tmpDir);
 
     const settings = JSON.parse(readFileSync(join(tmpDir, ".claude", "settings.json"), "utf-8"));
-    const sentinelHook = settings.hooks.Stop.find((entry: any) =>
-      entry.hooks.some((h: any) => h.command.includes(SENTINEL_FILENAME))
+    const sentinelHook = settings.hooks.Stop.find((entry: HookEntry) =>
+      entry.hooks.some((h: HookEntry["hooks"][number]) => h.command.includes(SENTINEL_FILENAME))
     );
     const hookCommand = sentinelHook.hooks[0].command;
     const expectedSentinelPath = join(tmpDir, SENTINEL_FILENAME);
@@ -131,8 +130,7 @@ describe("waitForDroneCompletion", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = join(tmpdir(), `drone-completion-test-${Date.now()}`);
-    mkdirSync(tmpDir, { recursive: true });
+    tmpDir = makeTestTmpDir("drone-completion");
   });
 
   afterEach(() => {

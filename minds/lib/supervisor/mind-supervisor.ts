@@ -22,40 +22,18 @@
  *   supervisor-state-machine.ts — state machine with validated transitions
  *   supervisor-review.ts       — review prompt, verdict parsing, feedback
  *   supervisor-drone.ts        — drone spawning, re-launch, completion detection
+ *   supervisor-checks.ts       — standards loading, deterministic verification
+ *   supervisor-bus.ts          — bus signal publishing
+ *   supervisor-llm.ts          — LLM review process lifecycle
  *   mind-supervisor.ts         — this file: orchestrator entry point
  */
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join, relative } from "path";
-import { publishMindsEvent } from "../../transport/publish-event.ts";
+import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
+import { join } from "path";
 import { MindsEventType } from "../../transport/minds-events.ts";
-import { resolveMindsDir } from "../../shared/paths.js";
 import { killPane as killPaneImpl } from "../tmux-utils.ts";
-import { formatTaskList } from "../../cli/lib/drone-brief.ts";
-import { checkBoundary } from "./boundary-check.ts";
-import { parseAnnotations, verifyContracts } from "../check-contracts-core.ts";
 
-// Re-export types and functions from sub-modules for backward compatibility
-export {
-  SupervisorState,
-  type SupervisorConfig,
-  type SupervisorDeps,
-  type CheckResults,
-  type ReviewFinding,
-  type ReviewVerdict,
-  type StateMachine,
-  type SupervisorResult,
-  DEFAULT_REVIEW_TIMEOUT_MS,
-  SENTINEL_FILENAME,
-  errorMessage,
-} from "./supervisor-types.ts";
-
-export { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
-export { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
-export type { ReviewPromptParams } from "./supervisor-review.ts";
-export { installDroneStopHook } from "./supervisor-drone.ts";
-
-// Internal imports (not re-exported)
+// Internal imports (used by runMindSupervisor below)
 import {
   SupervisorState,
   type SupervisorConfig,
@@ -69,265 +47,18 @@ import {
   errorMessage,
 } from "./supervisor-types.ts";
 import { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
-import { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
+import { buildAgentReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
+import { writeMindAgentFile, cleanupMindAgentFile } from "./supervisor-agent.ts";
 import {
   spawnDrone as spawnDroneImpl,
   relaunchDroneInWorktree as relaunchDroneImpl,
   installDroneStopHook as installDroneStopHookImpl,
   waitForDroneCompletion as waitForDroneCompletionImpl,
+  buildSupervisorDroneBrief,
 } from "./supervisor-drone.ts";
-
-// ---------------------------------------------------------------------------
-// Bus Signal Publishing
-// ---------------------------------------------------------------------------
-
-async function publishSignalDefault(
-  busUrl: string,
-  channel: string,
-  type: MindsEventType,
-  mindName: string,
-  waveId: string,
-  extra?: Record<string, unknown>,
-): Promise<void> {
-  const ticketId = channel.replace(/^minds-/, "");
-  await publishMindsEvent(busUrl, channel, {
-    type,
-    source: "supervisor",
-    ticketId,
-    payload: { mindName, waveId, ...extra },
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Load Engineering Standards
-// ---------------------------------------------------------------------------
-
-function loadStandards(repoRoot: string): string {
-  const mindsDir = resolveMindsDir(repoRoot);
-  const standardsPath = join(mindsDir, "STANDARDS.md");
-  const projectStandardsPath = join(mindsDir, "STANDARDS-project.md");
-
-  let standards = "";
-  if (existsSync(standardsPath)) {
-    standards = readFileSync(standardsPath, "utf-8");
-  }
-  if (existsSync(projectStandardsPath)) {
-    standards += "\n\n" + readFileSync(projectStandardsPath, "utf-8");
-  }
-  return standards;
-}
-
-// ---------------------------------------------------------------------------
-// Build Drone Brief
-// ---------------------------------------------------------------------------
-
-function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile?: string): string {
-  const taskList = formatTaskList(config.tasks);
-  const mindsDir = resolveMindsDir(config.repoRoot);
-  const testPath = `${mindsDir}/${config.mindName}/`;
-
-  const depsSection = config.dependencies.length > 0
-    ? `\n---\n\n## Dependencies\n\n${config.dependencies.map((d) => `@${d}`).join(", ")} -- completed and merged in previous waves.\n`
-    : "";
-
-  const feedbackSection = feedbackFile
-    ? `\n---\n\n## Review Feedback\n\nRead ${feedbackFile} at the worktree root for issues from the previous review. Fix all items and check them off.\n`
-    : "";
-
-  return `---
-name: Drone Brief
-role: Implementation tasks for the Drone code worker
-scope: Complete all tasks, commit when done
----
-
-# Drone Brief: @${config.mindName}
-
-| Field | Value |
-|-------|-------|
-| **Ticket** | ${config.ticketId} |
-| **Wave** | ${config.waveId} |
-| **Feature** | ${config.featureDir} |
-
----
-
-## Tasks
-
-${taskList}
-
----
-
-## Completion Criteria
-
-All tasks above are checked off AND all tests pass.
-${depsSection}${feedbackSection}
-## Instructions
-
-1. Read and understand each task above.
-2. Implement ALL tasks in order (unless marked [P] for parallel-safe).
-3. Write tests for each change (TDD: red -> green -> refactor).
-4. Run \`bun test ${testPath}\` to verify your changes pass.
-5. Commit your work with a descriptive message referencing ${config.ticketId}.
-6. When done, exit cleanly. Do NOT retry on failure -- report and stop.
-`;
-}
-
-// ---------------------------------------------------------------------------
-// Deterministic Checks (git diff + bun test)
-// ---------------------------------------------------------------------------
-
-function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string, tasks?: import("../../cli/lib/implement-types.ts").MindTask[]): CheckResults {
-  const findings: ReviewFinding[] = [];
-
-  // Get diff relative to base branch
-  const diffProc = Bun.spawnSync(
-    ["git", "-C", worktreePath, "diff", `${baseBranch}...HEAD`],
-    { stdout: "pipe", stderr: "pipe" }
-  );
-  let diff = new TextDecoder().decode(diffProc.stdout);
-
-  if (diffProc.exitCode !== 0) {
-    const stderr = new TextDecoder().decode(diffProc.stderr);
-    findings.push({
-      file: "(git diff)",
-      line: 0,
-      severity: "error",
-      message: `git diff failed (exit ${diffProc.exitCode}): ${stderr.trim() || "unknown error"}. Review cannot proceed on an empty diff.`,
-    });
-    diff = "";
-  }
-
-  // Run scoped tests
-  const mindsRelative = relative(worktreePath, resolveMindsDir(worktreePath));
-  const testProc = Bun.spawnSync(
-    ["bun", "test", `${mindsRelative}/${mindName}/`],
-    { cwd: worktreePath, stdout: "pipe", stderr: "pipe", timeout: 120_000 }
-  );
-  const testStdout = new TextDecoder().decode(testProc.stdout);
-  const testStderr = new TextDecoder().decode(testProc.stderr);
-  const testOutput = testStdout + (testStderr ? `\n${testStderr}` : "");
-  const testsPass = testProc.exitCode === 0;
-
-  const result: CheckResults = { diff, testOutput, testsPass, findings };
-
-  // ── Boundary check ──────────────────────────────────────────────────────
-  let ownsFiles: string[] = [];
-  try {
-    const mindsDir = resolveMindsDir(worktreePath);
-    const mindsJsonPath = join(mindsDir, "minds.json");
-
-    if (existsSync(mindsJsonPath)) {
-      const mindsJsonContent = readFileSync(mindsJsonPath, "utf-8");
-      const registry = JSON.parse(mindsJsonContent) as Array<{ name: string; owns_files?: string[] }>;
-      const entry = registry.find((m) => m.name === mindName);
-      if (entry?.owns_files) {
-        ownsFiles = entry.owns_files;
-      } else {
-        console.log(`[supervisor] @${mindName}: Not found in minds.json — skipping boundary check`);
-      }
-    } else {
-      console.log(`[supervisor] @${mindName}: minds.json not found — skipping boundary check`);
-    }
-  } catch (err) {
-    console.log(`[supervisor] @${mindName}: Failed to read minds.json — skipping boundary check: ${err}`);
-  }
-
-  if (diff) {
-    const boundaryResult = checkBoundary(diff, ownsFiles, mindName);
-    result.boundaryPass = boundaryResult.pass;
-    result.boundaryFindings = boundaryResult.violations.map((v) => ({
-      file: v.file,
-      line: 0,
-      severity: "error" as const,
-      message: v.message,
-    }));
-  }
-
-  // ── Contract check ────────────────────────────────────────────────────────
-  if (tasks && tasks.length > 0) {
-    // Serialize tasks back to the annotation format the parser expects
-    const tasksText = tasks.map((t) => {
-      let line = `- [ ] ${t.id} @${t.mind} ${t.description}`;
-      if (t.produces) {
-        line += ` produces: \`${t.produces.interface}\` at ${t.produces.path}`;
-      }
-      if (t.consumes) {
-        line += ` consumes: \`${t.consumes.interface}\` from ${t.consumes.path}`;
-      }
-      return line;
-    }).join("\n");
-
-    const annotations = parseAnnotations(tasksText, mindName);
-    if (annotations.length > 0) {
-      const contractResult = verifyContracts(annotations, worktreePath, mindName);
-      result.contractsPass = contractResult.pass;
-      result.contractFindings = contractResult.violations.map((v) => ({
-        file: v.annotation.filePath,
-        line: 0,
-        severity: "error" as const,
-        message: `[${v.annotation.taskId}] ${v.reason}`,
-      }));
-    }
-  }
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// LLM Review (claude -p) with timeout — Item 2: proper process cleanup
-// ---------------------------------------------------------------------------
-
-async function callLlmReviewDefault(prompt: string, timeoutMs: number = DEFAULT_REVIEW_TIMEOUT_MS): Promise<string> {
-  const proc = Bun.spawn(
-    ["claude", "-p", "--model", "sonnet", "--output-format", "text"],
-    {
-      stdin: new Blob([prompt]),
-      stdout: "pipe",
-      stderr: "pipe",
-    }
-  );
-
-  // Race the process against a timeout, clearing the timer on completion
-  let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
-  let timedOut = false;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutTimer = setTimeout(() => {
-      timedOut = true;
-      reject(new Error(`Review timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-
-  let output: string, stderr: string, exitCode: number;
-  try {
-    [output, stderr, exitCode] = await Promise.race([
-      Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ]),
-      timeoutPromise,
-    ]) as [string, string, number];
-  } catch (err) {
-    // On ANY error (timeout or read failure), ensure the process is killed.
-    // First try SIGTERM, then escalate to SIGKILL after a short window.
-    try { proc.kill("SIGTERM"); } catch { /* already dead */ }
-    // Give the process 2 seconds to die from SIGTERM before escalating
-    const killTimer = setTimeout(() => {
-      try { proc.kill("SIGKILL"); } catch { /* already dead */ }
-    }, 2000);
-    // Wait for the process to actually exit so we don't orphan it
-    try { await proc.exited; } catch { /* ignore */ }
-    clearTimeout(killTimer);
-    throw err;
-  } finally {
-    clearTimeout(timeoutTimer);
-  }
-
-  if (exitCode !== 0) {
-    throw new Error(`claude -p failed (exit ${exitCode}): ${stderr}`);
-  }
-
-  return output.trim();
-}
+import { loadStandards, runDeterministicChecksDefault } from "./supervisor-checks.ts";
+import { publishSignalDefault } from "./supervisor-bus.ts";
+import { callLlmReviewDefault } from "./supervisor-llm.ts";
 
 // ---------------------------------------------------------------------------
 // Default dependencies (production implementations)
@@ -344,6 +75,30 @@ function createDefaultDeps(): SupervisorDeps {
     installDroneStopHook: installDroneStopHookImpl,
     killPane: killPaneImpl,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Force-rejection helper (deterministic checks override LLM verdict)
+// ---------------------------------------------------------------------------
+
+function applyForceRejections(verdict: ReviewVerdict, checks: CheckResults): void {
+  if (!checks.testsPass && verdict.approved) {
+    verdict.approved = false;
+    verdict.findings.push({
+      file: "(tests)",
+      line: 0,
+      severity: "error",
+      message: "Tests are failing. Fix all test failures before approval.",
+    });
+  }
+  if (checks.boundaryPass === false && verdict.approved) {
+    verdict.approved = false;
+    verdict.findings.push(...(checks.boundaryFindings ?? []));
+  }
+  if (checks.contractsPass === false && verdict.approved) {
+    verdict.approved = false;
+    verdict.findings.push(...(checks.contractFindings ?? []));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -505,18 +260,31 @@ export async function runMindSupervisor(
         }
       }
 
-      const prompt = buildReviewPrompt({
+      // Write the Mind agent file for this review iteration
+      writeMindAgentFile({
+        mindName: config.mindName,
+        worktreePath: currentWorktree,
+        repoRoot: config.repoRoot,
+        standards,
+        ownsFiles: checks.ownsFiles ?? [],
+        previousFeedback,
+        iteration,
+      });
+
+      // Build lean prompt (no standards — agent file has them)
+      const prompt = buildAgentReviewPrompt({
         diff: checks.diff,
         testOutput: checks.testOutput,
-        standards,
         tasks: config.tasks,
         iteration,
-        previousFeedback,
       });
 
       let verdict: ReviewVerdict;
       try {
-        const rawResponse = await deps.callLlmReview(prompt, reviewTimeoutMs);
+        const rawResponse = await deps.callLlmReview(prompt, reviewTimeoutMs, {
+          worktreePath: currentWorktree,
+          agentName: "Mind",
+        });
         verdict = parseReviewVerdict(rawResponse);
       } catch (err) {
         // LLM call failed or timed out -- treat as rejection with error finding
@@ -531,32 +299,8 @@ export async function runMindSupervisor(
         };
       }
 
-      // Force rejection if tests fail, regardless of LLM verdict
-      if (!checks.testsPass && verdict.approved) {
-        verdict.approved = false;
-        verdict.findings.push({
-          file: "(tests)",
-          line: 0,
-          severity: "error",
-          message: "Tests are failing. Fix all test failures before approval.",
-        });
-      }
-
-      // Force rejection if boundary check fails
-      if (checks.boundaryPass === false && verdict.approved) {
-        verdict.approved = false;
-        for (const f of checks.boundaryFindings ?? []) {
-          verdict.findings.push(f);
-        }
-      }
-
-      // Force rejection if contract check fails
-      if (checks.contractsPass === false && verdict.approved) {
-        verdict.approved = false;
-        for (const f of checks.contractFindings ?? []) {
-          verdict.findings.push(f);
-        }
-      }
+      // Deterministic checks override LLM verdict (tests, boundary, contracts)
+      applyForceRejections(verdict, checks);
 
       // Accumulate findings across all iterations, tagging each with its iteration
       for (const finding of verdict.findings) {
@@ -658,12 +402,17 @@ export async function runMindSupervisor(
       deps.killPane(paneId);
     }
 
-    // Clean up sentinel file if present (skip if worktree was never resolved)
+    // Clean up Mind agent file
     const isPlaceholderWorktree = !currentWorktree || currentWorktree.startsWith("(");
+    if (!isPlaceholderWorktree) {
+      cleanupMindAgentFile(currentWorktree);
+    }
+
+    // Clean up sentinel file if present (skip if worktree was never resolved)
     if (!isPlaceholderWorktree) {
       const sentinelPath = join(currentWorktree, SENTINEL_FILENAME);
       if (existsSync(sentinelPath)) {
-        try { Bun.spawnSync(["rm", "-f", sentinelPath]); } catch { /* ignore */ }
+        try { rmSync(sentinelPath, { force: true }); } catch { /* ignore */ }
       }
     }
   }

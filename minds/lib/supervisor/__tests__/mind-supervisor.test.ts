@@ -11,36 +11,15 @@
  */
 
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { runMindSupervisor } from "../mind-supervisor.ts";
 import {
   SupervisorState,
   type SupervisorConfig,
   type SupervisorResult,
-  runMindSupervisor,
-} from "../mind-supervisor.ts";
+} from "../supervisor-types.ts";
+import { makeTestConfig } from "./test-helpers.ts";
 
-function makeConfig(overrides?: Partial<SupervisorConfig>): SupervisorConfig {
-  return {
-    mindName: "transport",
-    ticketId: "BRE-500",
-    waveId: "wave-1",
-    tasks: [
-      { id: "T001", mind: "transport", description: "Implement SSE endpoint", parallel: false },
-    ],
-    repoRoot: "/tmp/test-repo",
-    busUrl: "http://localhost:7777",
-    busPort: 7777,
-    channel: "minds-BRE-500",
-    worktreePath: "/tmp/test-worktree",
-    baseBranch: "dev",
-    callerPane: "%0",
-    mindsSourceDir: "/tmp/test-repo/minds",
-    featureDir: "/tmp/test-repo/specs/BRE-500-feature",
-    dependencies: [],
-    maxIterations: 3,
-    droneTimeoutMs: 20 * 60 * 1000,
-    ...overrides,
-  };
-}
+const makeConfig = makeTestConfig;
 
 describe("runMindSupervisor validation", () => {
   test("throws when maxIterations is 0", async () => {

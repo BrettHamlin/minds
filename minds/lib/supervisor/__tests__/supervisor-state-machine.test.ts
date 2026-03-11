@@ -5,31 +5,9 @@
 import { describe, test, expect } from "bun:test";
 import { SupervisorState, type SupervisorConfig } from "../supervisor-types.ts";
 import { createSupervisorStateMachine } from "../supervisor-state-machine.ts";
-import type { MindTask } from "../../../cli/lib/implement-types.ts";
+import { makeTestConfig } from "./test-helpers.ts";
 
-function makeConfig(overrides?: Partial<SupervisorConfig>): SupervisorConfig {
-  return {
-    mindName: "transport",
-    ticketId: "BRE-500",
-    waveId: "wave-1",
-    tasks: [
-      { id: "T001", mind: "transport", description: "Implement SSE endpoint", parallel: false },
-    ],
-    repoRoot: "/tmp/test-repo",
-    busUrl: "http://localhost:7777",
-    busPort: 7777,
-    channel: "minds-BRE-500",
-    worktreePath: "/tmp/test-worktree",
-    baseBranch: "dev",
-    callerPane: "%0",
-    mindsSourceDir: "/tmp/test-repo/minds",
-    featureDir: "/tmp/test-repo/specs/BRE-500-feature",
-    dependencies: [],
-    maxIterations: 3,
-    droneTimeoutMs: 20 * 60 * 1000,
-    ...overrides,
-  };
-}
+const makeConfig = makeTestConfig;
 
 describe("SupervisorStateMachine", () => {
   test("initial state is INIT", () => {

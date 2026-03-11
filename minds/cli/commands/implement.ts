@@ -24,7 +24,7 @@ import { join, resolve, dirname } from "path";
 import { parseAndGroupTasks } from "../lib/task-parser.ts";
 import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
 import { runMindSupervisor } from "../../lib/supervisor/mind-supervisor.ts";
-import type { SupervisorConfig } from "../../lib/supervisor/mind-supervisor.ts";
+import type { SupervisorConfig } from "../../lib/supervisor/supervisor-types.ts";
 import { waitForWaveCompletion, type WaveCompletionResult } from "../lib/bus-listener.ts";
 import { TmuxMultiplexer } from "../../lib/tmux-multiplexer.ts";
 import {

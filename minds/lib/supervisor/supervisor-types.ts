@@ -98,6 +98,8 @@ export interface CheckResults {
   /** Whether all modified files are within the Mind's boundary. Undefined if check was skipped. */
   boundaryPass?: boolean;
   boundaryFindings?: ReviewFinding[];
+  /** The owns_files list for the Mind (from minds.json). Flows to agent generation. */
+  ownsFiles?: string[];
 }
 
 /**
@@ -148,7 +150,7 @@ export interface SupervisorDeps {
   ) => CheckResults;
 
   /** Call LLM for code review. */
-  callLlmReview: (prompt: string, timeoutMs: number) => Promise<string>;
+  callLlmReview: (prompt: string, timeoutMs: number, opts?: { worktreePath?: string; agentName?: string }) => Promise<string>;
 
   /** Install the drone Stop hook for sentinel-based completion detection. */
   installDroneStopHook: (worktreePath: string) => void;
@@ -175,8 +177,7 @@ export function errorMessage(err: unknown): string {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-export const DEFAULT_DRONE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+export const DEFAULT_REVIEW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (Opus + tool use)
 export const SENTINEL_FILENAME = ".drone-complete";
 export const MAX_DIFF_CHARS = 50_000;
 export const MAX_TEST_OUTPUT_CHARS = 20_000;

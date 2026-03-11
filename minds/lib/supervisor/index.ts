@@ -15,7 +15,6 @@ export {
   type StateMachine,
   type SupervisorResult,
   DEFAULT_REVIEW_TIMEOUT_MS,
-  DEFAULT_DRONE_TIMEOUT_MS,
   SENTINEL_FILENAME,
   MAX_DIFF_CHARS,
   MAX_TEST_OUTPUT_CHARS,
@@ -28,19 +27,46 @@ export { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
 // Review prompt, verdict parsing, feedback generation
 export {
   buildReviewPrompt,
+  buildAgentReviewPrompt,
   parseReviewVerdict,
   buildFeedbackContent,
+  truncateWithLabel,
+  formatReviewChecklist,
+  REVIEW_CHECKLIST,
+  REVIEW_RESPONSE_FORMAT,
   type ReviewPromptParams,
+  type AgentReviewPromptParams,
 } from "./supervisor-review.ts";
 
-// Drone spawning, re-launch, completion detection, Stop hook
+// Drone spawning, re-launch, completion detection, brief construction, Stop hook
 export {
   spawnDrone,
   relaunchDroneInWorktree,
   installDroneStopHook,
   waitForDroneCompletion,
+  buildSupervisorDroneBrief,
   type DroneSpawnResult,
 } from "./supervisor-drone.ts";
+
+// Deterministic checks and standards loading
+export {
+  loadStandards,
+  runDeterministicChecksDefault,
+} from "./supervisor-checks.ts";
+
+// Bus signal publishing
+export { publishSignalDefault } from "./supervisor-bus.ts";
+
+// LLM review process lifecycle
+export { callLlmReviewDefault } from "./supervisor-llm.ts";
+
+// Mind Agent file generation
+export {
+  buildMindAgentContent,
+  writeMindAgentFile,
+  cleanupMindAgentFile,
+  type MindAgentParams,
+} from "./supervisor-agent.ts";
 
 // Main orchestrator entry point
 export { runMindSupervisor } from "./mind-supervisor.ts";

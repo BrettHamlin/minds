@@ -4,8 +4,16 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import type { ReviewFinding, SupervisorConfig } from "../supervisor-types.ts";
-import { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "../supervisor-review.ts";
+import type { ReviewFinding } from "../supervisor-types.ts";
+import { MAX_DIFF_CHARS, MAX_TEST_OUTPUT_CHARS } from "../supervisor-types.ts";
+import {
+  buildReviewPrompt,
+  buildAgentReviewPrompt,
+  parseReviewVerdict,
+  buildFeedbackContent,
+  truncateWithLabel,
+} from "../supervisor-review.ts";
+import { formatTaskList } from "../../../cli/lib/drone-brief.ts";
 import type { MindTask } from "../../../cli/lib/implement-types.ts";
 
 // ---------------------------------------------------------------------------
@@ -185,6 +193,186 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("Missing tests");
     expect(prompt).toContain("Round 2");
     expect(prompt).toContain("Unused import");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// truncateWithLabel
+// ---------------------------------------------------------------------------
+
+describe("truncateWithLabel", () => {
+  test("returns text unchanged when under maxChars", () => {
+    const result = truncateWithLabel("hello", 10, "test label");
+    expect(result).toBe("hello");
+  });
+
+  test("returns text unchanged when exactly at maxChars", () => {
+    const result = truncateWithLabel("12345", 5, "test label");
+    expect(result).toBe("12345");
+  });
+
+  test("truncates and appends label when over maxChars", () => {
+    const result = truncateWithLabel("hello world", 5, "too long");
+    expect(result).toBe("hello\n\n[truncated — too long]");
+  });
+
+  test("handles empty string input", () => {
+    const result = truncateWithLabel("", 10, "test label");
+    expect(result).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatTaskList with review style
+// ---------------------------------------------------------------------------
+
+describe("formatTaskList with review style", () => {
+  test("formats tasks as dash id colon description list", () => {
+    const tasks: MindTask[] = [
+      { id: "T001", mind: "transport", description: "Implement SSE", parallel: false },
+      { id: "T002", mind: "transport", description: "Add reconnection", parallel: false },
+    ];
+    const result = formatTaskList(tasks, { style: "review" });
+    expect(result).toBe("- T001: Implement SSE\n- T002: Add reconnection");
+  });
+
+  test("handles single task", () => {
+    const tasks: MindTask[] = [
+      { id: "T001", mind: "transport", description: "Implement SSE", parallel: false },
+    ];
+    const result = formatTaskList(tasks, { style: "review" });
+    expect(result).toBe("- T001: Implement SSE");
+  });
+
+  test("handles empty array", () => {
+    const result = formatTaskList([], { style: "review" });
+    expect(result).toBe("");
+  });
+
+  test("default style produces checkbox format", () => {
+    const tasks: MindTask[] = [
+      { id: "T001", mind: "transport", description: "Implement SSE", parallel: false },
+    ];
+    const result = formatTaskList(tasks);
+    expect(result).toBe("- [ ] T001 Implement SSE");
+  });
+
+  test("checkbox style includes [P] tag for parallel tasks", () => {
+    const tasks: MindTask[] = [
+      { id: "T001", mind: "transport", description: "Implement SSE", parallel: true },
+    ];
+    const result = formatTaskList(tasks, { style: "checkbox" });
+    expect(result).toBe("- [ ] T001 [P] Implement SSE");
+  });
+
+  test("review style ignores parallel flag", () => {
+    const tasks: MindTask[] = [
+      { id: "T001", mind: "transport", description: "Implement SSE", parallel: true },
+    ];
+    const result = formatTaskList(tasks, { style: "review" });
+    expect(result).toBe("- T001: Implement SSE");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildAgentReviewPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildAgentReviewPrompt", () => {
+  test("contains iteration number", () => {
+    const prompt = buildAgentReviewPrompt({
+      diff: sampleDiff,
+      testOutput: sampleTestOutput,
+      tasks: sampleTasks,
+      iteration: 3,
+    });
+    expect(prompt).toContain("iteration 3");
+  });
+
+  test("contains task list in review format", () => {
+    const prompt = buildAgentReviewPrompt({
+      diff: sampleDiff,
+      testOutput: sampleTestOutput,
+      tasks: sampleTasks,
+      iteration: 1,
+    });
+    expect(prompt).toContain("- T001: Implement SSE endpoint");
+    expect(prompt).toContain("- T002: Add reconnection logic");
+  });
+
+  test("contains diff content", () => {
+    const prompt = buildAgentReviewPrompt({
+      diff: sampleDiff,
+      testOutput: sampleTestOutput,
+      tasks: sampleTasks,
+      iteration: 1,
+    });
+    expect(prompt).toContain("diff --git");
+    expect(prompt).toContain("createSSEHandler");
+  });
+
+  test("contains test output", () => {
+    const prompt = buildAgentReviewPrompt({
+      diff: sampleDiff,
+      testOutput: sampleTestOutput,
+      tasks: sampleTasks,
+      iteration: 1,
+    });
+    expect(prompt).toContain("2 pass");
+    expect(prompt).toContain("0 fail");
+  });
+
+  test("truncates diff at MAX_DIFF_CHARS", () => {
+    const hugeDiff = "x".repeat(MAX_DIFF_CHARS + 10_000);
+    const prompt = buildAgentReviewPrompt({
+      diff: hugeDiff,
+      testOutput: sampleTestOutput,
+      tasks: sampleTasks,
+      iteration: 1,
+    });
+    expect(prompt).toContain("[truncated");
+    expect(prompt).toContain("diff exceeded 50k chars");
+    // The prompt should not contain the full huge diff
+    expect(prompt.length).toBeLessThan(MAX_DIFF_CHARS + MAX_TEST_OUTPUT_CHARS + 5000);
+  });
+
+  test("truncates test output at MAX_TEST_OUTPUT_CHARS", () => {
+    const hugeTestOutput = "t".repeat(MAX_TEST_OUTPUT_CHARS + 5_000);
+    const prompt = buildAgentReviewPrompt({
+      diff: sampleDiff,
+      testOutput: hugeTestOutput,
+      tasks: sampleTasks,
+      iteration: 1,
+    });
+    expect(prompt).toContain("[truncated");
+    expect(prompt).toContain("test output exceeded 20k chars");
+  });
+
+  test("does NOT contain standards or review instructions", () => {
+    const prompt = buildAgentReviewPrompt({
+      diff: sampleDiff,
+      testOutput: sampleTestOutput,
+      tasks: sampleTasks,
+      iteration: 1,
+    });
+    // Standards, checklist, and response format live in the agent file, not here
+    expect(prompt).not.toContain("Engineering Standards");
+    expect(prompt).not.toContain("Review Checklist");
+    expect(prompt).not.toContain("Respond with ONLY a JSON object");
+    expect(prompt).not.toContain("Instructions");
+  });
+
+  test("empty task list produces empty task section", () => {
+    const prompt = buildAgentReviewPrompt({
+      diff: sampleDiff,
+      testOutput: sampleTestOutput,
+      tasks: [],
+      iteration: 1,
+    });
+    expect(prompt).toContain("## Tasks Assigned");
+    // The task section should be empty (just the header followed by diff section)
+    const taskSection = prompt.split("## Tasks Assigned")[1].split("## Git Diff")[0];
+    expect(taskSection.trim()).toBe("");
   });
 });
 

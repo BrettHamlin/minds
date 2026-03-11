@@ -14,7 +14,6 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
 import { runMindSupervisor } from "../mind-supervisor.ts";
 import type {
   SupervisorConfig,
@@ -22,6 +21,7 @@ import type {
   CheckResults,
 } from "../supervisor-types.ts";
 import { MindsEventType } from "../../../transport/minds-events.ts";
+import { makeTestConfig, makeTestTmpDir } from "./test-helpers.ts";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -29,9 +29,8 @@ import { MindsEventType } from "../../../transport/minds-events.ts";
 
 let tmpDir: string;
 
-function makeTmpDir(): string {
-  const dir = join(tmpdir(), `supervisor-integration-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-  mkdirSync(dir, { recursive: true });
+function makeIntegrationTmpDir(): string {
+  const dir = makeTestTmpDir("supervisor-integration");
   // Create the STANDARDS.md the supervisor tries to load
   const mindsDir = join(dir, "minds");
   mkdirSync(mindsDir, { recursive: true });
@@ -40,27 +39,13 @@ function makeTmpDir(): string {
 }
 
 function makeConfig(overrides?: Partial<SupervisorConfig>): SupervisorConfig {
-  return {
-    mindName: "transport",
-    ticketId: "BRE-500",
-    waveId: "wave-1",
-    tasks: [
-      { id: "T001", mind: "transport", description: "Implement SSE endpoint", parallel: false },
-    ],
+  return makeTestConfig({
     repoRoot: tmpDir,
-    busUrl: "http://localhost:7777",
-    busPort: 7777,
-    channel: "minds-BRE-500",
     worktreePath: join(tmpDir, "worktree"),
-    baseBranch: "dev",
-    callerPane: "%0",
     mindsSourceDir: join(tmpDir, "minds"),
     featureDir: join(tmpDir, "specs", "BRE-500-feature"),
-    dependencies: [],
-    maxIterations: 3,
-    droneTimeoutMs: 20 * 60 * 1000,
     ...overrides,
-  };
+  });
 }
 
 function makePassingChecks(): CheckResults {
@@ -118,7 +103,7 @@ function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  tmpDir = makeTmpDir();
+  tmpDir = makeIntegrationTmpDir();
 });
 
 afterEach(() => {

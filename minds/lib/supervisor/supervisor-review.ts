@@ -4,13 +4,71 @@
  */
 
 import type { MindTask } from "../../cli/lib/implement-types.ts";
+import { formatTaskList } from "../../cli/lib/drone-brief.ts";
 import type { ReviewFinding, ReviewVerdict } from "./supervisor-types.ts";
 import { MAX_DIFF_CHARS, MAX_TEST_OUTPUT_CHARS } from "./supervisor-types.ts";
+
+// ---------------------------------------------------------------------------
+// Shared Review Constants & Utilities
+// ---------------------------------------------------------------------------
+
+export function truncateWithLabel(text: string, maxChars: number, label: string): string {
+  if (text.length > maxChars) {
+    return text.slice(0, maxChars) + `\n\n[truncated — ${label}]`;
+  }
+  return text;
+}
+
+export const REVIEW_CHECKLIST: readonly string[] = [
+  "All assigned tasks are implemented",
+  "No files modified outside the mind's boundary (owns_files)",
+  "No duplicated logic — DRY principle respected",
+  "All tests pass (check the test output provided)",
+  "All new exported functions have tests",
+  "No dead code or unused imports",
+  "Error messages include sufficient context",
+  "Code follows project conventions",
+];
+
+export function formatReviewChecklist(): string {
+  return REVIEW_CHECKLIST.map((item, i) => `${i + 1}. ${item}`).join("\n");
+}
+
+function prepareReviewInputs(diff: string, testOutput: string, tasks: MindTask[]) {
+  return {
+    truncatedDiff: truncateWithLabel(diff, MAX_DIFF_CHARS, "diff exceeded 50k chars"),
+    truncatedTestOutput: truncateWithLabel(testOutput, MAX_TEST_OUTPUT_CHARS, "test output exceeded 20k chars"),
+    taskList: formatTaskList(tasks, { style: "review" }),
+  };
+}
+
+export const REVIEW_RESPONSE_FORMAT = `Respond with ONLY a JSON object. Do NOT wrap it in markdown code fences. Do NOT include any explanation outside the JSON.
+
+{
+  "approved": true | false,
+  "findings": [
+    {
+      "file": "path/to/file.ts",
+      "line": 42,
+      "severity": "error" | "warning",
+      "message": "Description of the issue"
+    }
+  ]
+}
+
+If approved, findings must be an empty array.
+If any issue is found, set approved to false and list all findings.`;
 
 // ---------------------------------------------------------------------------
 // Review Prompt Construction
 // ---------------------------------------------------------------------------
 
+/**
+ * Parameters for the standalone review prompt (`buildReviewPrompt`).
+ *
+ * NOTE: The production code path uses `AgentReviewPromptParams` + Mind Agent.
+ * This interface is retained for the non-agent fallback path.
+ */
 export interface ReviewPromptParams {
   diff: string;
   testOutput: string;
@@ -20,28 +78,22 @@ export interface ReviewPromptParams {
   previousFeedback?: string;
 }
 
+/**
+ * Build a standalone review prompt for direct `claude -p` invocation (non-agent path).
+ *
+ * NOTE: The production code path uses `buildAgentReviewPrompt` + Mind Agent.
+ * This function is retained as a fallback for non-agent review scenarios.
+ */
 export function buildReviewPrompt(params: ReviewPromptParams): string {
   const { diff, testOutput, standards, tasks, iteration, previousFeedback } = params;
 
-  // Truncate very large diffs to avoid exceeding context limits
-  let truncatedDiff = diff;
-  if (diff.length > MAX_DIFF_CHARS) {
-    truncatedDiff = diff.slice(0, MAX_DIFF_CHARS) + "\n\n[truncated — diff exceeded 50k chars]";
-  }
-
-  // Truncate verbose test output to avoid blowing the LLM context
-  let truncatedTestOutput = testOutput;
-  if (testOutput.length > MAX_TEST_OUTPUT_CHARS) {
-    truncatedTestOutput = testOutput.slice(0, MAX_TEST_OUTPUT_CHARS) + "\n\n[truncated — test output exceeded 20k chars]";
-  }
-
-  const taskList = tasks
-    .map((t) => `- ${t.id}: ${t.description}`)
-    .join("\n");
+  const { truncatedDiff, truncatedTestOutput, taskList } = prepareReviewInputs(diff, testOutput, tasks);
 
   const previousSection = previousFeedback
     ? `\n## Previous Feedback (for context)\n\n${previousFeedback}\n`
     : "";
+
+  const checklist = formatReviewChecklist();
 
   return `You are reviewing code changes for iteration ${iteration} of a drone implementation cycle.
 
@@ -68,32 +120,54 @@ ${previousSection}
 ## Instructions
 
 Review the diff against the tasks and engineering standards. Check:
-1. All tasks are implemented
-2. No files modified outside the mind's boundary
-3. No duplicated logic
-4. All new exported functions have tests
-5. All tests pass (check the test output above)
-6. No lint errors or dead code
-7. Error messages include context
+${checklist}
 
-Respond with ONLY a JSON object (no markdown, no explanation) in this exact format:
+${REVIEW_RESPONSE_FORMAT}
 
-\`\`\`json
-{
-  "approved": true | false,
-  "findings": [
-    {
-      "file": "path/to/file.ts",
-      "line": 42,
-      "severity": "error" | "warning",
-      "message": "Description of the issue"
-    }
-  ]
+If any issue is found (even minor ones like unused imports), set approved to false and list all findings.`;
 }
+
+// ---------------------------------------------------------------------------
+// Agent Review Prompt (lean — data only, no standards/instructions)
+// ---------------------------------------------------------------------------
+
+export interface AgentReviewPromptParams {
+  diff: string;
+  testOutput: string;
+  tasks: MindTask[];
+  iteration: number;
+}
+
+/**
+ * Build a lean review prompt for the Mind Agent.
+ *
+ * Unlike buildReviewPrompt, this only contains the data payload (diff, tests,
+ * tasks, iteration). Standards, review instructions, and response format live
+ * in the agent file (.claude/agents/Mind.md) so they become the agent's system
+ * prompt rather than competing with the data in the user message.
+ */
+export function buildAgentReviewPrompt(params: AgentReviewPromptParams): string {
+  const { diff, testOutput, tasks, iteration } = params;
+
+  const { truncatedDiff, truncatedTestOutput, taskList } = prepareReviewInputs(diff, testOutput, tasks);
+
+  return `Review iteration ${iteration}.
+
+## Tasks Assigned
+
+${taskList}
+
+## Git Diff
+
+\`\`\`diff
+${truncatedDiff}
 \`\`\`
 
-If approved, findings should be an empty array.
-If any issue is found (even minor ones like unused imports), set approved to false and list all findings.`;
+## Test Results
+
+\`\`\`
+${truncatedTestOutput}
+\`\`\``;
 }
 
 // ---------------------------------------------------------------------------

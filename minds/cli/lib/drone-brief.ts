@@ -18,11 +18,21 @@ export interface DroneBriefParams {
 }
 
 /**
- * Format a list of MindTasks into a markdown checklist string.
+ * Format a list of MindTasks into a markdown list string.
+ *
+ * @param style - "checkbox" (default): `- [ ] T001 [P] description`
+ *                "review": `- T001: description`
  */
-export function formatTaskList(tasks: MindTask[]): string {
+export function formatTaskList(
+  tasks: MindTask[],
+  opts?: { style?: "checkbox" | "review" },
+): string {
+  const style = opts?.style ?? "checkbox";
   return tasks
     .map((t) => {
+      if (style === "review") {
+        return `- ${t.id}: ${t.description}`;
+      }
       const pTag = t.parallel ? " [P]" : "";
       return `- [ ] ${t.id}${pTag} ${t.description}`;
     })

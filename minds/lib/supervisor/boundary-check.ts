@@ -6,7 +6,7 @@
  * not touch infrastructure files that no drone should modify.
  */
 
-import { normalizeMindsPrefix } from "../../shared/paths.js";
+import { normalizeMindsPrefix } from "../../shared/paths.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

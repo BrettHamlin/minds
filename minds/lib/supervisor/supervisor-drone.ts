@@ -1,15 +1,51 @@
 /**
  * supervisor-drone.ts — Drone spawning, re-launching, completion detection,
- * and Stop hook installation for the deterministic Mind supervisor.
+ * drone brief construction, and Stop hook installation for the deterministic
+ * Mind supervisor.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, watch } from "fs";
 import { join } from "path";
-import { resolveMindsDir } from "../../shared/paths.js";
+import { resolveMindsDir } from "../../shared/paths.ts";
+import { buildDroneBrief } from "../../cli/lib/drone-brief.ts";
 import { killPane, splitPane, launchClaudeInPane, shellQuote } from "../tmux-utils.ts";
 import type { TerminalMultiplexer } from "../terminal-multiplexer.ts";
 import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
 import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
+
+// ---------------------------------------------------------------------------
+// Hook entry shape for Claude Code settings.json
+// ---------------------------------------------------------------------------
+
+export interface HookEntry {
+  matcher: string;
+  hooks: Array<{ type: string; command: string }>;
+}
+
+// ---------------------------------------------------------------------------
+// Build Drone Brief
+// ---------------------------------------------------------------------------
+
+export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile?: string): string {
+  const mindsDir = resolveMindsDir(config.repoRoot);
+
+  const base = buildDroneBrief({
+    ticketId: config.ticketId,
+    mindName: config.mindName,
+    waveId: config.waveId,
+    tasks: config.tasks,
+    dependencies: config.dependencies,
+    featureDir: config.featureDir,
+    mindsDir,
+  });
+
+  if (!feedbackFile) {
+    return base;
+  }
+
+  const feedbackSection = `\n---\n\n## Review Feedback\n\nRead ${feedbackFile} at the worktree root for issues from the previous review. Fix all items and check them off.\n`;
+  return base + feedbackSection;
+}
 
 // ---------------------------------------------------------------------------
 // Drone Spawning (wrapper around drone-pane.ts — first iteration only)
@@ -171,9 +207,9 @@ export function installDroneStopHook(worktreePath: string): void {
   const existingStopHooks = Array.isArray(existingHooks.Stop) ? existingHooks.Stop : [];
 
   // Remove any previous sentinel hook (idempotent -- prevents duplicates on reinstall)
-  const filteredStopHooks = existingStopHooks.filter((entry: any) => {
+  const filteredStopHooks = existingStopHooks.filter((entry: HookEntry) => {
     if (!entry || !Array.isArray(entry.hooks)) return true;
-    return !entry.hooks.some((h: any) => h.command?.includes(SENTINEL_FILENAME));
+    return !entry.hooks.some((h) => h.command?.includes(SENTINEL_FILENAME));
   });
 
   const merged = {
@@ -218,7 +254,7 @@ export async function waitForDroneCompletion(
       return { ok: true };
     }
     // Pane is still alive — sentinel is stale from a previous run, clean it up
-    try { Bun.spawnSync(["rm", "-f", sentinelPath]); } catch { /* ignore */ }
+    try { rmSync(sentinelPath, { force: true }); } catch { /* ignore */ }
   }
 
   return new Promise<{ ok: boolean; error?: string }>((resolve) => {
