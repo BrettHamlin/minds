@@ -6,7 +6,31 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { killPane } from "../tmux-utils.ts";
+import { killPane, shellQuote } from "../tmux-utils.ts";
+
+describe("shellQuote", () => {
+  test("wraps simple string in single quotes", () => {
+    expect(shellQuote("/tmp/foo")).toBe("'/tmp/foo'");
+  });
+
+  test("escapes embedded single quotes", () => {
+    expect(shellQuote("it's")).toBe("'it'\\''s'");
+  });
+
+  test("handles spaces in paths", () => {
+    expect(shellQuote("/tmp/my worktree")).toBe("'/tmp/my worktree'");
+  });
+
+  test("handles shell metacharacters", () => {
+    expect(shellQuote("$(rm -rf /)")).toBe("'$(rm -rf /)'");
+    expect(shellQuote("foo; bar")).toBe("'foo; bar'");
+    expect(shellQuote("a && b")).toBe("'a && b'");
+  });
+
+  test("handles empty string", () => {
+    expect(shellQuote("")).toBe("''");
+  });
+});
 
 describe("killPane", () => {
   test("does not throw when pane does not exist", () => {

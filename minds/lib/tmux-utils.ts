@@ -3,6 +3,14 @@
  */
 
 /**
+ * Shell-quote a string for safe interpolation in shell commands sent via tmux send-keys.
+ * Uses single-quote wrapping with proper escaping of embedded single quotes.
+ */
+export function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+/**
  * Kill a tmux pane by ID. Silently ignores errors (pane may already be gone).
  */
 export function killPane(paneId: string): void {
@@ -26,9 +34,9 @@ export function launchClaudeInPane(opts: {
 }): void {
   const { paneId, worktreePath, model = "sonnet", prompt, busUrl } = opts;
   const escapedPrompt = JSON.stringify(prompt);
-  let cmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model ${model} ${escapedPrompt}`;
+  let cmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model ${model} ${escapedPrompt}`;
   if (busUrl) {
-    cmd = `BUS_URL=${busUrl} ${cmd}`;
+    cmd = `BUS_URL=${shellQuote(busUrl)} ${cmd}`;
   }
   // Use send-keys to execute in the existing pane
   Bun.spawnSync(

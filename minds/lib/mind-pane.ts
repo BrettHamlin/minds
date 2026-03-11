@@ -35,6 +35,7 @@ import { MindsEventType } from "../transport/minds-events.ts";
 import { buildMindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import type { MindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import { resolveMindsDir } from "../shared/paths.js";
+import { shellQuote } from "./tmux-utils.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -537,7 +538,7 @@ if (import.meta.main) { (async () => {
   // ─── Launch Claude Code Opus ──────────────────────────────────────────────────
 
   const initialPrompt = `You are a 🧠 Mind supervisor. Your CLAUDE.md has been replaced with your operating manual — read it now. Then read MIND-BRIEF.md for your tasks. Follow the Review Loop exactly: do NOT implement tasks yourself. Spawn a 🛸 Drone via Agent({ subagent_type: '🛸' }) to do the work.`;
-  let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model opus ${JSON.stringify(initialPrompt)}`;
+  let launchCmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model opus ${JSON.stringify(initialPrompt)}`;
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
   }

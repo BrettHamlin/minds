@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from "fs";
 import { join } from "path";
 import { resolveMindsDir } from "../shared/paths.js";
-import { killPane } from "./tmux-utils.ts";
+import { killPane, shellQuote } from "./tmux-utils.ts";
 import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
 
 // ---------------------------------------------------------------------------
@@ -117,9 +117,9 @@ export function relaunchDroneInWorktree(opts: {
   // Launch Claude Code in the new pane, pointing at the existing worktree
   const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
   const escapedPrompt = JSON.stringify(prompt);
-  let launchCmd = `cd ${worktreePath} && claude --dangerously-skip-permissions --model sonnet ${escapedPrompt}`;
+  let launchCmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model sonnet ${escapedPrompt}`;
   if (busUrl) {
-    launchCmd = `BUS_URL=${busUrl} ${launchCmd}`;
+    launchCmd = `BUS_URL=${shellQuote(busUrl)} ${launchCmd}`;
   }
   Bun.spawnSync(
     ["tmux", "send-keys", "-t", newPaneId, launchCmd, "Enter"],
