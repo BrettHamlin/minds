@@ -68,6 +68,47 @@ export function _resetMindsRootCache(): void {
 }
 
 /**
+ * Cached result for getRepoRoot() (default cwd case only).
+ */
+let _cachedRepoRoot: string | null = null;
+
+/**
+ * Detect the git repository root directory.
+ *
+ * @param cwd - Optional working directory to resolve from.
+ *              When provided, the result is NOT cached (different cwd = different root).
+ *              When omitted, uses process.cwd() and caches the result.
+ * @returns The absolute path to the repo root, or cwd/process.cwd() as fallback.
+ */
+export function getRepoRoot(cwd?: string): string {
+  // When no cwd override, return cached result if available
+  if (!cwd && _cachedRepoRoot !== null) return _cachedRepoRoot;
+
+  try {
+    const result = execSync("git rev-parse --show-toplevel", {
+      encoding: "utf-8",
+      cwd: cwd || process.cwd(),
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+
+    // Only cache when using default cwd
+    if (!cwd) _cachedRepoRoot = result;
+    return result;
+  } catch {
+    const fallback = cwd || process.cwd();
+    if (!cwd) _cachedRepoRoot = fallback;
+    return fallback;
+  }
+}
+
+/**
+ * Clear the cached getRepoRoot() value. Useful for testing.
+ */
+export function _resetRepoRootCache(): void {
+  _cachedRepoRoot = null;
+}
+
+/**
  * Path to the metrics SQLite database.
  *
  * Uses mindsRoot() to resolve the base directory so the path is portable

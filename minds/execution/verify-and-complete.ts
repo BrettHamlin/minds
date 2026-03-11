@@ -23,10 +23,11 @@
 //   1 = verification failed, signal not emitted
 // ============================================================================
 
-import { execSync, spawnSync } from "child_process";
+import { spawnSync } from "child_process";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { parseTaskPhases } from "../pipeline_core/task-phases"; // CROSS-MIND
+import { getRepoRoot } from "../shared/paths.js";
 
 async function resolvePhaseAndScope(): Promise<{ phase: string | undefined; autoScope: string }> {
   try {
@@ -56,15 +57,7 @@ if (!PHASE) {
 }
 
 // Detect repo root
-let REPO_ROOT: string;
-try {
-  REPO_ROOT = execSync("git rev-parse --show-toplevel", {
-    encoding: "utf-8",
-    stdio: ["pipe", "pipe", "pipe"],
-  }).trim();
-} catch {
-  REPO_ROOT = process.cwd();
-}
+const REPO_ROOT = getRepoRoot();
 
 const COLLAB_DIR = join(REPO_ROOT, ".minds");
 

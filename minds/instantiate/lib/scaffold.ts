@@ -7,8 +7,7 @@
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync } from "fs";
 import { basename, join } from "path";
-import { execSync } from "child_process";
-import { mindsRoot } from "@minds/shared/paths.js";
+import { mindsRoot, getRepoRoot } from "@minds/shared/paths.js";
 import type { MindDescription } from "@minds/mind.js";
 
 // ---------------------------------------------------------------------------
@@ -37,12 +36,7 @@ export function mindsSourceDir(): string {
   }
 
   // Dev fallback: minds/ relative to git root
-  try {
-    const root = execSync("git rev-parse --show-toplevel", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
-    return join(root, "minds");
-  } catch {
-    return join(process.cwd(), "minds");
-  }
+  return join(getRepoRoot(), "minds");
 }
 
 /**

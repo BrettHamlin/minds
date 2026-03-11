@@ -23,19 +23,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
-
-function getRepoRoot(cwd?: string): string {
-  try {
-    return execSync("git rev-parse --show-toplevel", {
-      encoding: "utf-8",
-      cwd: cwd || process.cwd(),
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-  } catch {
-    return cwd || process.cwd();
-  }
-}
+import { getRepoRoot } from "../shared/paths.js";
 
 interface RouteConfig {
   path: string;

@@ -35,7 +35,7 @@ import {
 } from "../../transport/minds-bus-lifecycle.ts";
 import { publishWaveStarted, publishWaveComplete } from "../../transport/wave-event.ts";
 import { cleanupDroneWorktree } from "../../lib/cleanup.ts";
-import { resolveMindsDir } from "../../shared/paths.js";
+import { resolveMindsDir, getRepoRoot } from "../../shared/paths.js";
 import { ensureDashboardBuilt } from "../../shared/build-dashboard.js";
 import type {
   ImplementOptions,
@@ -53,12 +53,7 @@ function resolveMindsSourceDir(): string {
   return resolve(dirname(new URL(import.meta.url).pathname), "..", "..");
 }
 
-function getRepoRoot(): string {
-  const proc = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
-    stdout: "pipe",
-  });
-  return new TextDecoder().decode(proc.stdout).trim();
-}
+// getRepoRoot imported from shared/paths.ts
 
 /* ------------------------------------------------------------------ */
 /*  Feature directory resolution                                       */

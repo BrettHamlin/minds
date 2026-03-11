@@ -11,17 +11,9 @@
  *   emitPhaseSignal("blindqa", { start: "processing", pass: "completed", fail: "failed" });
  */
 
-import { execSync } from "child_process";
 import * as fs from "fs";
 import { resolveTransportPath } from "@minds/transport/resolve-transport"; // CROSS-MIND
-
-function getRepoRoot(): string {
-  try {
-    return execSync("git rev-parse --show-toplevel", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
-  } catch {
-    return process.cwd();
-  }
-}
+import { getRepoRoot } from "@minds/shared/paths.js";
 
 /**
  * Dispatch a signal to the orchestrator via the active transport.
