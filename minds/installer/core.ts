@@ -185,6 +185,7 @@ export function installCoreMinds(
     { src: "tasks.md", dest: "minds.tasks.md" },
     { src: "implement.md", dest: "minds.implement.md" },
     { src: "drone.launch.md", dest: "minds.drone.launch.md" },
+    { src: "fission.md", dest: "minds.fission.md" },
   ];
   for (const { src: srcName, dest: destName } of CLAUDE_COMMANDS) {
     const src = join(mindsSourceDir, "commands", srcName);
