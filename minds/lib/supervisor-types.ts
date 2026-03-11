@@ -151,7 +151,7 @@ export interface SupervisorDeps {
 }
 
 // ---------------------------------------------------------------------------
-// Constants
+// Utilities
 // ---------------------------------------------------------------------------
 
 /**
@@ -163,6 +163,10 @@ export function errorMessage(err: unknown): string {
   if (typeof err === "string") return err;
   return String(err);
 }
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
 export const DEFAULT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 export const DEFAULT_DRONE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes

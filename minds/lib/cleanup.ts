@@ -27,6 +27,7 @@ import {
   lstatSync,
 } from "fs";
 import { join, resolve } from "path";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CleanupResult {

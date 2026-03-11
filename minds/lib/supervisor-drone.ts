@@ -106,14 +106,20 @@ export function relaunchDroneInWorktree(opts: {
   // Create a new tmux pane via shared utility
   const newPaneId = splitPane(callerPane);
 
-  // Launch Claude Code in the new pane, pointing at the existing worktree
+  // Launch Claude Code in the new pane, pointing at the existing worktree.
+  // If this fails, kill the new pane to prevent leaking orphaned tmux panes.
   const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
-  launchClaudeInPane({
-    paneId: newPaneId,
-    worktreePath,
-    prompt,
-    busUrl,
-  });
+  try {
+    launchClaudeInPane({
+      paneId: newPaneId,
+      worktreePath,
+      prompt,
+      busUrl,
+    });
+  } catch (err) {
+    killPane(newPaneId);
+    throw err;
+  }
 
   return newPaneId;
 }
