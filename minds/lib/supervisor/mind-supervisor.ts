@@ -230,7 +230,7 @@ export async function runMindSupervisor(
 
       // ---- Step 4: Deterministic checks ----
       sm.transition(SupervisorState.CHECKING);
-      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName, config.tasks, config.ownsFiles);
+      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName, config.tasks, config.ownsFiles, config.requireBoundary);
 
       // ---- Step 5: Publish REVIEW_STARTED ----
       await deps.publishSignal(

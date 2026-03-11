@@ -21,6 +21,7 @@ export interface MindTaskGroup {
   mind: string;
   tasks: MindTask[];
   dependencies: string[]; // mind names this group depends on
+  ownsFiles?: string[]; // globs from (owns: ...) section annotation — undefined if not declared
 }
 
 /** An execution wave: a set of minds that can run in parallel. */

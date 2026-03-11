@@ -6,7 +6,7 @@
  * not touch infrastructure files that no drone should modify.
  */
 
-import { normalizeMindsPrefix } from "../../shared/paths.ts";
+import { normalizeMindsPrefix, stripGlob, matchesOwnership } from "../../shared/paths.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -58,35 +58,6 @@ export function parseDiffPaths(diff: string): string[] {
   return paths;
 }
 
-// ── Prefix normalization ───────────────────────────────────────────────────
-
-/**
- * Strip trailing glob patterns from an owns_files entry to get the directory prefix.
- * e.g. "src/middleware/cors/**" → "src/middleware/cors/"
- *      "src/middleware/cors/"   → "src/middleware/cors/"
- *      "src/middleware/cors"    → "src/middleware/cors"
- */
-function stripGlob(pattern: string): string {
-  return pattern.replace(/\*+$/, "").replace(/\/+$/, "/");
-}
-
-/**
- * Check whether a file path matches at least one owns_files prefix.
- * Handles `.minds/` vs `minds/` normalization and glob stripping on both sides.
- */
-function matchesOwnership(filePath: string, ownsFiles: string[]): boolean {
-  const normalizedFile = normalizeMindsPrefix(filePath);
-
-  for (const prefix of ownsFiles) {
-    const normalizedPrefix = stripGlob(normalizeMindsPrefix(prefix));
-    if (normalizedFile.startsWith(normalizedPrefix)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 /**
  * Check whether a file path matches an infrastructure exclusion.
  */
@@ -114,13 +85,30 @@ function isInfrastructureFile(filePath: string): boolean {
 
 // ── Main check function ────────────────────────────────────────────────────
 
+export interface CheckBoundaryOptions {
+  /** When true, empty ownsFiles is a hard error instead of a skip. */
+  requireBoundary?: boolean;
+}
+
 export function checkBoundary(
   diff: string,
   ownsFiles: string[],
   mindName: string,
+  options?: CheckBoundaryOptions,
 ): BoundaryCheckResult {
   const violations: BoundaryViolation[] = [];
   const modifiedFiles = parseDiffPaths(diff);
+
+  // Hard error: requireBoundary + empty ownsFiles means no boundary defined
+  if (options?.requireBoundary && ownsFiles.length === 0) {
+    return {
+      pass: false,
+      violations: [{
+        file: "",
+        message: `No boundary defined for @${mindName}. All new minds must declare owns_files via owns: annotation or minds.json.`,
+      }],
+    };
+  }
 
   for (const file of modifiedFiles) {
     // Check infrastructure exclusion first

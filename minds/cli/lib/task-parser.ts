@@ -19,13 +19,14 @@ export function parseAndGroupTasks(content: string): MindTaskGroup[] {
   const parsed: ParsedTask[] = parseTasks(content);
 
   // Group by mind, preserving encounter order
-  const groupMap = new Map<string, { tasks: MindTask[]; deps: string[] }>();
+  const groupMap = new Map<string, { tasks: MindTask[]; deps: string[]; ownsFiles: string[] }>();
 
   for (const t of parsed) {
     if (!groupMap.has(t.mind)) {
       groupMap.set(t.mind, {
         tasks: [],
         deps: [...t.sectionDeclaredDeps],
+        ownsFiles: [...t.sectionOwnsFiles],
       });
     }
 
@@ -43,11 +44,15 @@ export function parseAndGroupTasks(content: string): MindTaskGroup[] {
 
   const groups: MindTaskGroup[] = [];
   for (const [mind, data] of groupMap) {
-    groups.push({
+    const group: MindTaskGroup = {
       mind,
       tasks: data.tasks,
       dependencies: data.deps,
-    });
+    };
+    if (data.ownsFiles.length > 0) {
+      group.ownsFiles = data.ownsFiles;
+    }
+    groups.push(group);
   }
 
   return groups;

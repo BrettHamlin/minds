@@ -43,6 +43,8 @@ export interface SupervisorConfig {
   reviewTimeoutMs?: number;
   /** Pre-resolved owns_files from the main repo's minds.json (worktrees may not have it). */
   ownsFiles?: string[];
+  /** When true, empty ownsFiles is a hard error in boundary check (for unregistered minds). */
+  requireBoundary?: boolean;
 }
 
 export interface ReviewFinding {
@@ -150,6 +152,7 @@ export interface SupervisorDeps {
     mindName: string,
     tasks?: import("../../cli/lib/implement-types.ts").MindTask[],
     configOwnsFiles?: string[],
+    requireBoundary?: boolean,
   ) => CheckResults;
 
   /** Call LLM for code review. */

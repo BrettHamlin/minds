@@ -42,6 +42,8 @@ import type {
   ImplementResult,
   MindInfo,
 } from "../lib/implement-types.ts";
+import { resolveOwnsAndBoundary } from "../lib/resolve-owns.ts";
+import { scaffoldFromTasks } from "../../instantiate/lib/scaffold.ts";
 
 /**
  * Resolve the source minds directory (where scripts live).
@@ -114,6 +116,7 @@ function launchMindSupervisor(
   callerPane: string,
   baseBranch: string,
   ownsFiles?: string[],
+  requireBoundary?: boolean,
 ): { info: MindInfo; done: Promise<void> } {
   const supervisorConfig: SupervisorConfig = {
     mindName,
@@ -133,6 +136,7 @@ function launchMindSupervisor(
     maxIterations: 3,
     droneTimeoutMs: 20 * 60 * 1000, // 20 minutes
     ownsFiles,
+    requireBoundary,
   };
 
   // MindInfo placeholder -- will be updated when supervisor provides drone info
@@ -279,6 +283,29 @@ export async function runImplement(
     if (!registeredMinds.has(group.mind)) {
       console.warn(`  Warning: @${group.mind} is not in the Mind registry.`);
     }
+  }
+
+  // ── Step 3b: Scaffold unregistered minds with owns: annotations ───────────
+
+  const scaffoldResults = await scaffoldFromTasks(taskGroups, registry);
+  const scaffoldedMinds = scaffoldResults.filter((r) => r.registered);
+  if (scaffoldedMinds.length > 0) {
+    console.log(`\nStep 3b: Scaffolded ${scaffoldedMinds.length} new mind(s):`);
+    for (const r of scaffoldedMinds) {
+      const mindName = r.mindDir.split("/").pop();
+      console.log(`  Scaffolded @${mindName} → ${r.mindDir}`);
+    }
+
+    // Reload registry so wave execution picks up the new minds
+    const updatedRegistry = JSON.parse(readFileSync(mindsJsonPath, "utf-8"));
+    // Mutate in place so all downstream references see the update
+    registry.length = 0;
+    registry.push(...updatedRegistry);
+    registeredMinds.clear();
+    for (const m of registry as Array<{ name: string }>) {
+      registeredMinds.add(m.name);
+    }
+    console.log(`  Registry reloaded: ${registeredMinds.size} registered minds.`);
   }
 
   // ── Step 4: Compute execution waves ────────────────────────────────────────
@@ -455,9 +482,11 @@ export async function runImplement(
 
       console.log(`  Launching supervisor for @${mindName}...`);
       try {
-        // Look up owns_files from the main repo's registry (worktrees may not have minds.json)
-        const mindEntry = (registry as Array<{ name: string; owns_files?: string[] }>).find(
-          (m) => m.name === mindName,
+        // T011/T012: resolve ownsFiles precedence and requireBoundary flag
+        const { ownsFiles: resolvedOwnsFiles, requireBoundary } = resolveOwnsAndBoundary(
+          group.ownsFiles,
+          registry as Array<{ name: string; owns_files?: string[] }>,
+          mindName,
         );
 
         const { info, done } = launchMindSupervisor(
@@ -474,7 +503,8 @@ export async function runImplement(
           group.dependencies,
           callerPane,
           baseBranchName,
-          mindEntry?.owns_files,
+          resolvedOwnsFiles,
+          requireBoundary,
         );
         waveDrones.push(info);
         allDrones.push(info);
