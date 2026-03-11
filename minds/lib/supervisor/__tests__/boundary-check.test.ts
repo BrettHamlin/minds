@@ -64,7 +64,7 @@ describe("checkBoundary — infrastructure exclusion", () => {
     expect(result.pass).toBe(false);
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0].file).toBe("package.json");
-    expect(result.violations[0].message).toContain("Infrastructure file");
+    expect(result.violations[0].message).toContain("protected infrastructure file");
   });
 
   test("rejects modification to bun.lock", () => {
@@ -94,7 +94,7 @@ describe("checkBoundary — infrastructure exclusion", () => {
 +++ b/.claude/settings.json`;
     const result = checkBoundary(diff, ["minds/transport/"], "transport");
     expect(result.pass).toBe(false);
-    expect(result.violations[0].message).toContain("Infrastructure file");
+    expect(result.violations[0].message).toContain("protected infrastructure file");
   });
 
   test("rejects modification to minds/minds.json", () => {
@@ -152,7 +152,7 @@ diff --git a/minds/signals/emit.ts b/minds/signals/emit.ts
     expect(result.pass).toBe(false);
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0].file).toBe("minds/signals/emit.ts");
-    expect(result.violations[0].message).toContain("outside @transport boundary");
+    expect(result.violations[0].message).toContain("outside your boundary");
   });
 
   test("supports multiple owns_files prefixes", () => {
@@ -244,7 +244,7 @@ describe("checkBoundary — prefix normalization", () => {
 
     const result = checkBoundary(diff, [".minds/transport/"], "transport");
     expect(result.pass).toBe(false);
-    expect(result.violations[0].message).toContain("Infrastructure file");
+    expect(result.violations[0].message).toContain("protected infrastructure file");
   });
 });
 
@@ -266,8 +266,8 @@ diff --git a/minds/signals/emit.ts b/minds/signals/emit.ts
     expect(result.violations).toHaveLength(2);
 
     const messages = result.violations.map((v) => v.message);
-    expect(messages.some((m) => m.includes("Infrastructure file"))).toBe(true);
-    expect(messages.some((m) => m.includes("outside @transport boundary"))).toBe(true);
+    expect(messages.some((m) => m.includes("protected infrastructure file"))).toBe(true);
+    expect(messages.some((m) => m.includes("outside your boundary"))).toBe(true);
   });
 
   test("passes with empty diff", () => {
@@ -287,7 +287,7 @@ diff --git a/bun.lock b/bun.lock
     expect(result.violations).toHaveLength(2);
     // Both should be infrastructure violations, not boundary violations
     for (const v of result.violations) {
-      expect(v.message).toContain("Infrastructure file");
+      expect(v.message).toContain("protected infrastructure file");
     }
   });
 });

@@ -127,7 +127,10 @@ export function checkBoundary(
     if (isInfrastructureFile(file)) {
       violations.push({
         file,
-        message: "Infrastructure file — no Mind should modify this during implementation",
+        message: `You modified \`${file}\`, which is a protected infrastructure file ` +
+          `(package.json, lock files, tsconfig, CLAUDE.md, etc.). ` +
+          `No Mind should modify infrastructure files during implementation. ` +
+          `Revert your changes to this file.`,
       });
       continue;
     }
@@ -139,9 +142,13 @@ export function checkBoundary(
 
     // Check ownership boundary
     if (!matchesOwnership(file, ownsFiles)) {
+      const allowedDirs = ownsFiles.map((p) => `  - ${p}`).join("\n");
       violations.push({
         file,
-        message: `File outside @${mindName} boundary`,
+        message: `You modified \`${file}\`, which is outside your boundary. ` +
+          `As @${mindName}, you may only modify files within:\n${allowedDirs}\n` +
+          `Revert your changes to this file. If the task requires changes here, ` +
+          `skip that part — it belongs to a different Mind.`,
       });
     }
   }

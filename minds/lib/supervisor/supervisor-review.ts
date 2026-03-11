@@ -242,16 +242,37 @@ export function buildFeedbackContent(
   testFailures?: string,
 ): string {
   let content = `# Review Feedback (Round ${round})\n\n`;
+  content += `Your changes were reviewed and need fixes before approval. `;
+  content += `Address each finding below, then commit your fixes.\n\n`;
 
   if (testFailures) {
-    content += `## Test Failures\n\n\`\`\`\n${testFailures}\n\`\`\`\n\n`;
+    content += `## Test Failures\n\n`;
+    content += `The following tests are failing. Fix them before resubmitting.\n\n`;
+    content += `\`\`\`\n${testFailures}\n\`\`\`\n\n`;
   }
 
   if (findings.length > 0) {
-    content += `## Findings\n\n`;
-    for (const f of findings) {
-      const severity = f.severity === "error" ? "[ERROR]" : "[WARNING]";
-      content += `- [ ] ${severity} ${f.file}:${f.line} — ${f.message}\n`;
+    // Categorize findings for clearer feedback
+    const boundaryFindings = findings.filter((f) => f.message.includes("outside your boundary") || f.message.includes("infrastructure file"));
+    const otherFindings = findings.filter((f) => !boundaryFindings.includes(f));
+
+    if (boundaryFindings.length > 0) {
+      content += `## Boundary Violations\n\n`;
+      content += `You modified files outside your allowed scope. `;
+      content += `**Revert these changes** — use \`git checkout -- <file>\` to undo them. `;
+      content += `If a task requires files outside your boundary, skip that task.\n\n`;
+      for (const f of boundaryFindings) {
+        content += `- ${f.file} — ${f.message}\n`;
+      }
+      content += `\n`;
+    }
+
+    if (otherFindings.length > 0) {
+      content += `## Code Review Findings\n\n`;
+      for (const f of otherFindings) {
+        const severity = f.severity === "error" ? "**Error**" : "Warning";
+        content += `- ${severity}: ${f.file}:${f.line} — ${f.message}\n`;
+      }
     }
   }
 

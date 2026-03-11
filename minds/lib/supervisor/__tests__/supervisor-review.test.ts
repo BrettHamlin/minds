@@ -465,12 +465,11 @@ describe("buildFeedbackContent", () => {
     expect(content).toContain("Round 1");
   });
 
-  test("formats findings as checklist items", () => {
+  test("formats findings with file references and messages", () => {
     const content = buildFeedbackContent(2, [
       { file: "src/sse.ts", line: 5, severity: "error", message: "Missing error handling" },
       { file: "src/sse.ts", line: 12, severity: "warning", message: "Use const" },
     ]);
-    expect(content).toContain("- [ ]");
     expect(content).toContain("src/sse.ts:5");
     expect(content).toContain("Missing error handling");
     expect(content).toContain("src/sse.ts:12");
@@ -482,14 +481,25 @@ describe("buildFeedbackContent", () => {
       { file: "a.ts", line: 1, severity: "error", message: "critical bug" },
       { file: "b.ts", line: 2, severity: "warning", message: "minor issue" },
     ]);
-    expect(content).toContain("[ERROR]");
-    expect(content).toContain("[WARNING]");
+    expect(content).toContain("**Error**");
+    expect(content).toContain("Warning");
   });
 
   test("handles empty findings array", () => {
     const content = buildFeedbackContent(1, []);
     expect(content).toContain("Round 1");
-    expect(content).not.toContain("- [ ]");
+    expect(content).not.toContain("Findings");
+  });
+
+  test("categorizes boundary violations separately", () => {
+    const content = buildFeedbackContent(1, [
+      { file: "src/hono.ts", line: 0, severity: "error", message: "You modified `src/hono.ts`, which is outside your boundary. As @etag, you may only modify files within:\n  - src/middleware/etag/**\nRevert your changes to this file." },
+      { file: "src/middleware/etag/index.ts", line: 5, severity: "error", message: "Missing type export" },
+    ]);
+    expect(content).toContain("## Boundary Violations");
+    expect(content).toContain("git checkout");
+    expect(content).toContain("## Code Review Findings");
+    expect(content).toContain("Missing type export");
   });
 
   test("includes test failure info when provided", () => {

@@ -240,7 +240,7 @@ describe("buildFeedbackContent with iteration-tagged findings", () => {
     expect(content).toContain("Round 2");
     expect(content).toContain("a.ts:10");
     expect(content).toContain("b.ts:20");
-    expect(content).toContain("[ERROR]");
-    expect(content).toContain("[WARNING]");
+    expect(content).toContain("**Error**");
+    expect(content).toContain("Warning");
   });
 });
