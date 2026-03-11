@@ -5,8 +5,8 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from "fs";
 import { join } from "path";
-import { resolveMindsDir } from "../shared/paths.js";
-import { killPane, splitPane, launchClaudeInPane, shellQuote } from "./tmux-utils.ts";
+import { resolveMindsDir } from "../../shared/paths.js";
+import { killPane, splitPane, launchClaudeInPane, shellQuote } from "../tmux-utils.ts";
 import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
 
 // ---------------------------------------------------------------------------

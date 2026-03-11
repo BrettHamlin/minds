@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 import { SupervisorState, type SupervisorConfig } from "../supervisor-types.ts";
 import { createSupervisorStateMachine } from "../supervisor-state-machine.ts";
-import type { MindTask } from "../../cli/lib/implement-types.ts";
+import type { MindTask } from "../../../cli/lib/implement-types.ts";
 
 function makeConfig(overrides?: Partial<SupervisorConfig>): SupervisorConfig {
   return {

@@ -3,8 +3,8 @@
  * deterministic Mind supervisor.
  */
 
-import type { MindTask } from "../cli/lib/implement-types.ts";
-import type { MindsEventType } from "../transport/minds-events.ts";
+import type { MindTask } from "../../cli/lib/implement-types.ts";
+import type { MindsEventType } from "../../transport/minds-events.ts";
 
 // ---------------------------------------------------------------------------
 // State enum

@@ -2,8 +2,8 @@
  * supervisor-bus-shape.test.ts — Verifies the event shape produced by
  * publishSignal matches what waitForWaveCompletion expects.
  *
- * The chain: publishSignal → publishMindsEvent → mindsPublish → POST /publish
- *            → bus server BusMessage → SSE data: JSON → listener parses
+ * The chain: publishSignal -> publishMindsEvent -> mindsPublish -> POST /publish
+ *            -> bus server BusMessage -> SSE data: JSON -> listener parses
  *
  * The listener checks:
  *   event.type === MindsEventType.MIND_COMPLETE
@@ -12,7 +12,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { MindsEventType } from "../../transport/minds-events.ts";
+import { MindsEventType } from "../../../transport/minds-events.ts";
 
 describe("bus event payload shape", () => {
   test("publishSignal produces payload shape matching waitForWaveCompletion expectations", () => {
@@ -23,7 +23,7 @@ describe("bus event payload shape", () => {
     const ticketId = channel.replace(/^minds-/, "");
     const extra = { iterations: 2, approvedWithWarnings: false };
 
-    // publishSignal → publishMindsEvent → mindsPublish flattens payload
+    // publishSignal -> publishMindsEvent -> mindsPublish flattens payload
     const eventPayload = { mindName, waveId, ...extra };
     const publishPayload = {
       ...eventPayload,

@@ -21,7 +21,7 @@ import type {
   SupervisorDeps,
   CheckResults,
 } from "../supervisor-types.ts";
-import { MindsEventType } from "../../transport/minds-events.ts";
+import { MindsEventType } from "../../../transport/minds-events.ts";
 
 // ---------------------------------------------------------------------------
 // Test helpers

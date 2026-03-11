@@ -3,7 +3,7 @@
  * and feedback file generation for the deterministic Mind supervisor.
  */
 
-import type { MindTask } from "../cli/lib/implement-types.ts";
+import type { MindTask } from "../../cli/lib/implement-types.ts";
 import type { ReviewFinding, ReviewVerdict } from "./supervisor-types.ts";
 import { MAX_DIFF_CHARS, MAX_TEST_OUTPUT_CHARS } from "./supervisor-types.ts";
 

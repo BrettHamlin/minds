@@ -27,11 +27,11 @@
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { publishMindsEvent } from "../transport/publish-event.ts";
-import { MindsEventType } from "../transport/minds-events.ts";
-import { resolveMindsDir } from "../shared/paths.js";
-import { killPane as killPaneImpl } from "./tmux-utils.ts";
-import { formatTaskList } from "../cli/lib/drone-brief.ts";
+import { publishMindsEvent } from "../../transport/publish-event.ts";
+import { MindsEventType } from "../../transport/minds-events.ts";
+import { resolveMindsDir } from "../../shared/paths.js";
+import { killPane as killPaneImpl } from "../tmux-utils.ts";
+import { formatTaskList } from "../../cli/lib/drone-brief.ts";
 
 // Re-export types and functions from sub-modules for backward compatibility
 export {

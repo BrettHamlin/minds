@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import type { ReviewFinding, SupervisorConfig } from "../supervisor-types.ts";
 import { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "../supervisor-review.ts";
-import type { MindTask } from "../../cli/lib/implement-types.ts";
+import type { MindTask } from "../../../cli/lib/implement-types.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures

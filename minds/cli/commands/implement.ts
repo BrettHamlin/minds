@@ -23,8 +23,8 @@ import { existsSync, readFileSync, readdirSync, unlinkSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { parseAndGroupTasks } from "../lib/task-parser.ts";
 import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
-import { runMindSupervisor } from "../../lib/mind-supervisor.ts";
-import type { SupervisorConfig } from "../../lib/mind-supervisor.ts";
+import { runMindSupervisor } from "../../lib/supervisor/mind-supervisor.ts";
+import type { SupervisorConfig } from "../../lib/supervisor/mind-supervisor.ts";
 import { waitForWaveCompletion, type WaveCompletionResult } from "../lib/bus-listener.ts";
 import { killPane } from "../../lib/tmux-utils.ts";
 import {
