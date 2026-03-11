@@ -78,6 +78,114 @@ const SHARED_INFRA_FILES = [
   "STANDARDS.md",
 ] as const;
 
+/** Known Claude Code hook event types that can appear in settings.json */
+const HOOK_EVENT_TYPES = new Set([
+  "PreToolUse",
+  "PostToolUse",
+  "SessionStart",
+  "SessionEnd",
+  "UserPromptSubmit",
+  "Stop",
+  "SubagentStop",
+]);
+
+/**
+ * Parse a hook filename to determine its event type.
+ * Convention: `EventType.name.ts` or `EventType.name.hook.ts`
+ * e.g. `PreToolUse.validate.ts` -> "PreToolUse"
+ * Returns undefined if no known event type is found.
+ */
+function parseHookEventType(filename: string): string | undefined {
+  const dotIndex = filename.indexOf(".");
+  if (dotIndex === -1) return undefined;
+  const prefix = filename.substring(0, dotIndex);
+  return HOOK_EVENT_TYPES.has(prefix) ? prefix : undefined;
+}
+
+/**
+ * Returns a list of actual hook filenames in the given directory,
+ * filtering out .gitkeep and non-files.
+ */
+export function getInstalledHookFiles(hooksDir: string): string[] {
+  if (!existsSync(hooksDir)) return [];
+  return readdirSync(hooksDir).filter(
+    (name) => name !== ".gitkeep" && !name.startsWith(".")
+  );
+}
+
+/**
+ * Generate or merge Claude Code settings.json with hook registrations.
+ *
+ * Takes a list of hook filenames (e.g. ["PreToolUse.validate.ts"]) and
+ * generates the hooks section of settings.json. If settingsPath points to
+ * an existing file, its contents are preserved and hooks are merged.
+ *
+ * Hook filenames that don't match a known event type are skipped.
+ */
+export function generateClaudeSettings(
+  hookFiles: string[],
+  existingSettingsPath?: string,
+): Record<string, unknown> {
+  let settings: Record<string, unknown> = {};
+
+  if (existingSettingsPath && existsSync(existingSettingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(existingSettingsPath, "utf-8")) as Record<string, unknown>;
+    } catch {
+      // If existing file is corrupt, start fresh
+      settings = {};
+    }
+  }
+
+  // Group hook files by event type
+  const hooksByEvent = new Map<string, string[]>();
+  for (const file of hookFiles) {
+    const eventType = parseHookEventType(file);
+    if (!eventType) continue;
+    const existing = hooksByEvent.get(eventType) ?? [];
+    existing.push(file);
+    hooksByEvent.set(eventType, existing);
+  }
+
+  // Nothing to register
+  if (hooksByEvent.size === 0) return settings;
+
+  const existingHooks = (settings.hooks ?? {}) as Record<string, unknown[]>;
+
+  for (const [eventType, files] of hooksByEvent) {
+    const newEntries = files.map((file) => ({
+      hooks: [
+        {
+          type: "command" as const,
+          command: `.claude/hooks/${file}`,
+        },
+      ],
+    }));
+
+    const existing = existingHooks[eventType] ?? [];
+    // Avoid duplicate registrations: skip entries whose command path is already present
+    const existingCommands = new Set<string>();
+    for (const entry of existing) {
+      const hooks = (entry as Record<string, unknown>).hooks as Array<{ command?: string }> | undefined;
+      if (hooks) {
+        for (const h of hooks) {
+          if (h.command) existingCommands.add(h.command);
+        }
+      }
+    }
+
+    const dedupedEntries = newEntries.filter((entry) => {
+      const cmd = entry.hooks[0].command;
+      return !existingCommands.has(cmd);
+    });
+
+    existingHooks[eventType] = [...existing, ...dedupedEntries];
+  }
+
+  settings.hooks = existingHooks;
+  return settings;
+}
+
 export interface MindsInstallResult {
   copied: string[];
   skipped: string[];
@@ -283,6 +391,45 @@ export function installCoreMinds(
     log("  Bun runtime verified");
   } else {
     result.errors.push("Bun runtime not found. Install Bun: https://bun.sh");
+  }
+
+  // Install CLI dependencies (commander) scoped to .minds/
+  if (result.bunVerified) {
+    const mindsPackageJson = join(destMindsDir, "package.json");
+    if (!existsSync(mindsPackageJson)) {
+      writeFileSync(mindsPackageJson, JSON.stringify({
+        name: "minds-runtime",
+        version: "0.0.1",
+        private: true,
+      }, null, 2) + "\n");
+      log("  Created .minds/package.json");
+    }
+    const addCmd = spawnSync("bun", ["add", "commander"], {
+      cwd: destMindsDir,
+      stdio: "pipe",
+    });
+    if (addCmd.status === 0) {
+      log("  Installed commander dependency in .minds/");
+    } else {
+      const stderr = addCmd.stderr?.toString().trim() ?? "unknown error";
+      result.errors.push(
+        `Failed to install commander in .minds/ (run 'bun add commander' in .minds/ manually): ${stderr}`
+      );
+    }
+  }
+
+  // Register hooks in .claude/settings.json
+  const installedHookFiles = getInstalledHookFiles(join(repoRoot, ".claude", "hooks"));
+  if (installedHookFiles.length > 0) {
+    try {
+      const settingsPath = join(repoRoot, ".claude", "settings.json");
+      const newSettings = generateClaudeSettings(installedHookFiles, settingsPath);
+      writeFileSync(settingsPath, JSON.stringify(newSettings, null, 2) + "\n");
+      result.copied.push(".claude/settings.json");
+      log("  Generated/updated .claude/settings.json with hook registrations");
+    } catch (err) {
+      result.errors.push(`.claude/settings.json: ${(err as Error).message}`);
+    }
   }
 
   // Build dashboard SPA
