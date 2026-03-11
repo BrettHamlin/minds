@@ -109,6 +109,20 @@ export function _resetRepoRootCache(): void {
 }
 
 /**
+ * Normalize a file path prefix: `.minds/` → `minds/` for string comparison.
+ *
+ * Use this for prefix matching where you need to compare paths regardless
+ * of whether they use the dev (`minds/`) or installed (`.minds/`) layout.
+ * This is a pure string operation — no filesystem access.
+ */
+export function normalizeMindsPrefix(filePath: string): string {
+  if (filePath.startsWith(".minds/")) {
+    return "minds/" + filePath.slice(7);
+  }
+  return filePath;
+}
+
+/**
  * Path to the metrics SQLite database.
  *
  * Uses mindsRoot() to resolve the base directory so the path is portable

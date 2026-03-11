@@ -92,6 +92,12 @@ export interface CheckResults {
   testOutput: string;
   testsPass: boolean;
   findings: ReviewFinding[];
+  /** Whether all contract annotations are satisfied. Undefined if check was skipped. */
+  contractsPass?: boolean;
+  contractFindings?: ReviewFinding[];
+  /** Whether all modified files are within the Mind's boundary. Undefined if check was skipped. */
+  boundaryPass?: boolean;
+  boundaryFindings?: ReviewFinding[];
 }
 
 /**
@@ -133,11 +139,12 @@ export interface SupervisorDeps {
     extra?: Record<string, unknown>,
   ) => Promise<void>;
 
-  /** Run deterministic checks (git diff + bun test). */
+  /** Run deterministic checks (git diff + bun test + boundary + contracts). */
   runDeterministicChecks: (
     worktreePath: string,
     baseBranch: string,
     mindName: string,
+    tasks?: import("../../cli/lib/implement-types.ts").MindTask[],
   ) => CheckResults;
 
   /** Call LLM for code review. */

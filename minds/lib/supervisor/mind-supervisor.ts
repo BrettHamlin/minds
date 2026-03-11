@@ -26,12 +26,14 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { join, relative } from "path";
 import { publishMindsEvent } from "../../transport/publish-event.ts";
 import { MindsEventType } from "../../transport/minds-events.ts";
 import { resolveMindsDir } from "../../shared/paths.js";
 import { killPane as killPaneImpl } from "../tmux-utils.ts";
 import { formatTaskList } from "../../cli/lib/drone-brief.ts";
+import { checkBoundary } from "./boundary-check.ts";
+import { parseAnnotations, verifyContracts } from "../check-contracts-core.ts";
 
 // Re-export types and functions from sub-modules for backward compatibility
 export {
@@ -173,7 +175,7 @@ ${depsSection}${feedbackSection}
 // Deterministic Checks (git diff + bun test)
 // ---------------------------------------------------------------------------
 
-function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string): CheckResults {
+function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string, tasks?: import("../../cli/lib/implement-types.ts").MindTask[]): CheckResults {
   const findings: ReviewFinding[] = [];
 
   // Get diff relative to base branch
@@ -195,8 +197,9 @@ function runDeterministicChecksDefault(worktreePath: string, baseBranch: string,
   }
 
   // Run scoped tests
+  const mindsRelative = relative(worktreePath, resolveMindsDir(worktreePath));
   const testProc = Bun.spawnSync(
-    ["bun", "test", `minds/${mindName}/`],
+    ["bun", "test", `${mindsRelative}/${mindName}/`],
     { cwd: worktreePath, stdout: "pipe", stderr: "pipe", timeout: 120_000 }
   );
   const testStdout = new TextDecoder().decode(testProc.stdout);
@@ -204,7 +207,69 @@ function runDeterministicChecksDefault(worktreePath: string, baseBranch: string,
   const testOutput = testStdout + (testStderr ? `\n${testStderr}` : "");
   const testsPass = testProc.exitCode === 0;
 
-  return { diff, testOutput, testsPass, findings };
+  const result: CheckResults = { diff, testOutput, testsPass, findings };
+
+  // ── Boundary check ──────────────────────────────────────────────────────
+  let ownsFiles: string[] = [];
+  try {
+    const mindsDir = resolveMindsDir(worktreePath);
+    const mindsJsonPath = join(mindsDir, "minds.json");
+
+    if (existsSync(mindsJsonPath)) {
+      const mindsJsonContent = readFileSync(mindsJsonPath, "utf-8");
+      const registry = JSON.parse(mindsJsonContent) as Array<{ name: string; owns_files?: string[] }>;
+      const entry = registry.find((m) => m.name === mindName);
+      if (entry?.owns_files) {
+        ownsFiles = entry.owns_files;
+      } else {
+        console.log(`[supervisor] @${mindName}: Not found in minds.json — skipping boundary check`);
+      }
+    } else {
+      console.log(`[supervisor] @${mindName}: minds.json not found — skipping boundary check`);
+    }
+  } catch (err) {
+    console.log(`[supervisor] @${mindName}: Failed to read minds.json — skipping boundary check: ${err}`);
+  }
+
+  if (diff) {
+    const boundaryResult = checkBoundary(diff, ownsFiles, mindName);
+    result.boundaryPass = boundaryResult.pass;
+    result.boundaryFindings = boundaryResult.violations.map((v) => ({
+      file: v.file,
+      line: 0,
+      severity: "error" as const,
+      message: v.message,
+    }));
+  }
+
+  // ── Contract check ────────────────────────────────────────────────────────
+  if (tasks && tasks.length > 0) {
+    // Serialize tasks back to the annotation format the parser expects
+    const tasksText = tasks.map((t) => {
+      let line = `- [ ] ${t.id} @${t.mind} ${t.description}`;
+      if (t.produces) {
+        line += ` produces: \`${t.produces.interface}\` at ${t.produces.path}`;
+      }
+      if (t.consumes) {
+        line += ` consumes: \`${t.consumes.interface}\` from ${t.consumes.path}`;
+      }
+      return line;
+    }).join("\n");
+
+    const annotations = parseAnnotations(tasksText, mindName);
+    if (annotations.length > 0) {
+      const contractResult = verifyContracts(annotations, worktreePath, mindName);
+      result.contractsPass = contractResult.pass;
+      result.contractFindings = contractResult.violations.map((v) => ({
+        file: v.annotation.filePath,
+        line: 0,
+        severity: "error" as const,
+        message: `[${v.annotation.taskId}] ${v.reason}`,
+      }));
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +476,7 @@ export async function runMindSupervisor(
 
       // ---- Step 4: Deterministic checks ----
       sm.transition(SupervisorState.CHECKING);
-      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName);
+      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName, config.tasks);
 
       // ---- Step 5: Publish REVIEW_STARTED ----
       await deps.publishSignal(
@@ -475,6 +540,22 @@ export async function runMindSupervisor(
           severity: "error",
           message: "Tests are failing. Fix all test failures before approval.",
         });
+      }
+
+      // Force rejection if boundary check fails
+      if (checks.boundaryPass === false && verdict.approved) {
+        verdict.approved = false;
+        for (const f of checks.boundaryFindings ?? []) {
+          verdict.findings.push(f);
+        }
+      }
+
+      // Force rejection if contract check fails
+      if (checks.contractsPass === false && verdict.approved) {
+        verdict.approved = false;
+        for (const f of checks.contractFindings ?? []) {
+          verdict.findings.push(f);
+        }
       }
 
       // Accumulate findings across all iterations, tagging each with its iteration
