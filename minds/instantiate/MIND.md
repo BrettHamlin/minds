@@ -11,7 +11,7 @@ Mind lifecycle — scaffolding new Minds in any repo. Creates the directory stru
 - **Registration uses `mindsRoot()`** from `@minds/shared/paths.js` to locate `minds.json` — `.minds/minds.json` in both installed and dev layouts.
 - **Atomic writes**: `minds.json` is written to a `.tmp` file then renamed — never partial writes.
 - **Idempotent name check**: scaffold throws if the Mind directory already exists.
-- **Name validation**: must match `^[a-z][a-z0-9-]*$` — lowercase, starts with letter.
+- **Name validation**: must match `^[a-z][a-z0-9_-]*$` — lowercase, starts with letter.
 
 ## Key Files
 

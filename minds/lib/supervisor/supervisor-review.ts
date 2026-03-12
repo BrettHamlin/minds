@@ -21,7 +21,6 @@ export function truncateWithLabel(text: string, maxChars: number, label: string)
 
 export const REVIEW_CHECKLIST: readonly string[] = [
   "All assigned tasks are implemented",
-  "No files modified outside the mind's boundary (owns_files)",
   "No duplicated logic — DRY principle respected",
   "All tests pass (check the test output provided)",
   "All new exported functions have tests",

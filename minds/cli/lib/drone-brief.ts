@@ -15,6 +15,7 @@ export interface DroneBriefParams {
   dependencies: string[];
   featureDir: string;
   mindsDir?: string; // absolute path to minds/ dir for test commands
+  ownsFiles?: string[]; // file paths this mind is allowed to touch
 }
 
 /**
@@ -51,6 +52,7 @@ export function buildDroneBrief(params: DroneBriefParams): string {
     dependencies,
     featureDir,
     mindsDir,
+    ownsFiles,
   } = params;
 
   const taskList = formatTaskList(tasks);
@@ -88,8 +90,14 @@ ${taskList}
 ## ✅ Completion Criteria
 
 All tasks above are checked off AND all tests pass.
-${depsSection}
-## 🔧 Instructions
+${depsSection}${ownsFiles && ownsFiles.length > 0 ? `## 📁 File Boundary
+
+You may ONLY create or modify files within these paths:
+${ownsFiles.map((f) => `- \`${f}\``).join("\n")}
+
+Files outside these paths will be rejected by the deterministic boundary check.
+
+` : ""}## 🔧 Instructions
 
 1. Read and understand each task above.
 2. Implement ALL tasks in order (unless marked [P] for parallel-safe).

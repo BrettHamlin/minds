@@ -53,11 +53,11 @@ export function mindsJsonPath(): string {
 // Validation
 // ---------------------------------------------------------------------------
 
-/** Validate a Mind name: lowercase letters, digits, hyphens only. */
+/** Validate a Mind name: lowercase letters, digits, underscores, hyphens only. */
 export function validateMindName(name: string): string | null {
   if (!name || typeof name !== "string") return "name is required";
-  if (!/^[a-z][a-z0-9-]*$/.test(name)) {
-    return "name must be lowercase, start with a letter, and contain only letters, digits, or hyphens";
+  if (!/^[a-z][a-z0-9_-]*$/.test(name)) {
+    return "name must be lowercase, start with a letter, and contain only letters, digits, underscores, or hyphens";
   }
   return null;
 }
