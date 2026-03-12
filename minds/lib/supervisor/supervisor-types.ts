@@ -45,6 +45,14 @@ export interface SupervisorConfig {
   ownsFiles?: string[];
   /** When true, empty ownsFiles is a hard error in boundary check (for unregistered minds). */
   requireBoundary?: boolean;
+  /** Repo alias for multi-repo workspaces. */
+  repo?: string;
+  /** Absolute path to this mind's repo (may differ from repoRoot in multi-repo). */
+  mindRepoRoot?: string;
+  /** Per-repo test command (default: "bun test"). */
+  testCommand?: string;
+  /** Per-repo install command (default: "bun install"). */
+  installCommand?: string;
 }
 
 export interface ReviewFinding {
