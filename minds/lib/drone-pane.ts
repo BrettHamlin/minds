@@ -41,6 +41,88 @@ import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
+/**
+ * Assemble the CLAUDE.md content for a drone, loading minds.json, STANDARDS.md,
+ * STANDARDS-project.md, and optional MIND.md from the repo's minds directory.
+ */
+export function assembleClaudeContent(repoRoot: string, mindName: string, ticketId: string): string {
+  const mindsBase = resolveMindsDir(repoRoot);
+
+  // Load minds.json and find entry for this mind
+  const mindsJsonPath = resolve(mindsBase, "minds.json");
+  let domain = "";
+  let ownsFiles: string[] = [];
+
+  if (existsSync(mindsJsonPath)) {
+    try {
+      const minds = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{
+        name: string;
+        domain?: string;
+        owns_files?: string[];
+      }>;
+      const entry = minds.find((m) => m.name === mindName);
+      if (entry) {
+        domain = entry.domain ?? "";
+        ownsFiles = entry.owns_files ?? [];
+      }
+    } catch {
+      // If parse fails, continue with empty values
+    }
+  }
+
+  // Load STANDARDS.md (generic — ships with installer)
+  const standardsPath = resolve(mindsBase, "STANDARDS.md");
+  const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
+
+  // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
+  const projectStandardsPath = resolve(mindsBase, "STANDARDS-project.md");
+  const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
+
+  // Load MIND.md (optional)
+  const mindMdPath = resolve(mindsBase, mindName, "MIND.md");
+  const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
+
+  const ownsFilesSection =
+    ownsFiles.length > 0
+      ? ownsFiles.map((f) => `- ${f}`).join("\n")
+      : "(no file boundaries defined)";
+
+  const domainLine = domain ? `Domain: ${domain}` : "";
+
+  const mindProfileSection = mindMd
+    ? `## Mind Profile (@${mindName})\n${mindMd}`
+    : "";
+
+  return [
+    `## Mind Identity`,
+    ``,
+    `You are the @${mindName} drone for ticket ${ticketId}.`,
+    domainLine,
+    ``,
+    `Your file boundary (only touch files in these paths):`,
+    ownsFilesSection,
+    ``,
+    `## Engineering Standards`,
+    standards,
+    projectStandards ? `## Project-Specific Standards` : null,
+    projectStandards || null,
+    mindProfileSection,
+    `## Test Command`,
+    ``,
+    `Run only your Mind's tests — never bare \`bun test\`:`,
+    `\`\`\``,
+    `bun test minds/${mindName}/`,
+    `\`\`\``,
+    ``,
+    `## Active Task`,
+    `Your current task brief is in DRONE-BRIEF.md at the worktree root.`,
+    `If you've compacted or lost context, re-read that file.`,
+  ]
+    .filter((line) => line !== null)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
 export async function publishDroneSpawned(params: {
   busUrl: string;
   channel: string;
@@ -64,86 +146,6 @@ export async function publishDroneSpawned(params: {
 
 if (import.meta.main) { (async () => {
   const mux: TerminalMultiplexer = new TmuxMultiplexer();
-
-  // ─── CLAUDE.md assembly ─────────────────────────────────────────────────────
-
-  function assembleClaudeContent(repoRoot: string, mindName: string, ticketId: string): string {
-    const mindsBase = resolveMindsDir(repoRoot);
-
-    // Load minds.json and find entry for this mind
-    const mindsJsonPath = resolve(mindsBase, "minds.json");
-    let domain = "";
-    let ownsFiles: string[] = [];
-
-    if (existsSync(mindsJsonPath)) {
-      try {
-        const minds = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{
-          name: string;
-          domain?: string;
-          owns_files?: string[];
-        }>;
-        const entry = minds.find((m) => m.name === mindName);
-        if (entry) {
-          domain = entry.domain ?? "";
-          ownsFiles = entry.owns_files ?? [];
-        }
-      } catch {
-        // If parse fails, continue with empty values
-      }
-    }
-
-    // Load STANDARDS.md (generic — ships with installer)
-    const standardsPath = resolve(mindsBase, "STANDARDS.md");
-    const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
-
-    // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
-    const projectStandardsPath = resolve(mindsBase, "STANDARDS-project.md");
-    const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
-
-    // Load MIND.md (optional)
-    const mindMdPath = resolve(mindsBase, mindName, "MIND.md");
-    const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
-
-    const ownsFilesSection =
-      ownsFiles.length > 0
-        ? ownsFiles.map((f) => `- ${f}`).join("\n")
-        : "(no file boundaries defined)";
-
-    const domainLine = domain ? `Domain: ${domain}` : "";
-
-    const mindProfileSection = mindMd
-      ? `## Mind Profile (@${mindName})\n${mindMd}`
-      : "";
-
-    return [
-      `## Mind Identity`,
-      ``,
-      `You are the @${mindName} drone for ticket ${ticketId}.`,
-      domainLine,
-      ``,
-      `Your file boundary (only touch files in these paths):`,
-      ownsFilesSection,
-      ``,
-      `## Engineering Standards`,
-      standards,
-      projectStandards ? `## Project-Specific Standards` : null,
-      projectStandards || null,
-      mindProfileSection,
-      `## Test Command`,
-      ``,
-      `Run only your Mind's tests — never bare \`bun test\`:`,
-      `\`\`\``,
-      `bun test minds/${mindName}/`,
-      `\`\`\``,
-      ``,
-      `## Active Task`,
-      `Your current task brief is in DRONE-BRIEF.md at the worktree root.`,
-      `If you've compacted or lost context, re-read that file.`,
-    ]
-      .filter((line) => line !== null)
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n");
-  }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 

@@ -108,7 +108,7 @@ export function parseTasks(content: string): ParsedTask[] {
         }
 
         // Parse "owns: ..." clause
-        const ownsMatch = paren.match(/owns:\s*([^,]*(?:,\s*(?!depends\s)[\w./*\-]+)*)/);
+        const ownsMatch = paren.match(/owns:\s*([^,]*(?:,\s*(?!depends\s|repo\s*:)[\w./*\-:]+)*)/);
         if (ownsMatch) {
           sectionOwnsFiles = ownsMatch[1]
             .split(",")
