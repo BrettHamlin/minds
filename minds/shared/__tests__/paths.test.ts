@@ -3,7 +3,46 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { stripGlob, matchesOwnership } from "../paths.ts";
+import { containsPathTraversal, stripGlob, matchesOwnership } from "../paths.ts";
+
+// ---------------------------------------------------------------------------
+// containsPathTraversal
+// ---------------------------------------------------------------------------
+
+describe("containsPathTraversal", () => {
+  test("detects leading ..", () => {
+    expect(containsPathTraversal("../outside")).toBe(true);
+  });
+
+  test("detects embedded .. component", () => {
+    expect(containsPathTraversal("foo/../bar")).toBe(true);
+  });
+
+  test("detects trailing ..", () => {
+    expect(containsPathTraversal("foo/..")).toBe(true);
+  });
+
+  test("detects bare ..", () => {
+    expect(containsPathTraversal("..")).toBe(true);
+  });
+
+  test("allows double dots within filename (foo..bar)", () => {
+    expect(containsPathTraversal("foo..bar")).toBe(false);
+  });
+
+  test("allows double dots within directory name", () => {
+    expect(containsPathTraversal("foo..bar/baz")).toBe(false);
+  });
+
+  test("allows normal paths", () => {
+    expect(containsPathTraversal("./foo/bar")).toBe(false);
+    expect(containsPathTraversal("src/api")).toBe(false);
+  });
+
+  test("allows empty string", () => {
+    expect(containsPathTraversal("")).toBe(false);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // stripGlob

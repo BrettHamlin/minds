@@ -5,12 +5,14 @@
  * Single source of truth for workspace validation (MR-001, MR-P3).
  */
 
+import { containsPathTraversal } from "./paths.ts";
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const WORKSPACE_MANIFEST_FILENAME = "minds-workspace.json";
 
 /** Alias must be alphanumeric, hyphens, or underscores. No colons, slashes, or spaces. */
-const ALIAS_PATTERN = /^[\w-]+$/;
+export const ALIAS_PATTERN = /^[\w-]+$/;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -101,11 +103,14 @@ export function validateWorkspaceManifestDetailed(value: unknown): ValidationRes
     // path validation
     if (typeof r.path !== "string" || r.path.length === 0) {
       errors.push(`repos[${i}].path must be a non-empty string`);
-    } else if (r.path.includes("..")) {
+    } else if (containsPathTraversal(r.path as string)) {
       errors.push(`Repo "${r.alias}" path contains ".." — path traversal not allowed`);
     }
 
     // Optional field validation
+    // Note: installCommand and testCommand are validated as strings here.
+    // Shell injection prevention is enforced at execution time (Phase 4, MR-012)
+    // via array-based spawning — commands are never passed through a shell.
     if (r.installCommand !== undefined && typeof r.installCommand !== "string") {
       errors.push(`repos[${i}].installCommand must be a string`);
     }

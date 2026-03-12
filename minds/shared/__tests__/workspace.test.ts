@@ -7,6 +7,7 @@ import {
   validateWorkspaceManifest,
   validateWorkspaceManifestDetailed,
   WORKSPACE_MANIFEST_FILENAME,
+  ALIAS_PATTERN,
   type WorkspaceManifest,
 } from "../workspace.ts";
 
@@ -246,5 +247,64 @@ describe("validateWorkspaceManifest", () => {
       repos: [{ alias: "mono", path: "." }],
     };
     expect(validateWorkspaceManifest(manifest)).toBe(true);
+  });
+
+  // ── path traversal precision (review fix #1) ─────────────────────────────
+
+  test("path with double dots in name (foo..bar) passes — not path traversal", () => {
+    const manifest = {
+      version: 1,
+      orchestratorRepo: "repo",
+      repos: [{ alias: "repo", path: "./foo..bar" }],
+    };
+    expect(validateWorkspaceManifest(manifest)).toBe(true);
+  });
+
+  test("path with .. as directory component fails", () => {
+    const manifest = {
+      version: 1,
+      orchestratorRepo: "repo",
+      repos: [{ alias: "repo", path: "foo/../bar" }],
+    };
+    const result = validateWorkspaceManifestDetailed(manifest);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("path traversal"))).toBe(true);
+  });
+
+  // ── missing alias or path fields (review fix #5) ─────────────────────────
+
+  test("repo entry missing alias field fails", () => {
+    const manifest = {
+      version: 1,
+      orchestratorRepo: "repo",
+      repos: [{ path: "./a" }],
+    };
+    const result = validateWorkspaceManifestDetailed(manifest);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("alias"))).toBe(true);
+  });
+
+  test("repo entry missing path field fails", () => {
+    const manifest = {
+      version: 1,
+      orchestratorRepo: "foo",
+      repos: [{ alias: "foo" }],
+    };
+    const result = validateWorkspaceManifestDetailed(manifest);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("path"))).toBe(true);
+  });
+});
+
+describe("ALIAS_PATTERN", () => {
+  test("is exported and matches valid aliases", () => {
+    expect(ALIAS_PATTERN.test("my-repo_v2")).toBe(true);
+    expect(ALIAS_PATTERN.test("backend")).toBe(true);
+  });
+
+  test("rejects invalid aliases", () => {
+    expect(ALIAS_PATTERN.test("bad:alias")).toBe(false);
+    expect(ALIAS_PATTERN.test("bad alias")).toBe(false);
+    expect(ALIAS_PATTERN.test("bad/alias")).toBe(false);
   });
 });

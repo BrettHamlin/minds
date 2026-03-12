@@ -122,6 +122,16 @@ export function normalizeMindsPrefix(filePath: string): string {
   return filePath;
 }
 
+// ── Path traversal detection ────────────────────────────────────────────────
+
+/**
+ * Check whether a path string contains ".." as an actual path traversal component.
+ * Correctly distinguishes "foo..bar" (safe) from "../foo" or "foo/../bar" (unsafe).
+ */
+export function containsPathTraversal(pathStr: string): boolean {
+  return /(^|\/)\.\.(\/|$)/.test(pathStr);
+}
+
 // ── Glob stripping & ownership matching ─────────────────────────────────────
 
 /**

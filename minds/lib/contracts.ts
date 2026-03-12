@@ -13,7 +13,7 @@
 // produced interface, not just static annotation matching.
 
 import type { MindDescription } from "../mind.ts";
-import { matchesOwnership, stripGlob } from "../shared/paths.ts";
+import { containsPathTraversal, matchesOwnership, stripGlob } from "../shared/paths.ts";
 import { readFileSync } from "fs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -447,7 +447,7 @@ export function lintTasks(
   // ── 10. path_traversal (T006) ─────────────────────────────────────────────
   for (const [mind, mTasks] of mindGroups) {
     for (const glob of mTasks[0].sectionOwnsFiles) {
-      if (/(^|\/)\.\.(\/|$)/.test(glob)) {
+      if (containsPathTraversal(glob)) {
         errors.push({
           type: "path_traversal",
           task: `@${mind}`,

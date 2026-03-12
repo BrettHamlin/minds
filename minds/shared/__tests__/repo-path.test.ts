@@ -36,10 +36,10 @@ describe("parseRepoPath", () => {
     });
   });
 
-  test("empty alias (colon at start) treated as bare path", () => {
+  test("empty alias (colon at start) treated as bare path with colon stripped", () => {
     expect(parseRepoPath(":src/api/**")).toEqual({
       repo: undefined,
-      path: ":src/api/**",
+      path: "src/api/**",
     });
   });
 

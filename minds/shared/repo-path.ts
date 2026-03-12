@@ -37,7 +37,7 @@ export function parseRepoPath(qualifiedPath: string): ParsedRepoPath {
 
   // Empty alias means no repo prefix (e.g., ":src/api" is treated as bare path)
   if (repo.length === 0) {
-    return { repo: undefined, path: qualifiedPath };
+    return { repo: undefined, path: qualifiedPath.slice(1) };
   }
 
   return { repo, path };

@@ -189,8 +189,7 @@ describe("validateMindDescription with repo field", () => {
     expect(validateMindDescription({ ...baseMind, repo: true })).toBe(false);
   });
 
-  test("accepts MindDescription with empty string repo", () => {
-    // Empty string is still a string — valid at type level
-    expect(validateMindDescription({ ...baseMind, repo: "" })).toBe(true);
+  test("rejects MindDescription with empty string repo", () => {
+    expect(validateMindDescription({ ...baseMind, repo: "" })).toBe(false);
   });
 });
