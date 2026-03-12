@@ -78,7 +78,10 @@ function getActiveWorktreePaths(repoRoot: string): Set<string> {
  *   -collab-dev          (collab-dev worktree)
  *   -collab-dev-N        (numbered collab-dev worktrees)
  */
-export function removeOrphanedClaudeDirs(repoRoot: string): CleanupResult {
+export function removeOrphanedClaudeDirs(
+  repoRoot: string,
+  additionalRepoRoots?: string[],
+): CleanupResult {
   const claudeProjectsDir = join(process.env.HOME ?? "/root", ".claude", "projects");
   const result: CleanupResult = { ok: true, removed: [], skipped: [], errors: [] };
 
@@ -86,7 +89,14 @@ export function removeOrphanedClaudeDirs(repoRoot: string): CleanupResult {
     return result;
   }
 
-  const activeWorktrees = getActiveWorktreePaths(repoRoot);
+  // Merge worktree lists from all repos (deduplicated to avoid redundant git calls)
+  const allRoots = new Set([repoRoot, ...(additionalRepoRoots ?? [])]);
+  const activeWorktrees = new Set<string>();
+  for (const root of allRoots) {
+    for (const wt of getActiveWorktreePaths(root)) {
+      activeWorktrees.add(wt);
+    }
+  }
   const entries = readdirSync(claudeProjectsDir);
 
   for (const entry of entries) {
@@ -108,11 +118,7 @@ export function removeOrphanedClaudeDirs(repoRoot: string): CleanupResult {
       continue;
     }
 
-    // Decode the entry back to an absolute path to check if worktree still exists
-    // Entry format: Users-atlas-Code-projects-collab-worktrees-BRE-123-pipeline_core
-    const decodedPath = "/" + entry.replace(/-/g, "/");
-    // The decoded path won't exactly match (hyphens in dir names collapse with separators),
-    // so we check active worktrees by scanning for the entry as a suffix match.
+    // Check if any active worktree encodes to this entry name
     const isActive = [...activeWorktrees].some((wt) => {
       const encoded = encodeProjectPath(wt);
       return encoded === entry;
@@ -132,6 +138,26 @@ export function removeOrphanedClaudeDirs(repoRoot: string): CleanupResult {
     }
   }
 
+  return result;
+}
+
+/**
+ * Prune orphaned worktrees across all repos.
+ * Runs `git worktree prune` which cleans up stale worktree references
+ * (e.g., worktrees whose directories were deleted but git still tracks).
+ */
+export function pruneOrphanedWorktrees(repoRoots: string[]): CleanupResult {
+  const result: CleanupResult = { ok: true, removed: [], skipped: [], errors: [] };
+  for (const root of repoRoots) {
+    const proc = Bun.spawnSync(["git", "-C", root, "worktree", "prune"], { stdout: "pipe", stderr: "pipe" });
+    if (proc.exitCode === 0) {
+      result.removed.push(root);
+    } else {
+      const stderr = new TextDecoder().decode(proc.stderr).trim();
+      result.errors.push({ path: root, error: stderr || `exit code ${proc.exitCode}` });
+      result.ok = false;
+    }
+  }
   return result;
 }
 

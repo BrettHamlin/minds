@@ -34,7 +34,7 @@ import {
   clearBusState,
 } from "../../transport/minds-bus-lifecycle.ts";
 import { publishWaveStarted, publishWaveComplete } from "../../transport/wave-event.ts";
-import { cleanupDroneWorktree } from "../../lib/cleanup.ts";
+import { cleanupDroneWorktree, pruneOrphanedWorktrees } from "../../lib/cleanup.ts";
 import { resolveMindsDir, getRepoRoot } from "../../shared/paths.js";
 import { ensureDashboardBuilt } from "../../shared/build-dashboard.js";
 import type {
@@ -354,6 +354,10 @@ export async function runImplement(
     console.log("  No orphaned bus processes found.");
   }
 
+  // Prune stale worktree references across all workspace repos (deduplicated)
+  const allRepoRoots = [...new Set([orchestratorRoot, ...workspace.repoPaths.values()])];
+  pruneOrphanedWorktrees(allRepoRoots);
+
   // ── Step 1: Load Mind registry (MR-009: multi-repo aware) ────────────────
 
   console.log("\nStep 1: Loading Mind registry...");
@@ -569,8 +573,14 @@ export async function runImplement(
       mux.killPane(d.paneId);
     }
 
-    // Teardown bus
+    // Teardown bus with timeout to prevent hanging
     try {
+      const busTimeout = setTimeout(() => {
+        // Force kill bus processes if teardown hangs
+        try { process.kill(busInfo.busServerPid); } catch { /* ignore */ }
+        if (busInfo.bridgePid) try { process.kill(busInfo.bridgePid); } catch { /* ignore */ }
+        if (busInfo.aggregatorPid) try { process.kill(busInfo.aggregatorPid); } catch { /* ignore */ }
+      }, 5000);
       await teardownMindsBus({
         busServerPid: busInfo.busServerPid,
         bridgePid: busInfo.bridgePid,
@@ -578,6 +588,7 @@ export async function runImplement(
         repoRoot: orchestratorRoot,
         ticketId,
       });
+      clearTimeout(busTimeout);
     } catch {
       // Best effort
     }
@@ -588,10 +599,12 @@ export async function runImplement(
     }
 
     console.log("Cleanup complete.");
-    process.exit(1);
   };
 
-  process.on("SIGINT", cleanup);
+  const sigintHandler = () => {
+    cleanup().finally(() => process.exit(1));
+  };
+  process.on("SIGINT", sigintHandler);
 
   // ── Step 7-8: Execute waves ────────────────────────────────────────────────
 
@@ -887,7 +900,7 @@ export async function runImplement(
   }
 
   // Remove SIGINT handler
-  process.removeListener("SIGINT", cleanup);
+  process.removeListener("SIGINT", sigintHandler);
 
   if (!result.ok) {
     console.log("\nImplementation completed with errors.");
