@@ -5,7 +5,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
 import {
   scaffoldMind,
   scaffoldFromTasks,
@@ -18,16 +17,7 @@ import {
 import type { MindDescription } from "@minds/mind.js";
 import { validateMindDescription } from "@minds/mind.js";
 import type { MindTaskGroup } from "@minds/cli/lib/implement-types.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function tempDir(): string {
-  const dir = join(tmpdir(), `instantiate-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
+import { tempDir } from "@minds/cli/commands/__tests__/helpers/multi-repo-setup.ts";
 
 // ---------------------------------------------------------------------------
 // validateMindName

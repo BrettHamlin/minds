@@ -13,21 +13,13 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
 import {
   verifyCrossRepoContracts,
   buildCrossRepoChecks,
   type CrossRepoContractCheck,
 } from "../cross-repo-contracts.ts";
 import type { ContractAnnotation } from "../../check-contracts-core.ts";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function tempDir(): string {
-  const dir = join(tmpdir(), `cross-repo-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
+import { tempDir } from "../../../cli/commands/__tests__/helpers/multi-repo-setup.ts";
 
 function makeAnnotation(overrides: Partial<ContractAnnotation> = {}): ContractAnnotation {
   return {

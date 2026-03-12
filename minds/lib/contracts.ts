@@ -15,6 +15,7 @@
 import type { MindDescription } from "../mind.ts";
 import { containsPathTraversal, matchesOwnership, stripGlob } from "../shared/paths.ts";
 import { parseRepoPath, stripRepoPrefix } from "../shared/repo-path.ts";
+import { topoSort } from "../shared/topo-sort.ts";
 import { readFileSync } from "fs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -245,7 +246,7 @@ export function generateContracts(tasks: ParsedTask[]): ContractReport {
 
   return {
     contracts: [...contractMap.values()],
-    waves: topoSort(allMinds, depsRecord),
+    waves: topoSort(allMinds, depsRecord, "collect"),
     dependencies: depsRecord,
   };
 }
@@ -586,52 +587,6 @@ export function lintTasks(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function topoSort(
-  allMinds: Set<string>,
-  deps: Record<string, string[]>
-): string[][] {
-  const inDegree = new Map<string, number>();
-  const downstream = new Map<string, string[]>();
-
-  for (const m of allMinds) {
-    inDegree.set(m, 0);
-    downstream.set(m, []);
-  }
-
-  for (const [mind, mindDeps] of Object.entries(deps)) {
-    if (!allMinds.has(mind)) continue;
-    for (const dep of mindDeps) {
-      if (!allMinds.has(dep)) continue;
-      inDegree.set(mind, (inDegree.get(mind) ?? 0) + 1);
-      downstream.get(dep)!.push(mind);
-    }
-  }
-
-  const waves: string[][] = [];
-  const processed = new Set<string>();
-
-  while (processed.size < allMinds.size) {
-    const wave = [...allMinds]
-      .filter((m) => !processed.has(m) && inDegree.get(m) === 0)
-      .sort();
-
-    if (wave.length === 0) {
-      // Cycle detected — add remaining as final wave
-      waves.push([...allMinds].filter((m) => !processed.has(m)).sort());
-      break;
-    }
-
-    waves.push(wave);
-    for (const m of wave) {
-      processed.add(m);
-      for (const down of downstream.get(m) ?? []) {
-        inDegree.set(down, (inDegree.get(down) ?? 0) - 1);
-      }
-    }
-  }
-
-  return waves;
-}
 
 /**
  * Extract file paths from a task description for boundary checking.

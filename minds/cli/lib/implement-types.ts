@@ -42,17 +42,7 @@ export interface DispatchPlan {
   totalMinds: number;
 }
 
-/** Tracking info for a spawned drone. */
-export interface DroneInfo {
-  mindName: string;
-  waveId: string;
-  paneId: string;
-  worktree: string;
-  branch: string;
-  repo?: string;  // Repo alias for multi-repo workspaces
-}
-
-/** Tracking info for a spawned Mind. */
+/** Tracking info for a spawned Mind (or Drone — same shape). */
 export interface MindInfo {
   mindName: string;
   waveId: string;
@@ -61,6 +51,9 @@ export interface MindInfo {
   branch: string;
   repo?: string;  // Repo alias for multi-repo workspaces
 }
+
+/** @deprecated Use MindInfo instead — identical interface. */
+export type DroneInfo = MindInfo;
 
 /** Result of the full implement run. */
 export interface ImplementResult {

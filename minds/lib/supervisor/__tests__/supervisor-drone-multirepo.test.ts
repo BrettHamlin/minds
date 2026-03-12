@@ -10,15 +10,7 @@
 import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function tempDir(): string {
-  const dir = join(tmpdir(), `spawn-drone-mr-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
+import { tempDir } from "../../../cli/commands/__tests__/helpers/multi-repo-setup.ts";
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 

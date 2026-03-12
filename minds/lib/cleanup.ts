@@ -27,6 +27,7 @@ import {
   lstatSync,
 } from "fs";
 import { join, resolve } from "path";
+import { encodeProjectPath } from "../shared/paths.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,12 +48,6 @@ function tryRunArgs(args: string[]): string {
   } catch {
     return "";
   }
-}
-
-/** Encode an absolute path the same way Claude Code does for project dirs. */
-function encodeProjectPath(absolutePath: string): string {
-  // Claude Code converts absolute path to dir name: replace / with - and strip leading -
-  return absolutePath.replace(/\//g, "-").replace(/^-/, "");
 }
 
 /** Get the list of active worktree paths from git. */

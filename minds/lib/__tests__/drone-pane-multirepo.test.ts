@@ -11,16 +11,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
 import { assembleClaudeContent } from "../drone-pane.ts";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function tempDir(): string {
-  const dir = join(tmpdir(), `drone-pane-mr-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
+import { tempDir } from "../../cli/commands/__tests__/helpers/multi-repo-setup.ts";
 
 function writeMindsJson(repoRoot: string, minds: Array<{ name: string; domain?: string; owns_files?: string[] }>): void {
   const mindsDir = join(repoRoot, ".minds");

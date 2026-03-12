@@ -162,15 +162,9 @@ export interface SupervisorDeps {
     extra?: Record<string, unknown>,
   ) => Promise<void>;
 
-  /** Run deterministic checks (git diff + bun test + boundary + contracts).
-   *  Accepts either a DeterministicCheckOptions object or positional args (backward compat). */
+  /** Run deterministic checks (git diff + bun test + boundary + contracts). */
   runDeterministicChecks: (
-    optionsOrWorktreePath: any,
-    baseBranch?: string,
-    mindName?: string,
-    tasks?: import("../../cli/lib/implement-types.ts").MindTask[],
-    configOwnsFiles?: string[],
-    requireBoundary?: boolean,
+    options: import("./supervisor-checks.ts").DeterministicCheckOptions,
   ) => CheckResults;
 
   /** Call LLM for code review. */

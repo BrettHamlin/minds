@@ -34,7 +34,8 @@ import { basename, resolve } from "path";
 import { injectBusEnv } from "../transport/minds-bus-lifecycle.ts";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
-import { resolveMindsDir } from "../shared/paths.js";
+import { resolveMindsDir, encodeProjectPath } from "../shared/paths.js";
+import { loadStandards } from "./supervisor/supervisor-checks.ts";
 import { shellQuote } from "./tmux-utils.ts";
 import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
 import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
@@ -53,7 +54,6 @@ export function assembleClaudeContent(
 ): string {
   const mindsBase = resolveMindsDir(repoRoot);
   const standardsRoot = opts?.orchestratorRoot ?? repoRoot;
-  const standardsBase = resolveMindsDir(standardsRoot);
 
   // Load minds.json and find entry for this mind
   const mindsJsonPath = resolve(mindsBase, "minds.json");
@@ -77,13 +77,8 @@ export function assembleClaudeContent(
     }
   }
 
-  // Load STANDARDS.md from orchestrator root (ships with installer)
-  const standardsPath = resolve(standardsBase, "STANDARDS.md");
-  const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
-
-  // Load STANDARDS-project.md from orchestrator root (project-specific)
-  const projectStandardsPath = resolve(standardsBase, "STANDARDS-project.md");
-  const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
+  // Load STANDARDS.md + STANDARDS-project.md from orchestrator root
+  const standards = loadStandards(standardsRoot);
 
   // Load MIND.md (optional)
   const mindMdPath = resolve(mindsBase, mindName, "MIND.md");
@@ -122,8 +117,6 @@ export function assembleClaudeContent(
     repoContextSection,
     `## Engineering Standards`,
     standards,
-    projectStandards ? `## Project-Specific Standards` : null,
-    projectStandards || null,
     mindProfileSection,
     `## Test Command`,
     ``,
@@ -307,7 +300,7 @@ if (import.meta.main) { (async () => {
 
   // ─── Write drone's private CLAUDE.md BEFORE launching ────────────────────────
 
-  const encoded = resolve(worktreePath).replace(/\//g, "-").replace(/^-/, "");
+  const encoded = encodeProjectPath(resolve(worktreePath));
   const claudeDir = resolve(process.env.HOME ?? "/root", ".claude", "projects", encoded);
   mkdirSync(claudeDir, { recursive: true });
 

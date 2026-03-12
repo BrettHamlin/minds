@@ -55,29 +55,8 @@ export interface DeterministicCheckOptions {
   repo?: string;
 }
 
-export function runDeterministicChecksDefault(options: DeterministicCheckOptions): CheckResults;
-export function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string, tasks?: import("../../cli/lib/implement-types.ts").MindTask[], configOwnsFiles?: string[], requireBoundary?: boolean): CheckResults;
-export function runDeterministicChecksDefault(
-  optionsOrWorktreePath: DeterministicCheckOptions | string,
-  baseBranchArg?: string,
-  mindNameArg?: string,
-  tasksArg?: import("../../cli/lib/implement-types.ts").MindTask[],
-  configOwnsFilesArg?: string[],
-  requireBoundaryArg?: boolean,
-): CheckResults {
-  // Support both old positional and new options-object signatures
-  const opts: DeterministicCheckOptions = typeof optionsOrWorktreePath === "string"
-    ? {
-        worktreePath: optionsOrWorktreePath,
-        baseBranch: baseBranchArg!,
-        mindName: mindNameArg!,
-        tasks: tasksArg,
-        configOwnsFiles: configOwnsFilesArg,
-        requireBoundary: requireBoundaryArg,
-      }
-    : optionsOrWorktreePath;
-
-  const { worktreePath, baseBranch, mindName, tasks, configOwnsFiles, requireBoundary, testCommand, infraExclusions, repo } = opts;
+export function runDeterministicChecksDefault(options: DeterministicCheckOptions): CheckResults {
+  const { worktreePath, baseBranch, mindName, tasks, configOwnsFiles, requireBoundary, testCommand, infraExclusions, repo } = options;
   const findings: ReviewFinding[] = [];
 
   // Get diff relative to base branch

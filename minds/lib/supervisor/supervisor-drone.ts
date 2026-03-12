@@ -7,6 +7,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, watch } from "fs";
 import { join } from "path";
 import { resolveMindsDir } from "../../shared/paths.ts";
+import { extractLastJsonLine } from "../../shared/parse-utils.ts";
 import { buildDroneBrief } from "../../cli/lib/drone-brief.ts";
 import { killPane, splitPane, launchClaudeInPane, shellQuote } from "../tmux-utils.ts";
 import type { TerminalMultiplexer } from "../terminal-multiplexer.ts";
@@ -112,7 +113,7 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
   try {
     // drone-pane.ts may emit log lines before the JSON (e.g. tmux pane guard).
     // Extract the last line that looks like JSON.
-    const jsonLine = output.trim().split("\n").reverse().find(l => l.startsWith("{"));
+    const jsonLine = extractLastJsonLine(output);
     if (!jsonLine) throw new Error("no JSON line found");
     result = JSON.parse(jsonLine);
   } catch {

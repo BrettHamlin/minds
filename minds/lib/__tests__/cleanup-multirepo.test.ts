@@ -10,26 +10,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
 import { removeOrphanedClaudeDirs, pruneOrphanedWorktrees } from "../cleanup.ts";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function tempDir(): string {
-  const dir = join(tmpdir(), `cleanup-mr-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function initGitRepo(dir: string): void {
-  mkdirSync(dir, { recursive: true });
-  Bun.spawnSync(["git", "init", dir], { stdout: "pipe", stderr: "pipe" });
-  Bun.spawnSync(["git", "-C", dir, "config", "user.email", "test@test.com"], { stdout: "pipe", stderr: "pipe" });
-  Bun.spawnSync(["git", "-C", dir, "config", "user.name", "Test"], { stdout: "pipe", stderr: "pipe" });
-  writeFileSync(join(dir, "README.md"), "init");
-  Bun.spawnSync(["git", "-C", dir, "add", "."], { stdout: "pipe", stderr: "pipe" });
-  Bun.spawnSync(["git", "-C", dir, "commit", "-m", "init"], { stdout: "pipe", stderr: "pipe" });
-}
+import { tempDir, initGitRepo } from "../../cli/commands/__tests__/helpers/multi-repo-setup.ts";
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 

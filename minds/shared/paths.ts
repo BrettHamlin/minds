@@ -127,6 +127,18 @@ export function normalizeMindsPrefix(filePath: string): string {
   return filePath;
 }
 
+// ── Project path encoding ───────────────────────────────────────────────────
+
+/**
+ * Encode an absolute path the same way Claude Code does for ~/.claude/projects/ dir names.
+ * Replaces / with - and strips the leading -.
+ *
+ * Example: "/Users/alice/code/my-app" -> "Users-alice-code-my-app"
+ */
+export function encodeProjectPath(absolutePath: string): string {
+  return absolutePath.replace(/\//g, "-").replace(/^-/, "");
+}
+
 // ── Path traversal detection ────────────────────────────────────────────────
 
 /**

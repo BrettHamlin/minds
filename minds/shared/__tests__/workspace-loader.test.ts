@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { loadWorkspace } from "../workspace-loader.ts";
 import { WORKSPACE_MANIFEST_FILENAME } from "../workspace.ts";
+import { initGitRepo } from "../../cli/commands/__tests__/helpers/multi-repo-setup.ts";
 
 import { tmpdir } from "os";
 const TMP_ROOT = join(tmpdir(), ".tmp-workspace-loader-test");
@@ -15,10 +16,6 @@ function freshDir(subdir?: string): string {
   const dir = subdir ? join(TMP_ROOT, subdir) : TMP_ROOT;
   mkdirSync(dir, { recursive: true });
   return dir;
-}
-
-function initGitRepo(dir: string): void {
-  Bun.spawnSync(["git", "init", dir], { stdout: "pipe", stderr: "pipe" });
 }
 
 function writeManifest(dir: string, manifest: Record<string, unknown>): void {
