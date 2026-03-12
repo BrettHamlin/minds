@@ -8,7 +8,7 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
+import { tempDir } from "./helpers/multi-repo-setup.ts";
 
 // ── Capture published events ────────────────────────────────────────────────
 
@@ -28,12 +28,6 @@ import type { ResolvedWorkspace } from "../../../shared/workspace-loader.ts";
 import type { MindInfo } from "../../lib/implement-types.ts";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function tempDir(): string {
-  const dir = join(tmpdir(), `merge-mr-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 async function runGit(
   cwd: string,

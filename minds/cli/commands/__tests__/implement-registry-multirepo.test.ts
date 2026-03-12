@@ -6,32 +6,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { rmSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
 import { loadMultiRepoRegistries } from "../../../shared/registry-loader.ts";
+import { tempDir, initGitRepo, writeMindsJson } from "./helpers/multi-repo-setup.ts";
 import type { MindDescription } from "../../../mind.ts";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function tempDir(): string {
-  const dir = join(tmpdir(), `impl-reg-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function initGitRepo(dir: string): void {
-  Bun.spawnSync(["git", "init", dir], { stdout: "pipe", stderr: "pipe" });
-  Bun.spawnSync(["git", "-C", dir, "commit", "--allow-empty", "-m", "init"], {
-    stdout: "pipe", stderr: "pipe",
-  });
-}
-
-function writeMindsJson(repoRoot: string, minds: MindDescription[]): void {
-  const mindsDir = join(repoRoot, ".minds");
-  mkdirSync(mindsDir, { recursive: true });
-  writeFileSync(join(mindsDir, "minds.json"), JSON.stringify(minds, null, 2));
-}
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -39,7 +18,7 @@ describe("loadMultiRepoRegistries (MR-009)", () => {
   let tmpRoot: string;
 
   beforeEach(() => {
-    tmpRoot = tempDir();
+    tmpRoot = tempDir("impl-reg-test");
   });
 
   afterEach(() => {

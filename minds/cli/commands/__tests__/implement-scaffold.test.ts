@@ -12,20 +12,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
 import { scaffoldFromTasks } from "../../../instantiate/lib/scaffold.js";
+import { tempDir } from "./helpers/multi-repo-setup.ts";
 import type { MindDescription } from "../../../mind.js";
 import type { MindTaskGroup } from "../../lib/implement-types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function tempDir(): string {
-  const dir = join(tmpdir(), `impl-scaffold-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 function makeGroup(mind: string, ownsFiles?: string[], deps: string[] = []): MindTaskGroup {
   return {

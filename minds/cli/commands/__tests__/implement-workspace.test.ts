@@ -8,25 +8,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
-import { tmpdir } from "os";
 import { loadWorkspace } from "../../../shared/workspace-loader.ts";
 import { parseTasks, lintTasks } from "../../../lib/contracts.ts";
+import { tempDir, initGitRepo } from "./helpers/multi-repo-setup.ts";
 import type { MindDescription } from "../../../mind.ts";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function tempDir(): string {
-  const dir = join(tmpdir(), `impl-ws-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function initGitRepo(dir: string): void {
-  Bun.spawnSync(["git", "init", dir], { stdout: "pipe", stderr: "pipe" });
-  Bun.spawnSync(["git", "-C", dir, "commit", "--allow-empty", "-m", "init"], {
-    stdout: "pipe", stderr: "pipe",
-  });
-}
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -34,7 +19,7 @@ describe("workspace loading in implement context (MR-008)", () => {
   let tmpRoot: string;
 
   beforeEach(() => {
-    tmpRoot = tempDir();
+    tmpRoot = tempDir("impl-ws-test");
   });
 
   afterEach(() => {
