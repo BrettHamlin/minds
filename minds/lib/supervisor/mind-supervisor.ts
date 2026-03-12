@@ -44,6 +44,9 @@ import {
   type SupervisorResult,
   DEFAULT_REVIEW_TIMEOUT_MS,
   SENTINEL_FILENAME,
+  BASE_RETRY_BACKOFF_MS,
+  BACKOFF_MULTIPLIER,
+  MAX_BACKOFF_MS,
   errorMessage,
 } from "./supervisor-types.ts";
 import { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
@@ -73,6 +76,7 @@ function createDefaultDeps(): SupervisorDeps {
     callLlmReview: callLlmReviewDefault,
     installDroneStopHook: installDroneStopHookImpl,
     killPane: killPaneImpl,
+    delay: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
 }
 
@@ -133,6 +137,7 @@ export async function runMindSupervisor(
     approvedWithWarnings: false,
     findings: [],
     allPaneIds: [],
+    totalPanesSpawned: 0,
     worktree: config.worktreePath,
     branch: "",
     errors: [],
@@ -367,6 +372,18 @@ export async function runMindSupervisor(
         { iteration, findingsCount: verdict.findings.length },
       );
 
+      // Exponential backoff before next iteration to prevent rapid pane creation
+      // when drones fail quickly. Formula: BASE * MULTIPLIER^(iteration-1).
+      // iteration=1 → 5s, iteration=2 → 15s, iteration=3 → 45s, ...
+      const backoffMs = Math.min(
+        BASE_RETRY_BACKOFF_MS * Math.pow(BACKOFF_MULTIPLIER, iteration - 1),
+        MAX_BACKOFF_MS,
+      );
+      console.log(
+        `[supervisor] @${config.mindName}: Backoff ${backoffMs}ms before iteration ${iteration + 1}`,
+      );
+      await deps.delay(backoffMs);
+
       // Loop continues: relaunchDroneInWorktree at the top of the next iteration
     }
 
@@ -417,6 +434,7 @@ export async function runMindSupervisor(
   } finally {
     // Record all tracked panes in the result for observability
     result.allPaneIds = [...allSpawnedPanes];
+    result.totalPanesSpawned = allSpawnedPanes.length;
 
     // Cleanup: kill ALL spawned drone panes (not just the last one)
     for (const paneId of allSpawnedPanes) {
