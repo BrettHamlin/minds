@@ -110,7 +110,11 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
 
   let result: { drone_pane: string; worktree: string; branch: string };
   try {
-    result = JSON.parse(output.trim());
+    // drone-pane.ts may emit log lines before the JSON (e.g. tmux pane guard).
+    // Extract the last line that looks like JSON.
+    const jsonLine = output.trim().split("\n").reverse().find(l => l.startsWith("{"));
+    if (!jsonLine) throw new Error("no JSON line found");
+    result = JSON.parse(jsonLine);
   } catch {
     throw new Error(`drone-pane.ts returned invalid JSON: ${output}`);
   }

@@ -115,7 +115,11 @@ export async function dispatchToMind(
   const rawStdout = await new Response(dronePaneProc.stdout as ReadableStream).text();
   let paneResult: { drone_pane: string; worktree: string; branch: string };
   try {
-    paneResult = JSON.parse(rawStdout.trim());
+    // drone-pane.ts may emit log lines before the JSON (e.g. tmux pane guard).
+    // Extract the last line that looks like JSON.
+    const jsonLine = rawStdout.trim().split("\n").reverse().find(l => l.startsWith("{"));
+    if (!jsonLine) throw new Error("no JSON line found");
+    paneResult = JSON.parse(jsonLine);
   } catch {
     throw new Error(`drone-pane.ts returned invalid JSON: ${rawStdout}`);
   }

@@ -111,5 +111,6 @@ Files outside these paths will be rejected by the deterministic boundary check.
 3. Write tests for each change (TDD: red -> green -> refactor).
 4. Run \`${effectiveTestCmd}\` to verify your changes pass.
 5. Commit your work with a descriptive message referencing ${ticketId}.
+6. When ALL tasks are done and committed, type \`/exit\` to close this session.
 `;
 }
