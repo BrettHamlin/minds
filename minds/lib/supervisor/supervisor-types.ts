@@ -5,6 +5,7 @@
 
 import type { MindTask } from "../../cli/lib/implement-types.ts";
 import type { MindsEventType } from "../../transport/minds-events.ts";
+import type { ContractAnnotation } from "../check-contracts-core.ts";
 
 // ---------------------------------------------------------------------------
 // State enum
@@ -53,6 +54,8 @@ export interface SupervisorConfig {
   testCommand?: string;
   /** Per-repo install command (default: "bun install"). */
   installCommand?: string;
+  /** Additional infrastructure exclusion patterns (merged with defaults in boundary check). */
+  infraExclusions?: string[];
 }
 
 export interface ReviewFinding {
@@ -81,6 +84,8 @@ export interface SupervisorResult {
   worktree: string;
   branch: string;
   errors: string[];
+  /** Cross-repo contract annotations deferred for post-wave verification. */
+  deferredCrossRepoAnnotations?: ContractAnnotation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +117,8 @@ export interface CheckResults {
   boundaryFindings?: ReviewFinding[];
   /** The owns_files list for the Mind (from minds.json). Flows to agent generation. */
   ownsFiles?: string[];
+  /** Cross-repo contract annotations deferred for post-wave verification. */
+  deferredCrossRepoAnnotations?: ContractAnnotation[];
 }
 
 /**
@@ -153,11 +160,12 @@ export interface SupervisorDeps {
     extra?: Record<string, unknown>,
   ) => Promise<void>;
 
-  /** Run deterministic checks (git diff + bun test + boundary + contracts). */
+  /** Run deterministic checks (git diff + bun test + boundary + contracts).
+   *  Accepts either a DeterministicCheckOptions object or positional args (backward compat). */
   runDeterministicChecks: (
-    worktreePath: string,
-    baseBranch: string,
-    mindName: string,
+    optionsOrWorktreePath: any,
+    baseBranch?: string,
+    mindName?: string,
     tasks?: import("../../cli/lib/implement-types.ts").MindTask[],
     configOwnsFiles?: string[],
     requireBoundary?: boolean,

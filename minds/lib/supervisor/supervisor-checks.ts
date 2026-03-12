@@ -8,6 +8,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join, relative } from "path";
 import { resolveMindsDir } from "../../shared/paths.ts";
+import { stripRepoPrefix } from "../../shared/repo-path.ts";
 import { checkBoundary } from "./boundary-check.ts";
 import { parseAnnotations, verifyContracts } from "../check-contracts-core.ts";
 import type { CheckResults, ReviewFinding } from "./supervisor-types.ts";
@@ -41,7 +42,42 @@ export function loadStandards(repoRoot: string): string {
 // where the full supervisor loop is exercised with mocked deps.
 // ---------------------------------------------------------------------------
 
-export function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string, tasks?: import("../../cli/lib/implement-types.ts").MindTask[], configOwnsFiles?: string[], requireBoundary?: boolean): CheckResults {
+export interface DeterministicCheckOptions {
+  worktreePath: string;
+  baseBranch: string;
+  mindName: string;
+  tasks?: import("../../cli/lib/implement-types.ts").MindTask[];
+  configOwnsFiles?: string[];
+  requireBoundary?: boolean;
+  testCommand?: string;
+  infraExclusions?: string[];
+  /** Repo alias for cross-repo contract deferral. */
+  repo?: string;
+}
+
+export function runDeterministicChecksDefault(options: DeterministicCheckOptions): CheckResults;
+export function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string, tasks?: import("../../cli/lib/implement-types.ts").MindTask[], configOwnsFiles?: string[], requireBoundary?: boolean): CheckResults;
+export function runDeterministicChecksDefault(
+  optionsOrWorktreePath: DeterministicCheckOptions | string,
+  baseBranchArg?: string,
+  mindNameArg?: string,
+  tasksArg?: import("../../cli/lib/implement-types.ts").MindTask[],
+  configOwnsFilesArg?: string[],
+  requireBoundaryArg?: boolean,
+): CheckResults {
+  // Support both old positional and new options-object signatures
+  const opts: DeterministicCheckOptions = typeof optionsOrWorktreePath === "string"
+    ? {
+        worktreePath: optionsOrWorktreePath,
+        baseBranch: baseBranchArg!,
+        mindName: mindNameArg!,
+        tasks: tasksArg,
+        configOwnsFiles: configOwnsFilesArg,
+        requireBoundary: requireBoundaryArg,
+      }
+    : optionsOrWorktreePath;
+
+  const { worktreePath, baseBranch, mindName, tasks, configOwnsFiles, requireBoundary, testCommand, infraExclusions, repo } = opts;
   const findings: ReviewFinding[] = [];
 
   // Get diff relative to base branch
@@ -89,10 +125,12 @@ export function runDeterministicChecksDefault(worktreePath: string, baseBranch: 
     }
   }
 
-  // Convert glob patterns to directory paths for bun test
+  // Convert glob patterns to directory paths for test command
+  // Strip repo prefixes first (test paths are repo-relative)
   let testPaths: string[] = [];
   if (ownsFilesResolved?.length) {
     testPaths = ownsFilesResolved
+      .map((p) => stripRepoPrefix(p))
       .map((p) => p.replace(/\*+$/, "").replace(/\/+$/, "") + "/")
       .filter((p) => p !== "/" && !p.startsWith(".minds/"));
   }
@@ -102,10 +140,16 @@ export function runDeterministicChecksDefault(worktreePath: string, baseBranch: 
     testPaths = [`${mindsRelative}/${mindName}/`];
   }
 
-  const testProc = Bun.spawnSync(
-    ["bun", "test", ...testPaths],
-    { cwd: worktreePath, stdout: "pipe", stderr: "pipe", timeout: 120_000 }
-  );
+  const baseCmd = testCommand ?? "bun test";
+  const testProc = testCommand
+    ? Bun.spawnSync(
+        ["sh", "-c", `${baseCmd} ${testPaths.join(" ")}`],
+        { cwd: worktreePath, stdout: "pipe", stderr: "pipe", timeout: 120_000 },
+      )
+    : Bun.spawnSync(
+        ["bun", "test", ...testPaths],
+        { cwd: worktreePath, stdout: "pipe", stderr: "pipe", timeout: 120_000 },
+      );
   const testStdout = new TextDecoder().decode(testProc.stdout);
   const testStderr = new TextDecoder().decode(testProc.stderr);
   const testOutput = testStdout + (testStderr ? `\n${testStderr}` : "");
@@ -124,7 +168,10 @@ export function runDeterministicChecksDefault(worktreePath: string, baseBranch: 
   result.ownsFiles = ownsFiles;
 
   if (diff) {
-    const boundaryResult = checkBoundary(diff, ownsFiles, mindName, requireBoundary ? { requireBoundary } : undefined);
+    const boundaryResult = checkBoundary(diff, ownsFiles, mindName, {
+      requireBoundary,
+      customInfraExclusions: infraExclusions,
+    });
     result.boundaryPass = boundaryResult.pass;
     result.boundaryFindings = boundaryResult.violations.map((v) => ({
       file: v.file,
@@ -150,7 +197,7 @@ export function runDeterministicChecksDefault(worktreePath: string, baseBranch: 
 
     const annotations = parseAnnotations(tasksText, mindName);
     if (annotations.length > 0) {
-      const contractResult = verifyContracts(annotations, worktreePath, mindName, ownsFiles);
+      const contractResult = verifyContracts(annotations, worktreePath, mindName, ownsFiles, repo);
       result.contractsPass = contractResult.pass;
       result.contractFindings = contractResult.violations.map((v) => ({
         file: v.annotation.filePath,
@@ -158,6 +205,9 @@ export function runDeterministicChecksDefault(worktreePath: string, baseBranch: 
         severity: "error" as const,
         message: `[${v.annotation.taskId}] ${v.reason}`,
       }));
+      if (contractResult.deferredCrossRepo.length > 0) {
+        result.deferredCrossRepoAnnotations = contractResult.deferredCrossRepo;
+      }
     }
   }
 

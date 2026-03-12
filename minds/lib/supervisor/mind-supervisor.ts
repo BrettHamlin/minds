@@ -241,7 +241,17 @@ export async function runMindSupervisor(
 
       // ---- Step 4: Deterministic checks ----
       sm.transition(SupervisorState.CHECKING);
-      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName, config.tasks, config.ownsFiles, config.requireBoundary);
+      const checks = deps.runDeterministicChecks({
+        worktreePath: currentWorktree,
+        baseBranch: config.baseBranch,
+        mindName: config.mindName,
+        tasks: config.tasks,
+        configOwnsFiles: config.ownsFiles,
+        requireBoundary: config.requireBoundary,
+        testCommand: config.testCommand,
+        infraExclusions: config.infraExclusions,
+        repo: config.repo,
+      });
 
       // ---- Step 5: Publish REVIEW_STARTED ----
       await deps.publishSignal(
@@ -308,6 +318,13 @@ export async function runMindSupervisor(
         allFindings.push({ ...finding, iteration });
       }
       result.findings = allFindings;
+
+      // Propagate deferred cross-repo annotations from the latest check.
+      // Overwrites (not merges) — the latest iteration's contracts are authoritative
+      // since the drone may have fixed earlier issues.
+      if (checks.deferredCrossRepoAnnotations?.length) {
+        result.deferredCrossRepoAnnotations = checks.deferredCrossRepoAnnotations;
+      }
 
       // ---- Step 7: Verdict ----
       if (verdict.approved) {
