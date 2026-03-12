@@ -241,10 +241,15 @@ function launchMindSupervisor(
 /*  Merge helper                                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Merge a drone's branch into the current branch of a repo.
+ * Assumes the correct base branch is already checked out (caller does this per repo group).
+ * On failure, aborts the merge to leave the repo in a clean state for subsequent merges.
+ */
 function mergeDroneWorktree(
   repoRoot: string,
   drone: MindInfo,
-): { ok: boolean; error?: string } {
+): { ok: boolean; error?: string; hasConflicts?: boolean } {
   const proc = Bun.spawnSync(
     ["git", "-C", repoRoot, "merge", "--no-ff", drone.branch,
      "-m", `merge: @${drone.mindName} (${drone.waveId})`],
@@ -253,8 +258,56 @@ function mergeDroneWorktree(
   if (proc.exitCode === 0) {
     return { ok: true };
   }
+  const stdout = new TextDecoder().decode(proc.stdout);
+  const stderr = new TextDecoder().decode(proc.stderr);
+  const combined = `${stdout}\n${stderr}`;
+  const hasConflicts = combined.toLowerCase().includes("conflict");
+
+  // Abort the failed merge so the repo is left clean for subsequent merges
+  Bun.spawnSync(["git", "-C", repoRoot, "merge", "--abort"], { stdout: "pipe", stderr: "pipe" });
+
+  return { ok: false, error: stderr || `exit code ${proc.exitCode}`, hasConflicts };
+}
+
+/**
+ * Checkout a branch in a repo. Called once per repo group before merging drones.
+ * mergeDroneWorktree assumes the correct branch is already checked out.
+ */
+function checkoutBranch(repoRoot: string, branch: string): { ok: boolean; error?: string } {
+  const proc = Bun.spawnSync(
+    ["git", "-C", repoRoot, "checkout", branch],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  if (proc.exitCode === 0) return { ok: true };
   const stderr = new TextDecoder().decode(proc.stderr);
   return { ok: false, error: stderr || `exit code ${proc.exitCode}` };
+}
+
+/**
+ * Group drones by their repo alias. Drones without a repo go into "__default__".
+ */
+export function groupDronesByRepo(drones: MindInfo[]): Map<string, MindInfo[]> {
+  const grouped = new Map<string, MindInfo[]>();
+  for (const drone of drones) {
+    const key = drone.repo ?? "__default__";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(drone);
+  }
+  return grouped;
+}
+
+/**
+ * Resolve the base branch for a specific repo in a workspace.
+ * Uses the manifest's defaultBranch if available, otherwise falls back to baseBranchName.
+ */
+export function resolveRepoBaseBranch(
+  repoKey: string,
+  workspace: ResolvedWorkspace,
+  fallbackBranch: string,
+): string {
+  if (repoKey === "__default__" || !workspace.manifest) return fallbackBranch;
+  const repoConfig = workspace.manifest.repos.find(r => r.alias === repoKey);
+  return repoConfig?.defaultBranch ?? fallbackBranch;
 }
 
 /* ------------------------------------------------------------------ */
@@ -724,30 +777,52 @@ export async function runImplement(
     // bus got the MIND_COMPLETE but the supervisor promise is still settling).
     await Promise.allSettled(supervisorPromises);
 
-    // ── Per-wave merge ──────────────────────────────────────────────────────
+    // ── Per-wave merge (grouped by repo) ────────────────────────────────────
     // Merge this wave's branches into main BEFORE the next wave starts.
     // This ensures wave-N+1 worktrees are branched from a main that includes
     // wave-N's changes (preventing merge conflicts at the end).
+    // Group by repo to checkout the correct base branch once per repo.
     console.log(`\n  Merging ${wave.id} branches into main...`);
     let waveMergeOk = true;
-    for (const drone of waveDrones) {
-      if (!drone.branch || drone.branch.startsWith("(") || !drone.worktree || drone.worktree.startsWith("(")) {
-        console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved.`);
-        result.mergeResults.push({ mind: drone.mindName, ok: false, error: "Placeholder worktree/branch" });
+
+    // Group drones by repo
+    const dronesByRepo = groupDronesByRepo(waveDrones);
+
+    for (const [repoKey, drones] of dronesByRepo) {
+      const mergeRepoRoot = repoKey === "__default__"
+        ? orchestratorRoot
+        : (workspace.repoPaths.get(repoKey) ?? orchestratorRoot);
+
+      // Checkout correct base branch for this repo before merging
+      const repoBranch = resolveRepoBaseBranch(repoKey, workspace, baseBranchName);
+      const checkoutResult = checkoutBranch(mergeRepoRoot, repoBranch);
+      if (!checkoutResult.ok) {
+        console.error(`  Failed to checkout ${repoBranch} in ${repoKey}: ${checkoutResult.error}`);
+        for (const drone of drones) {
+          result.mergeResults.push({ mind: drone.mindName, ok: false, error: `Checkout failed: ${checkoutResult.error}`, repo: drone.repo });
+        }
         waveMergeOk = false;
         continue;
       }
 
-      console.log(`    Merging @${drone.mindName} (${drone.branch})...`);
-      // Merge into the drone's own repo root (per-repo merge in multi-repo)
-      const mergeResult = mergeDroneWorktree(getDroneRepoRoot(drone, workspace, orchestratorRoot), drone);
-      result.mergeResults.push({ mind: drone.mindName, ok: mergeResult.ok, error: mergeResult.error, repo: drone.repo });
+      for (const drone of drones) {
+        if (!drone.branch || drone.branch.startsWith("(") || !drone.worktree || drone.worktree.startsWith("(")) {
+          console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved.`);
+          result.mergeResults.push({ mind: drone.mindName, ok: false, error: "Placeholder worktree/branch", repo: drone.repo });
+          waveMergeOk = false;
+          continue;
+        }
 
-      if (mergeResult.ok) {
-        console.log(`    Merged @${drone.mindName} successfully.`);
-      } else {
-        console.error(`    Merge failed for @${drone.mindName}: ${mergeResult.error}`);
-        waveMergeOk = false;
+        console.log(`    Merging @${drone.mindName} (${drone.branch}) into ${repoKey}...`);
+        const mergeResult = mergeDroneWorktree(mergeRepoRoot, drone);
+        result.mergeResults.push({ mind: drone.mindName, ok: mergeResult.ok, error: mergeResult.error, repo: drone.repo });
+
+        if (mergeResult.ok) {
+          console.log(`    Merged @${drone.mindName} successfully.`);
+        } else {
+          console.error(`    Merge failed for @${drone.mindName}: ${mergeResult.error}`);
+          waveMergeOk = false;
+        }
       }
     }
 

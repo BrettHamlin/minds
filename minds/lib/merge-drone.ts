@@ -71,6 +71,8 @@ export async function mergeDrone(options: {
   waveId?: string;
   /** Mind name emitting these events (e.g. "signals"). */
   mindName?: string;
+  /** Repo alias for multi-repo workspaces. Included in event payloads. */
+  repo?: string;
 }): Promise<MergeResult> {
   const { worktreePath, targetBranch, commitMessage, logContent } = options;
   const repoRoot = options.repoRoot ?? process.cwd();
@@ -82,7 +84,7 @@ export async function mergeDrone(options: {
       type: "DRONE_MERGING",
       source: "orchestrator",
       ticketId,
-      payload: { waveId: options.waveId, mindName: options.mindName },
+      payload: { waveId: options.waveId, mindName: options.mindName, repo: options.repo },
     });
   }
 
@@ -200,7 +202,7 @@ export async function mergeDrone(options: {
       type: "DRONE_MERGED",
       source: "orchestrator",
       ticketId: ticketId2,
-      payload: { waveId: options.waveId, mindName: options.mindName },
+      payload: { waveId: options.waveId, mindName: options.mindName, repo: options.repo },
     });
   }
 
