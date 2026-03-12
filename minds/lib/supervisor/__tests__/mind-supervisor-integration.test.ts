@@ -94,6 +94,7 @@ function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
     callLlmReview: mock(async () => makeApprovalResponse()),
     installDroneStopHook: mock(() => {}),
     killPane: mock(() => {}),
+    delay: mock(async () => {}), // zero-wait for tests
     ...overrides,
   };
 }
@@ -146,6 +147,7 @@ describe("runMindSupervisor integration", () => {
 
     // Verify pane tracking
     expect(result.allPaneIds).toContain("%10");
+    expect(result.totalPanesSpawned).toBe(1);
     expect(result.worktree).toBe(join(tmpDir, "worktree"));
     expect(result.branch).toBe("minds/BRE-500-transport");
   });
@@ -200,6 +202,7 @@ describe("runMindSupervisor integration", () => {
     // Verify all spawned panes tracked
     expect(result.allPaneIds).toContain("%10");
     expect(result.allPaneIds).toContain("%12");
+    expect(result.totalPanesSpawned).toBe(2);
   });
 
   // -----------------------------------------------------------------------
@@ -456,5 +459,77 @@ describe("runMindSupervisor integration", () => {
     // One explicit kill for the crashed drone + two in finally cleanup
     expect(killedPanes.filter((p: string) => p === "%10")).toHaveLength(1);
     expect(killedPanes.filter((p: string) => p === "%16")).toHaveLength(2); // explicit + cleanup
+  });
+
+  // -----------------------------------------------------------------------
+  // (g) Exponential backoff between retry iterations
+  // -----------------------------------------------------------------------
+  test("(g) backoff: delay is called with exponential backoff between rejected iterations", async () => {
+    const config = makeConfig({ maxIterations: 3 });
+    mkdirSync(join(tmpDir, "worktree"), { recursive: true });
+
+    let reviewCallCount = 0;
+    const delayCallsMs: number[] = [];
+
+    const deps = makeMockDeps({
+      callLlmReview: mock(async () => {
+        reviewCallCount++;
+        // Reject first two, approve third
+        if (reviewCallCount < 3) return makeRejectionResponse();
+        return makeApprovalResponse();
+      }),
+      relaunchDroneInWorktree: mock(() => `%${20 + reviewCallCount}`),
+      delay: mock(async (ms: number) => { delayCallsMs.push(ms); }),
+    });
+
+    const result = await runMindSupervisor(config, deps);
+
+    expect(result.ok).toBe(true);
+    expect(result.iterations).toBe(3);
+
+    // Two rejections → two backoff delays
+    expect(delayCallsMs).toHaveLength(2);
+    // First backoff: 5000 * 3^0 = 5000ms
+    expect(delayCallsMs[0]).toBe(5_000);
+    // Second backoff: 5000 * 3^1 = 15000ms
+    expect(delayCallsMs[1]).toBe(15_000);
+  });
+
+  test("(g) backoff: no delay when approved on first try", async () => {
+    const config = makeConfig();
+    const delayCallsMs: number[] = [];
+
+    const deps = makeMockDeps({
+      delay: mock(async (ms: number) => { delayCallsMs.push(ms); }),
+    });
+
+    const result = await runMindSupervisor(config, deps);
+
+    expect(result.ok).toBe(true);
+    expect(result.iterations).toBe(1);
+    expect(delayCallsMs).toHaveLength(0);
+  });
+
+  test("(g) backoff: no delay after max iterations reached (approved with warnings)", async () => {
+    const config = makeConfig({ maxIterations: 2 });
+    mkdirSync(join(tmpDir, "worktree"), { recursive: true });
+
+    const delayCallsMs: number[] = [];
+
+    const deps = makeMockDeps({
+      callLlmReview: mock(async () => makeRejectionResponse()),
+      relaunchDroneInWorktree: mock(() => "%15"),
+      delay: mock(async (ms: number) => { delayCallsMs.push(ms); }),
+    });
+
+    const result = await runMindSupervisor(config, deps);
+
+    expect(result.ok).toBe(true);
+    expect(result.approvedWithWarnings).toBe(true);
+    expect(result.iterations).toBe(2);
+    // Only 1 backoff (after iteration 1 rejection, before iteration 2)
+    // No backoff after iteration 2 because max iterations triggers approval
+    expect(delayCallsMs).toHaveLength(1);
+    expect(delayCallsMs[0]).toBe(5_000);
   });
 });

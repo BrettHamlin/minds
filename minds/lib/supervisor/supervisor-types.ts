@@ -81,6 +81,8 @@ export interface SupervisorResult {
   dronePaneId?: string;
   /** All drone pane IDs spawned across iterations (tracked for cleanup). */
   allPaneIds: string[];
+  /** Total number of drone panes spawned across all iterations. */
+  totalPanesSpawned: number;
   worktree: string;
   branch: string;
   errors: string[];
@@ -179,6 +181,9 @@ export interface SupervisorDeps {
 
   /** Kill a tmux pane. */
   killPane: (paneId: string) => void;
+
+  /** Delay between retry iterations (injectable for testing). */
+  delay: (ms: number) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -203,3 +208,10 @@ export const DEFAULT_REVIEW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (Opus + t
 export const SENTINEL_FILENAME = ".drone-complete";
 export const MAX_DIFF_CHARS = 50_000;
 export const MAX_TEST_OUTPUT_CHARS = 20_000;
+
+/** Base delay (ms) before retrying after a review rejection. */
+export const BASE_RETRY_BACKOFF_MS = 5_000;
+/** Multiplier applied per iteration: delay = BASE * MULTIPLIER^(iteration-1). */
+export const BACKOFF_MULTIPLIER = 3;
+/** Maximum backoff delay (ms). Caps exponential growth for high maxIterations. */
+export const MAX_BACKOFF_MS = 60_000;
