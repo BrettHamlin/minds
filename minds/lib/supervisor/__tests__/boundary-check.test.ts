@@ -291,3 +291,102 @@ diff --git a/bun.lock b/bun.lock
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// checkBoundary — requireBoundary option
+// ---------------------------------------------------------------------------
+
+describe("checkBoundary — requireBoundary", () => {
+  test("returns violation when requireBoundary is true and ownsFiles is empty", () => {
+    const diff = `diff --git a/src/anything.ts b/src/anything.ts
++++ b/src/anything.ts`;
+
+    const result = checkBoundary(diff, [], "new_mind", { requireBoundary: true });
+    expect(result.pass).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].message).toContain("No boundary defined for @new_mind");
+    expect(result.violations[0].message).toContain("owns: annotation or minds.json");
+  });
+
+  test("still skips ownership check when requireBoundary is false (default) and ownsFiles is empty", () => {
+    const diff = `diff --git a/src/anything.ts b/src/anything.ts
++++ b/src/anything.ts`;
+
+    const result = checkBoundary(diff, [], "old_mind");
+    expect(result.pass).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  test("still skips ownership check when requireBoundary is explicitly false and ownsFiles is empty", () => {
+    const diff = `diff --git a/src/anything.ts b/src/anything.ts
++++ b/src/anything.ts`;
+
+    const result = checkBoundary(diff, [], "old_mind", { requireBoundary: false });
+    expect(result.pass).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  test("requireBoundary has no effect when ownsFiles is non-empty", () => {
+    const diff = `diff --git a/minds/transport/publish.ts b/minds/transport/publish.ts
++++ b/minds/transport/publish.ts`;
+
+    const result = checkBoundary(diff, ["minds/transport/"], "transport", { requireBoundary: true });
+    expect(result.pass).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  test("requireBoundary with empty ownsFiles returns early before infrastructure check", () => {
+    // The requireBoundary hard error fires before iterating files,
+    // so even infrastructure files in the diff don't produce separate violations
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json`;
+
+    const result = checkBoundary(diff, [], "new_mind", { requireBoundary: true });
+    expect(result.pass).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].message).toContain("No boundary defined");
+  });
+
+  test("requireBoundary true with non-empty ownsFiles still enforces boundary violations", () => {
+    const diff = `diff --git a/src/outside/file.ts b/src/outside/file.ts
++++ b/src/outside/file.ts`;
+
+    const result = checkBoundary(diff, ["src/api/"], "api_mind", { requireBoundary: true });
+    expect(result.pass).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].message).toContain("outside your boundary");
+  });
+
+  test("requireBoundary true with empty ownsFiles and empty diff still fails", () => {
+    // Empty diff means no modified files, but requireBoundary checks before file iteration
+    const result = checkBoundary("", [], "new_mind", { requireBoundary: true });
+    expect(result.pass).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].message).toContain("No boundary defined");
+  });
+
+  test("requireBoundary true with non-empty ownsFiles and infrastructure violation", () => {
+    // Infrastructure check still fires when ownsFiles is present + requireBoundary true
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json`;
+
+    const result = checkBoundary(diff, ["src/api/"], "api_mind", { requireBoundary: true });
+    expect(result.pass).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].message).toContain("protected infrastructure file");
+  });
+
+  test("violation file field is empty string for requireBoundary hard error", () => {
+    const result = checkBoundary("", [], "new_mind", { requireBoundary: true });
+    expect(result.violations[0].file).toBe("");
+  });
+
+  test("options parameter as undefined behaves same as omitted", () => {
+    const diff = `diff --git a/src/anything.ts b/src/anything.ts
++++ b/src/anything.ts`;
+
+    const result = checkBoundary(diff, [], "old_mind", undefined);
+    expect(result.pass).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+});

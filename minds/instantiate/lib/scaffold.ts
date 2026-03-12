@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync } from "
 import { basename, join } from "path";
 import { mindsRoot, getRepoRoot } from "@minds/shared/paths.js";
 import type { MindDescription } from "@minds/mind.js";
+import type { MindTaskGroup } from "@minds/cli/lib/implement-types.js";
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -52,11 +53,11 @@ export function mindsJsonPath(): string {
 // Validation
 // ---------------------------------------------------------------------------
 
-/** Validate a Mind name: lowercase letters, digits, hyphens only. */
+/** Validate a Mind name: lowercase letters, digits, underscores, hyphens only. */
 export function validateMindName(name: string): string | null {
   if (!name || typeof name !== "string") return "name is required";
-  if (!/^[a-z][a-z0-9-]*$/.test(name)) {
-    return "name must be lowercase, start with a letter, and contain only letters, digits, or hyphens";
+  if (!/^[a-z][a-z0-9_-]*$/.test(name)) {
+    return "name must be lowercase, start with a letter, and contain only letters, digits, underscores, or hyphens";
   }
   return null;
 }
@@ -143,6 +144,10 @@ export interface ScaffoldOptions {
   mindsJsonOverride?: string;
   /** Override owns_files globs (e.g. from fission pipeline). Falls back to `{prefix}/{name}/`. */
   ownsFiles?: string[];
+  /** When true, return early without error if the Mind directory already exists. Default false. */
+  skipIfExists?: boolean;
+  /** Provenance tag to set on the minds.json entry. */
+  source?: MindDescription["source"];
 }
 
 /**
@@ -172,6 +177,9 @@ export async function scaffoldMind(
 
   // Guard: don't overwrite existing Mind
   if (existsSync(mindDir)) {
+    if (opts.skipIfExists) {
+      return { mindDir, files: [], registered: false, mindsJson: jsonPath };
+    }
     throw new Error(`scaffoldMind: Mind directory already exists at ${mindDir}`);
   }
 
@@ -209,6 +217,7 @@ export async function scaffoldMind(
     keywords: [name],
     owns_files: opts.ownsFiles ?? [`${prefix}/${name}/`],
     capabilities: [],
+    ...(opts.source ? { source: opts.source } : {}),
   };
   entries.push(newEntry);
 
@@ -218,4 +227,44 @@ export async function scaffoldMind(
   renameSync(tmpPath, jsonPath);
 
   return { mindDir, files, registered: true, mindsJson: jsonPath };
+}
+
+// ---------------------------------------------------------------------------
+// Batch scaffolding from task groups
+// ---------------------------------------------------------------------------
+
+/**
+ * Scaffold minds that appear in task groups with `owns:` annotations but
+ * are not yet registered in the minds.json registry.
+ *
+ * Idempotent: skips minds whose directories already exist on disk.
+ *
+ * @param groups - Parsed task groups (from parseAndGroupTasks)
+ * @param registry - Current minds.json entries
+ * @param opts - Override paths for testing
+ * @returns Array of scaffold results (one per scaffolded mind)
+ */
+export async function scaffoldFromTasks(
+  groups: MindTaskGroup[],
+  registry: MindDescription[],
+  opts: Pick<ScaffoldOptions, "mindsSrcDir" | "mindsJsonOverride"> = {}
+): Promise<ScaffoldResult[]> {
+  const registeredNames = new Set(registry.map((m) => m.name));
+  const results: ScaffoldResult[] = [];
+
+  for (const group of groups) {
+    // Only scaffold if: has owns annotation AND not already registered
+    if (!group.ownsFiles || group.ownsFiles.length === 0) continue;
+    if (registeredNames.has(group.mind)) continue;
+
+    const result = await scaffoldMind(group.mind, "Task-scaffolded mind", {
+      ...opts,
+      ownsFiles: group.ownsFiles,
+      source: "task-scaffolded",
+      skipIfExists: true,
+    });
+    results.push(result);
+  }
+
+  return results;
 }

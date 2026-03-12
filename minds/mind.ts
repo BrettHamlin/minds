@@ -37,6 +37,8 @@ export interface MindDescription {
   capabilities: string[];
   exposes?: string[];
   consumes?: string[];
+  /** Provenance: how this mind was created. */
+  source?: "fission" | "task-scaffolded" | "manual";
 }
 
 export interface Mind {
@@ -95,5 +97,6 @@ export function validateMindDescription(value: unknown): value is MindDescriptio
   if (!Array.isArray(obj.capabilities) || !obj.capabilities.every((c) => typeof c === "string")) return false;
   if (obj.exposes !== undefined && (!Array.isArray(obj.exposes) || !obj.exposes.every((e) => typeof e === "string"))) return false;
   if (obj.consumes !== undefined && (!Array.isArray(obj.consumes) || !obj.consumes.every((c) => typeof c === "string"))) return false;
+  if (obj.source !== undefined && obj.source !== "fission" && obj.source !== "task-scaffolded" && obj.source !== "manual") return false;
   return true;
 }

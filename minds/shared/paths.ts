@@ -122,6 +122,35 @@ export function normalizeMindsPrefix(filePath: string): string {
   return filePath;
 }
 
+// ── Glob stripping & ownership matching ─────────────────────────────────────
+
+/**
+ * Strip trailing glob patterns from an owns_files entry to get the directory prefix.
+ * e.g. "src/middleware/cors/**" → "src/middleware/cors/"
+ *      "src/middleware/cors/"   → "src/middleware/cors/"
+ *      "src/middleware/cors"    → "src/middleware/cors"
+ */
+export function stripGlob(pattern: string): string {
+  return pattern.replace(/\*+$/, "").replace(/\/+$/, "/");
+}
+
+/**
+ * Check whether a file path matches at least one owns_files prefix.
+ * Handles `.minds/` vs `minds/` normalization and glob stripping on both sides.
+ */
+export function matchesOwnership(filePath: string, ownsFiles: string[]): boolean {
+  const normalizedFile = normalizeMindsPrefix(filePath);
+
+  for (const prefix of ownsFiles) {
+    const normalizedPrefix = stripGlob(normalizeMindsPrefix(prefix));
+    if (normalizedFile.startsWith(normalizedPrefix)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Path to the metrics SQLite database.
  *

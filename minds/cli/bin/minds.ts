@@ -38,4 +38,12 @@ program
     await runImplement(ticketId, options);
   });
 
+program
+  .command("coverage")
+  .description("Check which repo files are covered by minds' owns_files")
+  .action(async () => {
+    const { runCoverage } = await import("../commands/coverage.js");
+    await runCoverage();
+  });
+
 program.parse();

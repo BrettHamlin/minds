@@ -13,6 +13,7 @@
 // produced interface, not just static annotation matching.
 
 import type { MindDescription } from "../mind.ts";
+import { matchesOwnership, stripGlob } from "../shared/paths.ts";
 import { readFileSync } from "fs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ export interface ParsedTask {
   // Internal fields for lint checks:
   sectionHasDepsHeader: boolean; // section header has (depends on: ...) annotation
   sectionDeclaredDeps: string[]; // minds declared in (depends on: ...) — without @
+  sectionOwnsFiles: string[]; // globs declared in (owns: ...) — file ownership for new minds
 }
 
 export interface ContractReport {
@@ -53,13 +55,17 @@ export interface LintError {
     | "dangling_consume"
     | "boundary_violation"
     | "cross_mind_leakage"
-    | "missing_dependency_header";
+    | "missing_dependency_header"
+    | "ownership_overlap"
+    | "unregistered_no_owns"
+    | "path_traversal"
+    | "owns_conflict";
   task: string;
   message: string;
 }
 
 export interface LintWarning {
-  type: "unused_produce" | "extra_dependency_header";
+  type: "unused_produce" | "extra_dependency_header" | "overly_broad_owns" | "no_owner";
   task: string;
   message: string;
 }
@@ -75,21 +81,40 @@ export function parseTasks(content: string): ParsedTask[] {
 
   let sectionHasDepsHeader = false;
   let sectionDeclaredDeps: string[] = [];
+  let sectionOwnsFiles: string[] = [];
 
   for (const line of lines) {
-    // Section header: ## @mind_name Tasks [(depends on: @a, @b)]
+    // Section header: ## @mind_name Tasks [(owns: glob1, glob2, depends on: @a, @b)]
+    // The parenthetical may contain owns: and/or depends on: in any order.
     const sectionMatch = line.match(
-      /^##\s+@([\w-]+)\s+Tasks(?:\s+\(depends on:\s*([^)]+)\))?/
+      /^##\s+@([\w-]+)\s+Tasks(?:\s+\(([^)]+)\))?/
     );
     if (sectionMatch) {
+      sectionHasDepsHeader = false;
+      sectionDeclaredDeps = [];
+      sectionOwnsFiles = [];
+
       if (sectionMatch[2]) {
-        sectionHasDepsHeader = true;
-        sectionDeclaredDeps = sectionMatch[2]
-          .split(",")
-          .map((s) => s.trim().replace(/^@/, ""));
-      } else {
-        sectionHasDepsHeader = false;
-        sectionDeclaredDeps = [];
+        const paren = sectionMatch[2];
+
+        // Parse "depends on: ..." clause
+        const depsMatch = paren.match(/depends\s+on:\s*([^,]*(?:,\s*@[\w-]+)*)/);
+        if (depsMatch) {
+          sectionHasDepsHeader = true;
+          sectionDeclaredDeps = depsMatch[1]
+            .split(",")
+            .map((s) => s.trim().replace(/^@/, ""))
+            .filter((s) => s.length > 0);
+        }
+
+        // Parse "owns: ..." clause
+        const ownsMatch = paren.match(/owns:\s*([^,]*(?:,\s*(?!depends\s)[\w./*\-]+)*)/);
+        if (ownsMatch) {
+          sectionOwnsFiles = ownsMatch[1]
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+        }
       }
       continue;
     }
@@ -134,6 +159,7 @@ export function parseTasks(content: string): ParsedTask[] {
       parallel,
       sectionHasDepsHeader,
       sectionDeclaredDeps: [...sectionDeclaredDeps],
+      sectionOwnsFiles: [...sectionOwnsFiles],
     });
   }
 
@@ -269,7 +295,7 @@ export function lintTasks(
     if (ownsFiles) {
       const pathsToCheck = extractPathsForBoundaryCheck(t.description);
       for (const p of pathsToCheck) {
-        if (!isWithinOwnedFiles(p, ownsFiles)) {
+        if (!matchesOwnership(p, ownsFiles)) {
           errors.push({
             type: "boundary_violation",
             task: t.id,
@@ -350,6 +376,120 @@ export function lintTasks(
     }
   }
 
+  // ── 7. ownership_overlap (T003) ─────────────────────────────────────────────
+  // Pairwise check across all minds (task minds + registry minds).
+  // Build a combined map of mind → owns_files (task annotation or registry).
+  const allMindOwns = new Map<string, string[]>();
+  for (const [name, files] of mindOwns) allMindOwns.set(name, files);
+  for (const [mind, mTasks] of mindGroups) {
+    const first = mTasks[0];
+    if (first.sectionOwnsFiles.length > 0) {
+      allMindOwns.set(mind, first.sectionOwnsFiles);
+    }
+  }
+
+  const mindNames = [...allMindOwns.keys()];
+  for (let i = 0; i < mindNames.length; i++) {
+    for (let j = i + 1; j < mindNames.length; j++) {
+      const mindA = mindNames[i];
+      const mindB = mindNames[j];
+      const ownsA = allMindOwns.get(mindA)!;
+      const ownsB = allMindOwns.get(mindB)!;
+
+      for (const a of ownsA) {
+        const prefixA = stripGlob(a);
+        for (const b of ownsB) {
+          const prefixB = stripGlob(b);
+          if (prefixA.startsWith(prefixB) || prefixB.startsWith(prefixA)) {
+            errors.push({
+              type: "ownership_overlap",
+              task: `@${mindA}/@${mindB}`,
+              message: `Ownership overlap: @${mindA} owns "${a}" and @${mindB} owns "${b}" — prefixes overlap`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // ── 8. unregistered_no_owns (T004) ────────────────────────────────────────
+  for (const [mind, mTasks] of mindGroups) {
+    if (!mindOwns.has(mind) && mTasks[0].sectionOwnsFiles.length === 0) {
+      errors.push({
+        type: "unregistered_no_owns",
+        task: `@${mind}`,
+        message: `@${mind} is not in the minds registry and has no owns: annotation — new minds must declare ownership`,
+      });
+    }
+  }
+
+  // ── 9. overly_broad_owns (T005) ───────────────────────────────────────────
+  for (const [mind, mTasks] of mindGroups) {
+    for (const glob of mTasks[0].sectionOwnsFiles) {
+      if (glob === "**" || glob === "*" || /^[^/]+\/$/.test(glob)) {
+        warnings.push({
+          type: "overly_broad_owns",
+          task: `@${mind}`,
+          message: `@${mind} owns: "${glob}" is overly broad — use a more specific path like "src/api/**"`,
+        });
+      }
+    }
+  }
+
+  // ── 10. path_traversal (T006) ─────────────────────────────────────────────
+  for (const [mind, mTasks] of mindGroups) {
+    for (const glob of mTasks[0].sectionOwnsFiles) {
+      if (/(^|\/)\.\.(\/|$)/.test(glob)) {
+        errors.push({
+          type: "path_traversal",
+          task: `@${mind}`,
+          message: `@${mind} owns: "${glob}" contains ".." path traversal — this is not allowed`,
+        });
+      }
+    }
+  }
+
+  // ── 11. owns_conflict (T007) ──────────────────────────────────────────────
+  for (const [mind, mTasks] of mindGroups) {
+    const taskOwns = mTasks[0].sectionOwnsFiles;
+    if (taskOwns.length === 0) continue;
+    const registryOwns = mindOwns.get(mind);
+    if (!registryOwns) continue;
+    // Compare: if the annotation differs from registry, emit error
+    const taskSorted = [...taskOwns].sort().join(",");
+    const regSorted = [...registryOwns].sort().join(",");
+    if (taskSorted !== regSorted) {
+      errors.push({
+        type: "owns_conflict",
+        task: `@${mind}`,
+        message: `@${mind} owns: annotation [${taskOwns.join(", ")}] differs from registry owns_files [${registryOwns.join(", ")}]`,
+      });
+    }
+  }
+
+  // ── 12. no_owner warning (T023) ────────────────────────────────────────────
+  // Advisory: warn if a task references a path that no mind (registry or task annotation) owns.
+  for (const t of tasks) {
+    const pathsToCheck = extractPathsForBoundaryCheck(t.description);
+    for (const p of pathsToCheck) {
+      // Check if ANY mind owns this path (registry or task annotation)
+      let owned = false;
+      for (const [, files] of allMindOwns) {
+        if (matchesOwnership(p, files)) {
+          owned = true;
+          break;
+        }
+      }
+      if (!owned) {
+        warnings.push({
+          type: "no_owner",
+          task: t.id,
+          message: `Task ${t.id} references path "${p}" which no mind owns — consider adding an owns: annotation`,
+        });
+      }
+    }
+  }
+
   return { valid: errors.length === 0, errors, warnings };
 }
 
@@ -400,15 +540,6 @@ function topoSort(
   }
 
   return waves;
-}
-
-function isWithinOwnedFiles(filePath: string, ownsFiles: string[]): boolean {
-  return ownsFiles.some((owned) => {
-    // Normalize both to have a trailing slash so that "minds/foo" matches "minds/foo/"
-    const normalizedOwned = owned.endsWith("/") ? owned : owned + "/";
-    const normalizedPath = filePath.endsWith("/") ? filePath : filePath + "/";
-    return normalizedPath.startsWith(normalizedOwned);
-  });
 }
 
 /**

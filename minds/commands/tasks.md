@@ -42,7 +42,7 @@ This command generates tasks for developing the **collab repo itself**, where wo
    - **Required**: plan.md (tech stack, structure), spec.md (user stories, AC)
    - **Optional**: data-model.md, contracts/, research.md, quickstart.md
 
-3. **Identify involved Minds**: Before generating any tasks, scan the plan and spec to determine which files/directories will be touched. Match each file path against Mind `owns_files` to identify which Minds are involved in this work.
+3. **Identify involved Minds**: Before generating any tasks, scan the plan and spec to determine which files/directories will be touched. Match each file path against Mind `owns_files` to identify which Minds are involved in this work. If a file path falls outside all existing minds' ownership, propose a new Mind for that domain and declare its boundary with `owns:` in the section header (see "Ownership Annotation for New Minds" below).
 
 4. **Generate tasks PER MIND** (CRITICAL):
 
@@ -80,6 +80,10 @@ This command generates tasks for developing the **collab repo itself**, where wo
 
    ## @execution Tasks (depends on: @pipeline_core, @signals)
    - [ ] T005 @execution Update phase-dispatch — consumes: signals/resolveSignalName, pipeline_core/loadPipelineForTicket
+
+   ## @cors_middleware Tasks (owns: src/middleware/cors/**, depends on: @pipeline_core)
+   - [ ] T006 @cors_middleware Create CORS handler at src/middleware/cors/handler.ts
+   - [ ] T007 @cors_middleware [P] Add config loader — consumes: loadPipelineForTicket from {MINDS_DIR}/pipeline_core/utils.ts
 
    ## Cross-Mind Contracts
    | Producer | Interface | Consumer |
@@ -153,6 +157,30 @@ Each Mind's tasks must be self-contained. A task description must NEVER:
 - Include details about another Mind's internal implementation
 
 The ONLY external reference allowed is the import path in a `consumes:` annotation. The drone does not need to know who produces the interface — only where to import it from.
+
+### Ownership Annotation for New Minds (`owns:`)
+
+When a feature requires a Mind that does NOT exist in `minds.json`, declare its file ownership in the section header using `owns:`. This tells the system what files the new Mind is responsible for, enabling auto-scaffolding and boundary enforcement.
+
+**Format** — add `owns:` to the section header (combinable with `depends on:`):
+```
+## @new_mind Tasks (owns: src/api/**, src/models/**)
+## @new_mind Tasks (owns: src/middleware/cors/**, depends on: @pipeline_core)
+```
+
+**When to add `owns:`**:
+- The mind does NOT exist in `minds.json` yet
+- You are introducing a new domain that needs its own boundary
+
+**When NOT to add `owns:`**:
+- The mind already exists in `minds.json` — it already has `owns_files`
+- Adding `owns:` to an existing mind with different paths causes a lint error
+
+**Glob rules**:
+- Use `**` suffix for directory trees: `src/middleware/cors/**`
+- Must be specific — bare `**` or `src/` will be rejected by the linter
+- Must not contain `..` (path traversal is rejected)
+- Must not overlap with another mind's `owns_files` (pairwise check)
 
 ### Dependencies
 

@@ -296,3 +296,482 @@ describe("lintTasks", () => {
     expect(result.warnings).toHaveLength(0);
   });
 });
+
+// ─── T001: parseTasks owns: annotation ────────────────────────────────────────
+
+describe("parseTasks owns: annotation (T001)", () => {
+  it("parses owns: annotation from section header", () => {
+    const content = `
+## @new_mind Tasks (owns: src/api/**, src/models/**)
+- [ ] T001 @new_mind Do thing
+`;
+    const tasks = parseTasks(content);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].sectionOwnsFiles).toEqual(["src/api/**", "src/models/**"]);
+  });
+
+  it("handles combined owns: and depends on: (owns first)", () => {
+    const content = `
+## @new_mind Tasks (owns: src/api/**, depends on: @core)
+- [ ] T001 @new_mind Do thing
+`;
+    const tasks = parseTasks(content);
+    expect(tasks[0].sectionOwnsFiles).toEqual(["src/api/**"]);
+    expect(tasks[0].sectionHasDepsHeader).toBe(true);
+    expect(tasks[0].sectionDeclaredDeps).toEqual(["core"]);
+  });
+
+  it("handles combined depends on: and owns: (depends first)", () => {
+    const content = `
+## @new_mind Tasks (depends on: @core, owns: src/api/**)
+- [ ] T001 @new_mind Do thing
+`;
+    const tasks = parseTasks(content);
+    expect(tasks[0].sectionOwnsFiles).toEqual(["src/api/**"]);
+    expect(tasks[0].sectionHasDepsHeader).toBe(true);
+    expect(tasks[0].sectionDeclaredDeps).toEqual(["core"]);
+  });
+
+  it("produces empty sectionOwnsFiles when no owns: annotation", () => {
+    const content = `
+## @pipeline_core Tasks
+- [ ] T001 @pipeline_core Do thing
+`;
+    const tasks = parseTasks(content);
+    expect(tasks[0].sectionOwnsFiles).toEqual([]);
+  });
+
+  it("carries sectionOwnsFiles to all tasks in section", () => {
+    const content = `
+## @new_mind Tasks (owns: src/api/**)
+- [ ] T001 @new_mind First task
+- [ ] T002 @new_mind Second task
+`;
+    const tasks = parseTasks(content);
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0].sectionOwnsFiles).toEqual(["src/api/**"]);
+    expect(tasks[1].sectionOwnsFiles).toEqual(["src/api/**"]);
+  });
+
+  it("existing depends on: only parsing is unchanged", () => {
+    const tasks = parseTasks(TASKS_WITH_ANNOTATIONS);
+    const t004 = tasks.find((t) => t.id === "T004")!;
+    expect(t004.sectionHasDepsHeader).toBe(true);
+    expect(t004.sectionDeclaredDeps).toEqual(["pipeline_core", "signals"]);
+    expect(t004.sectionOwnsFiles).toEqual([]);
+  });
+});
+
+// ─── T003: ownership_overlap lint check ──────────────────────────────────────
+
+describe("lintTasks ownership_overlap (T003)", () => {
+  it("flags overlapping ownership between two task minds", () => {
+    const content = `
+## @api Tasks (owns: src/api/**)
+- [ ] T001 @api Create routes
+
+## @auth Tasks (owns: src/api/auth/**)
+- [ ] T002 @auth Create auth middleware
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const err = result.errors.find((e) => e.type === "ownership_overlap");
+    expect(err).toBeDefined();
+    expect(err!.message).toContain("@api");
+    expect(err!.message).toContain("@auth");
+  });
+
+  it("does not flag non-overlapping ownership", () => {
+    const content = `
+## @api Tasks (owns: src/api/**)
+- [ ] T001 @api Create routes
+
+## @models Tasks (owns: src/models/**)
+- [ ] T002 @models Create models
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const overlapErrors = result.errors.filter((e) => e.type === "ownership_overlap");
+    expect(overlapErrors).toHaveLength(0);
+  });
+
+  it("flags overlap between task mind and registry mind", () => {
+    const content = `
+## @new_mind Tasks (owns: minds/signals/extra/**)
+- [ ] T001 @new_mind Add extra signal utils
+`;
+    const registry: MinimalMind[] = [
+      { name: "signals", owns_files: ["minds/signals/"] },
+    ];
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, registry as any);
+
+    const err = result.errors.find((e) => e.type === "ownership_overlap");
+    expect(err).toBeDefined();
+  });
+
+  it("does not self-overlap when same mind appears once", () => {
+    const content = `
+## @api Tasks (owns: src/api/**)
+- [ ] T001 @api Create routes
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const overlapErrors = result.errors.filter((e) => e.type === "ownership_overlap");
+    expect(overlapErrors).toHaveLength(0);
+  });
+});
+
+// ─── T004: unregistered_no_owns lint check ──────────────────────────────────
+
+describe("lintTasks unregistered_no_owns (T004)", () => {
+  it("flags unregistered mind without owns: annotation", () => {
+    const content = `
+## @new_mind Tasks
+- [ ] T001 @new_mind Do something
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const err = result.errors.find((e) => e.type === "unregistered_no_owns");
+    expect(err).toBeDefined();
+    expect(err!.message).toContain("@new_mind");
+  });
+
+  it("does not flag unregistered mind WITH owns: annotation", () => {
+    const content = `
+## @new_mind Tasks (owns: src/foo/**)
+- [ ] T001 @new_mind Do something
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const unregErrors = result.errors.filter((e) => e.type === "unregistered_no_owns");
+    expect(unregErrors).toHaveLength(0);
+  });
+
+  it("does not flag registered mind without owns: annotation", () => {
+    const content = `
+## @pipeline_core Tasks
+- [ ] T001 @pipeline_core Do something in minds/pipeline_core/foo.ts
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, REGISTRY as any);
+
+    const unregErrors = result.errors.filter((e) => e.type === "unregistered_no_owns");
+    expect(unregErrors).toHaveLength(0);
+  });
+});
+
+// ─── T005: overly_broad_owns warning ────────────────────────────────────────
+
+describe("lintTasks overly_broad_owns (T005)", () => {
+  it("warns on bare ** glob", () => {
+    const content = `
+## @greedy Tasks (owns: **)
+- [ ] T001 @greedy Own everything
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const warn = result.warnings.find((w) => w.type === "overly_broad_owns");
+    expect(warn).toBeDefined();
+    expect(warn!.message).toContain("**");
+  });
+
+  it("warns on bare * glob", () => {
+    const content = `
+## @greedy Tasks (owns: *)
+- [ ] T001 @greedy Own root
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const warn = result.warnings.find((w) => w.type === "overly_broad_owns");
+    expect(warn).toBeDefined();
+  });
+
+  it("warns on single-segment path like src/", () => {
+    const content = `
+## @greedy Tasks (owns: src/)
+- [ ] T001 @greedy Own src
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const warn = result.warnings.find((w) => w.type === "overly_broad_owns");
+    expect(warn).toBeDefined();
+    expect(warn!.message).toContain("src/");
+  });
+
+  it("does NOT warn on specific path like src/api/**", () => {
+    const content = `
+## @api Tasks (owns: src/api/**)
+- [ ] T001 @api Create routes
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const broadWarnings = result.warnings.filter((w) => w.type === "overly_broad_owns");
+    expect(broadWarnings).toHaveLength(0);
+  });
+});
+
+// ─── T006: path_traversal rejection ─────────────────────────────────────────
+
+describe("lintTasks path_traversal (T006)", () => {
+  it("rejects owns: glob containing ..", () => {
+    const content = `
+## @evil Tasks (owns: src/../etc/passwd)
+- [ ] T001 @evil Escape sandbox
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const err = result.errors.find((e) => e.type === "path_traversal");
+    expect(err).toBeDefined();
+    expect(err!.message).toContain("..");
+  });
+
+  it("does not reject normal paths", () => {
+    const content = `
+## @api Tasks (owns: src/api/**)
+- [ ] T001 @api Create routes
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const traversalErrors = result.errors.filter((e) => e.type === "path_traversal");
+    expect(traversalErrors).toHaveLength(0);
+  });
+});
+
+// ─── T007: owns_conflict lint check ─────────────────────────────────────────
+
+describe("lintTasks owns_conflict (T007)", () => {
+  it("flags when task owns: differs from registry owns_files", () => {
+    const content = `
+## @api_mind Tasks (owns: src/api/**)
+- [ ] T001 @api_mind Do thing in src/api/foo.ts
+`;
+    const registry: MinimalMind[] = [
+      { name: "api_mind", owns_files: ["src/api/"] },
+    ];
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, registry as any);
+
+    const err = result.errors.find((e) => e.type === "owns_conflict");
+    expect(err).toBeDefined();
+    expect(err!.message).toContain("src/api/**");
+    expect(err!.message).toContain("src/api/");
+  });
+
+  it("does not flag when no owns: annotation on registered mind", () => {
+    const content = `
+## @pipeline_core Tasks
+- [ ] T001 @pipeline_core Do thing in minds/pipeline_core/foo.ts
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, REGISTRY as any);
+
+    const conflictErrors = result.errors.filter((e) => e.type === "owns_conflict");
+    expect(conflictErrors).toHaveLength(0);
+  });
+
+  it("does not flag when owns: matches registry exactly", () => {
+    const content = `
+## @pipeline_core Tasks (owns: minds/pipeline_core/)
+- [ ] T001 @pipeline_core Do thing in minds/pipeline_core/foo.ts
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, REGISTRY as any);
+
+    const conflictErrors = result.errors.filter((e) => e.type === "owns_conflict");
+    expect(conflictErrors).toHaveLength(0);
+  });
+});
+
+// ─── T013: Additional coverage for combined annotations through lint ─────────
+
+describe("lintTasks with combined annotations (T013)", () => {
+  it("lint correctly processes tasks with owns: and depends on: combined (owns first)", () => {
+    const content = `
+## @core Tasks (owns: src/core/**)
+- [ ] T001 @core Setup base — produces: CoreConfig at src/core/config.ts
+
+## @api Tasks (owns: src/api/**, depends on: @core)
+- [ ] T002 @api Build endpoints — consumes: CoreConfig from src/core/config.ts
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    // Should be valid — no lint errors expected (deps declared, no overlap, both have owns:)
+    const overlapErrors = result.errors.filter((e) => e.type === "ownership_overlap");
+    expect(overlapErrors).toHaveLength(0);
+    const unregErrors = result.errors.filter((e) => e.type === "unregistered_no_owns");
+    expect(unregErrors).toHaveLength(0);
+  });
+
+  it("lint correctly processes tasks with depends on: and owns: combined (depends first)", () => {
+    const content = `
+## @core Tasks (owns: src/core/**)
+- [ ] T001 @core Setup base — produces: CoreConfig at src/core/config.ts
+
+## @api Tasks (depends on: @core, owns: src/api/**)
+- [ ] T002 @api Build endpoints — consumes: CoreConfig from src/core/config.ts
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    // Both minds have owns:, no overlap, deps satisfied
+    const overlapErrors = result.errors.filter((e) => e.type === "ownership_overlap");
+    expect(overlapErrors).toHaveLength(0);
+    const unregErrors = result.errors.filter((e) => e.type === "unregistered_no_owns");
+    expect(unregErrors).toHaveLength(0);
+  });
+});
+
+// ─── T013: Edge cases for ownership_overlap ──────────────────────────────────
+
+describe("lintTasks ownership_overlap edge cases (T013)", () => {
+  it("flags overlap between two registry minds (no task owns: involved)", () => {
+    const content = `
+## @signals Tasks
+- [ ] T001 @signals Do work
+
+## @signals_extra Tasks
+- [ ] T002 @signals_extra Do other work
+`;
+    const registry: MinimalMind[] = [
+      { name: "signals", owns_files: ["minds/signals/"] },
+      { name: "signals_extra", owns_files: ["minds/signals/extra/"] },
+    ];
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, registry as any);
+
+    const err = result.errors.find((e) => e.type === "ownership_overlap");
+    expect(err).toBeDefined();
+  });
+
+  it("flags overlap with multiple globs where only one pair overlaps", () => {
+    const content = `
+## @mind_a Tasks (owns: src/api/**, src/shared/**)
+- [ ] T001 @mind_a Do A
+
+## @mind_b Tasks (owns: src/models/**, src/shared/utils/**)
+- [ ] T002 @mind_b Do B
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    // src/shared/** and src/shared/utils/** overlap
+    const overlapErrors = result.errors.filter((e) => e.type === "ownership_overlap");
+    expect(overlapErrors.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ─── T013: Edge cases for path_traversal ─────────────────────────────────────
+
+describe("lintTasks path_traversal edge cases (T013)", () => {
+  it("rejects nested path traversal with multiple .. segments", () => {
+    const content = `
+## @evil Tasks (owns: src/../../etc/shadow)
+- [ ] T001 @evil Escape deeper
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const err = result.errors.find((e) => e.type === "path_traversal");
+    expect(err).toBeDefined();
+  });
+
+  it("does not reject paths containing dots that are not traversal (e.g. ..config)", () => {
+    const content = `
+## @api Tasks (owns: src/api.config/**)
+- [ ] T001 @api Configure
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const traversalErrors = result.errors.filter((e) => e.type === "path_traversal");
+    expect(traversalErrors).toHaveLength(0);
+  });
+});
+
+// ─── T013: Edge cases for overly_broad_owns ──────────────────────────────────
+
+describe("lintTasks overly_broad_owns edge cases (T013)", () => {
+  it("does NOT warn on two-segment path like src/api/", () => {
+    const content = `
+## @api Tasks (owns: src/api/)
+- [ ] T001 @api Do work
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const broadWarnings = result.warnings.filter((w) => w.type === "overly_broad_owns");
+    expect(broadWarnings).toHaveLength(0);
+  });
+
+  it("warns on single-segment path with different name like lib/", () => {
+    const content = `
+## @all Tasks (owns: lib/)
+- [ ] T001 @all Do work
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const warn = result.warnings.find((w) => w.type === "overly_broad_owns");
+    expect(warn).toBeDefined();
+  });
+});
+
+// ─── T013: Edge cases for unregistered_no_owns ──────────────────────────────
+
+describe("lintTasks unregistered_no_owns edge cases (T013)", () => {
+  it("flags multiple unregistered minds without owns:", () => {
+    const content = `
+## @new_a Tasks
+- [ ] T001 @new_a Do A
+
+## @new_b Tasks
+- [ ] T002 @new_b Do B
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, []);
+
+    const unregErrors = result.errors.filter((e) => e.type === "unregistered_no_owns");
+    expect(unregErrors).toHaveLength(2);
+  });
+});
+
+// ─── T013: Edge cases for owns_conflict ──────────────────────────────────────
+
+describe("lintTasks owns_conflict edge cases (T013)", () => {
+  it("flags conflict when annotation has extra globs beyond registry", () => {
+    const content = `
+## @pipeline_core Tasks (owns: minds/pipeline_core/, minds/pipeline_core/extra/)
+- [ ] T001 @pipeline_core Do thing in minds/pipeline_core/foo.ts
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, REGISTRY as any);
+
+    const err = result.errors.find((e) => e.type === "owns_conflict");
+    expect(err).toBeDefined();
+  });
+
+  it("does not flag unregistered mind with owns: (no registry entry to conflict with)", () => {
+    const content = `
+## @brand_new Tasks (owns: src/brand_new/**)
+- [ ] T001 @brand_new Do thing
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, REGISTRY as any);
+
+    const conflictErrors = result.errors.filter((e) => e.type === "owns_conflict");
+    expect(conflictErrors).toHaveLength(0);
+  });
+});

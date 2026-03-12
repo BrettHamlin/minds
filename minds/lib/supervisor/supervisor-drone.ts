@@ -37,6 +37,7 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
     dependencies: config.dependencies,
     featureDir: config.featureDir,
     mindsDir,
+    ownsFiles: config.ownsFiles,
   });
 
   if (!feedbackFile) {

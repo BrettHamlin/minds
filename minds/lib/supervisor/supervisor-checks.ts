@@ -41,7 +41,7 @@ export function loadStandards(repoRoot: string): string {
 // where the full supervisor loop is exercised with mocked deps.
 // ---------------------------------------------------------------------------
 
-export function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string, tasks?: import("../../cli/lib/implement-types.ts").MindTask[], configOwnsFiles?: string[]): CheckResults {
+export function runDeterministicChecksDefault(worktreePath: string, baseBranch: string, mindName: string, tasks?: import("../../cli/lib/implement-types.ts").MindTask[], configOwnsFiles?: string[], requireBoundary?: boolean): CheckResults {
   const findings: ReviewFinding[] = [];
 
   // Get diff relative to base branch
@@ -124,7 +124,7 @@ export function runDeterministicChecksDefault(worktreePath: string, baseBranch: 
   result.ownsFiles = ownsFiles;
 
   if (diff) {
-    const boundaryResult = checkBoundary(diff, ownsFiles, mindName);
+    const boundaryResult = checkBoundary(diff, ownsFiles, mindName, requireBoundary ? { requireBoundary } : undefined);
     result.boundaryPass = boundaryResult.pass;
     result.boundaryFindings = boundaryResult.violations.map((v) => ({
       file: v.file,

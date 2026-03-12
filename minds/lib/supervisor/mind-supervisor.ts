@@ -93,6 +93,17 @@ function applyForceRejections(verdict: ReviewVerdict, checks: CheckResults): voi
   if (checks.boundaryPass === false && verdict.approved) {
     verdict.approved = false;
     verdict.findings.push(...(checks.boundaryFindings ?? []));
+  } else if (checks.boundaryPass === true) {
+    // Deterministic boundary check passed — strip any false LLM boundary findings.
+    // Boundary enforcement is fully deterministic; the LLM should not override it.
+    const before = verdict.findings.length;
+    verdict.findings = verdict.findings.filter(
+      (f) => !f.message.includes("boundary") && !f.message.includes("outside")
+    );
+    // If LLM rejected ONLY for boundary and we stripped all those findings, re-approve.
+    if (!verdict.approved && before > 0 && verdict.findings.length === 0) {
+      verdict.approved = true;
+    }
   }
   if (checks.contractsPass === false && verdict.approved) {
     verdict.approved = false;
@@ -230,7 +241,7 @@ export async function runMindSupervisor(
 
       // ---- Step 4: Deterministic checks ----
       sm.transition(SupervisorState.CHECKING);
-      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName, config.tasks, config.ownsFiles);
+      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName, config.tasks, config.ownsFiles, config.requireBoundary);
 
       // ---- Step 5: Publish REVIEW_STARTED ----
       await deps.publishSignal(
