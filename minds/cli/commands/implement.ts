@@ -48,6 +48,9 @@ import { loadWorkspace, type ResolvedWorkspace } from "../../shared/workspace-lo
 import { loadMultiRepoRegistries } from "../../shared/registry-loader.ts";
 import { parseTasks, lintTasks } from "../../lib/contracts.ts";
 import type { MindDescription } from "../../mind.ts";
+import type { SupervisorResult } from "../../lib/supervisor/supervisor-types.ts";
+import type { ContractAnnotation } from "../../lib/check-contracts-core.ts";
+import { verifyCrossRepoContracts, buildCrossRepoChecks } from "../../lib/supervisor/cross-repo-contracts.ts";
 
 /**
  * Resolve the source minds directory (where scripts live).
@@ -173,7 +176,7 @@ function launchMindSupervisor(
   mindRepoRoot?: string,
   testCommand?: string,
   installCommand?: string,
-): { info: MindInfo; done: Promise<void> } {
+): { info: MindInfo; done: Promise<SupervisorResult> } {
   const supervisorConfig: SupervisorConfig = {
     mindName,
     ticketId,
@@ -232,6 +235,8 @@ function launchMindSupervisor(
         `  Supervisor @${mindName}: approved after ${result.iterations} iteration(s)`,
       );
     }
+
+    return result;
   });
 
   return { info, done };
@@ -631,9 +636,12 @@ export async function runImplement(
     // Publish WAVE_STARTED
     await publishWaveStarted(busInfo.busUrl, channel, wave.id);
 
-    // Launch deterministic supervisors for this wave
+    // Launch deterministic supervisors for this wave.
+    // INVARIANT: waveDrones and supervisorPromises are pushed in lockstep — index i
+    // in supervisorPromises corresponds to waveDrones[i]. Both are pushed inside
+    // the same try block; if launch fails, neither gets an entry.
     const waveDrones: MindInfo[] = [];
-    const supervisorPromises: Promise<void>[] = [];
+    const supervisorPromises: Promise<SupervisorResult>[] = [];
 
     for (const mindName of wave.minds) {
       const group = groupMap.get(mindName);
@@ -788,7 +796,7 @@ export async function runImplement(
     // Supervisors handle their own drone pane cleanup.
     // Wait for any supervisor promises that haven't resolved yet (edge case:
     // bus got the MIND_COMPLETE but the supervisor promise is still settling).
-    await Promise.allSettled(supervisorPromises);
+    const waveSettlements = await Promise.allSettled(supervisorPromises);
 
     // ── Per-wave merge (grouped by repo) ────────────────────────────────────
     // Merge this wave's branches into main BEFORE the next wave starts.
@@ -843,6 +851,40 @@ export async function runImplement(
       result.ok = false;
       result.errors.push(`Merge failed for one or more minds in ${wave.id}`);
       break; // Don't start next wave if merge failed
+    }
+
+    // ── Post-wave cross-repo contract verification (MR-019, MR-020) ──────
+    if (workspace.isMultiRepo) {
+      const deferredByMind: Array<{ mindName: string; repo?: string; annotations: ContractAnnotation[] }> = [];
+
+      for (let i = 0; i < waveSettlements.length; i++) {
+        const s = waveSettlements[i];
+        if (s.status === "fulfilled" && s.value.deferredCrossRepoAnnotations?.length) {
+          deferredByMind.push({
+            mindName: waveDrones[i].mindName,
+            repo: waveDrones[i].repo,
+            annotations: s.value.deferredCrossRepoAnnotations,
+          });
+        }
+      }
+
+      if (deferredByMind.length > 0) {
+        console.log(`\n  Verifying cross-repo contracts...`);
+        const checks = buildCrossRepoChecks(deferredByMind);
+        const crossRepoResult = verifyCrossRepoContracts(checks, workspace.repoPaths, orchestratorRoot);
+
+        if (!crossRepoResult.pass) {
+          console.error(`  Cross-repo contract violations:`);
+          for (const v of crossRepoResult.violations) {
+            console.error(`    [${v.annotation.taskId}] ${v.reason}`);
+          }
+          result.ok = false;
+          result.errors.push(`Cross-repo contract violations in ${wave.id}`);
+          break;
+        }
+
+        console.log(`  Cross-repo contracts verified: ${checks.length} check(s) passed.`);
+      }
     }
   }
 

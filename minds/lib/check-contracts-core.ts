@@ -265,7 +265,7 @@ export function checkExportExists(content: string, interfaceName: string): boole
   return exportPatterns.some((p) => p.test(content));
 }
 
-function resolveFilePath(filePath: string, root: string): string {
+export function resolveFilePath(filePath: string, root: string): string {
   // Handle .minds/ vs minds/ — check both
   const direct = resolve(root, filePath);
   if (existsSync(direct)) return direct;
