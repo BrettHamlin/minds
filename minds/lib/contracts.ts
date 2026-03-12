@@ -36,6 +36,7 @@ export interface ParsedTask {
   sectionHasDepsHeader: boolean; // section header has (depends on: ...) annotation
   sectionDeclaredDeps: string[]; // minds declared in (depends on: ...) — without @
   sectionOwnsFiles: string[]; // globs declared in (owns: ...) — file ownership for new minds
+  sectionRepo?: string; // repo alias declared in (repo: ...) — for multi-repo workspaces
 }
 
 export interface ContractReport {
@@ -82,6 +83,7 @@ export function parseTasks(content: string): ParsedTask[] {
   let sectionHasDepsHeader = false;
   let sectionDeclaredDeps: string[] = [];
   let sectionOwnsFiles: string[] = [];
+  let sectionRepo: string | undefined;
 
   for (const line of lines) {
     // Section header: ## @mind_name Tasks [(owns: glob1, glob2, depends on: @a, @b)]
@@ -93,6 +95,7 @@ export function parseTasks(content: string): ParsedTask[] {
       sectionHasDepsHeader = false;
       sectionDeclaredDeps = [];
       sectionOwnsFiles = [];
+      sectionRepo = undefined;
 
       if (sectionMatch[2]) {
         const paren = sectionMatch[2];
@@ -115,6 +118,10 @@ export function parseTasks(content: string): ParsedTask[] {
             .map((s) => s.trim())
             .filter((s) => s.length > 0);
         }
+
+        // Parse "repo: ..." clause
+        const repoMatch = paren.match(/repo:\s*([\w-]+)/);
+        if (repoMatch) sectionRepo = repoMatch[1];
       }
       continue;
     }
@@ -160,6 +167,7 @@ export function parseTasks(content: string): ParsedTask[] {
       sectionHasDepsHeader,
       sectionDeclaredDeps: [...sectionDeclaredDeps],
       sectionOwnsFiles: [...sectionOwnsFiles],
+      sectionRepo,
     });
   }
 
