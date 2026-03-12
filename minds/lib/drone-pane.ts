@@ -4,7 +4,7 @@
  *
  * This is the TS implementation for /drone.launch. It replaces /dev.pane for Minds development
  * with key differences:
- *   - Worktree path: collab-dev-{ticket-id}-{mind-name} (unique, predictable)
+ *   - Worktree path: {repo}-{repo-alias?}-{ticket-id}-{mind-name} (unique, predictable)
  *   - Writes drone's private CLAUDE.md BEFORE launching Claude Code
  *   - Writes DRONE-BRIEF.md BEFORE launching Claude Code
  *   - Handles worktree .git (file, not dir) for correct .git/info/exclude writes
@@ -45,8 +45,15 @@ import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
  * Assemble the CLAUDE.md content for a drone, loading minds.json, STANDARDS.md,
  * STANDARDS-project.md, and optional MIND.md from the repo's minds directory.
  */
-export function assembleClaudeContent(repoRoot: string, mindName: string, ticketId: string): string {
+export function assembleClaudeContent(
+  repoRoot: string,
+  mindName: string,
+  ticketId: string,
+  opts?: { repoAlias?: string; orchestratorRoot?: string },
+): string {
   const mindsBase = resolveMindsDir(repoRoot);
+  const standardsRoot = opts?.orchestratorRoot ?? repoRoot;
+  const standardsBase = resolveMindsDir(standardsRoot);
 
   // Load minds.json and find entry for this mind
   const mindsJsonPath = resolve(mindsBase, "minds.json");
@@ -70,12 +77,12 @@ export function assembleClaudeContent(repoRoot: string, mindName: string, ticket
     }
   }
 
-  // Load STANDARDS.md (generic — ships with installer)
-  const standardsPath = resolve(mindsBase, "STANDARDS.md");
+  // Load STANDARDS.md from orchestrator root (ships with installer)
+  const standardsPath = resolve(standardsBase, "STANDARDS.md");
   const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
 
-  // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
-  const projectStandardsPath = resolve(mindsBase, "STANDARDS-project.md");
+  // Load STANDARDS-project.md from orchestrator root (project-specific)
+  const projectStandardsPath = resolve(standardsBase, "STANDARDS-project.md");
   const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
 
   // Load MIND.md (optional)
@@ -93,6 +100,16 @@ export function assembleClaudeContent(repoRoot: string, mindName: string, ticket
     ? `## Mind Profile (@${mindName})\n${mindMd}`
     : "";
 
+  const repoContextSection = opts?.repoAlias
+    ? [
+        `## Repository Context`,
+        ``,
+        `You are working in the **${opts.repoAlias}** repository.`,
+        `Other repos in this workspace are read-only references — do not modify files outside this repo.`,
+        ``,
+      ].join("\n")
+    : null;
+
   return [
     `## Mind Identity`,
     ``,
@@ -102,6 +119,7 @@ export function assembleClaudeContent(repoRoot: string, mindName: string, ticket
     `Your file boundary (only touch files in these paths):`,
     ownsFilesSection,
     ``,
+    repoContextSection,
     `## Engineering Standards`,
     standards,
     projectStandards ? `## Project-Specific Standards` : null,
@@ -195,15 +213,20 @@ if (import.meta.main) { (async () => {
 
   // ─── Repo context ────────────────────────────────────────────────────────────
 
-  const repoRoot = run("git rev-parse --show-toplevel");
+  const overrideRepoRoot = getArg("--repo-root");
+  const repoRoot = overrideRepoRoot ?? run("git rev-parse --show-toplevel");
   const repoName = basename(repoRoot);
+  const repoAlias = getArg("--repo-alias");
+  const installCmd = getArg("--install-cmd");
+  const orchestratorRoot = getArg("--orchestrator-root");
 
   // ─── Base branch ─────────────────────────────────────────────────────────────
 
-  const baseBranch = getArg("--base") ?? run("git branch --show-current");
+  const baseBranch = getArg("--base") ?? run(`git -C ${shellQuote(repoRoot)} branch --show-current`);
 
-  tryRun(`git fetch origin`);
-  tryRun(`git pull origin ${shellQuote(baseBranch)}`);
+  // CRITICAL: fetch/pull must target the MIND's repo, not orchestrator
+  tryRun(`git -C ${shellQuote(repoRoot)} fetch origin`);
+  tryRun(`git -C ${shellQuote(repoRoot)} pull origin ${shellQuote(baseBranch)}`);
 
   // ─── Branch and worktree path ─────────────────────────────────────────────────
 
@@ -212,7 +235,9 @@ if (import.meta.main) { (async () => {
 
   // Worktree path: collab-dev-{ticketId}-{mindName}, with numeric suffix if taken
   const parentDir = resolve(repoRoot, "..");
-  let worktreeBase = `${repoName}-${ticketId}-${mindName}`;
+  let worktreeBase = repoAlias
+    ? `${repoName}-${repoAlias}-${ticketId}-${mindName}`
+    : `${repoName}-${ticketId}-${mindName}`;
   let worktreePath = resolve(parentDir, worktreeBase);
   let suffix = 2;
   while (existsSync(worktreePath)) {
@@ -235,10 +260,15 @@ if (import.meta.main) { (async () => {
 
   // node_modules is gitignored and never present in fresh worktrees
   try {
-    run(`bun install --cwd ${shellQuote(worktreePath)}`);
+    if (installCmd) {
+      const result = Bun.spawnSync(["sh", "-c", installCmd], { cwd: worktreePath, stdout: "inherit", stderr: "inherit" });
+      if (result.exitCode !== 0) throw new Error(`Install command failed with exit code ${result.exitCode}`);
+    } else {
+      run(`bun install --cwd ${shellQuote(worktreePath)}`);
+    }
   } catch (err) {
     // Non-fatal: some Minds don't need node_modules
-    process.stderr.write(`Warning: bun install failed: ${err}\n`);
+    process.stderr.write(`Warning: install failed: ${err}\n`);
   }
 
   // ─── Write .git/info/exclude (worktree-safe) ─────────────────────────────────
@@ -283,7 +313,10 @@ if (import.meta.main) { (async () => {
 
   const claudeContent = claudeFile && existsSync(claudeFile)
     ? readFileSync(claudeFile, "utf-8")
-    : assembleClaudeContent(repoRoot, mindName!, ticketId!);
+    : assembleClaudeContent(repoRoot, mindName!, ticketId!, {
+        repoAlias: repoAlias,
+        orchestratorRoot: orchestratorRoot,
+      });
 
   writeFileSync(resolve(claudeDir, "CLAUDE.md"), claudeContent);
 
@@ -293,7 +326,7 @@ if (import.meta.main) { (async () => {
   // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
 
   const settingsPath = resolve(worktreePath, ".claude", "settings.json");
-  const hookScriptPath = resolve(resolveMindsDir(repoRoot), "transport", "hooks", "send-event.ts");
+  const hookScriptPath = resolve(resolveMindsDir(orchestratorRoot ?? repoRoot), "transport", "hooks", "send-event.ts");
   const hookCommand = `bun ${hookScriptPath} --source-app drone:${mindName}`;
 
   // Claude Code hooks use matcher-based format: { matcher?: string, hooks: [{ type, command }] }

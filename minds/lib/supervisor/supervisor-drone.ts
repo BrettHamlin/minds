@@ -38,6 +38,8 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
     featureDir: config.featureDir,
     mindsDir,
     ownsFiles: config.ownsFiles,
+    repo: config.repo,
+    testCommand: config.testCommand,
   });
 
   if (!feedbackFile) {
@@ -80,6 +82,14 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
     "--wave-id", config.waveId,
     "--base", config.baseBranch,
   ];
+
+  // Multi-repo flags — only added when present
+  if (config.mindRepoRoot) args.push("--repo-root", config.mindRepoRoot);
+  if (config.repo) args.push("--repo-alias", config.repo);
+  if (config.installCommand) args.push("--install-cmd", config.installCommand);
+  if (config.mindRepoRoot && config.mindRepoRoot !== config.repoRoot) {
+    args.push("--orchestrator-root", config.repoRoot);
+  }
 
   const proc = Bun.spawn(args, {
     cwd: config.repoRoot,
