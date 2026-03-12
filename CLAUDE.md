@@ -93,19 +93,15 @@ If ANY test fails — whether from current changes or pre-existing — it MUST b
 
 ### NEVER Run `bun test` Directly — THIS IS BANNED
 
-**`bun test` is BANNED from direct execution.** It is denied in `.claude/settings.json` and will be blocked. Running bun test from Claude Code crashes the session due to a bun crash-on-exit bug (oven-sh/bun#11055) with multi-file test runs. There are NO exceptions to this rule.
+**`bun test` is BANNED from direct execution.** It crashes Claude Code due to a bun bug (oven-sh/bun#11055). The ONLY way to run tests is `scripts/run-tests.sh`. No exceptions, no workarounds.
 
-**ALWAYS use the test helper script**, which runs tests in an isolated tmux window:
 ```bash
 scripts/run-tests.sh minds/lib/          # test a directory
-scripts/run-tests.sh minds/transport/    # test a directory
 scripts/run-tests.sh minds/lib/contracts.test.ts  # test a single file
 scripts/run-tests.sh                     # full suite (defaults to minds/)
 ```
 
-The helper runs tests in a separate tmux window, captures output to `/tmp/gravitas-test-result.txt`, and reports pass/fail counts. It never crashes Claude Code.
-
-**Do not attempt to work around the ban. Do not use Bash to call bun test. Do not pipe bun test to a file. The ONLY way to run tests is `scripts/run-tests.sh`. Violations will crash the session and lose all work in progress.**
+**For test organization, coverage map, E2E instructions, and "changed X → run Y" guidance, see `docs/TESTING.md`.**
 
 ## COLLAB PIPELINE — ALGORITHM DEPTH RULES (MANDATORY OVERRIDE)
 
