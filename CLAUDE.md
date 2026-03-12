@@ -91,24 +91,21 @@ All new code MUST be written in TypeScript and run with Bun. No exceptions. No s
 
 If ANY test fails — whether from current changes or pre-existing — it MUST be fixed. "Pre-existing failure" is NEVER an acceptable excuse. This is a production-ready system. The standard is: everything passes, everything works, no excuses.
 
-### NEVER Run the Full Test Suite — THIS WILL CRASH CLAUDE CODE
+### NEVER Run `bun test` Directly — THIS IS BANNED
 
-**DO NOT run `bun test` without a path scope.** The full suite has 3000+ tests and produces enough output to crash Claude Code every single time. This is not optional — it is a hard rule.
+**`bun test` is BANNED from direct execution.** It is denied in `.claude/settings.json` and will be blocked. Running bun test from Claude Code crashes the session due to a bun crash-on-exit bug (oven-sh/bun#11055) with multi-file test runs. There are NO exceptions to this rule.
 
-**Always scope tests to the files/directories you changed:**
+**ALWAYS use the test helper script**, which runs tests in an isolated tmux window:
 ```bash
-bun test minds/lib/          # if you changed minds/lib/
-bun test minds/transport/    # if you changed minds/transport/
-bun test minds/signals/      # if you changed minds/signals/
+scripts/run-tests.sh minds/lib/          # test a directory
+scripts/run-tests.sh minds/transport/    # test a directory
+scripts/run-tests.sh minds/lib/contracts.test.ts  # test a single file
+scripts/run-tests.sh                     # full suite (defaults to minds/)
 ```
 
-**If you must verify the full suite**, run it in a **separate tmux window** with output redirected to a file:
-```bash
-tmux new-window -n tests "bun test > /tmp/test-results.log 2>&1; echo DONE >> /tmp/test-results.log"
-```
-Then check the results with `tail -5 /tmp/test-results.log`. **NEVER** pipe the full test output through your own process.
+The helper runs tests in a separate tmux window, captures output to `/tmp/gravitas-test-result.txt`, and reports pass/fail counts. It never crashes Claude Code.
 
-**Violations of this rule will crash the session and lose all work in progress.**
+**Do not attempt to work around the ban. Do not use Bash to call bun test. Do not pipe bun test to a file. The ONLY way to run tests is `scripts/run-tests.sh`. Violations will crash the session and lose all work in progress.**
 
 ## COLLAB PIPELINE — ALGORITHM DEPTH RULES (MANDATORY OVERRIDE)
 
