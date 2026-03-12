@@ -44,6 +44,10 @@ import type {
 } from "../lib/implement-types.ts";
 import { resolveOwnsAndBoundary } from "../lib/resolve-owns.ts";
 import { scaffoldFromTasks } from "../../instantiate/lib/scaffold.ts";
+import { loadWorkspace, type ResolvedWorkspace } from "../../shared/workspace-loader.ts";
+import { loadMultiRepoRegistries } from "../../shared/registry-loader.ts";
+import { parseTasks, lintTasks } from "../../lib/contracts.ts";
+import type { MindDescription } from "../../mind.ts";
 
 /**
  * Resolve the source minds directory (where scripts live).
@@ -77,6 +81,54 @@ function resolveFeatureDir(repoRoot: string, ticketId: string): string | null {
     }
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Git helpers                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Resolve the repo root for a drone. In multi-repo mode, looks up the
+ * drone's repo alias in the workspace. Falls back to orchestratorRoot.
+ */
+function getDroneRepoRoot(
+  drone: MindInfo,
+  workspace: ResolvedWorkspace,
+  fallback: string,
+): string {
+  if (drone.repo) {
+    return workspace.repoPaths.get(drone.repo) ?? fallback;
+  }
+  return fallback;
+}
+
+/**
+ * Resolve the base branch for a git repo.
+ * Tries: current branch → origin default → "main" → "dev".
+ */
+function resolveBaseBranch(repoPath: string): string {
+  const result = Bun.spawnSync(["git", "-C", repoPath, "branch", "--show-current"], {
+    stdout: "pipe", stderr: "pipe",
+  });
+  const current = new TextDecoder().decode(result.stdout).trim();
+  if (current) return current;
+
+  // Detached HEAD — detect the remote default branch
+  const symRef = Bun.spawnSync(
+    ["git", "-C", repoPath, "symbolic-ref", "refs/remotes/origin/HEAD"],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  const symRefOut = new TextDecoder().decode(symRef.stdout).trim();
+  if (symRef.exitCode === 0 && symRefOut) {
+    return symRefOut.replace(/^refs\/remotes\/origin\//, "");
+  }
+
+  // Last resort: check if "main" branch exists, otherwise fall back to "dev"
+  const mainCheck = Bun.spawnSync(
+    ["git", "-C", repoPath, "rev-parse", "--verify", "refs/heads/main"],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  return mainCheck.exitCode === 0 ? "main" : "dev";
 }
 
 /* ------------------------------------------------------------------ */
@@ -117,6 +169,10 @@ function launchMindSupervisor(
   baseBranch: string,
   ownsFiles?: string[],
   requireBoundary?: boolean,
+  repo?: string,
+  mindRepoRoot?: string,
+  testCommand?: string,
+  installCommand?: string,
 ): { info: MindInfo; done: Promise<void> } {
   const supervisorConfig: SupervisorConfig = {
     mindName,
@@ -137,6 +193,10 @@ function launchMindSupervisor(
     droneTimeoutMs: 20 * 60 * 1000, // 20 minutes
     ownsFiles,
     requireBoundary,
+    repo,
+    mindRepoRoot,
+    testCommand,
+    installCommand,
   };
 
   // MindInfo placeholder -- will be updated when supervisor provides drone info
@@ -146,6 +206,7 @@ function launchMindSupervisor(
     paneId: "(supervisor)", // No Mind pane -- the supervisor IS the mind
     worktree: "(pending)",
     branch: "(pending)",
+    repo,
   };
 
   const done = runMindSupervisor(supervisorConfig).then((result) => {
@@ -205,49 +266,78 @@ export async function runImplement(
   options: ImplementOptions,
 ): Promise<void> {
   const repoRoot = getRepoRoot();
-  const mindsDir = resolveMindsDir(repoRoot);
   const mindsSourceDir = resolveMindsSourceDir();
   const channel = `minds-${ticketId}`;
 
+  // ── Workspace loading (MR-008) ──────────────────────────────────────────
+  const workspace = loadWorkspace(repoRoot);
+  const orchestratorRoot = workspace.orchestratorRoot;
+
+  // Use orchestratorRoot for bus, specs, registry, dashboard — NOT repoRoot
+  const mindsDir = resolveMindsDir(orchestratorRoot);
+
   console.log(`\nMinds Implement: ${ticketId}`);
   console.log(`Repo root: ${repoRoot}`);
+  if (workspace.isMultiRepo) {
+    console.log(`Workspace: multi-repo (${workspace.repoPaths.size} repos)`);
+    console.log(`Orchestrator: ${orchestratorRoot}`);
+    for (const [alias, path] of workspace.repoPaths) {
+      console.log(`  ${alias}: ${path}`);
+    }
+  }
   console.log(`Minds dir: ${mindsDir}`);
 
   // ── Step 0: Cleanup orphaned bus states ──────────────────────────────────
 
   console.log("\nStep 0: Checking for orphaned bus processes...");
-  const orphans = await findOrphanedBusStates(repoRoot);
+  const orphans = await findOrphanedBusStates(orchestratorRoot);
   if (orphans.length > 0) {
     console.log(`  Found ${orphans.length} orphaned bus state(s), cleaning up...`);
     for (const orphan of orphans) {
-      await clearBusState(repoRoot, orphan.ticketId);
+      await clearBusState(orchestratorRoot, orphan.ticketId);
       console.log(`  Cleaned: minds-${orphan.ticketId}`);
     }
   } else {
     console.log("  No orphaned bus processes found.");
   }
 
-  // ── Step 1: Load Mind registry ────────────────────────────────────────────
+  // ── Step 1: Load Mind registry (MR-009: multi-repo aware) ────────────────
 
   console.log("\nStep 1: Loading Mind registry...");
-  const mindsJsonPath = join(mindsDir, "minds.json");
-  if (!existsSync(mindsJsonPath)) {
-    console.error(`Error: Mind registry not found at ${mindsJsonPath}`);
-    console.error("Run 'minds init' first to install the Minds system.");
-    process.exit(1);
-    return;
+  let registry: MindDescription[];
+
+  if (workspace.isMultiRepo) {
+    // Multi-repo: load and merge registries from each repo
+    try {
+      registry = loadMultiRepoRegistries(workspace.repoPaths);
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+      return;
+    }
+    if (registry.length === 0) {
+      console.warn("  Warning: No minds.json found in any repo. All minds will need owns: annotations.");
+    }
+    console.log(`  Loaded ${registry.length} minds from ${workspace.repoPaths.size} repos.`);
+  } else {
+    // Single-repo: load from orchestrator's minds.json
+    const mindsJsonPath = join(mindsDir, "minds.json");
+    if (!existsSync(mindsJsonPath)) {
+      console.error(`Error: Mind registry not found at ${mindsJsonPath}`);
+      console.error("Run 'minds init' first to install the Minds system.");
+      process.exit(1);
+      return;
+    }
+    registry = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as MindDescription[];
+    console.log(`  Loaded ${registry.length} registered minds.`);
   }
 
-  const registry = JSON.parse(readFileSync(mindsJsonPath, "utf-8"));
-  const registeredMinds = new Set(
-    (registry as Array<{ name: string }>).map((m) => m.name),
-  );
-  console.log(`  Loaded ${registeredMinds.size} registered minds.`);
+  const registeredMinds = new Set(registry.map((m) => m.name));
 
   // ── Step 2: Resolve feature directory ──────────────────────────────────────
 
   console.log("\nStep 2: Resolving feature directory...");
-  const featureDir = resolveFeatureDir(repoRoot, ticketId);
+  const featureDir = resolveFeatureDir(orchestratorRoot, ticketId);
   if (!featureDir) {
     console.error(`Error: No feature directory found for ${ticketId} in specs/`);
     process.exit(1);
@@ -285,6 +375,28 @@ export async function runImplement(
     }
   }
 
+  // ── Step 3a: Lint tasks with workspace awareness (MR-008) ─────────────────
+
+  const lintWorkspace = workspace.isMultiRepo
+    ? { repoAliases: [...workspace.repoPaths.keys()] }
+    : undefined;
+  const parsedTasks = parseTasks(tasksContent);
+  const lintResult = lintTasks(parsedTasks, registry, lintWorkspace);
+  if (lintResult.errors.length > 0) {
+    console.error(`\n  Task lint errors (${lintResult.errors.length}):`);
+    for (const err of lintResult.errors) {
+      console.error(`    [${err.type}] ${err.task}: ${err.message}`);
+    }
+    console.error("\n  Fix task errors before implementing.");
+    process.exit(1);
+    return;
+  }
+  if (lintResult.warnings.length > 0) {
+    for (const warn of lintResult.warnings) {
+      console.warn(`  Warning [${warn.type}] ${warn.task}: ${warn.message}`);
+    }
+  }
+
   // ── Step 3b: Scaffold unregistered minds with owns: annotations ───────────
 
   const scaffoldResults = await scaffoldFromTasks(taskGroups, registry);
@@ -297,12 +409,18 @@ export async function runImplement(
     }
 
     // Reload registry so wave execution picks up the new minds
-    const updatedRegistry = JSON.parse(readFileSync(mindsJsonPath, "utf-8"));
-    // Mutate in place so all downstream references see the update
-    registry.length = 0;
-    registry.push(...updatedRegistry);
+    if (workspace.isMultiRepo) {
+      const updatedRegistry = loadMultiRepoRegistries(workspace.repoPaths);
+      registry.length = 0;
+      registry.push(...updatedRegistry);
+    } else {
+      const mindsJsonPath = join(mindsDir, "minds.json");
+      const updatedRegistry = JSON.parse(readFileSync(mindsJsonPath, "utf-8"));
+      registry.length = 0;
+      registry.push(...updatedRegistry);
+    }
     registeredMinds.clear();
-    for (const m of registry as Array<{ name: string }>) {
+    for (const m of registry) {
       registeredMinds.add(m.name);
     }
     console.log(`  Registry reloaded: ${registeredMinds.size} registered minds.`);
@@ -364,7 +482,7 @@ export async function runImplement(
   const callerPane = mux.getCurrentPane();
   let busInfo;
   try {
-    busInfo = await startMindsBus(repoRoot, callerPane, ticketId);
+    busInfo = await startMindsBus(orchestratorRoot, callerPane, ticketId);
   } catch (err) {
     console.error(`Error starting bus: ${(err as Error).message}`);
     process.exit(1);
@@ -404,16 +522,16 @@ export async function runImplement(
         busServerPid: busInfo.busServerPid,
         bridgePid: busInfo.bridgePid,
         aggregatorPid: busInfo.aggregatorPid,
-        repoRoot,
+        repoRoot: orchestratorRoot,
         ticketId,
       });
     } catch {
       // Best effort
     }
 
-    // Cleanup worktrees
+    // Cleanup worktrees — use per-drone repo root when available
     for (const d of allDrones) {
-      cleanupDroneWorktree(d.worktree, repoRoot);
+      cleanupDroneWorktree(d.worktree, getDroneRepoRoot(d, workspace, orchestratorRoot));
     }
 
     console.log("Cleanup complete.");
@@ -438,30 +556,8 @@ export async function runImplement(
   // Extract bus port from URL for supervisor config
   const busPort = parseInt(new URL(busInfo.busUrl).port, 10);
 
-  // Resolve base branch: current branch, then origin default, then fallback to "dev"
-  const baseBranch = Bun.spawnSync(["git", "-C", repoRoot, "branch", "--show-current"], {
-    stdout: "pipe", stderr: "pipe",
-  });
-  let baseBranchName = new TextDecoder().decode(baseBranch.stdout).trim();
-  if (!baseBranchName) {
-    // Detached HEAD — detect the remote default branch
-    const symRef = Bun.spawnSync(
-      ["git", "-C", repoRoot, "symbolic-ref", "refs/remotes/origin/HEAD"],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    const symRefOut = new TextDecoder().decode(symRef.stdout).trim();
-    if (symRef.exitCode === 0 && symRefOut) {
-      // e.g. "refs/remotes/origin/main" -> "main"
-      baseBranchName = symRefOut.replace(/^refs\/remotes\/origin\//, "");
-    } else {
-      // Last resort: check if "main" branch exists, otherwise fall back to "dev"
-      const mainCheck = Bun.spawnSync(
-        ["git", "-C", repoRoot, "rev-parse", "--verify", "refs/heads/main"],
-        { stdout: "pipe", stderr: "pipe" },
-      );
-      baseBranchName = mainCheck.exitCode === 0 ? "main" : "dev";
-    }
-  }
+  // Resolve base branch for the orchestrator repo
+  const baseBranchName = resolveBaseBranch(orchestratorRoot);
 
   for (const wave of waves) {
     console.log(`\n=== Executing ${wave.id}: [${wave.minds.map((m) => `@${m}`).join(", ")}] ===`);
@@ -489,8 +585,27 @@ export async function runImplement(
           mindName,
         );
 
+        // MR-010: Per-repo context for multi-repo workspaces
+        const mindRepo = group.repo;
+        const mindRepoRoot = mindRepo && workspace.isMultiRepo
+          ? workspace.repoPaths.get(mindRepo)
+          : undefined;
+
+        // Per-repo config (single lookup — used for branch, testCommand, installCommand)
+        const repoConfig = mindRepo && workspace.manifest
+          ? workspace.manifest.repos.find(r => r.alias === mindRepo)
+          : undefined;
+
+        // Per-repo base branch: workspace defaultBranch > detected > orchestrator fallback
+        let repoBranchName = baseBranchName;
+        if (repoConfig?.defaultBranch) {
+          repoBranchName = repoConfig.defaultBranch;
+        } else if (mindRepoRoot) {
+          repoBranchName = resolveBaseBranch(mindRepoRoot);
+        }
+
         const { info, done } = launchMindSupervisor(
-          repoRoot,
+          mindRepoRoot ?? repoRoot,  // Use mind's repo root when available
           mindsSourceDir,
           mindName,
           ticketId,
@@ -502,9 +617,13 @@ export async function runImplement(
           featureDir,
           group.dependencies,
           callerPane,
-          baseBranchName,
+          repoBranchName,
           resolvedOwnsFiles,
           requireBoundary,
+          mindRepo,
+          mindRepoRoot,
+          repoConfig?.testCommand,
+          repoConfig?.installCommand,
         );
         waveDrones.push(info);
         allDrones.push(info);
@@ -620,8 +739,9 @@ export async function runImplement(
       }
 
       console.log(`    Merging @${drone.mindName} (${drone.branch})...`);
-      const mergeResult = mergeDroneWorktree(repoRoot, drone);
-      result.mergeResults.push({ mind: drone.mindName, ok: mergeResult.ok, error: mergeResult.error });
+      // Merge into the drone's own repo root (per-repo merge in multi-repo)
+      const mergeResult = mergeDroneWorktree(getDroneRepoRoot(drone, workspace, orchestratorRoot), drone);
+      result.mergeResults.push({ mind: drone.mindName, ok: mergeResult.ok, error: mergeResult.error, repo: drone.repo });
 
       if (mergeResult.ok) {
         console.log(`    Merged @${drone.mindName} successfully.`);
@@ -668,7 +788,7 @@ export async function runImplement(
       busServerPid: busInfo.busServerPid,
       bridgePid: busInfo.bridgePid,
       aggregatorPid: busInfo.aggregatorPid,
-      repoRoot,
+      repoRoot: orchestratorRoot,
       ticketId,
     });
     console.log("  Bus server stopped.");
@@ -681,7 +801,7 @@ export async function runImplement(
     if (!drone.worktree || drone.worktree.startsWith("(")) {
       continue; // Worktree was never created -- nothing to clean up
     }
-    const cleanResult = cleanupDroneWorktree(drone.worktree, repoRoot);
+    const cleanResult = cleanupDroneWorktree(drone.worktree, getDroneRepoRoot(drone, workspace, orchestratorRoot));
     if (cleanResult.ok) {
       console.log(`  Cleaned worktree: ${drone.worktree}`);
     } else {

@@ -193,6 +193,38 @@ describe("lintTasks — ownership_overlap with repos", () => {
   });
 });
 
+// ── missing_repo_multirepo ───────────────────────────────────────────────────
+
+describe("lintTasks — missing_repo_multirepo", () => {
+  test("fires when mind has no repo: in multi-repo mode", () => {
+    const content = `## @api Tasks (owns: src/api/**)
+- [ ] T001 @api Create endpoint`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, emptyRegistry, { repoAliases: ["backend", "frontend"] });
+    const missingErrors = result.errors.filter(e => e.type === "missing_repo_multirepo");
+    expect(missingErrors).toHaveLength(1);
+    expect(missingErrors[0].message).toContain("no repo:");
+  });
+
+  test("does not fire when mind has repo:", () => {
+    const content = `## @api Tasks (repo: backend, owns: src/api/**)
+- [ ] T001 @api Create endpoint`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, emptyRegistry, { repoAliases: ["backend"] });
+    const missingErrors = result.errors.filter(e => e.type === "missing_repo_multirepo");
+    expect(missingErrors).toHaveLength(0);
+  });
+
+  test("does not fire without workspace (single-repo)", () => {
+    const content = `## @api Tasks (owns: src/api/**)
+- [ ] T001 @api Create endpoint`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, emptyRegistry);
+    const missingErrors = result.errors.filter(e => e.type === "missing_repo_multirepo");
+    expect(missingErrors).toHaveLength(0);
+  });
+});
+
 // ── backward compatibility ──────────────────────────────────────────────────
 
 describe("lintTasks — backward compatibility", () => {

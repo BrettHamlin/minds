@@ -64,7 +64,8 @@ export interface LintError {
     | "owns_conflict"
     | "repo_unknown"
     | "cross_repo_owns_mismatch"
-    | "one_mind_one_repo";
+    | "one_mind_one_repo"
+    | "missing_repo_multirepo";
   task: string;
   message: string;
 }
@@ -525,6 +526,20 @@ export function lintTasks(
           type: "repo_unknown",
           task: `@${mind}`,
           message: `@${mind} declares repo: "${repo}" which is not in the workspace manifest (known: ${workspace.repoAliases.join(", ")})`,
+        });
+      }
+    }
+  }
+
+  // ── 13b. missing_repo_multirepo — One Mind = One Repo enforcement ─────────
+  // In multi-repo mode, every mind MUST have a repo annotation
+  if (workspace) {
+    for (const [mind, mTasks] of mindGroups) {
+      if (!mTasks[0].sectionRepo) {
+        errors.push({
+          type: "missing_repo_multirepo",
+          task: `@${mind}`,
+          message: `@${mind} has no repo: annotation but workspace is multi-repo — every mind must declare its repo`,
         });
       }
     }
