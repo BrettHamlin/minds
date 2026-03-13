@@ -1,4 +1,4 @@
-# Gravitas — Minds
+# 🧠 Minds
 
 Minds is an AI agent orchestration system that installs into any git repo. It decomposes features into parallel workstreams — one per domain — each run by a dedicated AI agent that owns its files and coordinates through typed contracts.
 
