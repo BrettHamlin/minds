@@ -9,7 +9,8 @@ Minds is an AI agent orchestration system that installs into any git repo. It de
 - **Drones in isolation** — Each agent runs in a dedicated tmux pane + git worktree, so parallel work never collides.
 - **Structured coordination** — Agents communicate through typed interface contracts (`exposes`/`consumes`), not freeform chat. The orchestrator enforces boundaries.
 - **Spec-to-tasks-to-implementation pipeline** — A single workflow takes a ticket spec all the way to parallel implementation with no manual decomposition.
-- **Multi-repo support** — Works across monorepos and multi-repo workspaces with unified dependency tracking and per-repo merge handling.
+- **Waves** — Minds within a phase run in parallel; when the wave completes, the next wave begins. Complex features decompose into sequential phases with maximum parallelism within each.
+- **Multi-repo support** — Minds install into each repo independently. A single ticket can dispatch waves across a client repo and a server repo simultaneously, with the orchestrator tracking and merging each independently.
 - **Live dashboard** — SSE-based status view showing all drone states in real time.
 
 ---
@@ -73,7 +74,37 @@ Reads your spec and plan from `specs/<TICKET-ID>/`, identifies which Minds are i
 /minds.implement <TICKET-ID>
 ```
 
-Dispatches each Mind's tasks to a dedicated drone. Drones run in parallel, each in its own tmux pane and git worktree. At the end of the wave, the orchestrator verifies contracts, resolves conflicts, and handles per-repo merges.
+Dispatches each Mind's tasks to a dedicated drone. Drones run in parallel, each in its own tmux pane and git worktree. When all drones in a wave complete, the orchestrator verifies contracts, resolves conflicts, and merges — then the next wave begins.
+
+Waves allow complex features to be broken into sequential phases (e.g., schema first, then API, then UI) while maximizing parallelism within each phase.
+
+For multi-repo workspaces, Minds are installed into each repo independently. Each repo's Minds are scoped to that repo's domain, and the orchestrator coordinates across all of them — dispatching, tracking, and merging per-repo in a single unified wave.
+
+```
+  Ticket
+    │
+    ▼
+┌─────────────────────────────────────────────────────────┐
+│  Wave 1                                                 │
+│                                                         │
+│  client/                      server/                   │
+│  ├── [Mind: UI]               ├── [Mind: API]           │
+│  │    └── Drone ──────────────│────── Drone             │
+│  ├── [Mind: State]            ├── [Mind: Auth]          │
+│  │    └── Drone               │    └── Drone            │
+│  └── [Mind: Components]       └── [Mind: DB]            │
+│       └── Drone                    └── Drone            │
+│                                                         │
+│  ◀──────────── Orchestrator ────────────────▶           │
+│         routes · tracks · merges per-repo               │
+└─────────────────────────────────────────────────────────┘
+    │  all drones complete + contracts verified
+    ▼
+┌─────────────────────────────────────────────────────────┐
+│  Wave 2  (next phase begins)                            │
+│  ...                                                    │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
