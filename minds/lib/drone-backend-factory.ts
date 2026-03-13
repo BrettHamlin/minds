@@ -51,6 +51,7 @@ export async function createDroneBackend(
 
   // Immediate tmux path -- no Axon probing needed
   if (desired === "tmux") {
+    console.warn("[drone-backend-factory] Selected backend: tmux (explicit)");
     return new TmuxDroneBackend();
   }
 
@@ -59,6 +60,7 @@ export async function createDroneBackend(
     console.warn(
       `[drone-backend-factory] Unknown MINDS_DRONE_BACKEND value "${desired}" — falling back to tmux`,
     );
+    console.warn("[drone-backend-factory] Selected backend: tmux (fallback)");
     return new TmuxDroneBackend();
   }
 
@@ -88,6 +90,7 @@ async function tryCreateAxonDroneBackend(
         "[drone-backend-factory] MINDS_DRONE_BACKEND=axon but no Axon binary found — falling back to tmux",
       );
     }
+    console.warn("[drone-backend-factory] Selected backend: tmux (no Axon binary)");
     return new TmuxDroneBackend();
   }
 
@@ -114,5 +117,6 @@ async function tryCreateAxonDroneBackend(
     return new TmuxDroneBackend();
   }
 
+  console.warn(`[drone-backend-factory] Selected backend: axon (${desired === "axon" ? "explicit" : "auto-detected"})`);
   return backend;
 }
