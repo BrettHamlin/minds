@@ -33,29 +33,29 @@ describe("runMindSupervisor validation", () => {
   });
 });
 
-describe("allPaneIds tracking (Issue 10)", () => {
-  test("result.allPaneIds is initialized as empty array", async () => {
-    // maxIterations validation fires before any panes are spawned,
-    // but for a valid config that fails at spawnDrone, allPaneIds should be empty
+describe("allDroneHandles tracking (Issue 10)", () => {
+  test("result.allDroneHandles is initialized as empty array", async () => {
+    // maxIterations validation fires before any drones are spawned,
+    // but for a valid config that fails at spawnDrone, allDroneHandles should be empty
     const config = makeConfig({ maxIterations: 1 });
 
     // spawnDrone will fail because the paths are fake, but we can still
-    // verify the result shape includes allPaneIds
+    // verify the result shape includes allDroneHandles
     const result = await runMindSupervisor(config);
 
-    expect(result.allPaneIds).toBeDefined();
-    expect(Array.isArray(result.allPaneIds)).toBe(true);
-    // With a failed spawnDrone, no panes were created
-    expect(result.allPaneIds.length).toBe(0);
+    expect(result.allDroneHandles).toBeDefined();
+    expect(Array.isArray(result.allDroneHandles)).toBe(true);
+    // With a failed spawnDrone, no drones were created
+    expect(result.allDroneHandles.length).toBe(0);
     expect(result.ok).toBe(false);
   });
 
-  test("result always contains allPaneIds even on failure", async () => {
+  test("result always contains allDroneHandles even on failure", async () => {
     const config = makeConfig();
     const result = await runMindSupervisor(config);
 
-    // Regardless of success/failure, allPaneIds must be present
-    expect(result).toHaveProperty("allPaneIds");
-    expect(Array.isArray(result.allPaneIds)).toBe(true);
+    // Regardless of success/failure, allDroneHandles must be present
+    expect(result).toHaveProperty("allDroneHandles");
+    expect(Array.isArray(result.allDroneHandles)).toBe(true);
   });
 });

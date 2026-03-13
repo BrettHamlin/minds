@@ -11,6 +11,7 @@ import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import type { PipelineStage, StageContext } from "../pipeline-types.ts";
 import type { SupervisorDeps, CheckResults } from "../supervisor-types.ts";
+import type { DroneHandle } from "../../drone-backend.ts";
 import { makeTestConfig, makeTestTmpDir } from "./test-helpers.ts";
 
 // Import executors
@@ -24,14 +25,18 @@ import { executeCollectResults } from "../stages/collect-results.ts";
 
 let tmpDir: string;
 
+function mockHandle(id: string, backend: "axon" | "tmux" = "tmux"): DroneHandle {
+  return { id, backend };
+}
+
 function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
   return {
     spawnDrone: mock(async () => ({
-      paneId: "%10",
+      handle: mockHandle("%10"),
       worktree: join(tmpDir, "worktree"),
       branch: "minds/BRE-500-transport",
     })),
-    relaunchDroneInWorktree: mock(async () => "%11"),
+    relaunchDroneInWorktree: mock(async () => mockHandle("%11")),
     waitForDroneCompletion: mock(async () => ({ ok: true })),
     publishSignal: mock(async () => {}),
     runDeterministicChecks: mock((): CheckResults => ({
@@ -42,7 +47,7 @@ function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
     })),
     callLlmReview: mock(async () => JSON.stringify({ approved: true, findings: [] })),
     installDroneStopHook: mock(() => {}),
-    killPane: mock(async () => {}),
+    killDrone: mock(async () => {}),
     delay: mock(async () => {}),
     ...overrides,
   };
@@ -67,7 +72,7 @@ function makeCtx(overrides?: Partial<StageContext>): StageContext {
     worktree: join(tmpDir, "worktree"),
     branch: "",
     store: {},
-    allSpawnedPanes: [],
+    allDroneHandles: [],
     ...overrides,
   };
 }

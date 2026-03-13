@@ -220,8 +220,8 @@ function launchMindSupervisor(
     // Update info with actual values from the supervisor result
     info.worktree = result.worktree;
     info.branch = result.branch;
-    if (result.dronePaneId) {
-      info.paneId = result.dronePaneId;
+    if (result.droneId) {
+      info.paneId = result.droneId;
     }
 
     if (!result.ok) {

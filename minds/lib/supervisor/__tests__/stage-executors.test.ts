@@ -11,6 +11,7 @@ import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import type { PipelineStage, StageContext } from "../pipeline-types.ts";
 import type { SupervisorDeps, CheckResults, ReviewVerdict } from "../supervisor-types.ts";
+import type { DroneHandle } from "../../drone-backend.ts";
 import { MindsEventType } from "../../../transport/minds-events.ts";
 import { makeTestConfig, makeTestTmpDir } from "./test-helpers.ts";
 
@@ -34,20 +35,24 @@ import { applyForceRejections as applyForceRejectionsFromSupervisor } from "../m
 
 let tmpDir: string;
 
+function mockHandle(id: string, backend: "axon" | "tmux" = "tmux"): DroneHandle {
+  return { id, backend };
+}
+
 function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
   return {
     spawnDrone: mock(async () => ({
-      paneId: "%10",
+      handle: mockHandle("%10"),
       worktree: join(tmpDir, "worktree"),
       branch: "minds/BRE-500-transport",
     })),
-    relaunchDroneInWorktree: mock(async () => "%11"),
+    relaunchDroneInWorktree: mock(async () => mockHandle("%11")),
     waitForDroneCompletion: mock(async () => ({ ok: true })),
     publishSignal: mock(async () => {}),
     runDeterministicChecks: mock(() => makePassingChecks()),
     callLlmReview: mock(async () => JSON.stringify({ approved: true, findings: [] })),
     installDroneStopHook: mock(() => {}),
-    killPane: mock(async () => {}),
+    killDrone: mock(async () => {}),
     delay: mock(async () => {}),
     ...overrides,
   };
@@ -81,7 +86,7 @@ function makeCtx(overrides?: Partial<StageContext>): StageContext {
     worktree: join(tmpDir, "worktree"),
     branch: "",
     store: {},
-    allSpawnedPanes: [],
+    allDroneHandles: [],
     ...overrides,
   };
 }
@@ -108,29 +113,29 @@ describe("spawn-drone executor", () => {
     const result = await executeSpawnDrone(makeStage("spawn-drone"), ctx);
 
     expect(result.ok).toBe(true);
-    expect(ctx.dronePane).toBe("%10");
+    expect(ctx.droneHandle).toEqual(mockHandle("%10"));
     expect(ctx.worktree).toBe(join(tmpDir, "worktree"));
     expect(ctx.branch).toBe("minds/BRE-500-transport");
-    expect(ctx.allSpawnedPanes).toContain("%10");
+    expect(ctx.allDroneHandles.map(h => h.id)).toContain("%10");
     expect(ctx.deps.installDroneStopHook).toHaveBeenCalledTimes(1);
   });
 
   test("subsequent iteration: re-launches drone in existing worktree", async () => {
     const deps = makeMockDeps({
-      relaunchDroneInWorktree: mock(async () => "%12"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%12")),
     });
     const ctx = makeCtx({
       iteration: 2,
       deps,
-      dronePane: "%10",
+      droneHandle: mockHandle("%10"),
       worktree: join(tmpDir, "worktree"),
     });
 
     const result = await executeSpawnDrone(makeStage("spawn-drone"), ctx);
 
     expect(result.ok).toBe(true);
-    expect(ctx.dronePane).toBe("%12");
-    expect(ctx.allSpawnedPanes).toContain("%12");
+    expect(ctx.droneHandle).toEqual(mockHandle("%12"));
+    expect(ctx.allDroneHandles.map(h => h.id)).toContain("%12");
     expect(deps.relaunchDroneInWorktree).toHaveBeenCalledTimes(1);
     expect(deps.installDroneStopHook).toHaveBeenCalledTimes(1);
   });
@@ -156,7 +161,7 @@ describe("spawn-drone executor", () => {
         throw new Error("relaunch failed");
       }),
     });
-    const ctx = makeCtx({ iteration: 2, deps, dronePane: "%10" });
+    const ctx = makeCtx({ iteration: 2, deps, droneHandle: mockHandle("%10") });
 
     const result = await executeSpawnDrone(makeStage("spawn-drone"), ctx);
 
@@ -172,28 +177,28 @@ describe("spawn-drone executor", () => {
 
 describe("wait-completion executor", () => {
   test("success: drone completes ok", async () => {
-    const ctx = makeCtx({ dronePane: "%10" });
+    const ctx = makeCtx({ droneHandle: mockHandle("%10") });
     const result = await executeWaitCompletion(makeStage("wait-completion"), ctx);
 
     expect(result.ok).toBe(true);
     expect(ctx.deps.waitForDroneCompletion).toHaveBeenCalledTimes(1);
   });
 
-  test("failure: drone crashes returns terminal error and kills pane", async () => {
+  test("failure: drone crashes returns terminal error and kills drone", async () => {
     const deps = makeMockDeps({
       waitForDroneCompletion: mock(async () => ({
         ok: false,
         error: "Drone pane died",
       })),
     });
-    const ctx = makeCtx({ dronePane: "%10", deps });
+    const ctx = makeCtx({ droneHandle: mockHandle("%10"), deps });
 
     const result = await executeWaitCompletion(makeStage("wait-completion"), ctx);
 
     expect(result.ok).toBe(false);
     expect(result.terminal).toBe(true);
     expect(result.error).toContain("Drone pane died");
-    expect(deps.killPane).toHaveBeenCalledWith("%10");
+    expect(deps.killDrone).toHaveBeenCalledWith(mockHandle("%10"));
   });
 });
 

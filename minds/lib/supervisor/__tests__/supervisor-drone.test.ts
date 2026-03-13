@@ -8,7 +8,12 @@ import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { installDroneStopHook, waitForDroneCompletion, type HookEntry } from "../supervisor-drone.ts";
 import { SENTINEL_FILENAME } from "../supervisor-types.ts";
+import type { DroneHandle } from "../../drone-backend.ts";
 import { makeTestTmpDir } from "./test-helpers.ts";
+
+function mockHandle(id: string, backend: "axon" | "tmux" = "tmux"): DroneHandle {
+  return { id, backend };
+}
 
 describe("installDroneStopHook", () => {
   let tmpDir: string;
@@ -150,7 +155,7 @@ describe("waitForDroneCompletion", () => {
       }, 50);
 
       const result = await waitForDroneCompletion(
-        "fake-pane-id",
+        mockHandle("fake-pane-id"),
         tmpDir,
         10_000, // 10s timeout
         200,    // 200ms poll interval -- sentinel at 50ms arrives first
@@ -175,7 +180,7 @@ describe("waitForDroneCompletion", () => {
       }, 30);
 
       const result = await waitForDroneCompletion(
-        "fake-pane-id",
+        mockHandle("fake-pane-id"),
         tmpDir,
         10_000,
         200,
@@ -192,7 +197,7 @@ describe("waitForDroneCompletion", () => {
     // Use a poll interval LONGER than the timeout so the pane-existence
     // fallback never fires before the timeout does.
     const result = await waitForDroneCompletion(
-      "fake-pane-id",
+      mockHandle("fake-pane-id"),
       tmpDir,
       300,    // Very short timeout: 300ms
       60_000, // Poll interval longer than timeout -- only timeout fires
@@ -208,7 +213,7 @@ describe("waitForDroneCompletion", () => {
     // No sentinel file is created, so the only resolution path is the
     // pane-death detection in the poll fallback.
     const result = await waitForDroneCompletion(
-      "nonexistent-pane-id",
+      mockHandle("nonexistent-pane-id"),
       tmpDir,
       10_000, // Long timeout -- should resolve via pane death, not timeout
       100,    // Fast poll so the test finishes quickly
@@ -227,7 +232,7 @@ describe("waitForDroneCompletion", () => {
     writeFileSync(sentinelPath, "done");
 
     const result = await waitForDroneCompletion(
-      "nonexistent-pane-id",
+      mockHandle("nonexistent-pane-id"),
       tmpDir,
       5_000,
       300,
@@ -250,7 +255,7 @@ describe("waitForDroneCompletion", () => {
       writeFileSync(sentinelPath, "stale");
 
       const result = await waitForDroneCompletion(
-        "fake-pane-id",
+        mockHandle("fake-pane-id"),
         tmpDir,
         5_000,
         300,

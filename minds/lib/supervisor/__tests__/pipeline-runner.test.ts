@@ -27,8 +27,8 @@ import { makeTestConfig } from "./test-helpers.ts";
 /** Minimal deps that satisfy the type but are never called. */
 function stubDeps(): SupervisorDeps {
   return {
-    spawnDrone: async () => ({ paneId: "%1", worktree: "/w", branch: "b" }),
-    relaunchDroneInWorktree: async () => "%2",
+    spawnDrone: async () => ({ handle: { id: "%1", backend: "tmux" as const }, worktree: "/w", branch: "b" }),
+    relaunchDroneInWorktree: async () => ({ id: "%2", backend: "tmux" as const }),
     waitForDroneCompletion: async () => ({ ok: true }),
     publishSignal: async () => {},
     runDeterministicChecks: () => ({
@@ -36,7 +36,7 @@ function stubDeps(): SupervisorDeps {
     }),
     callLlmReview: async () => '{"approved":true,"findings":[]}',
     installDroneStopHook: () => {},
-    killPane: async () => {},
+    killDrone: async () => {},
     delay: async () => {},
   };
 }
@@ -50,7 +50,7 @@ function makeCtx(overrides?: Partial<StageContext>): StageContext {
     worktree: "/tmp/test-worktree",
     branch: "test-branch",
     store: {},
-    allSpawnedPanes: [],
+    allDroneHandles: [],
     ...overrides,
   };
 }

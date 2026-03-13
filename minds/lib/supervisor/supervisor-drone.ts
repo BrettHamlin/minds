@@ -12,6 +12,7 @@ import { buildDroneBrief } from "../../cli/lib/drone-brief.ts";
 import { killPane, splitPane, launchClaudeInPane, shellQuote } from "../tmux-utils.ts";
 import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
 import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
+import type { DroneHandle } from "../drone-backend.ts";
 
 // ---------------------------------------------------------------------------
 // Hook entry shape for Claude Code settings.json
@@ -56,7 +57,7 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
 // ---------------------------------------------------------------------------
 
 export interface DroneSpawnResult {
-  paneId: string;
+  handle: DroneHandle;
   worktree: string;
   branch: string;
 }
@@ -109,7 +110,7 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
     throw new Error(`drone-pane.ts failed for @${config.mindName}: ${stderr}`);
   }
 
-  let result: { drone_pane: string; worktree: string; branch: string };
+  let result: { drone_pane: string; worktree: string; branch: string; backend?: string };
   try {
     // drone-pane.ts may emit log lines before the JSON (e.g. tmux pane guard).
     // Extract the last line that looks like JSON.
@@ -121,7 +122,10 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
   }
 
   return {
-    paneId: result.drone_pane,
+    handle: {
+      id: result.drone_pane,
+      backend: (result.backend as "axon" | "tmux") ?? "tmux",
+    },
     worktree: result.worktree,
     branch: result.branch,
   };
@@ -142,17 +146,17 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
  *   4. Launch Claude Code in the new pane pointed at the same worktree
  */
 export async function relaunchDroneInWorktree(opts: {
-  oldPaneId: string;
+  oldHandle: DroneHandle;
   callerPane: string;
   worktreePath: string;
   briefContent: string;
   busUrl: string;
   mindName: string;
-}): Promise<string> {
-  const { oldPaneId, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
+}): Promise<DroneHandle> {
+  const { oldHandle, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
 
   // Kill the old drone pane
-  await killPane(oldPaneId);
+  await killPane(oldHandle.id);
 
   // Write updated DRONE-BRIEF.md to the SAME worktree
   writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
@@ -175,7 +179,7 @@ export async function relaunchDroneInWorktree(opts: {
     throw err;
   }
 
-  return newPaneId;
+  return { id: newPaneId, backend: "tmux" };
 }
 
 // ---------------------------------------------------------------------------
@@ -259,13 +263,14 @@ export function installDroneStopHook(worktreePath: string): void {
  * The sentinel-file + tmux pane-alive polling works reliably for all drones.
  */
 export async function waitForDroneCompletion(
-  paneId: string,
+  handle: DroneHandle,
   worktreePath: string,
   timeoutMs: number,
   pollIntervalMs: number = 5000,
 ): Promise<{ ok: boolean; error?: string }> {
-  // Drones always live in tmux panes (spawned by drone-pane.ts), so we
-  // always use TmuxMultiplexer for pane-alive checks — never Axon.
+  // Use the handle's id for pane-alive checks. For now, all backends use
+  // sentinel-based completion with TmuxMultiplexer for pane-alive fallback.
+  const paneId = handle.id;
   const mux = new TmuxMultiplexer();
 
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);

@@ -19,6 +19,7 @@ import type {
   SupervisorDeps,
   CheckResults,
 } from "../supervisor-types.ts";
+import type { DroneHandle } from "../../drone-backend.ts";
 import { MindsEventType } from "../../../transport/minds-events.ts";
 import { makeTestConfig, makeTestTmpDir } from "./test-helpers.ts";
 import {
@@ -88,20 +89,24 @@ function makeRejectionResponse(
   });
 }
 
+function mockHandle(id: string, backend: "axon" | "tmux" = "tmux"): DroneHandle {
+  return { id, backend };
+}
+
 function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
   return {
     spawnDrone: mock(async () => ({
-      paneId: "%10",
+      handle: mockHandle("%10"),
       worktree: join(tmpDir, "worktree"),
       branch: "minds/BRE-600-pipeline",
     })),
-    relaunchDroneInWorktree: mock(async () => "%11"),
+    relaunchDroneInWorktree: mock(async () => mockHandle("%11")),
     waitForDroneCompletion: mock(async () => ({ ok: true })),
     publishSignal: mock(async () => {}),
     runDeterministicChecks: mock(() => makePassingChecks()),
     callLlmReview: mock(async () => makeApprovalResponse()),
     installDroneStopHook: mock(() => {}),
-    killPane: mock(async () => {}),
+    killDrone: mock(async () => {}),
     delay: mock(async () => {}),
     ...overrides,
   };
@@ -165,7 +170,7 @@ describe("Level 1: Backward compatibility (code pipeline)", () => {
         reviewCount++;
         return reviewCount === 1 ? makeRejectionResponse() : makeApprovalResponse();
       }),
-      relaunchDroneInWorktree: mock(async () => "%12"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%12")),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -194,7 +199,7 @@ describe("Level 1: Backward compatibility (code pipeline)", () => {
 
     const deps = makeMockDeps({
       callLlmReview: mock(async () => makeRejectionResponse()),
-      relaunchDroneInWorktree: mock(async () => "%13"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%13")),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -805,7 +810,7 @@ describe("Drone lifecycle across pipeline types", () => {
 
       await runMindSupervisor(config, deps);
 
-      expect(deps.killPane).toHaveBeenCalled();
+      expect(deps.killDrone).toHaveBeenCalled();
     }
   });
 });

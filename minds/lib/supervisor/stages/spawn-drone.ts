@@ -4,13 +4,12 @@
  * Iteration 1: Spawns a new drone via deps.spawnDrone (creates worktree).
  * Iteration > 1: Re-launches drone in existing worktree via deps.relaunchDroneInWorktree.
  *
- * Updates StageContext with dronePane, worktree, branch, and allSpawnedPanes.
+ * Updates StageContext with droneHandle, worktree, branch, and allDroneHandles.
  */
 
 import type { PipelineStage, StageContext, StageResult } from "../pipeline-types.ts";
 import { errorMessage } from "../supervisor-types.ts";
 import { buildSupervisorDroneBrief } from "../supervisor-drone.ts";
-import { TmuxMultiplexer } from "../../tmux-multiplexer.ts";
 
 export const executeSpawnDrone = async (
   _stage: PipelineStage,
@@ -22,7 +21,7 @@ export const executeSpawnDrone = async (
     // First iteration: spawn drone (creates worktree)
     const briefContent = buildSupervisorDroneBrief(config);
 
-    let drone: { paneId: string; worktree: string; branch: string };
+    let drone: { handle: import("../../drone-backend.ts").DroneHandle; worktree: string; branch: string };
     try {
       drone = await deps.spawnDrone(config, briefContent);
     } catch (err) {
@@ -33,8 +32,8 @@ export const executeSpawnDrone = async (
       };
     }
 
-    ctx.dronePane = drone.paneId;
-    ctx.allSpawnedPanes.push(drone.paneId);
+    ctx.droneHandle = drone.handle;
+    ctx.allDroneHandles.push(drone.handle);
     ctx.worktree = drone.worktree;
     ctx.branch = drone.branch;
 
@@ -42,9 +41,13 @@ export const executeSpawnDrone = async (
     deps.installDroneStopHook(drone.worktree);
 
     // Auto-accept workspace trust dialog (fires after Claude Code loads).
-    setTimeout(async () => {
-      try { await new TmuxMultiplexer().sendKeys(drone.paneId, ""); } catch { /* pane may be gone */ }
-    }, 3000);
+    // Only needed for tmux backend — axon backend runs headless.
+    if (drone.handle.backend === "tmux") {
+      const { TmuxMultiplexer } = await import("../../tmux-multiplexer.ts");
+      setTimeout(async () => {
+        try { await new TmuxMultiplexer().sendKeys(drone.handle.id, ""); } catch { /* pane may be gone */ }
+      }, 3000);
+    }
 
     return { ok: true };
   }
@@ -54,24 +57,27 @@ export const executeSpawnDrone = async (
   const briefContent = buildSupervisorDroneBrief(config, feedbackFile);
 
   try {
-    const newPaneId = await deps.relaunchDroneInWorktree({
-      oldPaneId: ctx.dronePane!,
+    const newHandle = await deps.relaunchDroneInWorktree({
+      oldHandle: ctx.droneHandle!,
       callerPane: config.callerPane,
       worktreePath: ctx.worktree,
       briefContent,
       busUrl: config.busUrl,
       mindName: config.mindName,
     });
-    ctx.dronePane = newPaneId;
-    ctx.allSpawnedPanes.push(newPaneId);
+    ctx.droneHandle = newHandle;
+    ctx.allDroneHandles.push(newHandle);
 
     // Reinstall the Stop hook (sentinel file was consumed by previous iteration)
     deps.installDroneStopHook(ctx.worktree);
 
-    // Auto-accept workspace trust dialog for re-launched drone
-    setTimeout(async () => {
-      try { await new TmuxMultiplexer().sendKeys(newPaneId, ""); } catch { /* pane may be gone */ }
-    }, 3000);
+    // Auto-accept workspace trust dialog for re-launched drone (tmux only)
+    if (newHandle.backend === "tmux") {
+      const { TmuxMultiplexer } = await import("../../tmux-multiplexer.ts");
+      setTimeout(async () => {
+        try { await new TmuxMultiplexer().sendKeys(newHandle.id, ""); } catch { /* pane may be gone */ }
+      }, 3000);
+    }
   } catch (err) {
     return {
       ok: false,

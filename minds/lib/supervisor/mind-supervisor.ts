@@ -34,6 +34,7 @@ import { existsSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { MindsEventType } from "../../transport/minds-events.ts";
 import { killPane as killPaneImpl } from "../tmux-utils.ts";
+import type { DroneHandle } from "../drone-backend.ts";
 
 // Internal imports (used by runMindSupervisor below)
 import {
@@ -77,7 +78,7 @@ function createDefaultDeps(): SupervisorDeps {
     runDeterministicChecks: runDeterministicChecksDefault,
     callLlmReview: callLlmReviewDefault,
     installDroneStopHook: installDroneStopHookImpl,
-    killPane: killPaneImpl,
+    killDrone: async (handle: DroneHandle) => killPaneImpl(handle.id),
     delay: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
 }
@@ -117,17 +118,17 @@ export async function runMindSupervisor(
     approved: false,
     approvedWithWarnings: false,
     findings: [],
-    allPaneIds: [],
-    totalPanesSpawned: 0,
+    allDroneHandles: [],
+    totalDronesSpawned: 0,
     worktree: config.worktreePath,
     branch: "",
     errors: [],
   };
 
   const allFindings: ReviewFinding[] = [];
-  const allSpawnedPanes: string[] = [];
+  const allDroneHandles: DroneHandle[] = [];
 
-  let currentDronePane: string | undefined;
+  let currentDroneHandle: DroneHandle | undefined;
   let currentWorktree = config.worktreePath;
   let currentBranch = "";
 
@@ -154,11 +155,11 @@ export async function runMindSupervisor(
         deps,
         standards,
         iteration,
-        dronePane: currentDronePane,
+        droneHandle: currentDroneHandle,
         worktree: currentWorktree,
         branch: currentBranch,
         store: {},
-        allSpawnedPanes,
+        allDroneHandles,
       };
 
       // Log iteration start
@@ -172,19 +173,19 @@ export async function runMindSupervisor(
       const pipelineResult = await runPipeline(pipelineStages, ctx);
 
       // Read back state from context (stages may have mutated it)
-      currentDronePane = ctx.dronePane;
+      currentDroneHandle = ctx.droneHandle;
       currentWorktree = ctx.worktree;
       currentBranch = ctx.branch;
-      result.dronePaneId = ctx.dronePane;
+      result.droneId = ctx.droneHandle?.id;
       result.worktree = ctx.worktree;
       result.branch = ctx.branch;
 
       // Log drone spawn/relaunch completion
-      if (ctx.dronePane) {
+      if (ctx.droneHandle) {
         if (iteration === 1) {
-          console.log(`[supervisor] @${config.mindName}: Drone spawned in pane ${ctx.dronePane}`);
+          console.log(`[supervisor] @${config.mindName}: Drone spawned (${ctx.droneHandle.backend}:${ctx.droneHandle.id})`);
         } else {
-          console.log(`[supervisor] @${config.mindName}: Drone re-launched in pane ${ctx.dronePane}`);
+          console.log(`[supervisor] @${config.mindName}: Drone re-launched (${ctx.droneHandle.backend}:${ctx.droneHandle.id})`);
         }
       }
 
@@ -339,13 +340,13 @@ export async function runMindSupervisor(
       // Best effort -- bus may be down too
     }
   } finally {
-    // Record all tracked panes in the result for observability
-    result.allPaneIds = [...allSpawnedPanes];
-    result.totalPanesSpawned = allSpawnedPanes.length;
+    // Record all tracked drone handles in the result for observability
+    result.allDroneHandles = [...allDroneHandles];
+    result.totalDronesSpawned = allDroneHandles.length;
 
-    // Cleanup: kill ALL spawned drone panes (not just the last one)
-    for (const paneId of allSpawnedPanes) {
-      await deps.killPane(paneId);
+    // Cleanup: kill ALL spawned drones (not just the last one)
+    for (const handle of allDroneHandles) {
+      await deps.killDrone(handle);
     }
 
     // Clean up sentinel file if present (skip if worktree was never resolved)

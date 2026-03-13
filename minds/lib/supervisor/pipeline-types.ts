@@ -9,6 +9,7 @@
  */
 
 import type { SupervisorConfig, SupervisorDeps, CheckResults, ReviewFinding, ReviewVerdict } from "./supervisor-types.ts";
+import type { DroneHandle } from "../drone-backend.ts";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage definition
@@ -34,7 +35,7 @@ export interface StageContext {
   readonly deps: SupervisorDeps;
   readonly standards: string;
   readonly iteration: number;
-  dronePane?: string;
+  droneHandle?: DroneHandle;
   worktree: string;
   branch: string;
   checkResults?: CheckResults;
@@ -42,8 +43,8 @@ export interface StageContext {
   previousFeedback?: string;
   /** Arbitrary key-value store for inter-stage communication within a pipeline run. */
   store: Record<string, unknown>;
-  /** All drone pane IDs spawned across iterations (for cleanup tracking). */
-  allSpawnedPanes: string[];
+  /** All drone handles spawned across iterations (for cleanup tracking). */
+  allDroneHandles: DroneHandle[];
 }
 
 export interface StageResult {
