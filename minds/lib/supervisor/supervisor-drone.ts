@@ -267,11 +267,12 @@ export async function waitForDroneCompletion(
   worktreePath: string,
   timeoutMs: number,
   pollIntervalMs: number = 5000,
+  repoRoot?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
   // Backend-aware "is alive" checker
-  const isAlive = await createIsAliveChecker(handle);
+  const isAlive = await createIsAliveChecker(handle, repoRoot);
 
   // TOCTOU guard: if the sentinel already exists AND the drone is already gone,
   // the drone completed before we started watching. Return success immediately.
@@ -345,34 +346,40 @@ export async function waitForDroneCompletion(
  * Create a backend-aware "is alive" checker for a drone.
  *
  * - tmux backend: uses TmuxMultiplexer.isPaneAlive()
- * - axon backend: uses AxonClient.info() to check process state
+ * - axon backend: uses AxonClient.info() to check process state via a
+ *   persistent connection (created once, reused across polls)
  */
-async function createIsAliveChecker(handle: DroneHandle): Promise<() => Promise<boolean>> {
+async function createIsAliveChecker(
+  handle: DroneHandle,
+  repoRoot?: string,
+): Promise<() => Promise<boolean>> {
   if (handle.backend === "tmux") {
     const mux = new TmuxMultiplexer();
     return () => mux.isPaneAlive(handle.id);
   }
 
-  // Axon backend: connect to daemon and check process state
+  // Axon backend: connect once and reuse
   const { AxonClient } = await import("../axon/client.ts");
   const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
 
+  // Resolve socket path: explicit env > repoRoot-based > cwd-based
+  const socketPath = process.env.AXON_SOCKET ??
+    getDaemonPaths(repoRoot ?? process.cwd()).socketPath;
+
+  let client: InstanceType<typeof AxonClient> | null = null;
+  try {
+    client = await AxonClient.connect(socketPath);
+  } catch {
+    // Can't connect — return a checker that always says "not alive"
+    return () => Promise.resolve(false);
+  }
+
   return async () => {
     try {
-      // Find the socket path — try AXON_SOCKET env or standard location
-      // We need the repo root to resolve the socket. Use cwd as best guess.
-      const socketPath = process.env.AXON_SOCKET ??
-        getDaemonPaths(process.cwd()).socketPath;
-
-      const client = await AxonClient.connect(socketPath);
-      try {
-        const info = await client.info(handle.id);
-        return info.state === "Running" || info.state === "Starting";
-      } finally {
-        client.close();
-      }
+      const info = await client!.info(handle.id);
+      return info.state === "Running" || info.state === "Starting";
     } catch {
-      // If we can't connect to the daemon, the drone is likely gone
+      // Process not found or connection lost — drone is gone
       return false;
     }
   };

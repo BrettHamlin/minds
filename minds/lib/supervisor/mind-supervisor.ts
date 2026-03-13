@@ -78,7 +78,24 @@ function createDefaultDeps(): SupervisorDeps {
     runDeterministicChecks: runDeterministicChecksDefault,
     callLlmReview: callLlmReviewDefault,
     installDroneStopHook: installDroneStopHookImpl,
-    killDrone: async (handle: DroneHandle) => killPaneImpl(handle.id),
+    killDrone: async (handle: DroneHandle) => {
+      if (handle.backend === "tmux") {
+        await killPaneImpl(handle.id);
+      } else {
+        // Axon backend: kill via AxonClient
+        try {
+          const { AxonClient } = await import("../axon/client.ts");
+          const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
+          const socketPath = process.env.AXON_SOCKET ??
+            getDaemonPaths(process.cwd()).socketPath;
+          const client = await AxonClient.connect(socketPath);
+          await client.kill(handle.id);
+          client.close();
+        } catch {
+          // Best-effort kill
+        }
+      }
+    },
     delay: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
 }
