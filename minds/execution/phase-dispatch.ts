@@ -36,6 +36,7 @@ import {
   OrchestratorError,
   handleError,
 } from "../pipeline_core";
+import type { TerminalMultiplexer } from "../lib/terminal-multiplexer";
 import type { CompiledPipeline, CompiledPhase, CompiledAction } from "../pipeline_core";
 import { applyUpdates } from "../pipeline_core";
 import { resolveTransportPath } from "../transport/resolve-transport"; // CROSS-MIND
@@ -219,6 +220,10 @@ export interface TransportOpts {
   busUrl?: string;
   ticketId?: string;
   phase?: string;
+  /** Override receipt poll interval (ms) — useful for testing. Default: 2000 */
+  receiptPollIntervalMs?: number;
+  /** Override receipt poll attempts — useful for testing. Default: 8 */
+  receiptPollAttempts?: number;
 }
 
 /**
@@ -226,13 +231,20 @@ export interface TransportOpts {
  *
  * When transportOpts.transport is "bus" and busUrl/ticketId are provided,
  * publishes via the bus (command-bridge handles last-mile tmux delivery).
- * Falls back to direct tmux send-keys when transport is "tmux" or unset.
+ *
+ * When a TerminalMultiplexer is provided (e.g., AxonMultiplexer), uses it
+ * for both sendKeys and capturePane -- enabling Axon's ReadBuffer-based
+ * output capture instead of raw tmux calls.
+ *
+ * Falls back to direct tmux send-keys when transport is "tmux" or unset
+ * and no multiplexer is provided.
  */
 export async function dispatchToAgent(
   paneId: string,
   command: string,
   delay: number = 1,
-  transportOpts?: TransportOpts
+  transportOpts?: TransportOpts,
+  multiplexer?: TerminalMultiplexer,
 ): Promise<DispatchResult> {
   const transportType = transportOpts?.transport ?? "tmux";
   const busUrl = transportOpts?.busUrl;
@@ -255,6 +267,65 @@ export async function dispatchToAgent(
     }
   }
 
+  const pollInterval = transportOpts?.receiptPollIntervalMs ?? RECEIPT_POLL_INTERVAL_MS;
+  const pollAttempts = transportOpts?.receiptPollAttempts ?? RECEIPT_POLL_ATTEMPTS;
+
+  // Use multiplexer (AxonMultiplexer or TmuxMultiplexer) when provided,
+  // otherwise fall back to TmuxClient for backward compatibility.
+  if (multiplexer) {
+    return dispatchViaMultiplexer(paneId, command, multiplexer, pollInterval, pollAttempts);
+  }
+
+  return dispatchViaTmuxClient(paneId, command, delay, pollInterval, pollAttempts);
+}
+
+/**
+ * Dispatch via TerminalMultiplexer interface (supports Axon and Tmux backends).
+ * Uses the multiplexer's capturePane for receipt verification, which in the
+ * Axon case reads from the server-side ring buffer via ReadBuffer RPC.
+ */
+async function dispatchViaMultiplexer(
+  paneId: string,
+  command: string,
+  mux: TerminalMultiplexer,
+  pollIntervalMs: number,
+  pollAttempts: number,
+): Promise<DispatchResult> {
+  // Capture pane before send
+  const before = await mux.capturePane(paneId);
+
+  // Send command via multiplexer
+  await mux.sendKeys(paneId, command);
+
+  // Poll for receipt: check that pane content changed
+  let received = false;
+  for (let i = 0; i < pollAttempts; i++) {
+    await new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs));
+    const after = await mux.capturePane(paneId);
+    if (after !== before) {
+      received = true;
+      break;
+    }
+  }
+
+  if (!received) {
+    console.error(`Warning: agent pane unchanged after dispatch via multiplexer`);
+  }
+
+  return { dispatched: true, received, paneId, command };
+}
+
+/**
+ * Legacy dispatch via TmuxClient (synchronous tmux calls).
+ * Preserved for backward compatibility when no multiplexer is provided.
+ */
+async function dispatchViaTmuxClient(
+  paneId: string,
+  command: string,
+  delay: number,
+  pollIntervalMs: number,
+  pollAttempts: number,
+): Promise<DispatchResult> {
   const tmux = new TmuxClient();
 
   // Capture pane before send
@@ -265,8 +336,8 @@ export async function dispatchToAgent(
 
   // Poll for receipt: check that pane content changed and contains the command
   let received = false;
-  for (let i = 0; i < RECEIPT_POLL_ATTEMPTS; i++) {
-    await tmux.sleep(RECEIPT_POLL_INTERVAL_MS);
+  for (let i = 0; i < pollAttempts; i++) {
+    await tmux.sleep(pollIntervalMs);
     const after = tmux.capturePane(paneId);
     if (after !== before) {
       received = true;
