@@ -84,37 +84,10 @@ function createDefaultDeps(): SupervisorDeps {
 // ---------------------------------------------------------------------------
 // Force-rejection helper (deterministic checks override LLM verdict)
 // ---------------------------------------------------------------------------
-
-function applyForceRejections(verdict: ReviewVerdict, checks: CheckResults): void {
-  if (!checks.testsPass && verdict.approved) {
-    verdict.approved = false;
-    verdict.findings.push({
-      file: "(tests)",
-      line: 0,
-      severity: "error",
-      message: "Tests are failing. Fix all test failures before approval.",
-    });
-  }
-  if (checks.boundaryPass === false && verdict.approved) {
-    verdict.approved = false;
-    verdict.findings.push(...(checks.boundaryFindings ?? []));
-  } else if (checks.boundaryPass === true) {
-    // Deterministic boundary check passed — strip any false LLM boundary findings.
-    // Boundary enforcement is fully deterministic; the LLM should not override it.
-    const before = verdict.findings.length;
-    verdict.findings = verdict.findings.filter(
-      (f) => !f.message.includes("boundary") && !f.message.includes("outside")
-    );
-    // If LLM rejected ONLY for boundary and we stripped all those findings, re-approve.
-    if (!verdict.approved && before > 0 && verdict.findings.length === 0) {
-      verdict.approved = true;
-    }
-  }
-  if (checks.contractsPass === false && verdict.approved) {
-    verdict.approved = false;
-    verdict.findings.push(...(checks.contractFindings ?? []));
-  }
-}
+// Canonical implementation lives in stages/llm-review.ts (BRE-619).
+// Re-exported here for backward compatibility with this file's inline usage.
+import { applyForceRejections } from "./stages/llm-review.ts";
+export { applyForceRejections };
 
 // ---------------------------------------------------------------------------
 // Main Supervisor Entry Point
