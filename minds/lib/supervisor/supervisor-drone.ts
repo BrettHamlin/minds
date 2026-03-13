@@ -272,6 +272,7 @@ export async function waitForDroneCompletion(
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
   // Backend-aware "is alive" checker
+  console.warn(`[waitForDroneCompletion] handle=${JSON.stringify(handle)} repoRoot=${repoRoot} pollInterval=${pollIntervalMs}`);
   const isAlive = await createIsAliveChecker(handle, repoRoot);
 
   // TOCTOU guard: if the sentinel already exists AND the drone is already gone,
@@ -359,18 +360,23 @@ async function createIsAliveChecker(
   }
 
   // Axon backend: connect once and reuse
+  console.warn(`[createIsAliveChecker] Axon backend — handle=${handle.id} repoRoot=${repoRoot}`);
   const { AxonClient } = await import("../axon/client.ts");
   const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
 
   // Resolve socket path: explicit env > repoRoot-based > cwd-based
+  const resolvedRoot = repoRoot ?? process.cwd();
   const socketPath = process.env.AXON_SOCKET ??
-    getDaemonPaths(repoRoot ?? process.cwd()).socketPath;
+    getDaemonPaths(resolvedRoot).socketPath;
+  console.warn(`[createIsAliveChecker] socketPath=${socketPath} (resolvedRoot=${resolvedRoot})`);
 
   let client: InstanceType<typeof AxonClient> | null = null;
   try {
     client = await AxonClient.connect(socketPath);
-  } catch {
+    console.warn(`[createIsAliveChecker] Connected to Axon daemon OK`);
+  } catch (err) {
     // Can't connect — return a checker that always says "not alive"
+    console.warn(`[createIsAliveChecker] CONNECT FAILED: ${err} — will always report not alive`);
     return () => Promise.resolve(false);
   }
 
@@ -380,6 +386,7 @@ async function createIsAliveChecker(
       return info.state === "Running" || info.state === "Starting";
     } catch {
       // Process not found or connection lost — drone is gone
+      console.warn(`[isAlive] ${handle.id} — Axon info() failed, reporting not alive`);
       return false;
     }
   };
