@@ -18,3 +18,12 @@ export {
 } from "./types";
 export { AxonMultiplexer } from "./multiplexer";
 export { DaemonManager, type DaemonManagerOptions } from "./daemon";
+export {
+  startAxonDaemon,
+  stopAxonDaemon,
+  isAxonRunning,
+  getDaemonPaths,
+  ensureRunDir,
+  type DaemonStatus,
+  type DaemonPaths,
+} from "./daemon-lifecycle";
