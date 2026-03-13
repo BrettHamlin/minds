@@ -238,6 +238,10 @@ export interface TransportOpts {
  *
  * Falls back to direct tmux send-keys when transport is "tmux" or unset
  * and no multiplexer is provided.
+ *
+ * @param delay - Seconds to wait after send-keys. Only used in the legacy
+ *   tmux fallback path (dispatchViaTmuxClient). Ignored when a multiplexer
+ *   is provided or when using the bus transport.
  */
 export async function dispatchToAgent(
   paneId: string,
@@ -414,12 +418,18 @@ export async function waitForPhaseCompletion(
 /**
  * Dispatch each before-hook phase to the agent pane and wait for completion.
  * Hook phases are dispatched sequentially; each must complete before the next starts.
+ *
+ * When a multiplexer and/or transportOpts are provided, they are threaded
+ * through to dispatchToAgent so hooks use the same transport as the main
+ * phase dispatch (e.g., Axon ReadBuffer instead of raw tmux).
  */
 export async function executeBeforeHooks(
   agentPane: string,
   beforeHooks: string[],
   pipeline: CompiledPipeline,
-  registryPath: string
+  registryPath: string,
+  multiplexer?: TerminalMultiplexer,
+  transportOpts?: TransportOpts,
 ): Promise<void> {
   for (const hookPhaseId of beforeHooks) {
     const hookCmd = getDispatchableCommand(resolvePhaseCommand(pipeline, hookPhaseId));
@@ -429,7 +439,7 @@ export async function executeBeforeHooks(
     }
 
     console.log(`Dispatching before-hook '${hookPhaseId}'`);
-    await dispatchToAgent(agentPane, hookCmd, 1);
+    await dispatchToAgent(agentPane, hookCmd, 1, transportOpts, multiplexer);
 
     const completed = await waitForPhaseCompletion(registryPath, hookPhaseId);
     if (!completed) {
