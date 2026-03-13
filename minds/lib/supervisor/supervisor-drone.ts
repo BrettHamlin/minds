@@ -268,21 +268,19 @@ export async function waitForDroneCompletion(
   timeoutMs: number,
   pollIntervalMs: number = 5000,
 ): Promise<{ ok: boolean; error?: string }> {
-  // Use the handle's id for pane-alive checks. For now, all backends use
-  // sentinel-based completion with TmuxMultiplexer for pane-alive fallback.
-  const paneId = handle.id;
-  const mux = new TmuxMultiplexer();
-
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
-  // TOCTOU guard: if the sentinel already exists AND the pane is already gone,
+  // Backend-aware "is alive" checker
+  const isAlive = await createIsAliveChecker(handle);
+
+  // TOCTOU guard: if the sentinel already exists AND the drone is already gone,
   // the drone completed before we started watching. Return success immediately.
   if (existsSync(sentinelPath)) {
-    if (!await mux.isPaneAlive(paneId)) {
-      // Pane is gone + sentinel exists = drone completed successfully before we started watching
+    if (!await isAlive()) {
+      // Drone is gone + sentinel exists = completed successfully before we started watching
       return { ok: true };
     }
-    // Pane is still alive — sentinel is stale from a previous run, clean it up
+    // Drone is still alive — sentinel is stale from a previous run, clean it up
     try { rmSync(sentinelPath, { force: true }); } catch { /* ignore */ }
   }
 
@@ -320,7 +318,7 @@ export async function waitForDroneCompletion(
       // fs.watch() may fail on some platforms — fall through to poll
     }
 
-    // Poll fallback: check sentinel file + pane existence every interval
+    // Poll fallback: check sentinel file + drone existence every interval
     const pollTimer = setInterval(async () => {
       // Primary: sentinel file exists
       if (existsSync(sentinelPath)) {
@@ -328,18 +326,55 @@ export async function waitForDroneCompletion(
         return;
       }
 
-      // Fallback: pane no longer exists (crash, manual kill)
-      // If sentinel was NOT written but pane is gone, the drone crashed.
-      if (!await mux.isPaneAlive(paneId)) {
-        done({ ok: false, error: `Drone pane ${paneId} died without writing sentinel — likely crashed` });
+      // Fallback: drone no longer alive (crash, manual kill)
+      // If sentinel was NOT written but drone is gone, it crashed.
+      if (!await isAlive()) {
+        done({ ok: false, error: `Drone ${handle.id} (${handle.backend}) died without writing sentinel — likely crashed` });
         return;
       }
     }, pollIntervalMs);
 
-    // Check immediately in case sentinel already exists or pane is already gone
+    // Check immediately in case sentinel already exists or drone is already gone
     if (existsSync(sentinelPath)) {
       done({ ok: true });
     }
   });
+}
+
+/**
+ * Create a backend-aware "is alive" checker for a drone.
+ *
+ * - tmux backend: uses TmuxMultiplexer.isPaneAlive()
+ * - axon backend: uses AxonClient.info() to check process state
+ */
+async function createIsAliveChecker(handle: DroneHandle): Promise<() => Promise<boolean>> {
+  if (handle.backend === "tmux") {
+    const mux = new TmuxMultiplexer();
+    return () => mux.isPaneAlive(handle.id);
+  }
+
+  // Axon backend: connect to daemon and check process state
+  const { AxonClient } = await import("../axon/client.ts");
+  const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
+
+  return async () => {
+    try {
+      // Find the socket path — try AXON_SOCKET env or standard location
+      // We need the repo root to resolve the socket. Use cwd as best guess.
+      const socketPath = process.env.AXON_SOCKET ??
+        getDaemonPaths(process.cwd()).socketPath;
+
+      const client = await AxonClient.connect(socketPath);
+      try {
+        const info = await client.info(handle.id);
+        return info.state === "Running" || info.state === "Starting";
+      } finally {
+        client.close();
+      }
+    } catch {
+      // If we can't connect to the daemon, the drone is likely gone
+      return false;
+    }
+  };
 }
 
