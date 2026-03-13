@@ -6,6 +6,7 @@
  */
 
 import type { AxonClient } from "./client.ts";
+import { validateProcessId } from "./types.ts";
 
 export interface CompletionResult {
   ok: boolean;
@@ -22,6 +23,11 @@ const TIMEOUT_SENTINEL = Symbol("timeout");
  * Subscribes to events for the given processId, reads events in a loop,
  * and resolves when an Exited event arrives for the target process.
  *
+ * **Timeout behavior:** After a timeout, a dangling `readEvent()` promise may
+ * still be pending on the client. Callers should close the client after a
+ * timeout rather than reusing it, as the pending read may consume the next
+ * message from the server and leave the client in an indeterminate state.
+ *
  * @param client - Connected AxonClient instance
  * @param processId - The process ID to watch for completion
  * @param timeoutMs - Optional timeout in milliseconds (default: no timeout)
@@ -32,8 +38,31 @@ export async function waitForProcessCompletion(
   processId: string,
   timeoutMs?: number,
 ): Promise<CompletionResult> {
-  const sub = await client.subscribe({ process_ids: [processId as any] });
-  let timedOut = false;
+  const validatedId = validateProcessId(processId);
+  const sub = await client.subscribe({ process_ids: [validatedId] });
+
+  // Guard against subscribe-after-exit race: if the process already exited
+  // before we subscribed, the Exited event was dispatched and will never arrive.
+  try {
+    const info = await client.info(processId);
+    if (typeof info.state === "object" && "Exited" in info.state) {
+      const exitCode = info.state.Exited.exit_code ?? undefined;
+      try {
+        await client.unsubscribe(sub.id);
+      } catch {
+        // Best-effort cleanup
+      }
+      return { ok: exitCode === 0, exitCode };
+    }
+  } catch {
+    // Process not found -- treat as already exited with unknown code
+    try {
+      await client.unsubscribe(sub.id);
+    } catch {
+      // Best-effort cleanup
+    }
+    return { ok: false, error: "process_not_found" };
+  }
 
   try {
     // Build a timeout promise if needed
@@ -42,7 +71,6 @@ export async function waitForProcessCompletion(
       timeoutMs !== undefined
         ? new Promise<typeof TIMEOUT_SENTINEL>((resolve) => {
             const timer = setTimeout(() => {
-              timedOut = true;
               resolve(TIMEOUT_SENTINEL);
             }, timeoutMs);
             timeoutReject = () => clearTimeout(timer);
@@ -72,12 +100,18 @@ export async function waitForProcessCompletion(
       // Not our target event -- continue reading
     }
   } finally {
-    if (!timedOut) {
-      try {
-        await client.unsubscribe(sub.id);
-      } catch {
-        // Best-effort unsubscribe; connection may already be closed
-      }
+    try {
+      // Use a short timeout to avoid hanging if a dangling readEvent()
+      // promise is consuming responses (common after timeout).
+      await Promise.race([
+        client.unsubscribe(sub.id),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error("unsubscribe timeout")), 1000),
+        ),
+      ]);
+    } catch {
+      // Best-effort unsubscribe; connection may already be closed or
+      // a dangling readEvent may prevent us from getting the response.
     }
   }
 }
