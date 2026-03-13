@@ -39,6 +39,7 @@ import { loadStandards } from "./supervisor/supervisor-checks.ts";
 import { shellQuote } from "./tmux-utils.ts";
 import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
 import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
+import { createMultiplexer } from "./multiplexer-factory.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -156,7 +157,9 @@ export async function publishDroneSpawned(params: {
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 
 if (import.meta.main) { (async () => {
-  const mux: TerminalMultiplexer = new TmuxMultiplexer();
+  // Use TmuxMultiplexer for early getCurrentPane (before repoRoot is known).
+  // The factory-based mux is created after repoRoot is determined.
+  const earlyMux = new TmuxMultiplexer();
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -194,7 +197,7 @@ if (import.meta.main) { (async () => {
 
   const callerPane =
     getArg("--pane") ??
-    await mux.getCurrentPane();
+    await earlyMux.getCurrentPane();
 
   const mindPane = getArg("--mind-pane") ?? callerPane;
 
@@ -356,6 +359,10 @@ if (import.meta.main) { (async () => {
     : `# Drone Brief\n\nYou are the @${mindName} drone for ticket ${ticketId}.\n\nAwaiting task brief from the Mind.\n`;
 
   writeFileSync(resolve(worktreePath, "DRONE-BRIEF.md"), briefContent);
+
+  // ─── Create multiplexer via factory ──────────────────────────────────────────
+
+  const mux: TerminalMultiplexer = await createMultiplexer({ repoRoot });
 
   // ─── Split tmux pane ──────────────────────────────────────────────────────────
 

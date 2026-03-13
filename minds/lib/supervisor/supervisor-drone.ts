@@ -12,6 +12,10 @@ import { buildDroneBrief } from "../../cli/lib/drone-brief.ts";
 import { killPane, splitPane, launchClaudeInPane, shellQuote } from "../tmux-utils.ts";
 import type { TerminalMultiplexer } from "../terminal-multiplexer.ts";
 import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
+import { createMultiplexer } from "../multiplexer-factory.ts";
+import { AxonMultiplexer } from "../axon/multiplexer.ts";
+import { waitForProcessCompletion } from "../axon/completion.ts";
+import type { AxonClient } from "../axon/client.ts";
 import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
 
 // ---------------------------------------------------------------------------
@@ -258,8 +262,16 @@ export async function waitForDroneCompletion(
   worktreePath: string,
   timeoutMs: number,
   pollIntervalMs: number = 5000,
-  mux: TerminalMultiplexer = new TmuxMultiplexer(),
+  mux?: TerminalMultiplexer,
 ): Promise<{ ok: boolean; error?: string }> {
+  // Resolve multiplexer: use provided, or create via factory, or fall back to tmux
+  if (!mux) {
+    try {
+      mux = await createMultiplexer({ repoRoot: process.cwd() });
+    } catch {
+      mux = new TmuxMultiplexer();
+    }
+  }
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
   // TOCTOU guard: if the sentinel already exists AND the pane is already gone,
