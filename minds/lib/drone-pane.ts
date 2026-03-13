@@ -23,22 +23,24 @@
  *     [--bus-url <url>]             # when provided, injects BUS_URL env var into Claude Code spawn command
  *     [--channel <channel>]          # Minds bus channel (e.g. minds-BRE-456)
  *     [--wave-id <id>]               # wave ID for DRONE_SPAWNED event correlation
+ *     [--backend <axon|tmux>]        # force backend selection (default: auto-detect)
  *
  * Output: JSON to stdout
- *   { drone_pane, worktree, branch, base, claude_dir, mind_pane }
+ *   { drone_pane, drone_id, backend, worktree, branch, base, claude_dir, mind_pane }
  */
 
 import { execSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { basename, resolve } from "path";
-import { injectBusEnv } from "../transport/minds-bus-lifecycle.ts";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 import { resolveMindsDir, encodeProjectPath } from "../shared/paths.js";
 import { loadStandards } from "./supervisor/supervisor-checks.ts";
 import { shellQuote } from "./tmux-utils.ts";
 import { getCurrentTmuxPane } from "./tmux-multiplexer.ts";
-import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
+import { createDroneBackend } from "./drone-backend-factory.ts";
+import { sanitizeProcessId } from "./axon/types.ts";
+import type { DroneHandle } from "./drone-backend.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -218,6 +220,7 @@ if (import.meta.main) { (async () => {
   const busUrl = getArg("--bus-url");
   const channel = getArg("--channel");
   const waveId = getArg("--wave-id");
+  const backendFlag = getArg("--backend") as "axon" | "tmux" | undefined;
 
   // ─── Repo context ────────────────────────────────────────────────────────────
 
@@ -372,30 +375,32 @@ if (import.meta.main) { (async () => {
 
   writeFileSync(resolve(worktreePath, "DRONE-BRIEF.md"), briefContent);
 
-  // ─── Create TmuxMultiplexer directly ────────────────────────────────────────
-  // Drones are tmux panes running Claude Code IDE sessions. The Axon multiplexer
-  // has different semantics (splitPane spawns a process, sendKeys spawns another),
-  // which conflicts with the tmux split-then-type pattern used here.
+  // ─── Create DroneBackend ────────────────────────────────────────────────────
 
-  const mux = new TmuxMultiplexer();
+  const backend = await createDroneBackend({
+    repoRoot,
+    forceBackend: backendFlag,
+    callerPane,
+  });
 
-  // ─── Split tmux pane ──────────────────────────────────────────────────────────
-
-  let dronePane: string;
-  try {
-    dronePane = await mux.splitPane(callerPane);
-  } catch (err) {
-    fail(`Failed to split tmux pane: ${err}`);
-  }
-
-  // ─── Launch Claude Code Sonnet (no collab/pipeline pack install) ──────────────
+  // ─── Spawn drone ──────────────────────────────────────────────────────────
 
   const initialPrompt = `Read DRONE-BRIEF.md and complete all tasks. When done, run the completion command at the bottom of the brief.`;
-  let launchCmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model sonnet --setting-sources project,local ${JSON.stringify(initialPrompt)}`;
-  if (busUrl) {
-    launchCmd = injectBusEnv(launchCmd, busUrl);
+  const processId = sanitizeProcessId(`drone-${mindName}-${ticketId}`);
+
+  let droneHandle: DroneHandle;
+  try {
+    droneHandle = await backend.spawn({
+      processId,
+      cwd: worktreePath,
+      command: "claude",
+      args: ["--dangerously-skip-permissions", "--model", "sonnet", "--setting-sources", "project,local", initialPrompt],
+      env: busUrl ? { BUS_URL: busUrl } : undefined,
+      callerPane,
+    });
+  } catch (err) {
+    fail(`Failed to spawn drone: ${err}`);
   }
-  await mux.sendKeys(dronePane, launchCmd);
 
   // ─── Publish DRONE_SPAWNED if bus is configured ────────────────────────────────
 
@@ -405,21 +410,23 @@ if (import.meta.main) { (async () => {
       channel,
       waveId,
       mindName: mindName!,
-      paneId: dronePane!,
+      paneId: droneHandle.id,
       worktree: worktreePath,
       branch: branchName,
     });
   }
 
-  // ─── Cleanup multiplexer ────────────────────────────────────────────────────
+  // ─── Cleanup backend ────────────────────────────────────────────────────
 
-  mux.close?.();
+  backend.close();
 
   // ─── Output result ────────────────────────────────────────────────────────────
 
   console.log(
     JSON.stringify({
-      drone_pane: dronePane,
+      drone_pane: droneHandle.id,  // backward compat
+      drone_id: droneHandle.id,
+      backend: droneHandle.backend,
       worktree: worktreePath,
       branch: branchName,
       base: baseBranch,
