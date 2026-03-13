@@ -207,11 +207,15 @@ describe("axon-installer", () => {
     it("constructs correct download URL", async () => {
       const capturedUrls: string[] = [];
       const triple = getTargetTriple();
+      const fakeHash = "a".repeat(64);
 
       globalThis.fetch = mock(async (url: string | URL | Request) => {
         const urlStr = typeof url === "string" ? url : url.toString();
         capturedUrls.push(urlStr);
-        // Return 404 so the test doesn't need full checksum setup
+        // Return valid checksums so we proceed to binary download
+        if (urlStr.includes("checksums.txt")) {
+          return new Response(`${fakeHash}  axon-${triple}\n`, { status: 200 });
+        }
         return new Response("Not found", { status: 404 });
       }) as typeof fetch;
 
@@ -223,11 +227,14 @@ describe("axon-installer", () => {
           repoName: "test-repo",
         });
       } catch {
-        // Expected to fail
+        // Expected to fail on binary 404
       }
 
       expect(capturedUrls).toContainEqual(
         `https://github.com/TestOwner/test-repo/releases/download/v1.2.3/axon-${triple}`
+      );
+      expect(capturedUrls).toContainEqual(
+        `https://github.com/TestOwner/test-repo/releases/download/v1.2.3/checksums.txt`
       );
     });
 

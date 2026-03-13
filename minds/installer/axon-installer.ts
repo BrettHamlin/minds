@@ -7,7 +7,7 @@
 
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
-import { chmod, mkdir } from "fs/promises";
+import { chmod, mkdir, rename, rm } from "fs/promises";
 
 export interface InstallOptions {
   version: string;
@@ -114,6 +114,15 @@ function findChecksum(
 /**
  * Download and install the Axon binary for the current platform.
  */
+/**
+ * Validate version string to prevent path traversal in URLs.
+ */
+function validateVersion(version: string): void {
+  if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
+    throw new Error(`Invalid version format: "${version}"`);
+  }
+}
+
 export async function installAxon(
   options: InstallOptions
 ): Promise<InstallResult> {
@@ -124,11 +133,29 @@ export async function installAxon(
     repoName = "axon",
   } = options;
 
+  validateVersion(version);
+
   const triple = getTargetTriple();
   const binaryFilename = `axon-${triple}`;
   const baseUrl = `https://github.com/${repoOwner}/${repoName}/releases/download/v${version}`;
   const binaryUrl = `${baseUrl}/${binaryFilename}`;
   const checksumUrl = `${baseUrl}/checksums.txt`;
+
+  // Download checksums first (fail fast before downloading the larger binary)
+  const checksumResponse = await fetch(checksumUrl);
+  if (!checksumResponse.ok) {
+    throw new Error(
+      `Download failed: ${checksumUrl} returned HTTP ${checksumResponse.status}`
+    );
+  }
+  const checksumContent = await checksumResponse.text();
+
+  const expectedHash = findChecksum(checksumContent, binaryFilename);
+  if (!expectedHash) {
+    throw new Error(
+      `Checksum not found for "${binaryFilename}" in checksums.txt`
+    );
+  }
 
   // Download binary
   const binaryResponse = await fetch(binaryUrl);
@@ -139,23 +166,7 @@ export async function installAxon(
   }
   const binaryData = new Uint8Array(await binaryResponse.arrayBuffer());
 
-  // Download checksums
-  const checksumResponse = await fetch(checksumUrl);
-  if (!checksumResponse.ok) {
-    throw new Error(
-      `Download failed: ${checksumUrl} returned HTTP ${checksumResponse.status}`
-    );
-  }
-  const checksumContent = await checksumResponse.text();
-
   // Verify checksum
-  const expectedHash = findChecksum(checksumContent, binaryFilename);
-  if (!expectedHash) {
-    throw new Error(
-      `Checksum not found for "${binaryFilename}" in checksums.txt`
-    );
-  }
-
   const actualHash = sha256(binaryData);
   if (actualHash !== expectedHash) {
     throw new Error(
@@ -166,12 +177,17 @@ export async function installAxon(
   // Ensure target directory exists
   await mkdir(targetDir, { recursive: true });
 
-  // Write binary
+  // Atomic write: write to temp file, chmod, then rename to final path
   const binaryPath = join(targetDir, "axon");
-  await Bun.write(binaryPath, binaryData);
-
-  // Make executable
-  await chmod(binaryPath, 0o755);
+  const tmpPath = `${binaryPath}.tmp.${process.pid}`;
+  try {
+    await Bun.write(tmpPath, binaryData);
+    await chmod(tmpPath, 0o755);
+    await rename(tmpPath, binaryPath);
+  } catch (e) {
+    await rm(tmpPath, { force: true });
+    throw e;
+  }
 
   return {
     binaryPath,
