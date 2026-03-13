@@ -56,6 +56,10 @@ export interface SupervisorConfig {
   installCommand?: string;
   /** Additional infrastructure exclusion patterns (merged with defaults in boundary check). */
   infraExclusions?: string[];
+  /** Explicit pipeline stages for this mind (from MindDescription). */
+  pipeline?: import("./pipeline-types.ts").PipelineStage[];
+  /** Named pipeline template (e.g. "code", "build", "test"). */
+  pipelineTemplate?: string;
 }
 
 export interface ReviewFinding {

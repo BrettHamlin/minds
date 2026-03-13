@@ -1,9 +1,10 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { classifyEvent, computeChangedFields, discoverBusUrl } from "../status-emitter";
 import { writeJsonAtomic } from "../json-io";
+import { _resetRepoRootCache } from "../../shared/paths";
 
 // ============================================================================
 // classifyEvent
@@ -137,9 +138,11 @@ describe("discoverBusUrl", () => {
     // discoverBusUrl uses getRepoRoot() which calls git rev-parse;
     // in a temp dir with no git, it falls back to cwd
     process.chdir(tmpDir);
+    _resetRepoRootCache();
   });
 
   afterAll(() => {
+    _resetRepoRootCache();
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -187,6 +190,7 @@ describe("writeJsonAtomic emission integration", () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "emit-integration-"));
     origCwd = process.cwd();
     process.chdir(tmpDir);
+    _resetRepoRootCache();
     receivedRequests = [];
 
     mockServer = Bun.serve({
@@ -207,6 +211,7 @@ describe("writeJsonAtomic emission integration", () => {
 
   afterAll(() => {
     mockServer.stop(true);
+    _resetRepoRootCache();
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -274,6 +279,7 @@ describe("writeJsonAtomic guard -- non-registry writes", () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "emit-guard-"));
     origCwd = process.cwd();
     process.chdir(tmpDir);
+    _resetRepoRootCache();
     receivedRequests = [];
 
     mockServer = Bun.serve({
@@ -294,6 +300,7 @@ describe("writeJsonAtomic guard -- non-registry writes", () => {
 
   afterAll(() => {
     mockServer.stop(true);
+    _resetRepoRootCache();
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -346,9 +353,11 @@ describe("graceful degradation -- no bus available", () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "emit-degrade-"));
     origCwd = process.cwd();
     process.chdir(tmpDir);
+    _resetRepoRootCache();
   });
 
   afterAll(() => {
+    _resetRepoRootCache();
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -425,6 +434,7 @@ describe("emission timeout", () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "emit-timeout-"));
     origCwd = process.cwd();
     process.chdir(tmpDir);
+    _resetRepoRootCache();
 
     // Server that never responds (delays 10s)
     slowServer = Bun.serve({
@@ -442,6 +452,7 @@ describe("emission timeout", () => {
 
   afterAll(() => {
     slowServer.stop(true);
+    _resetRepoRootCache();
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -489,6 +500,7 @@ describe("e2e classification -- all 5 event types via writeJsonAtomic", () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "emit-classify-e2e-"));
     origCwd = process.cwd();
     process.chdir(tmpDir);
+    _resetRepoRootCache();
     receivedRequests = [];
 
     mockServer = Bun.serve({
@@ -509,6 +521,7 @@ describe("e2e classification -- all 5 event types via writeJsonAtomic", () => {
 
   afterAll(() => {
     mockServer.stop(true);
+    _resetRepoRootCache();
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -585,6 +598,7 @@ describe("e2e priority -- higher event type wins", () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "emit-priority-e2e-"));
     origCwd = process.cwd();
     process.chdir(tmpDir);
+    _resetRepoRootCache();
     receivedRequests = [];
 
     mockServer = Bun.serve({
@@ -605,6 +619,7 @@ describe("e2e priority -- higher event type wins", () => {
 
   afterAll(() => {
     mockServer.stop(true);
+    _resetRepoRootCache();
     process.chdir(origCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
