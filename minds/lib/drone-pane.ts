@@ -38,8 +38,7 @@ import { resolveMindsDir, encodeProjectPath } from "../shared/paths.js";
 import { loadStandards } from "./supervisor/supervisor-checks.ts";
 import { shellQuote } from "./tmux-utils.ts";
 import { getCurrentTmuxPane } from "./tmux-multiplexer.ts";
-import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
-import { createMultiplexer } from "./multiplexer-factory.ts";
+import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -373,9 +372,12 @@ if (import.meta.main) { (async () => {
 
   writeFileSync(resolve(worktreePath, "DRONE-BRIEF.md"), briefContent);
 
-  // ─── Create multiplexer via factory ──────────────────────────────────────────
+  // ─── Create TmuxMultiplexer directly ────────────────────────────────────────
+  // Drones are tmux panes running Claude Code IDE sessions. The Axon multiplexer
+  // has different semantics (splitPane spawns a process, sendKeys spawns another),
+  // which conflicts with the tmux split-then-type pattern used here.
 
-  const mux: TerminalMultiplexer = await createMultiplexer({ repoRoot });
+  const mux = new TmuxMultiplexer();
 
   // ─── Split tmux pane ──────────────────────────────────────────────────────────
 
