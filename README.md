@@ -1,134 +1,110 @@
 # Gravitas — Minds
 
-A modular AI agent system that installs into any repo. Each Mind owns a domain (routing, memory, signals, etc.) and operates independently, coordinating through typed interfaces.
+Minds is an AI agent orchestration system that installs into any git repo. It decomposes features into parallel workstreams — one per domain — each run by a dedicated AI agent that owns its files and coordinates through typed contracts.
 
-## Quick Start
+## Features
 
-### Requirements
+- **Domain-aware parallelism** — Work is partitioned by codebase domain, not by task type. Each agent owns a slice of the repo and can't touch anything outside it.
+- **Automatic codebase partitioning (Fission)** — Analyzes your dependency graph and scaffolds a Mind for each domain automatically. You don't define the agents; the code defines them.
+- **Drones in isolation** — Each agent runs in a dedicated tmux pane + git worktree, so parallel work never collides.
+- **Structured coordination** — Agents communicate through typed interface contracts (`exposes`/`consumes`), not freeform chat. The orchestrator enforces boundaries.
+- **Spec-to-tasks-to-implementation pipeline** — A single workflow takes a ticket spec all the way to parallel implementation with no manual decomposition.
+- **Multi-repo support** — Works across monorepos and multi-repo workspaces with unified dependency tracking and per-repo merge handling.
+- **Live dashboard** — SSE-based status view showing all drone states in real time.
 
-- [Bun](https://bun.sh) >= 1.0
-- [tmux](https://github.com/tmux/tmux)
-- [Claude Code](https://claude.ai/code)
-- Git
+---
 
-### Install into your repo
+## How it works
 
-```bash
-cd /path/to/your-repo
-bun /path/to/gravitas/minds/cli/bin/minds.ts init
-```
-
-This creates:
-- `.minds/` — 9 Core Minds + shared infrastructure
-- `.claude/commands/` — slash commands (`/minds.tasks`, `/minds.implement`)
-- `tsconfig.json` — updated with `@minds/*` path alias
-- Dashboard SPA — built and ready to serve
-
-### Generate tasks for a ticket
+### The three-layer model
 
 ```
-/minds.tasks BRE-123
+Minds (domain agents)    — own files, implement work, enforce boundaries
+Drones                   — one Claude Code instance per Mind, runs in tmux + worktree
+Orchestrator             — routes tasks, manages phase transitions, aggregates status
 ```
 
-Reads your plan and spec from `specs/BRE-123/`, identifies which Minds are involved, and generates tasks scoped to each Mind's domain. Output: `specs/BRE-123/tasks.md`.
+A **Mind** is a domain module: a definition of what it owns (`MIND.md`), an MCP server (`server.ts`), and an implementation library (`lib/`). Minds expose typed interfaces and declare what they consume from other Minds.
 
-### Implement tasks
+A **Drone** is an ephemeral Claude Code agent spawned for a specific ticket. It receives a scoped task list, works only within its Mind's file boundaries, and signals completion back to the orchestrator.
 
-```
-/minds.implement BRE-123
-```
+The **Orchestrator** (Router Mind) discovers all installed Minds, routes incoming work units using a hybrid BM25 + vector search index, manages dependency holds between Minds, and coordinates merge order at the end of a wave.
 
-Dispatches each Mind's tasks to a dedicated drone (Claude Code Sonnet in a tmux pane + git worktree). Drones work in parallel on their own files, coordinating through interface contracts.
+---
 
-### Partition a codebase into Minds (Fission)
+## Workflow
 
-Analyze your codebase's dependency graph, identify natural domain boundaries, and scaffold a Mind for each section:
+### Stage 1 — Partition your codebase (Fission)
 
-```bash
-# From inside your repo
-bun /path/to/gravitas/minds/cli/bin/minds.ts fission .
+Fission analyzes your dependency graph, detects natural domain clusters, and scaffolds a Mind for each one. Cross-cutting files go into a Foundation Mind; everything else is partitioned into non-overlapping domain Minds.
 
-# Dry run — see proposed map without scaffolding
-bun /path/to/gravitas/minds/cli/bin/minds.ts fission . --dry-run
+**5-stage pipeline:** Extract imports → Detect hubs → Cluster (Leiden algorithm) → Name domains → Scaffold Minds
 
-# Save analysis to JSON
-bun /path/to/gravitas/minds/cli/bin/minds.ts fission . --output fission-map.json
-```
+Supported languages: TypeScript, JavaScript, Go, Python, Rust, Swift, Kotlin, Java, C#, C/C++
 
-Or invoke via the Claude Code skill:
+Run from inside Claude Code in your repo:
 
 ```
 Use the Fission skill to analyze this codebase and create domain Minds
 ```
 
-Fission runs a 5-stage pipeline: **Extract** imports → **Detect hubs** (cross-cutting files) → **Cluster** (Leiden algorithm) → **Name** domains → **Scaffold** Minds. Hub files go into a Foundation Mind; everything else is partitioned into non-overlapping domain Minds.
-
-**Supported languages:**
-
-| Language | Extensions | Detection |
-|----------|-----------|-----------|
-| TypeScript / JavaScript | `.ts`, `.tsx`, `.js`, `.jsx` | `tsconfig.json`, `package.json` |
-| Go | `.go` | `go.mod` |
-| Python | `.py` | `pyproject.toml`, `setup.py` |
-| Rust | `.rs` | `Cargo.toml` |
-| Swift | `.swift` | `Package.swift` |
-| Kotlin | `.kt`, `.kts` | `build.gradle.kts`, `build.gradle` |
-| Java | `.java` | `pom.xml` |
-| C# | `.cs` | `--language csharp` |
-| C / C++ | `.cpp`, `.cc`, `.cxx`, `.c`, `.h`, `.hpp`, `.hxx` | `CMakeLists.txt`, `Makefile` |
-
-Language is auto-detected from marker files, or specify explicitly with `--language <lang>`.
-
-### Scaffold a new Mind
-
-From inside Claude Code in your repo:
+Or run the CLI directly:
 
 ```
-/minds.tasks "Create a new Mind called analytics for tracking user events"
+minds fission .
+minds fission . --dry-run
 ```
 
-Or use the instantiate Mind directly — it creates the directory structure (`MIND.md`, `server.ts`, `lib/`) and registers in `minds.json`.
+---
 
-## What Gets Installed
+### Stage 2 — Generate tasks
 
-| Component | Path | Purpose |
-|-----------|------|---------|
-| 9 Minds | `.minds/{router,memory,transport,signals,dashboard,integrations,observability,instantiate,fission}/` | Core agent modules |
-| Shared infra | `.minds/shared/`, `.minds/contracts/` | Types, paths, interfaces |
-| Orchestration | `.minds/lib/` | Drone pane management, bus messaging |
-| Skills | `.claude/skills/Fission/` | Codebase partitioning skill |
-| Commands | `.claude/commands/minds.*.md` | Slash commands for Claude Code |
-| Registry | `.minds/minds.json` | Mind discovery and routing |
-| Dashboard | `.minds/dashboard/dist/` | Live status SPA |
+```
+/minds.tasks <TICKET-ID>
+```
 
-## Architecture
+Reads your spec and plan from `specs/<TICKET-ID>/`, identifies which Minds are involved, and generates a task list scoped to each Mind's domain. Output: `specs/<TICKET-ID>/tasks.md`.
 
-Each Mind is a self-contained module with:
-- `MIND.md` — domain definition, conventions, review focus
-- `server.ts` — MCP server entry point
-- `lib/` — implementation code
+---
 
-Minds communicate through typed interfaces defined in `minds.json` (`exposes`/`consumes`). The router Mind handles intent classification and dispatch.
+### Stage 3 — Implement in parallel
 
-## Dashboard
+```
+/minds.implement <TICKET-ID>
+```
 
-The dashboard shows live drone status via SSE. To start it:
+Dispatches each Mind's tasks to a dedicated drone. Drones run in parallel, each in its own tmux pane and git worktree. At the end of the wave, the orchestrator verifies contracts, resolves conflicts, and handles per-repo merges.
+
+---
+
+## Installation
+
+**Requirements:** [Bun](https://bun.sh) >= 1.0, [tmux](https://github.com/tmux/tmux), [Claude Code](https://claude.ai/code), Git
 
 ```bash
-bun .minds/transport/status-aggregator.ts
+minds init
 ```
 
-Then open `http://localhost:<port>/minds` in your browser.
+Installs into the current repo:
 
-## Development (this repo)
+- `.minds/` — Core Minds + shared infrastructure + orchestration layer
+- `.claude/commands/` — `/minds.tasks` and `/minds.implement` slash commands
+- `.claude/skills/Fission/` — Codebase partitioning skill
+- `.minds/dashboard/` — Live status SPA
+
+---
+
+## Development
 
 ```bash
-# Run all tests
-bun test
-
-# Install into a target repo (from gravitas root)
-bun minds/cli/bin/minds.ts init /path/to/target-repo
+scripts/run-tests.sh              # full test suite
+scripts/run-tests.sh minds/lib/   # single directory
+bun minds/cli/bin/minds.ts lint-boundaries  # check cross-Mind import violations
 ```
+
+See [`docs/TESTING.md`](docs/TESTING.md) for coverage map and E2E instructions.
+
+---
 
 ## License
 
