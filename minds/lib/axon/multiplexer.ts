@@ -34,6 +34,11 @@ export class AxonMultiplexer implements TerminalMultiplexer {
     this.client = client;
   }
 
+  /** Expose the underlying AxonClient for event-based operations. */
+  getClient(): AxonClient {
+    return this.client;
+  }
+
   /**
    * Allocate a logical pane ID. No process is spawned yet -- the caller
    * will start a process via sendKeys.

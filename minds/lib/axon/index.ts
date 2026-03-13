@@ -27,3 +27,7 @@ export {
   type DaemonStatus,
   type DaemonPaths,
 } from "./daemon-lifecycle";
+export {
+  waitForProcessCompletion,
+  type CompletionResult,
+} from "./completion";

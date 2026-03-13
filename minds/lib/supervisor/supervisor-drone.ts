@@ -256,6 +256,9 @@ export function installDroneStopHook(worktreePath: string): void {
  *
  * Falls back to pane-existence check if the sentinel never appears
  * (e.g., hook didn't fire due to crash).
+ *
+ * When the multiplexer is AxonMultiplexer, dispatches to event-based
+ * completion detection via the Axon EventBus for lower-latency results.
  */
 export async function waitForDroneCompletion(
   paneId: string,
@@ -272,6 +275,12 @@ export async function waitForDroneCompletion(
       mux = new TmuxMultiplexer();
     }
   }
+
+  // Dispatch: use event-based completion detection when running under Axon
+  if (mux instanceof AxonMultiplexer) {
+    return waitForDroneCompletionAxon(mux.getClient(), paneId, timeoutMs);
+  }
+
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
   // TOCTOU guard: if the sentinel already exists AND the pane is already gone,
@@ -340,4 +349,30 @@ export async function waitForDroneCompletion(
       done({ ok: true });
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Axon Event-Based Completion Detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Wait for drone completion using Axon EventBus subscription.
+ *
+ * Used when the multiplexer is AxonMultiplexer. Subscribes to process events
+ * and waits for an Exited event, providing lower-latency completion detection
+ * compared to sentinel-file polling.
+ */
+async function waitForDroneCompletionAxon(
+  client: AxonClient,
+  processId: string,
+  timeoutMs: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await waitForProcessCompletion(client, processId, timeoutMs);
+  if (result.error === "timeout") {
+    return { ok: false, error: `Drone timed out after ${timeoutMs}ms` };
+  }
+  if (result.error) {
+    return { ok: false, error: result.error };
+  }
+  return { ok: result.ok };
 }
