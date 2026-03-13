@@ -28,8 +28,8 @@ export function shellQuote(s: string): string {
  * Backward-compatibility wrapper — delegates to defaultMux.killPane().
  * New code should accept a TerminalMultiplexer via dependency injection instead.
  */
-export function killPane(paneId: string): void {
-  defaultMux.killPane(paneId);
+export async function killPane(paneId: string): Promise<void> {
+  await defaultMux.killPane(paneId);
 }
 
 /**
@@ -39,7 +39,7 @@ export function killPane(paneId: string): void {
  * Accepts an optional multiplexer for dependency injection; falls back to
  * the default TmuxMultiplexer.
  */
-export function launchClaudeInPane(
+export async function launchClaudeInPane(
   opts: {
     paneId: string;
     worktreePath: string;
@@ -48,14 +48,14 @@ export function launchClaudeInPane(
     busUrl?: string;
   },
   mux: TerminalMultiplexer = defaultMux,
-): void {
+): Promise<void> {
   const { paneId, worktreePath, model = "sonnet", prompt, busUrl } = opts;
   const escapedPrompt = JSON.stringify(prompt);
   let cmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model ${model} --setting-sources project,local ${escapedPrompt}`;
   if (busUrl) {
     cmd = `BUS_URL=${shellQuote(busUrl)} ${cmd}`;
   }
-  mux.sendKeys(paneId, cmd);
+  await mux.sendKeys(paneId, cmd);
 }
 
 /**
@@ -65,6 +65,6 @@ export function launchClaudeInPane(
  * Backward-compatibility wrapper — delegates to defaultMux.splitPane().
  * New code should accept a TerminalMultiplexer via dependency injection instead.
  */
-export function splitPane(sourcePane: string): string {
+export async function splitPane(sourcePane: string): Promise<string> {
   return defaultMux.splitPane(sourcePane);
 }

@@ -143,7 +143,7 @@ export interface SupervisorDeps {
     briefContent: string;
     busUrl: string;
     mindName: string;
-  }) => string;
+  }) => Promise<string>;
 
   /** Wait for drone completion (sentinel file + poll). */
   waitForDroneCompletion: (
@@ -174,7 +174,7 @@ export interface SupervisorDeps {
   installDroneStopHook: (worktreePath: string) => void;
 
   /** Kill a tmux pane. */
-  killPane: (paneId: string) => void;
+  killPane: (paneId: string) => Promise<void>;
 
   /** Delay between retry iterations (injectable for testing). */
   delay: (ms: number) => Promise<void>;

@@ -201,8 +201,8 @@ export async function runMindSupervisor(
         // Auto-accept workspace trust dialog (fires after Claude Code loads).
         // Claude Code prompts "trust this folder?" for new worktrees even with
         // --dangerously-skip-permissions. "Yes" is pre-selected, so Enter accepts.
-        setTimeout(() => {
-          try { new TmuxMultiplexer().sendKeys(drone.paneId, ""); } catch { /* pane may be gone */ }
+        setTimeout(async () => {
+          try { await new TmuxMultiplexer().sendKeys(drone.paneId, ""); } catch { /* pane may be gone */ }
         }, 3000);
 
         console.log(`[supervisor] @${config.mindName}: Drone spawned in pane ${drone.paneId}`);
@@ -214,7 +214,7 @@ export async function runMindSupervisor(
         const briefContent = buildSupervisorDroneBrief(config, feedbackFile);
 
         try {
-          const newPaneId = deps.relaunchDroneInWorktree({
+          const newPaneId = await deps.relaunchDroneInWorktree({
             oldPaneId: currentDronePane!,
             callerPane: config.callerPane,
             worktreePath: currentWorktree,
@@ -230,8 +230,8 @@ export async function runMindSupervisor(
           deps.installDroneStopHook(currentWorktree);
 
           // Auto-accept workspace trust dialog for re-launched drone
-          setTimeout(() => {
-            try { new TmuxMultiplexer().sendKeys(newPaneId, ""); } catch { /* pane may be gone */ }
+          setTimeout(async () => {
+            try { await new TmuxMultiplexer().sendKeys(newPaneId, ""); } catch { /* pane may be gone */ }
           }, 3000);
         } catch (err) {
           const msg = `Failed to re-launch drone: ${errorMessage(err)}`;
@@ -250,7 +250,7 @@ export async function runMindSupervisor(
         const msg = completion.error ?? "Drone failed";
         console.error(`[supervisor] @${config.mindName}: ${msg}`);
         result.errors.push(msg);
-        deps.killPane(currentDronePane!);
+        await deps.killPane(currentDronePane!);
         sm.transition(SupervisorState.FAILED);
         break;
       }
@@ -468,7 +468,7 @@ export async function runMindSupervisor(
 
     // Cleanup: kill ALL spawned drone panes (not just the last one)
     for (const paneId of allSpawnedPanes) {
-      deps.killPane(paneId);
+      await deps.killPane(paneId);
     }
 
     // Clean up sentinel file if present (skip if worktree was never resolved)

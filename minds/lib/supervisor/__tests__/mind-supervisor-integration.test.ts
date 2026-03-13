@@ -87,13 +87,13 @@ function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
       worktree: join(tmpDir, "worktree"),
       branch: "minds/BRE-500-transport",
     })),
-    relaunchDroneInWorktree: mock(() => "%11"),
+    relaunchDroneInWorktree: mock(async () => "%11"),
     waitForDroneCompletion: mock(async () => ({ ok: true })),
     publishSignal: mock(async () => {}),
     runDeterministicChecks: mock(() => makePassingChecks()),
     callLlmReview: mock(async () => makeApprovalResponse()),
     installDroneStopHook: mock(() => {}),
-    killPane: mock(() => {}),
+    killPane: mock(async () => {}),
     delay: mock(async () => {}), // zero-wait for tests
     ...overrides,
   };
@@ -169,7 +169,7 @@ describe("runMindSupervisor integration", () => {
         }
         return makeApprovalResponse();
       }),
-      relaunchDroneInWorktree: mock(() => "%12"),
+      relaunchDroneInWorktree: mock(async () => "%12"),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -215,7 +215,7 @@ describe("runMindSupervisor integration", () => {
     const deps = makeMockDeps({
       // Always reject
       callLlmReview: mock(async () => makeRejectionResponse()),
-      relaunchDroneInWorktree: mock(() => "%13"),
+      relaunchDroneInWorktree: mock(async () => "%13"),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -335,7 +335,7 @@ describe("runMindSupervisor integration", () => {
         }
         return makePassingChecks();
       }),
-      relaunchDroneInWorktree: mock(() => "%14"),
+      relaunchDroneInWorktree: mock(async () => "%14"),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -363,7 +363,7 @@ describe("runMindSupervisor integration", () => {
     const deps = makeMockDeps({
       callLlmReview: mock(async () => makeApprovalResponse()), // LLM says approve
       runDeterministicChecks: mock(() => boundaryFailChecks), // But boundary fails
-      relaunchDroneInWorktree: mock(() => "%14"),
+      relaunchDroneInWorktree: mock(async () => "%14"),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -387,7 +387,7 @@ describe("runMindSupervisor integration", () => {
     const deps = makeMockDeps({
       callLlmReview: mock(async () => makeRejectionResponse()),
       runDeterministicChecks: mock(() => makeFailingChecks()), // Tests always fail
-      relaunchDroneInWorktree: mock(() => "%14"),
+      relaunchDroneInWorktree: mock(async () => "%14"),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -425,7 +425,7 @@ describe("runMindSupervisor integration", () => {
         if (reviewCallCount === 1) return makeRejectionResponse();
         return makeApprovalResponse();
       }),
-      relaunchDroneInWorktree: mock(() => "%15"),
+      relaunchDroneInWorktree: mock(async () => "%15"),
     });
 
     await runMindSupervisor(config, deps);
@@ -441,7 +441,7 @@ describe("runMindSupervisor integration", () => {
     const deps = makeMockDeps({
       // First iteration: drone succeeds, review rejects
       callLlmReview: mock(async () => makeRejectionResponse()),
-      relaunchDroneInWorktree: mock(() => "%16"),
+      relaunchDroneInWorktree: mock(async () => "%16"),
       // Second iteration: drone crashes
       waitForDroneCompletion: mock()
         .mockResolvedValueOnce({ ok: true })
@@ -478,7 +478,7 @@ describe("runMindSupervisor integration", () => {
         if (reviewCallCount < 3) return makeRejectionResponse();
         return makeApprovalResponse();
       }),
-      relaunchDroneInWorktree: mock(() => `%${20 + reviewCallCount}`),
+      relaunchDroneInWorktree: mock(async () => `%${20 + reviewCallCount}`),
       delay: mock(async (ms: number) => { delayCallsMs.push(ms); }),
     });
 
@@ -518,7 +518,7 @@ describe("runMindSupervisor integration", () => {
 
     const deps = makeMockDeps({
       callLlmReview: mock(async () => makeRejectionResponse()),
-      relaunchDroneInWorktree: mock(() => "%15"),
+      relaunchDroneInWorktree: mock(async () => "%15"),
       delay: mock(async (ms: number) => { delayCallsMs.push(ms); }),
     });
 

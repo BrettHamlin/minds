@@ -633,7 +633,7 @@ export function createRegistry(
 // Rollback
 // ---------------------------------------------------------------------------
 
-function rollback(rb: RollbackState, repoRoot?: string): void {
+async function rollback(rb: RollbackState, repoRoot?: string): Promise<void> {
   console.error("Rolling back partial initialization...");
 
   if (rb.commandBridgePid !== undefined) {
@@ -661,7 +661,7 @@ function rollback(rb: RollbackState, repoRoot?: string): void {
   }
 
   if (rb.agentPaneCreated) {
-    killPane(rb.agentPaneCreated);
+    await killPane(rb.agentPaneCreated);
     console.error(`Killed agent pane: ${rb.agentPaneCreated}`);
   }
 
@@ -828,7 +828,7 @@ export async function initPipeline(ctx: InitContext): Promise<InitResult> {
     return { agentPane, nonce, registryPath, repoPath };
   } catch (err) {
     // Any step failure triggers rollback of completed steps
-    rollback(rb, ctx.repoRoot);
+    await rollback(rb, ctx.repoRoot);
     throw err;
   }
 }

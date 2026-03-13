@@ -194,7 +194,7 @@ if (import.meta.main) { (async () => {
 
   const callerPane =
     getArg("--pane") ??
-    mux.getCurrentPane();
+    await mux.getCurrentPane();
 
   const mindPane = getArg("--mind-pane") ?? callerPane;
 
@@ -361,7 +361,7 @@ if (import.meta.main) { (async () => {
 
   let dronePane: string;
   try {
-    dronePane = mux.splitPane(callerPane);
+    dronePane = await mux.splitPane(callerPane);
   } catch (err) {
     fail(`Failed to split tmux pane: ${err}`);
   }
@@ -373,7 +373,7 @@ if (import.meta.main) { (async () => {
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
   }
-  mux.sendKeys(dronePane, launchCmd);
+  await mux.sendKeys(dronePane, launchCmd);
 
   // ─── Publish DRONE_SPAWNED if bus is configured ────────────────────────────────
 

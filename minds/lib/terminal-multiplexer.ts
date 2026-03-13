@@ -8,20 +8,20 @@
 
 export interface TerminalMultiplexer {
   /** Split a new pane from a source pane. Returns the new pane ID. */
-  splitPane(sourcePane: string): string;
+  splitPane(sourcePane: string): Promise<string>;
 
   /** Send a command string to a pane (like typing + Enter). */
-  sendKeys(paneId: string, command: string): void;
+  sendKeys(paneId: string, command: string): Promise<void>;
 
   /** Kill/close a pane. Should not throw if pane is already gone. */
-  killPane(paneId: string): void;
+  killPane(paneId: string): Promise<void>;
 
   /** Check if a pane is still alive. */
-  isPaneAlive(paneId: string): boolean;
+  isPaneAlive(paneId: string): Promise<boolean>;
 
   /** Get the current pane ID. */
-  getCurrentPane(): string;
+  getCurrentPane(): Promise<string>;
 
   /** Capture the visible content of a pane (for monitoring). */
-  capturePane(paneId: string): string;
+  capturePane(paneId: string): Promise<string>;
 }

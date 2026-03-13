@@ -541,7 +541,7 @@ export async function runImplement(
   // ── Step 6: Start bus server ───────────────────────────────────────────────
 
   console.log("\nStep 6: Starting bus server...");
-  const callerPane = mux.getCurrentPane();
+  const callerPane = await mux.getCurrentPane();
   let busInfo;
   try {
     busInfo = await startMindsBus(orchestratorRoot, callerPane, ticketId);
@@ -575,7 +575,7 @@ export async function runImplement(
 
     // Kill all Mind panes
     for (const d of allDrones) {
-      mux.killPane(d.paneId);
+      await mux.killPane(d.paneId);
     }
 
     // Teardown bus with timeout to prevent hanging

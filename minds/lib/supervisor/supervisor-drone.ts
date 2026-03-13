@@ -141,37 +141,37 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
  *   3. Write the updated DRONE-BRIEF.md to the existing worktree
  *   4. Launch Claude Code in the new pane pointed at the same worktree
  */
-export function relaunchDroneInWorktree(opts: {
+export async function relaunchDroneInWorktree(opts: {
   oldPaneId: string;
   callerPane: string;
   worktreePath: string;
   briefContent: string;
   busUrl: string;
   mindName: string;
-}): string {
+}): Promise<string> {
   const { oldPaneId, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
 
   // Kill the old drone pane
-  killPane(oldPaneId);
+  await killPane(oldPaneId);
 
   // Write updated DRONE-BRIEF.md to the SAME worktree
   writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
 
   // Create a new tmux pane via shared utility
-  const newPaneId = splitPane(callerPane);
+  const newPaneId = await splitPane(callerPane);
 
   // Launch Claude Code in the new pane, pointing at the existing worktree.
   // If this fails, kill the new pane to prevent leaking orphaned tmux panes.
   const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
   try {
-    launchClaudeInPane({
+    await launchClaudeInPane({
       paneId: newPaneId,
       worktreePath,
       prompt,
       busUrl,
     });
   } catch (err) {
-    killPane(newPaneId);
+    await killPane(newPaneId);
     throw err;
   }
 
@@ -265,7 +265,7 @@ export async function waitForDroneCompletion(
   // TOCTOU guard: if the sentinel already exists AND the pane is already gone,
   // the drone completed before we started watching. Return success immediately.
   if (existsSync(sentinelPath)) {
-    if (!mux.isPaneAlive(paneId)) {
+    if (!await mux.isPaneAlive(paneId)) {
       // Pane is gone + sentinel exists = drone completed successfully before we started watching
       return { ok: true };
     }
@@ -308,7 +308,7 @@ export async function waitForDroneCompletion(
     }
 
     // Poll fallback: check sentinel file + pane existence every interval
-    const pollTimer = setInterval(() => {
+    const pollTimer = setInterval(async () => {
       // Primary: sentinel file exists
       if (existsSync(sentinelPath)) {
         done({ ok: true });
@@ -317,7 +317,7 @@ export async function waitForDroneCompletion(
 
       // Fallback: pane no longer exists (crash, manual kill)
       // If sentinel was NOT written but pane is gone, the drone crashed.
-      if (!mux.isPaneAlive(paneId)) {
+      if (!await mux.isPaneAlive(paneId)) {
         done({ ok: false, error: `Drone pane ${paneId} died without writing sentinel — likely crashed` });
         return;
       }

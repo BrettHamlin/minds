@@ -74,7 +74,7 @@ export class TmuxMultiplexer implements TerminalMultiplexer {
    * If the pane count cannot be determined, the split proceeds with a warning
    * (fail-open — avoids blocking the supervisor when tmux is temporarily flaky).
    */
-  splitPane(sourcePane: string): string {
+  async splitPane(sourcePane: string): Promise<string> {
     const currentCount = this.countSessionPanes(sourcePane);
     if (currentCount === null) {
       console.warn(
@@ -106,7 +106,7 @@ export class TmuxMultiplexer implements TerminalMultiplexer {
    * Send a command string to a pane, followed by Enter.
    * Equivalent to typing the command and pressing Enter in the pane.
    */
-  sendKeys(paneId: string, command: string): void {
+  async sendKeys(paneId: string, command: string): Promise<void> {
     const result = Bun.spawnSync(
       ["tmux", "send-keys", "-t", paneId, command, "Enter"],
       { stdout: "pipe", stderr: "pipe" },
@@ -120,7 +120,7 @@ export class TmuxMultiplexer implements TerminalMultiplexer {
   /**
    * Kill a tmux pane. Silently ignores errors (pane may already be gone).
    */
-  killPane(paneId: string): void {
+  async killPane(paneId: string): Promise<void> {
     try {
       Bun.spawnSync(["tmux", "kill-pane", "-t", paneId], {
         stdout: "ignore",
@@ -135,7 +135,7 @@ export class TmuxMultiplexer implements TerminalMultiplexer {
    * Check if a pane is still alive by attempting to list it.
    * Returns false if the pane doesn't exist, tmux server is dead, or tmux binary is missing.
    */
-  isPaneAlive(paneId: string): boolean {
+  async isPaneAlive(paneId: string): Promise<boolean> {
     try {
       const result = Bun.spawnSync(
         ["tmux", "list-panes", "-t", paneId, "-F", "#{pane_pid}"],
@@ -152,7 +152,7 @@ export class TmuxMultiplexer implements TerminalMultiplexer {
    * Get the current pane ID. Prefers $TMUX_PANE env var, falls back to
    * tmux display-message which returns the focused pane.
    */
-  getCurrentPane(): string {
+  async getCurrentPane(): Promise<string> {
     if (process.env.TMUX_PANE) return process.env.TMUX_PANE;
     try {
       const proc = Bun.spawnSync(
@@ -168,7 +168,7 @@ export class TmuxMultiplexer implements TerminalMultiplexer {
   /**
    * Capture the visible content of a pane.
    */
-  capturePane(paneId: string): string {
+  async capturePane(paneId: string): Promise<string> {
     const result = Bun.spawnSync(
       ["tmux", "capture-pane", "-t", paneId, "-p"],
       { stdout: "pipe", stderr: "pipe" },
