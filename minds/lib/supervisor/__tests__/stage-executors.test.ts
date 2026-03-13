@@ -625,12 +625,12 @@ describe("applyForceRejections", () => {
 // ---------------------------------------------------------------------------
 
 describe("registerAllStages", () => {
-  test("registers all 7 code pipeline executors", async () => {
+  test("registers all 10 pipeline executors (7 code + 3 build/test)", async () => {
     const { clearRegistry, hasExecutor, getExecutor } = await import("../stage-registry.ts");
     clearRegistry();
     registerAllStages();
 
-    const codeTypes = [
+    const allTypes = [
       "spawn-drone",
       "wait-completion",
       "git-diff",
@@ -638,8 +638,11 @@ describe("registerAllStages", () => {
       "boundary-check",
       "contract-check",
       "llm-review",
+      "run-command",
+      "health-check",
+      "collect-results",
     ];
-    for (const type of codeTypes) {
+    for (const type of allTypes) {
       expect(hasExecutor(type)).toBe(true);
     }
 

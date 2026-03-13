@@ -63,12 +63,12 @@ export function clearRegistry(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Stub executors for stages that are not yet implemented (BRE-621)
+// Stub executor factory for stages not yet implemented
 // ---------------------------------------------------------------------------
 
 const notImplemented = (type: string): StageExecutor => {
   return async () => {
-    throw new Error(`Stage executor "${type}" is not yet implemented (see BRE-621)`);
+    throw new Error(`Stage executor "${type}" is not yet implemented`);
   };
 };
 
@@ -87,7 +87,7 @@ registerExecutor("boundary-check", notImplemented("boundary-check"));
 registerExecutor("contract-check", notImplemented("contract-check"));
 registerExecutor("llm-review", notImplemented("llm-review"));
 
-// Build/test pipeline stages — stubbed for BRE-621
+// Build/test pipeline stages — real implementations in stages/ (BRE-621)
 registerExecutor("run-command", notImplemented("run-command"));
 registerExecutor("health-check", notImplemented("health-check"));
 registerExecutor("collect-results", notImplemented("collect-results"));

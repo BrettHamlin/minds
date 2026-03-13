@@ -7,7 +7,7 @@
 
 import { clearRegistry, registerExecutor, hasExecutor } from "../stage-registry.ts";
 
-// Re-export individual executors
+// Re-export individual executors — code pipeline
 export { executeSpawnDrone } from "./spawn-drone.ts";
 export { executeWaitCompletion } from "./wait-completion.ts";
 export { executeGitDiff } from "./git-diff.ts";
@@ -15,6 +15,11 @@ export { executeRunTests } from "./run-tests.ts";
 export { executeBoundaryCheck } from "./boundary-check.ts";
 export { executeContractCheck } from "./contract-check.ts";
 export { executeLlmReview, applyForceRejections } from "./llm-review.ts";
+
+// Re-export individual executors — build/test pipeline (BRE-621)
+export { executeRunCommand } from "./run-command.ts";
+export { executeHealthCheck } from "./health-check.ts";
+export { executeCollectResults } from "./collect-results.ts";
 
 // Import executor functions for registration
 import { executeSpawnDrone } from "./spawn-drone.ts";
@@ -24,11 +29,16 @@ import { executeRunTests } from "./run-tests.ts";
 import { executeBoundaryCheck } from "./boundary-check.ts";
 import { executeContractCheck } from "./contract-check.ts";
 import { executeLlmReview } from "./llm-review.ts";
+import { executeRunCommand } from "./run-command.ts";
+import { executeHealthCheck } from "./health-check.ts";
+import { executeCollectResults } from "./collect-results.ts";
 
 /**
- * Map of stage type -> executor function for the 7 code pipeline stages.
+ * Map of stage type -> executor function for all 10 pipeline stages.
+ * Includes 7 code pipeline stages + 3 build/test pipeline stages (BRE-621).
  */
-const CODE_PIPELINE_EXECUTORS: Record<string, typeof executeSpawnDrone> = {
+const ALL_EXECUTORS: Record<string, typeof executeSpawnDrone> = {
+  // Code pipeline stages
   "spawn-drone": executeSpawnDrone,
   "wait-completion": executeWaitCompletion,
   "git-diff": executeGitDiff,
@@ -36,10 +46,14 @@ const CODE_PIPELINE_EXECUTORS: Record<string, typeof executeSpawnDrone> = {
   "boundary-check": executeBoundaryCheck,
   "contract-check": executeContractCheck,
   "llm-review": executeLlmReview,
+  // Build/test pipeline stages (BRE-621)
+  "run-command": executeRunCommand,
+  "health-check": executeHealthCheck,
+  "collect-results": executeCollectResults,
 };
 
 /**
- * Register all 7 code pipeline stage executors into the stage registry.
+ * Register all 10 pipeline stage executors into the stage registry.
  *
  * Call this before running a pipeline via the generic runner (BRE-620).
  * The stage-registry.ts has stubs by default; this replaces them with
@@ -49,7 +63,7 @@ const CODE_PIPELINE_EXECUTORS: Record<string, typeof executeSpawnDrone> = {
  * types before re-registering.
  */
 export function registerAllStages(): void {
-  for (const [type, executor] of Object.entries(CODE_PIPELINE_EXECUTORS)) {
+  for (const [type, executor] of Object.entries(ALL_EXECUTORS)) {
     // If a stub is already registered, we need to clear it first.
     // The registry throws on duplicate registration, so we use a
     // targeted approach: clear only our types, then register.
@@ -62,7 +76,7 @@ export function registerAllStages(): void {
     }
   }
 
-  for (const [type, executor] of Object.entries(CODE_PIPELINE_EXECUTORS)) {
+  for (const [type, executor] of Object.entries(ALL_EXECUTORS)) {
     if (!hasExecutor(type)) {
       registerExecutor(type, executor);
     }
