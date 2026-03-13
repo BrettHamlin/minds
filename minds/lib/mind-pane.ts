@@ -37,7 +37,7 @@ import type { MindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import { resolveMindsDir, encodeProjectPath } from "../shared/paths.js";
 import { loadStandards } from "./supervisor/supervisor-checks.ts";
 import { shellQuote } from "./tmux-utils.ts";
-import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
+import { getCurrentTmuxPane } from "./tmux-multiplexer.ts";
 import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
 import { createMultiplexer } from "./multiplexer-factory.ts";
 
@@ -329,9 +329,7 @@ If you've compacted or lost context, re-read that file.`.replace(/\n{3,}/g, "\n\
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 
 if (import.meta.main) { (async () => {
-  // Use TmuxMultiplexer for early getCurrentPane (before repoRoot is known).
-  // The factory-based mux is created after repoRoot is determined.
-  const earlyMux = new TmuxMultiplexer();
+  // getCurrentTmuxPane() is a standalone function — no multiplexer instance needed.
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -369,7 +367,7 @@ if (import.meta.main) { (async () => {
 
   const callerPane =
     getArg("--pane") ??
-    await earlyMux.getCurrentPane();
+    getCurrentTmuxPane();
 
   const claudeFile = getArg("--claude-file");
   const briefFile = getArg("--brief-file");
@@ -559,6 +557,10 @@ if (import.meta.main) { (async () => {
       branch: branchName,
     });
   }
+
+  // ─── Cleanup multiplexer ────────────────────────────────────────────────────
+
+  mux.close?.();
 
   // ─── Output result ────────────────────────────────────────────────────────────
 

@@ -27,11 +27,17 @@ export interface MultiplexerFactoryOptions {
 /**
  * Create a TerminalMultiplexer with intelligent backend selection.
  *
+ * **Guaranteed never to throw.** All internal failures fall back to TmuxMultiplexer.
+ * Callers do not need try/catch around this function.
+ *
  * Selection order:
  * 1. forceBackend option -> use specified backend
  * 2. MINDS_MULTIPLEXER env var -> "tmux" for instant rollback, "axon" to force axon
  * 3. Axon binary found + daemon starts -> Axon
  * 4. Fallback -> tmux with warning
+ *
+ * Callers should call `mux.close?.()` when done to release any persistent
+ * connections (e.g., AxonClient socket).
  */
 export async function createMultiplexer(
   opts: MultiplexerFactoryOptions,
@@ -56,7 +62,14 @@ export async function createMultiplexer(
   }
 
   // Axon path (explicit "axon" or "auto" discovery)
-  return tryCreateAxonMultiplexer(repoRoot, desired);
+  try {
+    return await tryCreateAxonMultiplexer(repoRoot, desired);
+  } catch (err) {
+    console.warn(
+      `[multiplexer-factory] Unexpected error — falling back to tmux: ${err}`,
+    );
+    return new TmuxMultiplexer();
+  }
 }
 
 /**

@@ -24,4 +24,11 @@ export interface TerminalMultiplexer {
 
   /** Capture the visible content of a pane (for monitoring). */
   capturePane(paneId: string): Promise<string>;
+
+  /**
+   * Close the multiplexer and release any underlying resources (e.g., sockets).
+   * Optional because not all backends hold persistent connections.
+   * Callers should call `mux.close?.()` when they are done with the multiplexer.
+   */
+  close?(): void;
 }

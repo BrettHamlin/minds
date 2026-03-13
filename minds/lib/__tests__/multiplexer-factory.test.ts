@@ -6,14 +6,14 @@
  * 2. MINDS_MULTIPLEXER=tmux forces tmux
  * 3. MINDS_MULTIPLEXER=axon with no binary falls back to tmux with warning
  * 4. forceBackend overrides env var
+ * 5. Happy path: returns AxonMultiplexer when binary, daemon, and client all succeed
+ * 6. No-throw guarantee: unexpected errors fall back to tmux
  */
 
 import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
 import { createMultiplexer } from "../multiplexer-factory.ts";
 import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
-
-// We cannot test AxonMultiplexer creation without a running daemon, so we focus
-// on the selection logic and fallback behavior.
+import { AxonMultiplexer } from "../axon/multiplexer.ts";
 
 describe("createMultiplexer", () => {
   const originalEnv = { ...process.env };
@@ -89,5 +89,70 @@ describe("createMultiplexer", () => {
     expect(mux).toBeInstanceOf(TmuxMultiplexer);
 
     warnSpy.mockRestore();
+  });
+
+  it("returns AxonMultiplexer when binary, daemon, and client all succeed (mocked)", async () => {
+    // Mock resolveAxonBinary to return a fake path
+    const resolveMod = await import("../axon/resolve-binary.ts");
+    const resolveStub = spyOn(resolveMod, "resolveAxonBinary").mockReturnValue("/fake/axon");
+
+    // Mock startAxonDaemon to return a fake socket path
+    const daemonMod = await import("../axon/daemon-lifecycle.ts");
+    const daemonStub = spyOn(daemonMod, "startAxonDaemon").mockResolvedValue({
+      socketPath: "/tmp/fake-axon.sock",
+      pid: 12345,
+      alreadyRunning: false,
+    });
+
+    // Mock AxonClient.connect to return a minimal fake client
+    const clientMod = await import("../axon/client.ts");
+    const fakeClient = {
+      sessionId: "test-session",
+      close: () => {},
+      spawn: async () => {},
+      kill: async () => {},
+      info: async () => ({ state: "Running" }),
+      readBuffer: async () => ({ data: "" }),
+    } as unknown as InstanceType<typeof clientMod.AxonClient>;
+
+    const connectStub = spyOn(clientMod.AxonClient, "connect").mockResolvedValue(fakeClient);
+
+    const mux = await createMultiplexer({ repoRoot: "/fake/repo" });
+    expect(mux).toBeInstanceOf(AxonMultiplexer);
+
+    // Cleanup: close the multiplexer and restore mocks
+    mux.close?.();
+    resolveStub.mockRestore();
+    daemonStub.mockRestore();
+    connectStub.mockRestore();
+  });
+
+  it("never throws even if tryCreateAxonMultiplexer throws unexpectedly", async () => {
+    // Force axon path, then make resolveAxonBinary throw
+    const resolveMod = await import("../axon/resolve-binary.ts");
+    const resolveStub = spyOn(resolveMod, "resolveAxonBinary").mockImplementation(() => {
+      throw new Error("Unexpected kaboom");
+    });
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+
+    const mux = await createMultiplexer({
+      repoRoot: "/fake/repo",
+      forceBackend: "axon",
+    });
+    expect(mux).toBeInstanceOf(TmuxMultiplexer);
+
+    // Verify the outer catch logged a warning
+    const warnMessages = warnSpy.mock.calls.map((c) => c[0] as string);
+    expect(warnMessages.some((m) => m.includes("Unexpected error"))).toBe(true);
+
+    resolveStub.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it("close() method exists on returned TmuxMultiplexer", async () => {
+    const mux = await createMultiplexer({ repoRoot: "/nonexistent/repo" });
+    expect(typeof mux.close).toBe("function");
+    // Should not throw
+    mux.close?.();
   });
 });

@@ -26,6 +26,24 @@ export class PaneExhaustedError extends Error {
 
 export const DEFAULT_MAX_PANES = 16;
 
+/**
+ * Get the current tmux pane ID without requiring a TmuxMultiplexer instance.
+ * Prefers $TMUX_PANE env var, falls back to `tmux display-message`.
+ * Returns an empty string if tmux is not available.
+ */
+export function getCurrentTmuxPane(): string {
+  if (process.env.TMUX_PANE) return process.env.TMUX_PANE;
+  try {
+    const proc = Bun.spawnSync(
+      ["tmux", "display-message", "-p", "#{pane_id}"],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    return new TextDecoder().decode(proc.stdout).trim() || "";
+  } catch {
+    return "";
+  }
+}
+
 export class TmuxMultiplexer implements TerminalMultiplexer {
   private readonly maxPanes: number;
 
@@ -149,20 +167,17 @@ export class TmuxMultiplexer implements TerminalMultiplexer {
   }
 
   /**
-   * Get the current pane ID. Prefers $TMUX_PANE env var, falls back to
-   * tmux display-message which returns the focused pane.
+   * Get the current pane ID. Delegates to the standalone getCurrentTmuxPane().
    */
   async getCurrentPane(): Promise<string> {
-    if (process.env.TMUX_PANE) return process.env.TMUX_PANE;
-    try {
-      const proc = Bun.spawnSync(
-        ["tmux", "display-message", "-p", "#{pane_id}"],
-        { stdout: "pipe", stderr: "pipe" },
-      );
-      return new TextDecoder().decode(proc.stdout).trim() || "";
-    } catch {
-      return "";
-    }
+    return getCurrentTmuxPane();
+  }
+
+  /**
+   * No-op — TmuxMultiplexer holds no persistent connections.
+   */
+  close(): void {
+    // Nothing to release
   }
 
   /**
