@@ -38,7 +38,7 @@ export async function runMindsInit(options: MindsInitOptions = {}): Promise<void
   }
 
   log("Installing Minds...");
-  const result = installCoreMinds(mindsSourceDir, repoRoot, { force, quiet });
+  const result = await installCoreMinds(mindsSourceDir, repoRoot, { force, quiet });
 
   if (!result.bunVerified) {
     console.warn("\nWarning: Bun runtime not found. Install Bun: https://bun.sh");
@@ -59,5 +59,10 @@ export async function runMindsInit(options: MindsInitOptions = {}): Promise<void
     log("  Dashboard: built successfully");
   } else if (result.errors.some((e) => e.toLowerCase().includes("dashboard"))) {
     log("  Dashboard: build failed (see errors above)");
+  }
+  if (result.axonInstalled) {
+    log("  Axon daemon: installed");
+  } else {
+    log("  Axon daemon: not installed (tmux fallback available)");
   }
 }

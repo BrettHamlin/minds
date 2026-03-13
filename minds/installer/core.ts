@@ -3,6 +3,7 @@ import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
 import { ensureDashboardBuilt } from "../shared/build-dashboard.js";
+import { installAxon, getPinnedVersion, getTargetTriple } from "./axon-installer.js";
 
 /** Local ensureDir — avoids cross-Mind import from cli/utils/fs. */
 function ensureDir(dir: string): void {
@@ -234,6 +235,7 @@ export interface MindsInstallResult {
   errors: string[];
   bunVerified: boolean;
   dashboardBuilt: boolean;
+  axonInstalled: boolean;
 }
 
 /**
@@ -484,6 +486,25 @@ function installDashboard(ctx: CopyContext, destMindsDir: string, log: LogFn): v
   }
 }
 
+/** Step: Install Axon daemon binary (non-blocking — failure does not halt init) */
+async function installAxonBinary(ctx: CopyContext, destMindsDir: string, log: LogFn): Promise<void> {
+  const binDir = join(destMindsDir, "bin");
+  try {
+    const installerDir = join(dirname(_dir), "installer");
+    const version = getPinnedVersion(installerDir) ?? "0.1.0";
+    const result = await installAxon({
+      version,
+      targetDir: binDir,
+    });
+    log(`  Axon daemon: installed v${result.version} (${getTargetTriple()})`);
+    ctx.result.axonInstalled = true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`  Axon daemon: download failed (tmux fallback available) — ${msg}`);
+    ctx.result.axonInstalled = false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -494,14 +515,14 @@ function installDashboard(ctx: CopyContext, destMindsDir: string, log: LogFn): v
  * Populate .minds/minds.json from pre-generated core registry.
  * Verify Bun runtime is installed.
  */
-export function installCoreMinds(
+export async function installCoreMinds(
   mindsSourceDir: string,
   repoRoot: string,
   options: { force?: boolean; quiet?: boolean } = {}
-): MindsInstallResult {
+): Promise<MindsInstallResult> {
   const { force = false, quiet = false } = options;
   const log: LogFn = quiet ? (..._args: unknown[]) => {} : console.log;
-  const result: MindsInstallResult = { copied: [], skipped: [], errors: [], bunVerified: false, dashboardBuilt: false };
+  const result: MindsInstallResult = { copied: [], skipped: [], errors: [], bunVerified: false, dashboardBuilt: false, axonInstalled: false };
   const ctx: CopyContext = { force, repoRoot, result };
 
   const destMindsDir = join(repoRoot, ".minds");
@@ -526,6 +547,9 @@ export function installCoreMinds(
   verifyBunAndInstallDeps(ctx, destMindsDir, log);
   installHookSettings(ctx, repoRoot, log);
   installDashboard(ctx, destMindsDir, log);
+
+  // Phase 5: Axon daemon binary (non-blocking)
+  await installAxonBinary(ctx, destMindsDir, log);
 
   return result;
 }

@@ -21,7 +21,7 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
         return { status: "handled", error: "Missing context.repoRoot" };
       }
       const mindsSourceDir = getMindsSourceDir();
-      const result = installCoreMinds(mindsSourceDir, repoRoot, {
+      const result = await installCoreMinds(mindsSourceDir, repoRoot, {
         force: Boolean(ctx.force),
         quiet: Boolean(ctx.quiet),
       });
