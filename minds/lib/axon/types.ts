@@ -165,6 +165,7 @@ export type MessageKind =
   | { t: "Unsubscribe"; c: { subscription_id: number } }
   | { t: "GetProcess"; c: { process_id: ProcessId } }
   | { t: "ReadBuffer"; c: { process_id: ProcessId; offset: number | null; limit: number | null } }
+  | { t: "WriteInput"; c: { process_id: ProcessId; data: string } }
   | { t: "Shutdown" }
   // Responses
   | { t: "SpawnOk"; c: { process_id: ProcessId } }
@@ -174,6 +175,7 @@ export type MessageKind =
   | { t: "UnsubscribeOk" }
   | { t: "GetProcessOk"; c: { process: ProcessInfo } }
   | { t: "ReadBufferOk"; c: { data: string; bytes_read: number; total_written: number } }
+  | { t: "WriteInputOk"; c: { bytes_written: number } }
   | { t: "ShutdownOk" }
   | { t: "Error"; c: { code: string; message: string } }
   // Push

@@ -415,6 +415,19 @@ export class AxonClient {
     throw new Error(`unexpected response: ${response.t}`);
   }
 
+  /** Write input data to a process's PTY (stdin). */
+  async writeInput(id: string, data: string): Promise<number> {
+    const processId = validateProcessId(id);
+    const response = await this.request({
+      t: "WriteInput",
+      c: { process_id: processId, data },
+    });
+    if (response.t === "WriteInputOk") {
+      return response.c.bytes_written;
+    }
+    throw new Error(`unexpected response: ${response.t}`);
+  }
+
   /** Request daemon shutdown. */
   async shutdown(): Promise<void> {
     const response = await this.request({ t: "Shutdown" });

@@ -7,9 +7,46 @@
  * Updates StageContext with droneHandle, worktree, branch, and allDroneHandles.
  */
 
+import type { DroneHandle } from "../../drone-backend.ts";
 import type { PipelineStage, StageContext, StageResult } from "../pipeline-types.ts";
 import { errorMessage } from "../supervisor-types.ts";
 import { buildSupervisorDroneBrief } from "../supervisor-drone.ts";
+
+/**
+ * Auto-accept Claude Code's workspace trust dialog after a delay.
+ *
+ * Claude Code shows a "trust this folder?" prompt when opening a new
+ * workspace. Both tmux and Axon backends spawn with a PTY, so the
+ * dialog appears in both. This sends an Enter keypress to dismiss it.
+ *
+ * Best-effort: errors are silently caught (drone may have skipped the
+ * dialog, already exited, or the socket may be unavailable).
+ */
+function autoAcceptTrustDialog(
+  handle: DroneHandle,
+  repoRoot: string,
+  delayMs = 3000,
+): void {
+  setTimeout(async () => {
+    try {
+      if (handle.backend === "tmux") {
+        const { TmuxMultiplexer } = await import("../../tmux-multiplexer.ts");
+        await new TmuxMultiplexer().sendKeys(handle.id, "");
+      } else if (handle.backend === "axon") {
+        const { AxonClient } = await import("../../axon/client.ts");
+        const { getDaemonPaths } = await import("../../axon/daemon-lifecycle.ts");
+        const socketPath = process.env.AXON_SOCKET ??
+          getDaemonPaths(repoRoot).socketPath;
+        const client = await AxonClient.connect(socketPath);
+        try {
+          await client.writeInput(handle.id, "\r");
+        } finally {
+          client.close();
+        }
+      }
+    } catch { /* best-effort: drone may have skipped the dialog or already exited */ }
+  }, delayMs);
+}
 
 export const executeSpawnDrone = async (
   _stage: PipelineStage,
@@ -21,7 +58,7 @@ export const executeSpawnDrone = async (
     // First iteration: spawn drone (creates worktree)
     const briefContent = buildSupervisorDroneBrief(config);
 
-    let drone: { handle: import("../../drone-backend.ts").DroneHandle; worktree: string; branch: string };
+    let drone: { handle: DroneHandle; worktree: string; branch: string };
     try {
       drone = await deps.spawnDrone(config, briefContent);
     } catch (err) {
@@ -40,14 +77,8 @@ export const executeSpawnDrone = async (
     // Install the Stop hook for sentinel-based completion detection
     deps.installDroneStopHook(drone.worktree);
 
-    // Auto-accept workspace trust dialog (fires after Claude Code loads).
-    // Only needed for tmux backend — axon backend runs headless.
-    if (drone.handle.backend === "tmux") {
-      const { TmuxMultiplexer } = await import("../../tmux-multiplexer.ts");
-      setTimeout(async () => {
-        try { await new TmuxMultiplexer().sendKeys(drone.handle.id, ""); } catch { /* pane may be gone */ }
-      }, 3000);
-    }
+    // Auto-accept workspace trust dialog (fires after Claude Code loads)
+    autoAcceptTrustDialog(drone.handle, config.repoRoot);
 
     return { ok: true };
   }
@@ -71,13 +102,8 @@ export const executeSpawnDrone = async (
     // Reinstall the Stop hook (sentinel file was consumed by previous iteration)
     deps.installDroneStopHook(ctx.worktree);
 
-    // Auto-accept workspace trust dialog for re-launched drone (tmux only)
-    if (newHandle.backend === "tmux") {
-      const { TmuxMultiplexer } = await import("../../tmux-multiplexer.ts");
-      setTimeout(async () => {
-        try { await new TmuxMultiplexer().sendKeys(newHandle.id, ""); } catch { /* pane may be gone */ }
-      }, 3000);
-    }
+    // Auto-accept workspace trust dialog for re-launched drone
+    autoAcceptTrustDialog(newHandle, config.repoRoot);
   } catch (err) {
     return {
       ok: false,
