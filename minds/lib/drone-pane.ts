@@ -51,7 +51,7 @@ export function assembleClaudeContent(
   repoRoot: string,
   mindName: string,
   ticketId: string,
-  opts?: { repoAlias?: string; orchestratorRoot?: string },
+  opts?: { repoAlias?: string; orchestratorRoot?: string; pipelineTemplate?: string },
 ): string {
   const mindsBase = resolveMindsDir(repoRoot);
   const standardsRoot = opts?.orchestratorRoot ?? repoRoot;
@@ -85,6 +85,8 @@ export function assembleClaudeContent(
   const mindMdPath = resolve(mindsBase, mindName, "MIND.md");
   const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
 
+  const isNonCode = opts?.pipelineTemplate === "build" || opts?.pipelineTemplate === "test";
+
   const ownsFilesSection =
     ownsFiles.length > 0
       ? ownsFiles.map((f) => `- ${f}`).join("\n")
@@ -106,26 +108,39 @@ export function assembleClaudeContent(
       ].join("\n")
     : null;
 
+  // Non-code pipelines (build/test) skip file boundary and test command sections
+  const boundaryLines = isNonCode
+    ? []
+    : [
+        `Your file boundary (only touch files in these paths):`,
+        ownsFilesSection,
+        ``,
+      ];
+
+  const testCommandLines = isNonCode
+    ? []
+    : [
+        `## Test Command`,
+        ``,
+        `Run only your Mind's tests — never bare \`bun test\`:`,
+        `\`\`\``,
+        `bun test minds/${mindName}/`,
+        `\`\`\``,
+        ``,
+      ];
+
   return [
     `## Mind Identity`,
     ``,
     `You are the @${mindName} drone for ticket ${ticketId}.`,
     domainLine,
     ``,
-    `Your file boundary (only touch files in these paths):`,
-    ownsFilesSection,
-    ``,
+    ...boundaryLines,
     repoContextSection,
     `## Engineering Standards`,
     standards,
     mindProfileSection,
-    `## Test Command`,
-    ``,
-    `Run only your Mind's tests — never bare \`bun test\`:`,
-    `\`\`\``,
-    `bun test minds/${mindName}/`,
-    `\`\`\``,
-    ``,
+    ...testCommandLines,
     `## Active Task`,
     `Your current task brief is in DRONE-BRIEF.md at the worktree root.`,
     `If you've compacted or lost context, re-read that file.`,

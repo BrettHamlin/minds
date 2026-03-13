@@ -25,6 +25,7 @@ export interface MindAgentParams {
   previousFeedback?: string;
   iteration: number;
   mindMdContent?: string;
+  pipelineTemplate?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -32,7 +33,7 @@ export interface MindAgentParams {
 // ---------------------------------------------------------------------------
 
 export function buildMindAgentContent(params: MindAgentParams): string {
-  const { mindName, standards, ownsFiles, previousFeedback, iteration, mindMdContent } = params;
+  const { mindName, standards, ownsFiles, previousFeedback, iteration, mindMdContent, pipelineTemplate } = params;
 
   // Build frontmatter
   // No tool permissions — the review prompt already contains the diff, test output,
@@ -87,7 +88,7 @@ ${previousFeedback}`);
   }
 
   // Review checklist
-  const checklist = formatReviewChecklist();
+  const checklist = formatReviewChecklist(pipelineTemplate);
   sections.push(`## Review Checklist
 
 Evaluate the diff against each item:

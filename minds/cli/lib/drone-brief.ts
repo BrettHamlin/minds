@@ -18,6 +18,7 @@ export interface DroneBriefParams {
   ownsFiles?: string[]; // file paths this mind is allowed to touch
   repo?: string; // repo alias for multi-repo context
   testCommand?: string; // custom test command (default: "bun test")
+  pipelineTemplate?: string; // "code" (default), "build", or "test"
 }
 
 /**
@@ -57,7 +58,10 @@ export function buildDroneBrief(params: DroneBriefParams): string {
     ownsFiles,
     repo,
     testCommand,
+    pipelineTemplate,
   } = params;
+
+  const isNonCode = pipelineTemplate === "build" || pipelineTemplate === "test";
 
   const taskList = formatTaskList(tasks);
   const defaultTestCmd = `bun test ${mindsDir ? `${mindsDir}/${mindName}/` : `minds/${mindName}/`}`;
@@ -69,6 +73,50 @@ export function buildDroneBrief(params: DroneBriefParams): string {
       : "";
 
   const repoRow = repo ? `\n| **Repo** | ${repo} |` : "";
+
+  // File boundary section: only for code pipelines
+  const boundarySection = !isNonCode && ownsFiles && ownsFiles.length > 0
+    ? `## 📁 File Boundary
+
+You may ONLY create or modify files within these paths:
+${ownsFiles.map((f) => `- \`${f}\``).join("\n")}
+
+Files outside these paths will be rejected by the deterministic boundary check.
+
+`
+    : "";
+
+  // Instructions section: pipeline-aware
+  let instructions: string;
+  if (pipelineTemplate === "build") {
+    instructions = `## 🔧 Instructions
+
+1. Read and understand each task above.
+2. Implement ALL tasks in order (unless marked [P] for parallel-safe).
+3. Execute the build commands specified in MIND.md. Report build output.
+4. Commit your work with a descriptive message referencing ${ticketId}.
+5. When ALL tasks are done and committed, type \`/exit\` to close this session.
+`;
+  } else if (pipelineTemplate === "test") {
+    instructions = `## 🔧 Instructions
+
+1. Read and understand each task above.
+2. Implement ALL tasks in order (unless marked [P] for parallel-safe).
+3. Execute the test/verification commands specified in MIND.md. Report results.
+4. Commit your work with a descriptive message referencing ${ticketId}.
+5. When ALL tasks are done and committed, type \`/exit\` to close this session.
+`;
+  } else {
+    instructions = `## 🔧 Instructions
+
+1. Read and understand each task above.
+2. Implement ALL tasks in order (unless marked [P] for parallel-safe).
+3. Write tests for each change (TDD: red -> green -> refactor).
+4. Run \`${effectiveTestCmd}\` to verify your changes pass.
+5. Commit your work with a descriptive message referencing ${ticketId}.
+6. When ALL tasks are done and committed, type \`/exit\` to close this session.
+`;
+  }
 
   return `---
 name: Drone Brief
@@ -97,20 +145,5 @@ ${taskList}
 ## ✅ Completion Criteria
 
 All tasks above are checked off AND all tests pass.
-${depsSection}${ownsFiles && ownsFiles.length > 0 ? `## 📁 File Boundary
-
-You may ONLY create or modify files within these paths:
-${ownsFiles.map((f) => `- \`${f}\``).join("\n")}
-
-Files outside these paths will be rejected by the deterministic boundary check.
-
-` : ""}## 🔧 Instructions
-
-1. Read and understand each task above.
-2. Implement ALL tasks in order (unless marked [P] for parallel-safe).
-3. Write tests for each change (TDD: red -> green -> refactor).
-4. Run \`${effectiveTestCmd}\` to verify your changes pass.
-5. Commit your work with a descriptive message referencing ${ticketId}.
-6. When ALL tasks are done and committed, type \`/exit\` to close this session.
-`;
+${depsSection}${boundarySection}${instructions}`;
 }

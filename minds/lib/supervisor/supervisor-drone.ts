@@ -45,6 +45,7 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
     ownsFiles: config.ownsFiles,
     repo: config.repo,
     testCommand: config.testCommand,
+    pipelineTemplate: config.pipelineTemplate,
   });
 
   if (!feedbackFile) {

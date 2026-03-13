@@ -91,7 +91,7 @@ export const executeLlmReview = async (
   }
   ctx.previousFeedback = previousFeedback;
 
-  // Build review prompt
+  // Build review prompt (pipeline-aware checklist via BRE-624)
   const prompt = buildReviewPrompt({
     diff: checkResults.diff,
     testOutput: checkResults.testOutput,
@@ -99,6 +99,7 @@ export const executeLlmReview = async (
     tasks: config.tasks,
     iteration,
     previousFeedback,
+    pipelineTemplate: config.pipelineTemplate,
   });
 
   // Call LLM for review
