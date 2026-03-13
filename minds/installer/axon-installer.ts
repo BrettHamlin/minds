@@ -8,6 +8,7 @@
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
 import { chmod, mkdir, rename, rm } from "fs/promises";
+import { spawnSync } from "child_process";
 
 export interface InstallOptions {
   version: string;
@@ -194,5 +195,153 @@ export async function installAxon(
     version,
     platform: process.platform,
     arch: process.arch,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// BRE-575: Version pinning and upgrade path
+// ---------------------------------------------------------------------------
+
+export interface SemVer {
+  major: number;
+  minor: number;
+  patch: number;
+}
+
+export interface VersionCheck {
+  installed: string | null; // null = not installed
+  pinned: string;
+  minVersion: string;
+  needsUpgrade: boolean; // installed < minVersion (or not installed)
+  upgradeAvailable: boolean; // installed < pinned but >= minVersion
+}
+
+export interface PinnedVersionInfo {
+  version: string;
+  minVersion: string;
+}
+
+/**
+ * Parse a semver string "major.minor.patch" into its components.
+ * Returns null if the string is not valid semver.
+ */
+export function parseSemver(version: string): SemVer | null {
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return null;
+  return {
+    major: parseInt(match[1], 10),
+    minor: parseInt(match[2], 10),
+    patch: parseInt(match[3], 10),
+  };
+}
+
+/**
+ * Compare two semver strings.
+ * Returns: -1 if a < b, 0 if a == b, 1 if a > b.
+ * Throws if either version is not valid semver.
+ */
+export function compareSemver(a: string, b: string): -1 | 0 | 1 {
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa) throw new Error(`Invalid semver: "${a}"`);
+  if (!pb) throw new Error(`Invalid semver: "${b}"`);
+
+  if (pa.major !== pb.major) return pa.major > pb.major ? 1 : -1;
+  if (pa.minor !== pb.minor) return pa.minor > pb.minor ? 1 : -1;
+  if (pa.patch !== pb.patch) return pa.patch > pb.patch ? 1 : -1;
+  return 0;
+}
+
+/**
+ * Read full version info (version + minVersion) from axon-version.json.
+ * If minVersion is not specified, it defaults to version.
+ * Returns null if the file doesn't exist or is malformed.
+ */
+export function getPinnedVersionInfo(dir: string): PinnedVersionInfo | null {
+  const versionFile = join(dir, "axon-version.json");
+  try {
+    if (!existsSync(versionFile)) return null;
+    const content = readFileSync(versionFile, "utf-8");
+    const parsed = JSON.parse(content);
+    const version = parsed.version;
+    if (typeof version !== "string") return null;
+    return {
+      version,
+      minVersion: parsed.minVersion ?? version,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract version string from `axon version` output.
+ * Handles formats like "axon 0.1.0" or "axon 0.1.0 (built 2025-01-01)".
+ */
+function parseAxonVersionOutput(output: string): string | null {
+  const match = output.trim().match(/(\d+\.\d+\.\d+)/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Check the installed Axon version against pinned version requirements.
+ *
+ * @param repoRoot - The target repo root (binary at .minds/bin/axon)
+ * @param installerDir - Directory containing axon-version.json
+ */
+export async function checkAxonVersion(
+  repoRoot: string,
+  installerDir: string,
+): Promise<VersionCheck> {
+  const info = getPinnedVersionInfo(installerDir);
+  const pinned = info?.version ?? "0.1.0";
+  const minVersion = info?.minVersion ?? pinned;
+
+  const binaryPath = join(repoRoot, ".minds", "bin", "axon");
+
+  // Check if binary exists
+  if (!existsSync(binaryPath)) {
+    return {
+      installed: null,
+      pinned,
+      minVersion,
+      needsUpgrade: true,
+      upgradeAvailable: false,
+    };
+  }
+
+  // Try to get installed version
+  let installed: string | null = null;
+  try {
+    const result = spawnSync(binaryPath, ["version"], {
+      timeout: 5000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.status === 0 && result.stdout) {
+      installed = parseAxonVersionOutput(result.stdout.toString());
+    }
+  } catch {
+    // Binary exists but can't execute - treat as not installed
+  }
+
+  if (installed === null) {
+    return {
+      installed: null,
+      pinned,
+      minVersion,
+      needsUpgrade: true,
+      upgradeAvailable: false,
+    };
+  }
+
+  const belowMin = compareSemver(installed, minVersion) < 0;
+  const belowPinned = compareSemver(installed, pinned) < 0;
+
+  return {
+    installed,
+    pinned,
+    minVersion,
+    needsUpgrade: belowMin,
+    upgradeAvailable: !belowMin && belowPinned,
   };
 }

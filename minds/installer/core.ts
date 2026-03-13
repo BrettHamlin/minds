@@ -3,7 +3,7 @@ import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
 import { ensureDashboardBuilt } from "../shared/build-dashboard.js";
-import { installAxon, getPinnedVersion, getTargetTriple } from "./axon-installer.js";
+import { installAxon, getPinnedVersion, getTargetTriple, checkAxonVersion } from "./axon-installer.js";
 
 /** Local ensureDir — avoids cross-Mind import from cli/utils/fs. */
 function ensureDir(dir: string): void {
@@ -489,8 +489,29 @@ function installDashboard(ctx: CopyContext, destMindsDir: string, log: LogFn): v
 /** Step: Install Axon daemon binary (non-blocking — failure does not halt init) */
 async function installAxonBinary(ctx: CopyContext, destMindsDir: string, log: LogFn): Promise<void> {
   const binDir = join(destMindsDir, "bin");
+  const installerDir = join(dirname(_dir), "installer");
+
   try {
-    const installerDir = join(dirname(_dir), "installer");
+    // Check if Axon is already installed and what version it is
+    const versionCheck = await checkAxonVersion(ctx.repoRoot, installerDir);
+
+    if (versionCheck.installed !== null && !versionCheck.needsUpgrade && !versionCheck.upgradeAvailable) {
+      // Up to date — skip download
+      log(`  Axon daemon: v${versionCheck.installed} (up to date)`);
+      ctx.result.axonInstalled = true;
+      return;
+    }
+
+    if (versionCheck.installed !== null && versionCheck.upgradeAvailable && !versionCheck.needsUpgrade) {
+      // Optional upgrade available — log but still upgrade
+      log(`  Axon upgrade available: v${versionCheck.installed} -> v${versionCheck.pinned}`);
+    }
+
+    if (versionCheck.installed !== null && versionCheck.needsUpgrade) {
+      log(`  Axon daemon: v${versionCheck.installed} below minimum v${versionCheck.minVersion}, upgrading...`);
+    }
+
+    // Download the pinned version
     const version = getPinnedVersion(installerDir) ?? "0.1.0";
     const result = await installAxon({
       version,
