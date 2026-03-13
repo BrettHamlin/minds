@@ -4,7 +4,7 @@
  *
  * This is the TS implementation for /drone.launch. It replaces /dev.pane for Minds development
  * with key differences:
- *   - Worktree path: collab-dev-{ticket-id}-{mind-name} (unique, predictable)
+ *   - Worktree path: {repo}-{repo-alias?}-{ticket-id}-{mind-name} (unique, predictable)
  *   - Writes drone's private CLAUDE.md BEFORE launching Claude Code
  *   - Writes DRONE-BRIEF.md BEFORE launching Claude Code
  *   - Handles worktree .git (file, not dir) for correct .git/info/exclude writes
@@ -34,12 +34,105 @@ import { basename, resolve } from "path";
 import { injectBusEnv } from "../transport/minds-bus-lifecycle.ts";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
-import { resolveMindsDir } from "../shared/paths.js";
+import { resolveMindsDir, encodeProjectPath } from "../shared/paths.js";
+import { loadStandards } from "./supervisor/supervisor-checks.ts";
 import { shellQuote } from "./tmux-utils.ts";
 import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
 import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
+
+/**
+ * Assemble the CLAUDE.md content for a drone, loading minds.json, STANDARDS.md,
+ * STANDARDS-project.md, and optional MIND.md from the repo's minds directory.
+ */
+export function assembleClaudeContent(
+  repoRoot: string,
+  mindName: string,
+  ticketId: string,
+  opts?: { repoAlias?: string; orchestratorRoot?: string },
+): string {
+  const mindsBase = resolveMindsDir(repoRoot);
+  const standardsRoot = opts?.orchestratorRoot ?? repoRoot;
+
+  // Load minds.json and find entry for this mind
+  const mindsJsonPath = resolve(mindsBase, "minds.json");
+  let domain = "";
+  let ownsFiles: string[] = [];
+
+  if (existsSync(mindsJsonPath)) {
+    try {
+      const minds = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{
+        name: string;
+        domain?: string;
+        owns_files?: string[];
+      }>;
+      const entry = minds.find((m) => m.name === mindName);
+      if (entry) {
+        domain = entry.domain ?? "";
+        ownsFiles = entry.owns_files ?? [];
+      }
+    } catch {
+      // If parse fails, continue with empty values
+    }
+  }
+
+  // Load STANDARDS.md + STANDARDS-project.md from orchestrator root
+  const standards = loadStandards(standardsRoot);
+
+  // Load MIND.md (optional)
+  const mindMdPath = resolve(mindsBase, mindName, "MIND.md");
+  const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
+
+  const ownsFilesSection =
+    ownsFiles.length > 0
+      ? ownsFiles.map((f) => `- ${f}`).join("\n")
+      : "(no file boundaries defined)";
+
+  const domainLine = domain ? `Domain: ${domain}` : "";
+
+  const mindProfileSection = mindMd
+    ? `## Mind Profile (@${mindName})\n${mindMd}`
+    : "";
+
+  const repoContextSection = opts?.repoAlias
+    ? [
+        `## Repository Context`,
+        ``,
+        `You are working in the **${opts.repoAlias}** repository.`,
+        `Other repos in this workspace are read-only references — do not modify files outside this repo.`,
+        ``,
+      ].join("\n")
+    : null;
+
+  return [
+    `## Mind Identity`,
+    ``,
+    `You are the @${mindName} drone for ticket ${ticketId}.`,
+    domainLine,
+    ``,
+    `Your file boundary (only touch files in these paths):`,
+    ownsFilesSection,
+    ``,
+    repoContextSection,
+    `## Engineering Standards`,
+    standards,
+    mindProfileSection,
+    `## Test Command`,
+    ``,
+    `Run only your Mind's tests — never bare \`bun test\`:`,
+    `\`\`\``,
+    `bun test minds/${mindName}/`,
+    `\`\`\``,
+    ``,
+    `## Active Task`,
+    `Your current task brief is in DRONE-BRIEF.md at the worktree root.`,
+    `If you've compacted or lost context, re-read that file.`,
+  ]
+    .filter((line) => line !== null)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+}
 
 export async function publishDroneSpawned(params: {
   busUrl: string;
@@ -64,86 +157,6 @@ export async function publishDroneSpawned(params: {
 
 if (import.meta.main) { (async () => {
   const mux: TerminalMultiplexer = new TmuxMultiplexer();
-
-  // ─── CLAUDE.md assembly ─────────────────────────────────────────────────────
-
-  function assembleClaudeContent(repoRoot: string, mindName: string, ticketId: string): string {
-    const mindsBase = resolveMindsDir(repoRoot);
-
-    // Load minds.json and find entry for this mind
-    const mindsJsonPath = resolve(mindsBase, "minds.json");
-    let domain = "";
-    let ownsFiles: string[] = [];
-
-    if (existsSync(mindsJsonPath)) {
-      try {
-        const minds = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{
-          name: string;
-          domain?: string;
-          owns_files?: string[];
-        }>;
-        const entry = minds.find((m) => m.name === mindName);
-        if (entry) {
-          domain = entry.domain ?? "";
-          ownsFiles = entry.owns_files ?? [];
-        }
-      } catch {
-        // If parse fails, continue with empty values
-      }
-    }
-
-    // Load STANDARDS.md (generic — ships with installer)
-    const standardsPath = resolve(mindsBase, "STANDARDS.md");
-    const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
-
-    // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
-    const projectStandardsPath = resolve(mindsBase, "STANDARDS-project.md");
-    const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
-
-    // Load MIND.md (optional)
-    const mindMdPath = resolve(mindsBase, mindName, "MIND.md");
-    const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
-
-    const ownsFilesSection =
-      ownsFiles.length > 0
-        ? ownsFiles.map((f) => `- ${f}`).join("\n")
-        : "(no file boundaries defined)";
-
-    const domainLine = domain ? `Domain: ${domain}` : "";
-
-    const mindProfileSection = mindMd
-      ? `## Mind Profile (@${mindName})\n${mindMd}`
-      : "";
-
-    return [
-      `## Mind Identity`,
-      ``,
-      `You are the @${mindName} drone for ticket ${ticketId}.`,
-      domainLine,
-      ``,
-      `Your file boundary (only touch files in these paths):`,
-      ownsFilesSection,
-      ``,
-      `## Engineering Standards`,
-      standards,
-      projectStandards ? `## Project-Specific Standards` : null,
-      projectStandards || null,
-      mindProfileSection,
-      `## Test Command`,
-      ``,
-      `Run only your Mind's tests — never bare \`bun test\`:`,
-      `\`\`\``,
-      `bun test minds/${mindName}/`,
-      `\`\`\``,
-      ``,
-      `## Active Task`,
-      `Your current task brief is in DRONE-BRIEF.md at the worktree root.`,
-      `If you've compacted or lost context, re-read that file.`,
-    ]
-      .filter((line) => line !== null)
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n");
-  }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -193,15 +206,20 @@ if (import.meta.main) { (async () => {
 
   // ─── Repo context ────────────────────────────────────────────────────────────
 
-  const repoRoot = run("git rev-parse --show-toplevel");
+  const overrideRepoRoot = getArg("--repo-root");
+  const repoRoot = overrideRepoRoot ?? run("git rev-parse --show-toplevel");
   const repoName = basename(repoRoot);
+  const repoAlias = getArg("--repo-alias");
+  const installCmd = getArg("--install-cmd");
+  const orchestratorRoot = getArg("--orchestrator-root");
 
   // ─── Base branch ─────────────────────────────────────────────────────────────
 
-  const baseBranch = getArg("--base") ?? run("git branch --show-current");
+  const baseBranch = getArg("--base") ?? run(`git -C ${shellQuote(repoRoot)} branch --show-current`);
 
-  tryRun(`git fetch origin`);
-  tryRun(`git pull origin ${shellQuote(baseBranch)}`);
+  // CRITICAL: fetch/pull must target the MIND's repo, not orchestrator
+  tryRun(`git -C ${shellQuote(repoRoot)} fetch origin`);
+  tryRun(`git -C ${shellQuote(repoRoot)} pull origin ${shellQuote(baseBranch)}`);
 
   // ─── Branch and worktree path ─────────────────────────────────────────────────
 
@@ -210,7 +228,9 @@ if (import.meta.main) { (async () => {
 
   // Worktree path: collab-dev-{ticketId}-{mindName}, with numeric suffix if taken
   const parentDir = resolve(repoRoot, "..");
-  let worktreeBase = `${repoName}-${ticketId}-${mindName}`;
+  let worktreeBase = repoAlias
+    ? `${repoName}-${repoAlias}-${ticketId}-${mindName}`
+    : `${repoName}-${ticketId}-${mindName}`;
   let worktreePath = resolve(parentDir, worktreeBase);
   let suffix = 2;
   while (existsSync(worktreePath)) {
@@ -233,10 +253,15 @@ if (import.meta.main) { (async () => {
 
   // node_modules is gitignored and never present in fresh worktrees
   try {
-    run(`bun install --cwd ${shellQuote(worktreePath)}`);
+    if (installCmd) {
+      const result = Bun.spawnSync(["sh", "-c", installCmd], { cwd: worktreePath, stdout: "inherit", stderr: "inherit" });
+      if (result.exitCode !== 0) throw new Error(`Install command failed with exit code ${result.exitCode}`);
+    } else {
+      run(`bun install --cwd ${shellQuote(worktreePath)}`);
+    }
   } catch (err) {
     // Non-fatal: some Minds don't need node_modules
-    process.stderr.write(`Warning: bun install failed: ${err}\n`);
+    process.stderr.write(`Warning: install failed: ${err}\n`);
   }
 
   // ─── Write .git/info/exclude (worktree-safe) ─────────────────────────────────
@@ -275,13 +300,16 @@ if (import.meta.main) { (async () => {
 
   // ─── Write drone's private CLAUDE.md BEFORE launching ────────────────────────
 
-  const encoded = resolve(worktreePath).replace(/\//g, "-").replace(/^-/, "");
+  const encoded = encodeProjectPath(resolve(worktreePath));
   const claudeDir = resolve(process.env.HOME ?? "/root", ".claude", "projects", encoded);
   mkdirSync(claudeDir, { recursive: true });
 
   const claudeContent = claudeFile && existsSync(claudeFile)
     ? readFileSync(claudeFile, "utf-8")
-    : assembleClaudeContent(repoRoot, mindName!, ticketId!);
+    : assembleClaudeContent(repoRoot, mindName!, ticketId!, {
+        repoAlias: repoAlias,
+        orchestratorRoot: orchestratorRoot,
+      });
 
   writeFileSync(resolve(claudeDir, "CLAUDE.md"), claudeContent);
 
@@ -291,7 +319,7 @@ if (import.meta.main) { (async () => {
   // ─── Write .claude/settings.json with hooks config BEFORE launching ──────────
 
   const settingsPath = resolve(worktreePath, ".claude", "settings.json");
-  const hookScriptPath = resolve(resolveMindsDir(repoRoot), "transport", "hooks", "send-event.ts");
+  const hookScriptPath = resolve(resolveMindsDir(orchestratorRoot ?? repoRoot), "transport", "hooks", "send-event.ts");
   const hookCommand = `bun ${hookScriptPath} --source-app drone:${mindName}`;
 
   // Claude Code hooks use matcher-based format: { matcher?: string, hooks: [{ type, command }] }

@@ -34,7 +34,8 @@ import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 import { buildMindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import type { MindBusPublishCmds } from "../cli/lib/mind-brief.ts";
-import { resolveMindsDir } from "../shared/paths.js";
+import { resolveMindsDir, encodeProjectPath } from "../shared/paths.js";
+import { loadStandards } from "./supervisor/supervisor-checks.ts";
 import { shellQuote } from "./tmux-utils.ts";
 import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
 import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
@@ -100,13 +101,8 @@ export function assembleClaudeContent(
     }
   }
 
-  // Load STANDARDS.md (generic — ships with installer)
-  const standardsPath = resolve(mindsDir, "STANDARDS.md");
-  const standards = existsSync(standardsPath) ? readFileSync(standardsPath, "utf-8") : "";
-
-  // Load STANDARDS-project.md (project-specific — NOT shipped by installer)
-  const projectStandardsPath = resolve(mindsDir, "STANDARDS-project.md");
-  const projectStandards = existsSync(projectStandardsPath) ? readFileSync(projectStandardsPath, "utf-8") : "";
+  // Load STANDARDS.md + STANDARDS-project.md (shared loader)
+  const standards = loadStandards(repoRoot);
 
   // Load MIND.md (optional)
   const mindMdPath = resolve(mindsDir, mindName, "MIND.md");
@@ -130,10 +126,6 @@ export function assembleClaudeContent(
 
   const mindProfileSection = mindMd
     ? `---\n\n# 🧬 Mind Profile (@${mindName})\n\n${mindMd}`
-    : "";
-
-  const projectStandardsSection = projectStandards
-    ? `\n\n## Project-Specific Standards\n\n${projectStandards}`
     : "";
 
   // #2+#3: Conditional file boundary section
@@ -288,7 +280,7 @@ Approve with warnings. Flush unresolved issues to memory (step 7a), then signal 
 
 # ⚙️ Engineering Standards
 
-${standards}${projectStandardsSection}
+${standards}
 
 ${mindProfileSection}
 
@@ -467,7 +459,7 @@ if (import.meta.main) { (async () => {
 
   // ─── Write Mind's private CLAUDE.md BEFORE launching ─────────────────────────
 
-  const encoded = resolve(worktreePath).replace(/\//g, "-").replace(/^-/, "");
+  const encoded = encodeProjectPath(resolve(worktreePath));
   const claudeDir = resolve(process.env.HOME ?? "/root", ".claude", "projects", encoded);
   mkdirSync(claudeDir, { recursive: true });
 

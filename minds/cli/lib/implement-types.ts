@@ -14,6 +14,7 @@ export interface MindTask {
   parallel: boolean;
   produces?: { interface: string; path: string };
   consumes?: { interface: string; path: string };
+  repo?: string;  // Repo alias for multi-repo workspaces
 }
 
 /** Tasks grouped by mind name, with dependency metadata. */
@@ -22,6 +23,7 @@ export interface MindTaskGroup {
   tasks: MindTask[];
   dependencies: string[]; // mind names this group depends on
   ownsFiles?: string[]; // globs from (owns: ...) section annotation — undefined if not declared
+  repo?: string;  // Repo alias for multi-repo workspaces
 }
 
 /** An execution wave: a set of minds that can run in parallel. */
@@ -40,23 +42,18 @@ export interface DispatchPlan {
   totalMinds: number;
 }
 
-/** Tracking info for a spawned drone. */
-export interface DroneInfo {
-  mindName: string;
-  waveId: string;
-  paneId: string;
-  worktree: string;
-  branch: string;
-}
-
-/** Tracking info for a spawned Mind. */
+/** Tracking info for a spawned Mind (or Drone — same shape). */
 export interface MindInfo {
   mindName: string;
   waveId: string;
   paneId: string;
   worktree: string;
   branch: string;
+  repo?: string;  // Repo alias for multi-repo workspaces
 }
+
+/** @deprecated Use MindInfo instead — identical interface. */
+export type DroneInfo = MindInfo;
 
 /** Result of the full implement run. */
 export interface ImplementResult {
@@ -64,6 +61,6 @@ export interface ImplementResult {
   wavesCompleted: number;
   totalWaves: number;
   mindsSpawned: MindInfo[];
-  mergeResults: Array<{ mind: string; ok: boolean; error?: string }>;
+  mergeResults: Array<{ mind: string; ok: boolean; error?: string; repo?: string }>;
   errors: string[];
 }

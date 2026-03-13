@@ -8,6 +8,7 @@
 import { execSync } from "child_process";
 import { existsSync } from "fs";
 import { join } from "path";
+import { stripRepoPrefix } from "./repo-path.ts";
 
 /**
  * Resolve the Minds data directory for a given repo root.
@@ -33,6 +34,10 @@ let _cachedMindsRoot: string | null = null;
 
 /**
  * Resolve the Minds data root directory.
+ *
+ * WARNING: Returns a cached global root based on the process CWD at first call.
+ * In multi-repo mode, use resolveMindsDir(specificRepoRoot) instead. This
+ * function is safe only for CLI entry points and single-repo contexts.
  *
  * Priority:
  *   1. MINDS_ROOT env var (explicit override, not cached)
@@ -122,6 +127,28 @@ export function normalizeMindsPrefix(filePath: string): string {
   return filePath;
 }
 
+// ── Project path encoding ───────────────────────────────────────────────────
+
+/**
+ * Encode an absolute path the same way Claude Code does for ~/.claude/projects/ dir names.
+ * Replaces / with - and strips the leading -.
+ *
+ * Example: "/Users/alice/code/my-app" -> "Users-alice-code-my-app"
+ */
+export function encodeProjectPath(absolutePath: string): string {
+  return absolutePath.replace(/\//g, "-").replace(/^-/, "");
+}
+
+// ── Path traversal detection ────────────────────────────────────────────────
+
+/**
+ * Check whether a path string contains ".." as an actual path traversal component.
+ * Correctly distinguishes "foo..bar" (safe) from "../foo" or "foo/../bar" (unsafe).
+ */
+export function containsPathTraversal(pathStr: string): boolean {
+  return /(^|\/)\.\.(\/|$)/.test(pathStr);
+}
+
 // ── Glob stripping & ownership matching ─────────────────────────────────────
 
 /**
@@ -137,12 +164,16 @@ export function stripGlob(pattern: string): string {
 /**
  * Check whether a file path matches at least one owns_files prefix.
  * Handles `.minds/` vs `minds/` normalization and glob stripping on both sides.
+ *
+ * `filePath` must be a bare path (no repo prefix) — typically from git diff output.
+ * `ownsFiles` entries may have repo prefixes (e.g. "backend:src/api/**") which are
+ * stripped defensively. Stripping is idempotent, so pre-stripped patterns are safe.
  */
 export function matchesOwnership(filePath: string, ownsFiles: string[]): boolean {
   const normalizedFile = normalizeMindsPrefix(filePath);
 
   for (const prefix of ownsFiles) {
-    const normalizedPrefix = stripGlob(normalizeMindsPrefix(prefix));
+    const normalizedPrefix = stripGlob(normalizeMindsPrefix(stripRepoPrefix(prefix)));
     if (normalizedFile.startsWith(normalizedPrefix)) {
       return true;
     }

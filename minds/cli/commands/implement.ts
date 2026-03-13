@@ -34,7 +34,7 @@ import {
   clearBusState,
 } from "../../transport/minds-bus-lifecycle.ts";
 import { publishWaveStarted, publishWaveComplete } from "../../transport/wave-event.ts";
-import { cleanupDroneWorktree } from "../../lib/cleanup.ts";
+import { cleanupDroneWorktree, pruneOrphanedWorktrees } from "../../lib/cleanup.ts";
 import { resolveMindsDir, getRepoRoot } from "../../shared/paths.js";
 import { ensureDashboardBuilt } from "../../shared/build-dashboard.js";
 import type {
@@ -44,6 +44,13 @@ import type {
 } from "../lib/implement-types.ts";
 import { resolveOwnsAndBoundary } from "../lib/resolve-owns.ts";
 import { scaffoldFromTasks } from "../../instantiate/lib/scaffold.ts";
+import { loadWorkspace, type ResolvedWorkspace } from "../../shared/workspace-loader.ts";
+import { loadMultiRepoRegistries } from "../../shared/registry-loader.ts";
+import { parseTasks, lintTasks } from "../../lib/contracts.ts";
+import type { MindDescription } from "../../mind.ts";
+import type { SupervisorResult } from "../../lib/supervisor/supervisor-types.ts";
+import type { ContractAnnotation } from "../../lib/check-contracts-core.ts";
+import { verifyCrossRepoContracts, buildCrossRepoChecks } from "../../lib/supervisor/cross-repo-contracts.ts";
 
 /**
  * Resolve the source minds directory (where scripts live).
@@ -77,6 +84,54 @@ function resolveFeatureDir(repoRoot: string, ticketId: string): string | null {
     }
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Git helpers                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Resolve the repo root for a drone. In multi-repo mode, looks up the
+ * drone's repo alias in the workspace. Falls back to orchestratorRoot.
+ */
+function getDroneRepoRoot(
+  drone: MindInfo,
+  workspace: ResolvedWorkspace,
+  fallback: string,
+): string {
+  if (drone.repo) {
+    return workspace.repoPaths.get(drone.repo) ?? fallback;
+  }
+  return fallback;
+}
+
+/**
+ * Resolve the base branch for a git repo.
+ * Tries: current branch → origin default → "main" → "dev".
+ */
+function resolveBaseBranch(repoPath: string): string {
+  const result = Bun.spawnSync(["git", "-C", repoPath, "branch", "--show-current"], {
+    stdout: "pipe", stderr: "pipe",
+  });
+  const current = new TextDecoder().decode(result.stdout).trim();
+  if (current) return current;
+
+  // Detached HEAD — detect the remote default branch
+  const symRef = Bun.spawnSync(
+    ["git", "-C", repoPath, "symbolic-ref", "refs/remotes/origin/HEAD"],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  const symRefOut = new TextDecoder().decode(symRef.stdout).trim();
+  if (symRef.exitCode === 0 && symRefOut) {
+    return symRefOut.replace(/^refs\/remotes\/origin\//, "");
+  }
+
+  // Last resort: check if "main" branch exists, otherwise fall back to "dev"
+  const mainCheck = Bun.spawnSync(
+    ["git", "-C", repoPath, "rev-parse", "--verify", "refs/heads/main"],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  return mainCheck.exitCode === 0 ? "main" : "dev";
 }
 
 /* ------------------------------------------------------------------ */
@@ -117,7 +172,11 @@ function launchMindSupervisor(
   baseBranch: string,
   ownsFiles?: string[],
   requireBoundary?: boolean,
-): { info: MindInfo; done: Promise<void> } {
+  repo?: string,
+  mindRepoRoot?: string,
+  testCommand?: string,
+  installCommand?: string,
+): { info: MindInfo; done: Promise<SupervisorResult> } {
   const supervisorConfig: SupervisorConfig = {
     mindName,
     ticketId,
@@ -137,6 +196,10 @@ function launchMindSupervisor(
     droneTimeoutMs: 20 * 60 * 1000, // 20 minutes
     ownsFiles,
     requireBoundary,
+    repo,
+    mindRepoRoot,
+    testCommand,
+    installCommand,
   };
 
   // MindInfo placeholder -- will be updated when supervisor provides drone info
@@ -146,6 +209,7 @@ function launchMindSupervisor(
     paneId: "(supervisor)", // No Mind pane -- the supervisor IS the mind
     worktree: "(pending)",
     branch: "(pending)",
+    repo,
   };
 
   const done = runMindSupervisor(supervisorConfig).then((result) => {
@@ -171,6 +235,8 @@ function launchMindSupervisor(
         `  Supervisor @${mindName}: approved after ${result.iterations} iteration(s)`,
       );
     }
+
+    return result;
   });
 
   return { info, done };
@@ -180,10 +246,15 @@ function launchMindSupervisor(
 /*  Merge helper                                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Merge a drone's branch into the current branch of a repo.
+ * Assumes the correct base branch is already checked out (caller does this per repo group).
+ * On failure, aborts the merge to leave the repo in a clean state for subsequent merges.
+ */
 function mergeDroneWorktree(
   repoRoot: string,
   drone: MindInfo,
-): { ok: boolean; error?: string } {
+): { ok: boolean; error?: string; hasConflicts?: boolean } {
   const proc = Bun.spawnSync(
     ["git", "-C", repoRoot, "merge", "--no-ff", drone.branch,
      "-m", `merge: @${drone.mindName} (${drone.waveId})`],
@@ -192,8 +263,56 @@ function mergeDroneWorktree(
   if (proc.exitCode === 0) {
     return { ok: true };
   }
+  const stdout = new TextDecoder().decode(proc.stdout);
+  const stderr = new TextDecoder().decode(proc.stderr);
+  const combined = `${stdout}\n${stderr}`;
+  const hasConflicts = combined.toLowerCase().includes("conflict");
+
+  // Abort the failed merge so the repo is left clean for subsequent merges
+  Bun.spawnSync(["git", "-C", repoRoot, "merge", "--abort"], { stdout: "pipe", stderr: "pipe" });
+
+  return { ok: false, error: stderr || `exit code ${proc.exitCode}`, hasConflicts };
+}
+
+/**
+ * Checkout a branch in a repo. Called once per repo group before merging drones.
+ * mergeDroneWorktree assumes the correct branch is already checked out.
+ */
+function checkoutBranch(repoRoot: string, branch: string): { ok: boolean; error?: string } {
+  const proc = Bun.spawnSync(
+    ["git", "-C", repoRoot, "checkout", branch],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  if (proc.exitCode === 0) return { ok: true };
   const stderr = new TextDecoder().decode(proc.stderr);
   return { ok: false, error: stderr || `exit code ${proc.exitCode}` };
+}
+
+/**
+ * Group drones by their repo alias. Drones without a repo go into "__default__".
+ */
+export function groupDronesByRepo(drones: MindInfo[]): Map<string, MindInfo[]> {
+  const grouped = new Map<string, MindInfo[]>();
+  for (const drone of drones) {
+    const key = drone.repo ?? "__default__";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(drone);
+  }
+  return grouped;
+}
+
+/**
+ * Resolve the base branch for a specific repo in a workspace.
+ * Uses the manifest's defaultBranch if available, otherwise falls back to baseBranchName.
+ */
+export function resolveRepoBaseBranch(
+  repoKey: string,
+  workspace: ResolvedWorkspace,
+  fallbackBranch: string,
+): string {
+  if (repoKey === "__default__" || !workspace.manifest) return fallbackBranch;
+  const repoConfig = workspace.manifest.repos.find(r => r.alias === repoKey);
+  return repoConfig?.defaultBranch ?? fallbackBranch;
 }
 
 /* ------------------------------------------------------------------ */
@@ -205,49 +324,82 @@ export async function runImplement(
   options: ImplementOptions,
 ): Promise<void> {
   const repoRoot = getRepoRoot();
-  const mindsDir = resolveMindsDir(repoRoot);
   const mindsSourceDir = resolveMindsSourceDir();
   const channel = `minds-${ticketId}`;
 
+  // ── Workspace loading (MR-008) ──────────────────────────────────────────
+  const workspace = loadWorkspace(repoRoot);
+  const orchestratorRoot = workspace.orchestratorRoot;
+
+  // Use orchestratorRoot for bus, specs, registry, dashboard — NOT repoRoot
+  const mindsDir = resolveMindsDir(orchestratorRoot);
+
   console.log(`\nMinds Implement: ${ticketId}`);
   console.log(`Repo root: ${repoRoot}`);
+  if (workspace.isMultiRepo) {
+    console.log(`Workspace: multi-repo (${workspace.repoPaths.size} repos)`);
+    console.log(`Orchestrator: ${orchestratorRoot}`);
+    for (const [alias, path] of workspace.repoPaths) {
+      console.log(`  ${alias}: ${path}`);
+    }
+  }
   console.log(`Minds dir: ${mindsDir}`);
 
   // ── Step 0: Cleanup orphaned bus states ──────────────────────────────────
 
   console.log("\nStep 0: Checking for orphaned bus processes...");
-  const orphans = await findOrphanedBusStates(repoRoot);
+  const orphans = await findOrphanedBusStates(orchestratorRoot);
   if (orphans.length > 0) {
     console.log(`  Found ${orphans.length} orphaned bus state(s), cleaning up...`);
     for (const orphan of orphans) {
-      await clearBusState(repoRoot, orphan.ticketId);
+      await clearBusState(orchestratorRoot, orphan.ticketId);
       console.log(`  Cleaned: minds-${orphan.ticketId}`);
     }
   } else {
     console.log("  No orphaned bus processes found.");
   }
 
-  // ── Step 1: Load Mind registry ────────────────────────────────────────────
+  // Prune stale worktree references across all workspace repos (deduplicated)
+  const allRepoRoots = [...new Set([orchestratorRoot, ...workspace.repoPaths.values()])];
+  pruneOrphanedWorktrees(allRepoRoots);
+
+  // ── Step 1: Load Mind registry (MR-009: multi-repo aware) ────────────────
 
   console.log("\nStep 1: Loading Mind registry...");
-  const mindsJsonPath = join(mindsDir, "minds.json");
-  if (!existsSync(mindsJsonPath)) {
-    console.error(`Error: Mind registry not found at ${mindsJsonPath}`);
-    console.error("Run 'minds init' first to install the Minds system.");
-    process.exit(1);
-    return;
+  let registry: MindDescription[];
+
+  if (workspace.isMultiRepo) {
+    // Multi-repo: load and merge registries from each repo
+    try {
+      registry = loadMultiRepoRegistries(workspace.repoPaths);
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+      return;
+    }
+    if (registry.length === 0) {
+      console.warn("  Warning: No minds.json found in any repo. All minds will need owns: annotations.");
+    }
+    console.log(`  Loaded ${registry.length} minds from ${workspace.repoPaths.size} repos.`);
+  } else {
+    // Single-repo: load from orchestrator's minds.json
+    const mindsJsonPath = join(mindsDir, "minds.json");
+    if (!existsSync(mindsJsonPath)) {
+      console.error(`Error: Mind registry not found at ${mindsJsonPath}`);
+      console.error("Run 'minds init' first to install the Minds system.");
+      process.exit(1);
+      return;
+    }
+    registry = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as MindDescription[];
+    console.log(`  Loaded ${registry.length} registered minds.`);
   }
 
-  const registry = JSON.parse(readFileSync(mindsJsonPath, "utf-8"));
-  const registeredMinds = new Set(
-    (registry as Array<{ name: string }>).map((m) => m.name),
-  );
-  console.log(`  Loaded ${registeredMinds.size} registered minds.`);
+  const registeredMinds = new Set(registry.map((m) => m.name));
 
   // ── Step 2: Resolve feature directory ──────────────────────────────────────
 
   console.log("\nStep 2: Resolving feature directory...");
-  const featureDir = resolveFeatureDir(repoRoot, ticketId);
+  const featureDir = resolveFeatureDir(orchestratorRoot, ticketId);
   if (!featureDir) {
     console.error(`Error: No feature directory found for ${ticketId} in specs/`);
     process.exit(1);
@@ -285,6 +437,28 @@ export async function runImplement(
     }
   }
 
+  // ── Step 3a: Lint tasks with workspace awareness (MR-008) ─────────────────
+
+  const lintWorkspace = workspace.isMultiRepo
+    ? { repoAliases: [...workspace.repoPaths.keys()] }
+    : undefined;
+  const parsedTasks = parseTasks(tasksContent);
+  const lintResult = lintTasks(parsedTasks, registry, lintWorkspace);
+  if (lintResult.errors.length > 0) {
+    console.error(`\n  Task lint errors (${lintResult.errors.length}):`);
+    for (const err of lintResult.errors) {
+      console.error(`    [${err.type}] ${err.task}: ${err.message}`);
+    }
+    console.error("\n  Fix task errors before implementing.");
+    process.exit(1);
+    return;
+  }
+  if (lintResult.warnings.length > 0) {
+    for (const warn of lintResult.warnings) {
+      console.warn(`  Warning [${warn.type}] ${warn.task}: ${warn.message}`);
+    }
+  }
+
   // ── Step 3b: Scaffold unregistered minds with owns: annotations ───────────
 
   const scaffoldResults = await scaffoldFromTasks(taskGroups, registry);
@@ -297,12 +471,18 @@ export async function runImplement(
     }
 
     // Reload registry so wave execution picks up the new minds
-    const updatedRegistry = JSON.parse(readFileSync(mindsJsonPath, "utf-8"));
-    // Mutate in place so all downstream references see the update
-    registry.length = 0;
-    registry.push(...updatedRegistry);
+    if (workspace.isMultiRepo) {
+      const updatedRegistry = loadMultiRepoRegistries(workspace.repoPaths);
+      registry.length = 0;
+      registry.push(...updatedRegistry);
+    } else {
+      const mindsJsonPath = join(mindsDir, "minds.json");
+      const updatedRegistry = JSON.parse(readFileSync(mindsJsonPath, "utf-8"));
+      registry.length = 0;
+      registry.push(...updatedRegistry);
+    }
     registeredMinds.clear();
-    for (const m of registry as Array<{ name: string }>) {
+    for (const m of registry) {
       registeredMinds.add(m.name);
     }
     console.log(`  Registry reloaded: ${registeredMinds.size} registered minds.`);
@@ -364,7 +544,7 @@ export async function runImplement(
   const callerPane = mux.getCurrentPane();
   let busInfo;
   try {
-    busInfo = await startMindsBus(repoRoot, callerPane, ticketId);
+    busInfo = await startMindsBus(orchestratorRoot, callerPane, ticketId);
   } catch (err) {
     console.error(`Error starting bus: ${(err as Error).message}`);
     process.exit(1);
@@ -398,29 +578,38 @@ export async function runImplement(
       mux.killPane(d.paneId);
     }
 
-    // Teardown bus
+    // Teardown bus with timeout to prevent hanging
     try {
+      const busTimeout = setTimeout(() => {
+        // Force kill bus processes if teardown hangs
+        try { process.kill(busInfo.busServerPid); } catch { /* ignore */ }
+        if (busInfo.bridgePid) try { process.kill(busInfo.bridgePid); } catch { /* ignore */ }
+        if (busInfo.aggregatorPid) try { process.kill(busInfo.aggregatorPid); } catch { /* ignore */ }
+      }, 5000);
       await teardownMindsBus({
         busServerPid: busInfo.busServerPid,
         bridgePid: busInfo.bridgePid,
         aggregatorPid: busInfo.aggregatorPid,
-        repoRoot,
+        repoRoot: orchestratorRoot,
         ticketId,
       });
+      clearTimeout(busTimeout);
     } catch {
       // Best effort
     }
 
-    // Cleanup worktrees
+    // Cleanup worktrees — use per-drone repo root when available
     for (const d of allDrones) {
-      cleanupDroneWorktree(d.worktree, repoRoot);
+      cleanupDroneWorktree(d.worktree, getDroneRepoRoot(d, workspace, orchestratorRoot));
     }
 
     console.log("Cleanup complete.");
-    process.exit(1);
   };
 
-  process.on("SIGINT", cleanup);
+  const sigintHandler = () => {
+    cleanup().finally(() => process.exit(1));
+  };
+  process.on("SIGINT", sigintHandler);
 
   // ── Step 7-8: Execute waves ────────────────────────────────────────────────
 
@@ -438,30 +627,8 @@ export async function runImplement(
   // Extract bus port from URL for supervisor config
   const busPort = parseInt(new URL(busInfo.busUrl).port, 10);
 
-  // Resolve base branch: current branch, then origin default, then fallback to "dev"
-  const baseBranch = Bun.spawnSync(["git", "-C", repoRoot, "branch", "--show-current"], {
-    stdout: "pipe", stderr: "pipe",
-  });
-  let baseBranchName = new TextDecoder().decode(baseBranch.stdout).trim();
-  if (!baseBranchName) {
-    // Detached HEAD — detect the remote default branch
-    const symRef = Bun.spawnSync(
-      ["git", "-C", repoRoot, "symbolic-ref", "refs/remotes/origin/HEAD"],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    const symRefOut = new TextDecoder().decode(symRef.stdout).trim();
-    if (symRef.exitCode === 0 && symRefOut) {
-      // e.g. "refs/remotes/origin/main" -> "main"
-      baseBranchName = symRefOut.replace(/^refs\/remotes\/origin\//, "");
-    } else {
-      // Last resort: check if "main" branch exists, otherwise fall back to "dev"
-      const mainCheck = Bun.spawnSync(
-        ["git", "-C", repoRoot, "rev-parse", "--verify", "refs/heads/main"],
-        { stdout: "pipe", stderr: "pipe" },
-      );
-      baseBranchName = mainCheck.exitCode === 0 ? "main" : "dev";
-    }
-  }
+  // Resolve base branch for the orchestrator repo
+  const baseBranchName = resolveBaseBranch(orchestratorRoot);
 
   for (const wave of waves) {
     console.log(`\n=== Executing ${wave.id}: [${wave.minds.map((m) => `@${m}`).join(", ")}] ===`);
@@ -469,9 +636,12 @@ export async function runImplement(
     // Publish WAVE_STARTED
     await publishWaveStarted(busInfo.busUrl, channel, wave.id);
 
-    // Launch deterministic supervisors for this wave
+    // Launch deterministic supervisors for this wave.
+    // INVARIANT: waveDrones and supervisorPromises are pushed in lockstep — index i
+    // in supervisorPromises corresponds to waveDrones[i]. Both are pushed inside
+    // the same try block; if launch fails, neither gets an entry.
     const waveDrones: MindInfo[] = [];
-    const supervisorPromises: Promise<void>[] = [];
+    const supervisorPromises: Promise<SupervisorResult>[] = [];
 
     for (const mindName of wave.minds) {
       const group = groupMap.get(mindName);
@@ -489,8 +659,27 @@ export async function runImplement(
           mindName,
         );
 
+        // MR-010: Per-repo context for multi-repo workspaces
+        const mindRepo = group.repo;
+        const mindRepoRoot = mindRepo && workspace.isMultiRepo
+          ? workspace.repoPaths.get(mindRepo)
+          : undefined;
+
+        // Per-repo config (single lookup — used for branch, testCommand, installCommand)
+        const repoConfig = mindRepo && workspace.manifest
+          ? workspace.manifest.repos.find(r => r.alias === mindRepo)
+          : undefined;
+
+        // Per-repo base branch: workspace defaultBranch > detected > orchestrator fallback
+        let repoBranchName = baseBranchName;
+        if (repoConfig?.defaultBranch) {
+          repoBranchName = repoConfig.defaultBranch;
+        } else if (mindRepoRoot) {
+          repoBranchName = resolveBaseBranch(mindRepoRoot);
+        }
+
         const { info, done } = launchMindSupervisor(
-          repoRoot,
+          mindRepoRoot ?? repoRoot,  // Use mind's repo root when available
           mindsSourceDir,
           mindName,
           ticketId,
@@ -502,9 +691,13 @@ export async function runImplement(
           featureDir,
           group.dependencies,
           callerPane,
-          baseBranchName,
+          repoBranchName,
           resolvedOwnsFiles,
           requireBoundary,
+          mindRepo,
+          mindRepoRoot,
+          repoConfig?.testCommand,
+          repoConfig?.installCommand,
         );
         waveDrones.push(info);
         allDrones.push(info);
@@ -603,31 +796,54 @@ export async function runImplement(
     // Supervisors handle their own drone pane cleanup.
     // Wait for any supervisor promises that haven't resolved yet (edge case:
     // bus got the MIND_COMPLETE but the supervisor promise is still settling).
-    await Promise.allSettled(supervisorPromises);
+    const waveSettlements = await Promise.allSettled(supervisorPromises);
 
-    // ── Per-wave merge ──────────────────────────────────────────────────────
+    // ── Per-wave merge (grouped by repo) ────────────────────────────────────
     // Merge this wave's branches into main BEFORE the next wave starts.
     // This ensures wave-N+1 worktrees are branched from a main that includes
     // wave-N's changes (preventing merge conflicts at the end).
+    // Group by repo to checkout the correct base branch once per repo.
     console.log(`\n  Merging ${wave.id} branches into main...`);
     let waveMergeOk = true;
-    for (const drone of waveDrones) {
-      if (!drone.branch || drone.branch.startsWith("(") || !drone.worktree || drone.worktree.startsWith("(")) {
-        console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved.`);
-        result.mergeResults.push({ mind: drone.mindName, ok: false, error: "Placeholder worktree/branch" });
+
+    // Group drones by repo
+    const dronesByRepo = groupDronesByRepo(waveDrones);
+
+    for (const [repoKey, drones] of dronesByRepo) {
+      const mergeRepoRoot = repoKey === "__default__"
+        ? orchestratorRoot
+        : (workspace.repoPaths.get(repoKey) ?? orchestratorRoot);
+
+      // Checkout correct base branch for this repo before merging
+      const repoBranch = resolveRepoBaseBranch(repoKey, workspace, baseBranchName);
+      const checkoutResult = checkoutBranch(mergeRepoRoot, repoBranch);
+      if (!checkoutResult.ok) {
+        console.error(`  Failed to checkout ${repoBranch} in ${repoKey}: ${checkoutResult.error}`);
+        for (const drone of drones) {
+          result.mergeResults.push({ mind: drone.mindName, ok: false, error: `Checkout failed: ${checkoutResult.error}`, repo: drone.repo });
+        }
         waveMergeOk = false;
         continue;
       }
 
-      console.log(`    Merging @${drone.mindName} (${drone.branch})...`);
-      const mergeResult = mergeDroneWorktree(repoRoot, drone);
-      result.mergeResults.push({ mind: drone.mindName, ok: mergeResult.ok, error: mergeResult.error });
+      for (const drone of drones) {
+        if (!drone.branch || drone.branch.startsWith("(") || !drone.worktree || drone.worktree.startsWith("(")) {
+          console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved.`);
+          result.mergeResults.push({ mind: drone.mindName, ok: false, error: "Placeholder worktree/branch", repo: drone.repo });
+          waveMergeOk = false;
+          continue;
+        }
 
-      if (mergeResult.ok) {
-        console.log(`    Merged @${drone.mindName} successfully.`);
-      } else {
-        console.error(`    Merge failed for @${drone.mindName}: ${mergeResult.error}`);
-        waveMergeOk = false;
+        console.log(`    Merging @${drone.mindName} (${drone.branch}) into ${repoKey}...`);
+        const mergeResult = mergeDroneWorktree(mergeRepoRoot, drone);
+        result.mergeResults.push({ mind: drone.mindName, ok: mergeResult.ok, error: mergeResult.error, repo: drone.repo });
+
+        if (mergeResult.ok) {
+          console.log(`    Merged @${drone.mindName} successfully.`);
+        } else {
+          console.error(`    Merge failed for @${drone.mindName}: ${mergeResult.error}`);
+          waveMergeOk = false;
+        }
       }
     }
 
@@ -635,6 +851,40 @@ export async function runImplement(
       result.ok = false;
       result.errors.push(`Merge failed for one or more minds in ${wave.id}`);
       break; // Don't start next wave if merge failed
+    }
+
+    // ── Post-wave cross-repo contract verification (MR-019, MR-020) ──────
+    if (workspace.isMultiRepo) {
+      const deferredByMind: Array<{ mindName: string; repo?: string; annotations: ContractAnnotation[] }> = [];
+
+      for (let i = 0; i < waveSettlements.length; i++) {
+        const s = waveSettlements[i];
+        if (s.status === "fulfilled" && s.value.deferredCrossRepoAnnotations?.length) {
+          deferredByMind.push({
+            mindName: waveDrones[i].mindName,
+            repo: waveDrones[i].repo,
+            annotations: s.value.deferredCrossRepoAnnotations,
+          });
+        }
+      }
+
+      if (deferredByMind.length > 0) {
+        console.log(`\n  Verifying cross-repo contracts...`);
+        const checks = buildCrossRepoChecks(deferredByMind);
+        const crossRepoResult = verifyCrossRepoContracts(checks, workspace.repoPaths, orchestratorRoot);
+
+        if (!crossRepoResult.pass) {
+          console.error(`  Cross-repo contract violations:`);
+          for (const v of crossRepoResult.violations) {
+            console.error(`    [${v.annotation.taskId}] ${v.reason}`);
+          }
+          result.ok = false;
+          result.errors.push(`Cross-repo contract violations in ${wave.id}`);
+          break;
+        }
+
+        console.log(`  Cross-repo contracts verified: ${checks.length} check(s) passed.`);
+      }
     }
   }
 
@@ -668,7 +918,7 @@ export async function runImplement(
       busServerPid: busInfo.busServerPid,
       bridgePid: busInfo.bridgePid,
       aggregatorPid: busInfo.aggregatorPid,
-      repoRoot,
+      repoRoot: orchestratorRoot,
       ticketId,
     });
     console.log("  Bus server stopped.");
@@ -681,7 +931,7 @@ export async function runImplement(
     if (!drone.worktree || drone.worktree.startsWith("(")) {
       continue; // Worktree was never created -- nothing to clean up
     }
-    const cleanResult = cleanupDroneWorktree(drone.worktree, repoRoot);
+    const cleanResult = cleanupDroneWorktree(drone.worktree, getDroneRepoRoot(drone, workspace, orchestratorRoot));
     if (cleanResult.ok) {
       console.log(`  Cleaned worktree: ${drone.worktree}`);
     } else {
@@ -692,7 +942,7 @@ export async function runImplement(
   }
 
   // Remove SIGINT handler
-  process.removeListener("SIGINT", cleanup);
+  process.removeListener("SIGINT", sigintHandler);
 
   if (!result.ok) {
     console.log("\nImplementation completed with errors.");

@@ -16,6 +16,8 @@ export interface DroneBriefParams {
   featureDir: string;
   mindsDir?: string; // absolute path to minds/ dir for test commands
   ownsFiles?: string[]; // file paths this mind is allowed to touch
+  repo?: string; // repo alias for multi-repo context
+  testCommand?: string; // custom test command (default: "bun test")
 }
 
 /**
@@ -53,15 +55,20 @@ export function buildDroneBrief(params: DroneBriefParams): string {
     featureDir,
     mindsDir,
     ownsFiles,
+    repo,
+    testCommand,
   } = params;
 
   const taskList = formatTaskList(tasks);
-  const testPath = mindsDir ? `${mindsDir}/${mindName}/` : `minds/${mindName}/`;
+  const defaultTestCmd = `bun test ${mindsDir ? `${mindsDir}/${mindName}/` : `minds/${mindName}/`}`;
+  const effectiveTestCmd = testCommand ?? defaultTestCmd;
 
   const depsSection =
     dependencies.length > 0
       ? `\n---\n\n## 🔗 Dependencies\n\n${dependencies.map((d) => `@${d}`).join(", ")} — completed and merged in previous waves.\n`
       : "";
+
+  const repoRow = repo ? `\n| **Repo** | ${repo} |` : "";
 
   return `---
 name: Drone Brief
@@ -77,7 +84,7 @@ Your agent definition is in \`.claude/agents/drone.md\`. If you've compacted, re
 |-------|-------|
 | **Ticket** | ${ticketId} |
 | **Wave** | ${waveId} |
-| **Feature** | ${featureDir} |
+| **Feature** | ${featureDir} |${repoRow}
 
 ---
 
@@ -102,7 +109,8 @@ Files outside these paths will be rejected by the deterministic boundary check.
 1. Read and understand each task above.
 2. Implement ALL tasks in order (unless marked [P] for parallel-safe).
 3. Write tests for each change (TDD: red -> green -> refactor).
-4. Run \`bun test ${testPath}\` to verify your changes pass.
+4. Run \`${effectiveTestCmd}\` to verify your changes pass.
 5. Commit your work with a descriptive message referencing ${ticketId}.
+6. When ALL tasks are done and committed, type \`/exit\` to close this session.
 `;
 }

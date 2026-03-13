@@ -32,6 +32,7 @@ import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { MindsEventType } from "../../transport/minds-events.ts";
 import { killPane as killPaneImpl } from "../tmux-utils.ts";
+import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
 
 // Internal imports (used by runMindSupervisor below)
 import {
@@ -197,6 +198,13 @@ export async function runMindSupervisor(
         // Install the Stop hook for sentinel-based completion detection
         deps.installDroneStopHook(drone.worktree);
 
+        // Auto-accept workspace trust dialog (fires after Claude Code loads).
+        // Claude Code prompts "trust this folder?" for new worktrees even with
+        // --dangerously-skip-permissions. "Yes" is pre-selected, so Enter accepts.
+        setTimeout(() => {
+          try { new TmuxMultiplexer().sendKeys(drone.paneId, ""); } catch { /* pane may be gone */ }
+        }, 3000);
+
         console.log(`[supervisor] @${config.mindName}: Drone spawned in pane ${drone.paneId}`);
       } else {
         // Subsequent iterations: re-launch drone in the SAME worktree
@@ -220,6 +228,11 @@ export async function runMindSupervisor(
 
           // Reinstall the Stop hook (sentinel file was consumed by previous iteration)
           deps.installDroneStopHook(currentWorktree);
+
+          // Auto-accept workspace trust dialog for re-launched drone
+          setTimeout(() => {
+            try { new TmuxMultiplexer().sendKeys(newPaneId, ""); } catch { /* pane may be gone */ }
+          }, 3000);
         } catch (err) {
           const msg = `Failed to re-launch drone: ${errorMessage(err)}`;
           console.error(`[supervisor] @${config.mindName}: ${msg}`);
@@ -246,7 +259,17 @@ export async function runMindSupervisor(
 
       // ---- Step 4: Deterministic checks ----
       sm.transition(SupervisorState.CHECKING);
-      const checks = deps.runDeterministicChecks(currentWorktree, config.baseBranch, config.mindName, config.tasks, config.ownsFiles, config.requireBoundary);
+      const checks = deps.runDeterministicChecks({
+        worktreePath: currentWorktree,
+        baseBranch: config.baseBranch,
+        mindName: config.mindName,
+        tasks: config.tasks,
+        configOwnsFiles: config.ownsFiles,
+        requireBoundary: config.requireBoundary,
+        testCommand: config.testCommand,
+        infraExclusions: config.infraExclusions,
+        repo: config.repo,
+      });
 
       // ---- Step 5: Publish REVIEW_STARTED ----
       await deps.publishSignal(
@@ -313,6 +336,13 @@ export async function runMindSupervisor(
         allFindings.push({ ...finding, iteration });
       }
       result.findings = allFindings;
+
+      // Propagate deferred cross-repo annotations from the latest check.
+      // Overwrites (not merges) — the latest iteration's contracts are authoritative
+      // since the drone may have fixed earlier issues.
+      if (checks.deferredCrossRepoAnnotations?.length) {
+        result.deferredCrossRepoAnnotations = checks.deferredCrossRepoAnnotations;
+      }
 
       // ---- Step 7: Verdict ----
       if (verdict.approved) {

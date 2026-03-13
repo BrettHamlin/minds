@@ -15,6 +15,7 @@ import { mindsPublish } from "./transport/minds-publish.ts";
 import { BusTransport } from "./transport/BusTransport.ts";
 import type { Message } from "./transport/Transport.ts";
 import { resolveMindsDir, getRepoRoot } from "./shared/paths.js";
+import { extractLastJsonLine } from "./shared/parse-utils.ts";
 
 // --- Types ---
 
@@ -115,7 +116,11 @@ export async function dispatchToMind(
   const rawStdout = await new Response(dronePaneProc.stdout as ReadableStream).text();
   let paneResult: { drone_pane: string; worktree: string; branch: string };
   try {
-    paneResult = JSON.parse(rawStdout.trim());
+    // drone-pane.ts may emit log lines before the JSON (e.g. tmux pane guard).
+    // Extract the last line that looks like JSON.
+    const jsonLine = extractLastJsonLine(rawStdout);
+    if (!jsonLine) throw new Error("no JSON line found");
+    paneResult = JSON.parse(jsonLine);
   } catch {
     throw new Error(`drone-pane.ts returned invalid JSON: ${rawStdout}`);
   }

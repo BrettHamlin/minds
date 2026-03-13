@@ -226,6 +226,22 @@ describe("validateMindDescription", () => {
   it("rejects consumes with non-string entries", () => {
     expect(validateMindDescription({ ...valid, consumes: [true, "PLAN_COMPLETE"] })).toBe(false);
   });
+
+  it("accepts valid repo string", () => {
+    expect(validateMindDescription({ ...valid, repo: "backend" })).toBe(true);
+  });
+
+  it("rejects empty string repo", () => {
+    expect(validateMindDescription({ ...valid, repo: "" })).toBe(false);
+  });
+
+  it("rejects non-string repo", () => {
+    expect(validateMindDescription({ ...valid, repo: 42 })).toBe(false);
+  });
+
+  it("accepts undefined repo (backward compat)", () => {
+    expect(validateMindDescription(valid)).toBe(true);
+  });
 });
 
 describe("Mind interface structural compliance", () => {

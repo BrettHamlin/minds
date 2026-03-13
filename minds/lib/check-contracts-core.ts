@@ -10,6 +10,7 @@
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { resolve } from "path";
 import { normalizeMindsPrefix, resolveMindsDir } from "../shared/paths.js";
+import { parseRepoPath, stripRepoPrefix } from "../shared/repo-path.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -72,20 +73,49 @@ export function verifyContracts(
   repoRoot: string,
   mindName?: string,
   ownsFiles?: string[],
-): { pass: boolean; violations: Violation[] } {
+  mindRepo?: string,
+  repoPaths?: Map<string, string>,
+): { pass: boolean; violations: Violation[]; deferredCrossRepo: ContractAnnotation[] } {
   const violations: Violation[] = [];
+  const deferredCrossRepo: ContractAnnotation[] = [];
 
   const effectiveMindName = mindName ?? "";
 
+  // Strip repo prefixes from ownsFiles for local filesystem scanning
+  const strippedOwnsFiles = ownsFiles?.map(stripRepoPrefix);
+
   for (const ann of annotations) {
+    // Cross-repo module contract: filePath has a repo prefix different from mindRepo → defer
+    const parsed = parseRepoPath(ann.filePath);
+    if (parsed.repo && parsed.repo !== mindRepo) {
+      deferredCrossRepo.push(ann);
+      continue;
+    }
+
+    // API contract: "from @mind_name" — consumer-side import verification
+    // is not possible across repos/languages. Enforced by:
+    //   1. Wave ordering (producer completes before consumer starts)
+    //   2. Producer-side file verification (file exists)
+    //   3. LLM review (verifies consumer actually calls the endpoint)
+    if (ann.type === "consumes" && ann.filePath.startsWith("@")) {
+      // API contract — skip consumer-side import scan, no violation, not deferred
+      continue;
+    }
+
+    // Resolve the effective root for this annotation's file
+    const effectiveRoot = resolveEffectiveRoot(ann.filePath, repoRoot, repoPaths);
+    // Strip repo prefix from filePath for local resolution
+    const localFilePath = stripRepoPrefix(ann.filePath);
+    const localAnn = { ...ann, filePath: localFilePath };
+
     if (ann.type === "produces") {
-      verifyProduces(ann, repoRoot, violations);
+      verifyProduces(localAnn, effectiveRoot, violations);
     } else if (ann.type === "consumes") {
-      verifyConsumes(ann, repoRoot, effectiveMindName, violations, ownsFiles);
+      verifyConsumes(localAnn, effectiveRoot, effectiveMindName, violations, strippedOwnsFiles);
     }
   }
 
-  return { pass: violations.length === 0, violations };
+  return { pass: violations.length === 0, violations, deferredCrossRepo };
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────
@@ -105,17 +135,7 @@ function verifyProduces(
   }
 
   const content = readFileSync(fullPath, "utf-8");
-  const exportPatterns = [
-    new RegExp(`export\\s+function\\s+${escapeRegExp(ann.interfaceName)}\\b`),
-    new RegExp(`export\\s+const\\s+${escapeRegExp(ann.interfaceName)}\\b`),
-    new RegExp(`export\\s+type\\s+${escapeRegExp(ann.interfaceName)}\\b`),
-    new RegExp(`export\\s+interface\\s+${escapeRegExp(ann.interfaceName)}\\b`),
-    new RegExp(`export\\s+class\\s+${escapeRegExp(ann.interfaceName)}\\b`),
-    new RegExp(`export\\s+enum\\s+${escapeRegExp(ann.interfaceName)}\\b`),
-    new RegExp(`export\\s*\\{[^}]*\\b${escapeRegExp(ann.interfaceName)}\\b[^}]*\\}`),
-  ];
-
-  const isExported = exportPatterns.some((p) => p.test(content));
+  const isExported = checkExportExists(content, ann.interfaceName);
   if (!isExported) {
     violations.push({
       annotation: ann,
@@ -212,7 +232,40 @@ function verifyConsumes(
   }
 }
 
-function resolveFilePath(filePath: string, root: string): string {
+/**
+ * Resolve the effective repo root for a file path. If the path has a repo prefix
+ * and repoPaths is available, resolve to that repo's root. Otherwise, use repoRoot.
+ */
+function resolveEffectiveRoot(
+  filePath: string,
+  repoRoot: string,
+  repoPaths?: Map<string, string>,
+): string {
+  const parsed = parseRepoPath(filePath);
+  if (parsed.repo && repoPaths?.has(parsed.repo)) {
+    return repoPaths.get(parsed.repo)!;
+  }
+  return repoRoot;
+}
+
+/**
+ * Check whether a file exports a given interface name.
+ * Scans for all common TypeScript export forms.
+ */
+export function checkExportExists(content: string, interfaceName: string): boolean {
+  const exportPatterns = [
+    new RegExp(`export\\s+function\\s+${escapeRegExp(interfaceName)}\\b`),
+    new RegExp(`export\\s+const\\s+${escapeRegExp(interfaceName)}\\b`),
+    new RegExp(`export\\s+type\\s+${escapeRegExp(interfaceName)}\\b`),
+    new RegExp(`export\\s+interface\\s+${escapeRegExp(interfaceName)}\\b`),
+    new RegExp(`export\\s+class\\s+${escapeRegExp(interfaceName)}\\b`),
+    new RegExp(`export\\s+enum\\s+${escapeRegExp(interfaceName)}\\b`),
+    new RegExp(`export\\s*\\{[^}]*\\b${escapeRegExp(interfaceName)}\\b[^}]*\\}`),
+  ];
+  return exportPatterns.some((p) => p.test(content));
+}
+
+export function resolveFilePath(filePath: string, root: string): string {
   // Handle .minds/ vs minds/ — check both
   const direct = resolve(root, filePath);
   if (existsSync(direct)) return direct;

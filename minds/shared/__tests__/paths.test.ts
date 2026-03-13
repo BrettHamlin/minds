@@ -3,7 +3,46 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { stripGlob, matchesOwnership } from "../paths.ts";
+import { containsPathTraversal, stripGlob, matchesOwnership, encodeProjectPath } from "../paths.ts";
+
+// ---------------------------------------------------------------------------
+// containsPathTraversal
+// ---------------------------------------------------------------------------
+
+describe("containsPathTraversal", () => {
+  test("detects leading ..", () => {
+    expect(containsPathTraversal("../outside")).toBe(true);
+  });
+
+  test("detects embedded .. component", () => {
+    expect(containsPathTraversal("foo/../bar")).toBe(true);
+  });
+
+  test("detects trailing ..", () => {
+    expect(containsPathTraversal("foo/..")).toBe(true);
+  });
+
+  test("detects bare ..", () => {
+    expect(containsPathTraversal("..")).toBe(true);
+  });
+
+  test("allows double dots within filename (foo..bar)", () => {
+    expect(containsPathTraversal("foo..bar")).toBe(false);
+  });
+
+  test("allows double dots within directory name", () => {
+    expect(containsPathTraversal("foo..bar/baz")).toBe(false);
+  });
+
+  test("allows normal paths", () => {
+    expect(containsPathTraversal("./foo/bar")).toBe(false);
+    expect(containsPathTraversal("src/api")).toBe(false);
+  });
+
+  test("allows empty string", () => {
+    expect(containsPathTraversal("")).toBe(false);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // stripGlob
@@ -131,5 +170,31 @@ describe("matchesOwnership", () => {
     // "src/api-v2/foo.ts".startsWith("src/api") is true — this is the bare prefix edge case
     // This documents the behavior; callers should use trailing slash or glob for precise matching
     expect(matchesOwnership("src/api-v2/foo.ts", ["src/api"])).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// encodeProjectPath
+// ---------------------------------------------------------------------------
+
+describe("encodeProjectPath", () => {
+  test("replaces slashes with dashes and strips leading dash", () => {
+    expect(encodeProjectPath("/Users/alice/code/my-app")).toBe("Users-alice-code-my-app");
+  });
+
+  test("handles path without leading slash", () => {
+    expect(encodeProjectPath("tmp/worktree")).toBe("tmp-worktree");
+  });
+
+  test("handles root path", () => {
+    expect(encodeProjectPath("/")).toBe("");
+  });
+
+  test("handles empty string", () => {
+    expect(encodeProjectPath("")).toBe("");
+  });
+
+  test("handles deeply nested path", () => {
+    expect(encodeProjectPath("/a/b/c/d/e")).toBe("a-b-c-d-e");
   });
 });

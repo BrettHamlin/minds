@@ -13,7 +13,9 @@
 // produced interface, not just static annotation matching.
 
 import type { MindDescription } from "../mind.ts";
-import { matchesOwnership, stripGlob } from "../shared/paths.ts";
+import { containsPathTraversal, matchesOwnership, stripGlob } from "../shared/paths.ts";
+import { parseRepoPath, stripRepoPrefix } from "../shared/repo-path.ts";
+import { topoSort } from "../shared/topo-sort.ts";
 import { readFileSync } from "fs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,6 +38,7 @@ export interface ParsedTask {
   sectionHasDepsHeader: boolean; // section header has (depends on: ...) annotation
   sectionDeclaredDeps: string[]; // minds declared in (depends on: ...) — without @
   sectionOwnsFiles: string[]; // globs declared in (owns: ...) — file ownership for new minds
+  sectionRepo?: string; // repo alias declared in (repo: ...) — for multi-repo workspaces
 }
 
 export interface ContractReport {
@@ -59,7 +62,11 @@ export interface LintError {
     | "ownership_overlap"
     | "unregistered_no_owns"
     | "path_traversal"
-    | "owns_conflict";
+    | "owns_conflict"
+    | "repo_unknown"
+    | "cross_repo_owns_mismatch"
+    | "one_mind_one_repo"
+    | "missing_repo_multirepo";
   task: string;
   message: string;
 }
@@ -82,6 +89,7 @@ export function parseTasks(content: string): ParsedTask[] {
   let sectionHasDepsHeader = false;
   let sectionDeclaredDeps: string[] = [];
   let sectionOwnsFiles: string[] = [];
+  let sectionRepo: string | undefined;
 
   for (const line of lines) {
     // Section header: ## @mind_name Tasks [(owns: glob1, glob2, depends on: @a, @b)]
@@ -93,6 +101,7 @@ export function parseTasks(content: string): ParsedTask[] {
       sectionHasDepsHeader = false;
       sectionDeclaredDeps = [];
       sectionOwnsFiles = [];
+      sectionRepo = undefined;
 
       if (sectionMatch[2]) {
         const paren = sectionMatch[2];
@@ -108,13 +117,17 @@ export function parseTasks(content: string): ParsedTask[] {
         }
 
         // Parse "owns: ..." clause
-        const ownsMatch = paren.match(/owns:\s*([^,]*(?:,\s*(?!depends\s)[\w./*\-]+)*)/);
+        const ownsMatch = paren.match(/owns:\s*([^,]*(?:,\s*(?!depends\s|repo\s*:)[\w./*\-:]+)*)/);
         if (ownsMatch) {
           sectionOwnsFiles = ownsMatch[1]
             .split(",")
             .map((s) => s.trim())
             .filter((s) => s.length > 0);
         }
+
+        // Parse "repo: ..." clause
+        const repoMatch = paren.match(/repo:\s*([\w-]+)/);
+        if (repoMatch) sectionRepo = repoMatch[1];
       }
       continue;
     }
@@ -160,6 +173,7 @@ export function parseTasks(content: string): ParsedTask[] {
       sectionHasDepsHeader,
       sectionDeclaredDeps: [...sectionDeclaredDeps],
       sectionOwnsFiles: [...sectionOwnsFiles],
+      sectionRepo,
     });
   }
 
@@ -232,7 +246,7 @@ export function generateContracts(tasks: ParsedTask[]): ContractReport {
 
   return {
     contracts: [...contractMap.values()],
-    waves: topoSort(allMinds, depsRecord),
+    waves: topoSort(allMinds, depsRecord, "collect"),
     dependencies: depsRecord,
   };
 }
@@ -245,7 +259,8 @@ export function generateContracts(tasks: ParsedTask[]): ContractReport {
  */
 export function lintTasks(
   tasks: ParsedTask[],
-  mindsRegistry: MindDescription[]
+  mindsRegistry: MindDescription[],
+  workspace?: { repoAliases: string[] },
 ): LintResult {
   const errors: LintError[] = [];
   const warnings: LintWarning[] = [];
@@ -388,18 +403,30 @@ export function lintTasks(
     }
   }
 
+  // Build mind → repo map for multi-repo awareness
+  const mindRepoMap = new Map<string, string | undefined>();
+  for (const [mind, mTasks] of mindGroups) {
+    mindRepoMap.set(mind, mTasks[0].sectionRepo);
+  }
+
   const mindNames = [...allMindOwns.keys()];
   for (let i = 0; i < mindNames.length; i++) {
     for (let j = i + 1; j < mindNames.length; j++) {
       const mindA = mindNames[i];
       const mindB = mindNames[j];
+
+      // Paths in different repos cannot overlap — skip comparison
+      const repoA = mindRepoMap.get(mindA);
+      const repoB = mindRepoMap.get(mindB);
+      if (repoA && repoB && repoA !== repoB) continue;
+
       const ownsA = allMindOwns.get(mindA)!;
       const ownsB = allMindOwns.get(mindB)!;
 
       for (const a of ownsA) {
-        const prefixA = stripGlob(a);
+        const prefixA = stripGlob(stripRepoPrefix(a));
         for (const b of ownsB) {
-          const prefixB = stripGlob(b);
+          const prefixB = stripGlob(stripRepoPrefix(b));
           if (prefixA.startsWith(prefixB) || prefixB.startsWith(prefixA)) {
             errors.push({
               type: "ownership_overlap",
@@ -439,7 +466,7 @@ export function lintTasks(
   // ── 10. path_traversal (T006) ─────────────────────────────────────────────
   for (const [mind, mTasks] of mindGroups) {
     for (const glob of mTasks[0].sectionOwnsFiles) {
-      if (/(^|\/)\.\.(\/|$)/.test(glob)) {
+      if (containsPathTraversal(glob)) {
         errors.push({
           type: "path_traversal",
           task: `@${mind}`,
@@ -490,57 +517,76 @@ export function lintTasks(
     }
   }
 
+  // ── 13. repo_unknown (MR-007) ───────────────────────────────────────────────
+  // Only checked when workspace info is provided
+  if (workspace) {
+    for (const [mind, mTasks] of mindGroups) {
+      const repo = mTasks[0].sectionRepo;
+      if (repo && !workspace.repoAliases.includes(repo)) {
+        errors.push({
+          type: "repo_unknown",
+          task: `@${mind}`,
+          message: `@${mind} declares repo: "${repo}" which is not in the workspace manifest (known: ${workspace.repoAliases.join(", ")})`,
+        });
+      }
+    }
+  }
+
+  // ── 13b. missing_repo_multirepo — One Mind = One Repo enforcement ─────────
+  // In multi-repo mode, every mind MUST have a repo annotation
+  if (workspace) {
+    for (const [mind, mTasks] of mindGroups) {
+      if (!mTasks[0].sectionRepo) {
+        errors.push({
+          type: "missing_repo_multirepo",
+          task: `@${mind}`,
+          message: `@${mind} has no repo: annotation but workspace is multi-repo — every mind must declare its repo`,
+        });
+      }
+    }
+  }
+
+  // ── 14. cross_repo_owns_mismatch (MR-007) ─────────────────────────────────
+  // If a mind declares repo: backend but owns: frontend:src/ — that's a mismatch
+  for (const [mind, mTasks] of mindGroups) {
+    const repo = mTasks[0].sectionRepo;
+    if (!repo) continue;
+    for (const glob of mTasks[0].sectionOwnsFiles) {
+      const parsed = parseRepoPath(glob);
+      if (parsed.repo && parsed.repo !== repo) {
+        errors.push({
+          type: "cross_repo_owns_mismatch",
+          task: `@${mind}`,
+          message: `@${mind} declares repo: "${repo}" but owns path "${glob}" in repo "${parsed.repo}"`,
+        });
+      }
+    }
+  }
+
+  // ── 15. one_mind_one_repo (MR-007) ────────────────────────────────────────
+  // If a mind's owns_files have mixed repo prefixes, that's an error
+  for (const [mind, mTasks] of mindGroups) {
+    const ownsGlobs = mTasks[0].sectionOwnsFiles;
+    if (ownsGlobs.length < 2) continue;
+    const repos = new Set<string>();
+    for (const glob of ownsGlobs) {
+      const parsed = parseRepoPath(glob);
+      if (parsed.repo) repos.add(parsed.repo);
+    }
+    if (repos.size > 1) {
+      errors.push({
+        type: "one_mind_one_repo",
+        task: `@${mind}`,
+        message: `@${mind} owns files in multiple repos [${[...repos].join(", ")}] — one Mind = one repo`,
+      });
+    }
+  }
+
   return { valid: errors.length === 0, errors, warnings };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function topoSort(
-  allMinds: Set<string>,
-  deps: Record<string, string[]>
-): string[][] {
-  const inDegree = new Map<string, number>();
-  const downstream = new Map<string, string[]>();
-
-  for (const m of allMinds) {
-    inDegree.set(m, 0);
-    downstream.set(m, []);
-  }
-
-  for (const [mind, mindDeps] of Object.entries(deps)) {
-    if (!allMinds.has(mind)) continue;
-    for (const dep of mindDeps) {
-      if (!allMinds.has(dep)) continue;
-      inDegree.set(mind, (inDegree.get(mind) ?? 0) + 1);
-      downstream.get(dep)!.push(mind);
-    }
-  }
-
-  const waves: string[][] = [];
-  const processed = new Set<string>();
-
-  while (processed.size < allMinds.size) {
-    const wave = [...allMinds]
-      .filter((m) => !processed.has(m) && inDegree.get(m) === 0)
-      .sort();
-
-    if (wave.length === 0) {
-      // Cycle detected — add remaining as final wave
-      waves.push([...allMinds].filter((m) => !processed.has(m)).sort());
-      break;
-    }
-
-    waves.push(wave);
-    for (const m of wave) {
-      processed.add(m);
-      for (const down of downstream.get(m) ?? []) {
-        inDegree.set(down, (inDegree.get(down) ?? 0) - 1);
-      }
-    }
-  }
-
-  return waves;
-}
 
 /**
  * Extract file paths from a task description for boundary checking.
@@ -554,7 +600,8 @@ function extractPathsForBoundaryCheck(description: string): string[] {
   const re = /\b([a-zA-Z_][\w.\-]*(?:\/[a-zA-Z_][\w.\-]*)+)\b/g;
   let m;
   while ((m = re.exec(text)) !== null) {
-    paths.push(m[1]);
+    // Strip repo prefix so "backend:src/api/foo.ts" → "src/api/foo.ts" for boundary check
+    paths.push(stripRepoPrefix(m[1]));
   }
   return paths;
 }

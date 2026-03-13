@@ -6,7 +6,8 @@
  * not touch infrastructure files that no drone should modify.
  */
 
-import { normalizeMindsPrefix, stripGlob, matchesOwnership } from "../../shared/paths.ts";
+import { normalizeMindsPrefix, matchesOwnership } from "../../shared/paths.ts";
+import { stripRepoPrefix } from "../../shared/repo-path.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -61,10 +62,10 @@ export function parseDiffPaths(diff: string): string[] {
 /**
  * Check whether a file path matches an infrastructure exclusion.
  */
-function isInfrastructureFile(filePath: string): boolean {
+function isInfrastructureFile(filePath: string, infraExcluded: string[] = INFRASTRUCTURE_EXCLUDED): boolean {
   const normalizedFile = normalizeMindsPrefix(filePath);
 
-  for (const excluded of INFRASTRUCTURE_EXCLUDED) {
+  for (const excluded of infraExcluded) {
     const normalizedExcluded = normalizeMindsPrefix(excluded);
 
     // Directory prefix match (entries ending with /)
@@ -88,6 +89,8 @@ function isInfrastructureFile(filePath: string): boolean {
 export interface CheckBoundaryOptions {
   /** When true, empty ownsFiles is a hard error instead of a skip. */
   requireBoundary?: boolean;
+  /** Additional infrastructure exclusion patterns (merged with defaults). */
+  infraExclusions?: string[];
 }
 
 export function checkBoundary(
@@ -98,6 +101,14 @@ export function checkBoundary(
 ): BoundaryCheckResult {
   const violations: BoundaryViolation[] = [];
   const modifiedFiles = parseDiffPaths(diff);
+
+  // Strip repo prefixes for matching (diff paths are repo-relative)
+  const localOwnsFiles = ownsFiles.map(f => stripRepoPrefix(f));
+
+  // Merge custom infra exclusions with defaults
+  const infraExcluded = options?.infraExclusions
+    ? [...INFRASTRUCTURE_EXCLUDED, ...options.infraExclusions]
+    : INFRASTRUCTURE_EXCLUDED;
 
   // Hard error: requireBoundary + empty ownsFiles means no boundary defined
   if (options?.requireBoundary && ownsFiles.length === 0) {
@@ -112,7 +123,7 @@ export function checkBoundary(
 
   for (const file of modifiedFiles) {
     // Check infrastructure exclusion first
-    if (isInfrastructureFile(file)) {
+    if (isInfrastructureFile(file, infraExcluded)) {
       violations.push({
         file,
         message: `You modified \`${file}\`, which is a protected infrastructure file ` +
@@ -124,12 +135,13 @@ export function checkBoundary(
     }
 
     // Skip ownership check if no boundary defined
-    if (ownsFiles.length === 0) {
+    if (localOwnsFiles.length === 0) {
       continue;
     }
 
-    // Check ownership boundary
-    if (!matchesOwnership(file, ownsFiles)) {
+    // Check ownership boundary (use stripped paths for matching)
+    if (!matchesOwnership(file, localOwnsFiles)) {
+      // Show original (with-prefix) owns_files in violation messages for clarity
       const allowedDirs = ownsFiles.map((p) => `  - ${p}`).join("\n");
       violations.push({
         file,
