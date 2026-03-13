@@ -93,6 +93,7 @@ describe("Wire format shape validation", () => {
         command: "/bin/echo",
         args: ["hello"],
         env: null,
+        cwd: null,
       },
     };
     expect(kind.t).toBe("Spawn");

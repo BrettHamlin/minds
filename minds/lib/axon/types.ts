@@ -156,6 +156,7 @@ export type MessageKind =
         command: string;
         args: string[];
         env: Record<string, string> | null;
+        cwd: string | null;
       };
     }
   | { t: "Kill"; c: { process_id: ProcessId; signal: number | null } }

@@ -328,11 +328,12 @@ export class AxonClient {
     command: string,
     args: string[] = [],
     env: Record<string, string> | null = null,
+    cwd: string | null = null,
   ): Promise<string> {
     const processId = validateProcessId(id);
     const response = await this.request({
       t: "Spawn",
-      c: { process_id: processId, command, args, env },
+      c: { process_id: processId, command, args, env, cwd },
     });
     if (response.t === "SpawnOk") {
       return response.c.process_id;
