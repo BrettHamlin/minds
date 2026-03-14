@@ -149,6 +149,7 @@ export interface SupervisorDeps {
     briefContent: string;
     busUrl: string;
     mindName: string;
+    repoRoot: string;
   }) => Promise<DroneHandle>;
 
   /** Wait for drone completion (sentinel file + poll or Axon event). */

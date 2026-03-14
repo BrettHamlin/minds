@@ -140,10 +140,8 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
  * previous commits and the feedback file we just wrote.
  *
  * Steps:
- *   1. Kill the old drone pane
- *   2. Create a new tmux pane
- *   3. Write the updated DRONE-BRIEF.md to the existing worktree
- *   4. Launch Claude Code in the new pane pointed at the same worktree
+ *   1. Write the updated DRONE-BRIEF.md to the existing worktree
+ *   2. Dispatch to the appropriate backend (Axon or tmux)
  */
 export async function relaunchDroneInWorktree(opts: {
   oldHandle: DroneHandle;
@@ -152,20 +150,34 @@ export async function relaunchDroneInWorktree(opts: {
   briefContent: string;
   busUrl: string;
   mindName: string;
+  repoRoot: string;
 }): Promise<DroneHandle> {
-  const { oldHandle, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
+  const { oldHandle, worktreePath, briefContent } = opts;
 
-  // Kill the old drone pane
-  await killPane(oldHandle.id);
-
-  // Write updated DRONE-BRIEF.md to the SAME worktree
+  // Write updated DRONE-BRIEF.md (common to both backends)
   writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
 
-  // Create a new tmux pane via shared utility
+  if (oldHandle.backend === "axon") {
+    return relaunchDroneAxon(opts);
+  }
+  return relaunchDroneTmux(opts);
+}
+
+/**
+ * Re-launch a drone using the tmux backend.
+ * Kills the old pane, creates a new one, and launches Claude Code.
+ */
+async function relaunchDroneTmux(opts: {
+  oldHandle: DroneHandle;
+  callerPane: string;
+  worktreePath: string;
+  busUrl: string;
+}): Promise<DroneHandle> {
+  const { oldHandle, callerPane, worktreePath, busUrl } = opts;
+
+  await killPane(oldHandle.id);
   const newPaneId = await splitPane(callerPane);
 
-  // Launch Claude Code in the new pane, pointing at the existing worktree.
-  // If this fails, kill the new pane to prevent leaking orphaned tmux panes.
   const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
   try {
     await launchClaudeInPane({
@@ -180,6 +192,58 @@ export async function relaunchDroneInWorktree(opts: {
   }
 
   return { id: newPaneId, backend: "tmux" };
+}
+
+/**
+ * Re-launch a drone using the Axon backend.
+ * Kills the old process (idempotent), spawns a new one with a unique ID.
+ */
+async function relaunchDroneAxon(opts: {
+  oldHandle: DroneHandle;
+  worktreePath: string;
+  busUrl: string;
+  mindName: string;
+  repoRoot: string;
+}): Promise<DroneHandle> {
+  const { oldHandle, worktreePath, busUrl, mindName, repoRoot } = opts;
+
+  const { AxonClient } = await import("../axon/client.ts");
+  const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
+  const { sanitizeProcessId } = await import("../axon/types.ts");
+
+  const socketPath = process.env.AXON_SOCKET ??
+    getDaemonPaths(repoRoot).socketPath;
+
+  const client = await AxonClient.connect(socketPath);
+
+  try {
+    // Kill old process (idempotent — may already be dead)
+    try {
+      await client.kill(oldHandle.id);
+    } catch {
+      // Process already exited — fine
+    }
+
+    // Generate unique process ID for this iteration
+    const newProcessId = sanitizeProcessId(
+      `drone-${mindName}-relaunch-${Date.now()}`
+    );
+
+    const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
+
+    // Mirror the exact args from drone-pane.ts Axon spawn path
+    await client.spawn(
+      newProcessId,
+      "claude",
+      ["--dangerously-skip-permissions", "--model", "sonnet", "--setting-sources", "project,local", prompt],
+      busUrl ? { BUS_URL: busUrl } : null,
+      worktreePath,
+    );
+
+    return { id: newProcessId, backend: "axon" };
+  } finally {
+    client.close();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -248,19 +312,15 @@ export function installDroneStopHook(worktreePath: string): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Wait for drone completion by watching for a sentinel file.
+ * Wait for drone completion.
  *
- * The sentinel file is created by a Claude Code Stop hook installed in
- * the worktree's `.claude/settings.json`. This is event-driven via
- * `fs.watch()` with a poll fallback every 5 seconds.
- *
- * Falls back to pane-existence check if the sentinel never appears
- * (e.g., hook didn't fire due to crash).
- *
- * NOTE: Drones are always spawned via drone-pane.ts into tmux panes,
- * regardless of the MINDS_MULTIPLEXER setting. Axon completion detection
- * is NOT used here because Axon has no knowledge of tmux-spawned processes.
- * The sentinel-file + tmux pane-alive polling works reliably for all drones.
+ * Routes based on the drone's backend:
+ * - **axon**: Uses Axon's native event-based completion detection via
+ *   `waitForProcessCompletion()`. No sentinel file needed.
+ * - **tmux**: Watches for a sentinel file created by a Claude Code Stop
+ *   hook in the worktree's `.claude/settings.json`. Event-driven via
+ *   `fs.watch()` with a poll fallback every 5 seconds. Falls back to
+ *   pane-existence check if the sentinel never appears (e.g., crash).
  */
 export async function waitForDroneCompletion(
   handle: DroneHandle,
@@ -269,6 +329,16 @@ export async function waitForDroneCompletion(
   pollIntervalMs: number = 5000,
   repoRoot?: string,
 ): Promise<{ ok: boolean; error?: string }> {
+  // Axon backend: use native event-based completion detection,
+  // but also race against sentinel file detection. Claude Code does not
+  // exit after completing work (it waits for the next prompt), so the
+  // Axon Exited event may never arrive. The sentinel file is the reliable
+  // signal that work is done.
+  if (handle.backend === "axon") {
+    return waitForDroneCompletionAxon(handle, worktreePath, timeoutMs, repoRoot);
+  }
+
+  // tmux backend: sentinel file polling (existing path)
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
   // Backend-aware "is alive" checker
@@ -341,6 +411,118 @@ export async function waitForDroneCompletion(
       done({ ok: true });
     }
   });
+}
+
+/**
+ * Wait for drone completion using Axon's native event-based system.
+ *
+ * Delegates to `waitForProcessCompletion()` from the Axon completion module,
+ * which subscribes to Axon events and resolves when the process exits.
+ * This avoids sentinel-file polling entirely when the drone was spawned via Axon.
+ */
+async function waitForDroneCompletionAxon(
+  handle: DroneHandle,
+  worktreePath: string,
+  timeoutMs: number,
+  repoRoot?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
+
+  // Race two completion signals:
+  // 1. Sentinel file detection (reliable -- Claude Code creates this on Stop hook)
+  // 2. Axon process exit event (fires if the process actually exits)
+  //
+  // Claude Code stays running after completing work (waiting for next prompt),
+  // so the Axon Exited event may not arrive. The sentinel file is the primary
+  // completion signal; Axon exit is a bonus for detecting crashes.
+
+  // Sentinel file watcher -- same approach as tmux backend
+  const sentinelPromise = new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    // Check immediately in case sentinel already exists
+    if (existsSync(sentinelPath)) {
+      resolve({ ok: true });
+      return;
+    }
+
+    // Watch + poll for sentinel
+    let done = false;
+    const finish = (result: { ok: boolean; error?: string }) => {
+      if (done) return;
+      done = true;
+      clearInterval(pollTimer);
+      try { watcher?.close(); } catch { /* ignore */ }
+      resolve(result);
+    };
+
+    let watcher: ReturnType<typeof watch> | undefined;
+    try {
+      watcher = watch(worktreePath, (_eventType, filename) => {
+        if (filename === SENTINEL_FILENAME && existsSync(sentinelPath)) {
+          finish({ ok: true });
+        }
+      });
+      watcher.on("error", () => {
+        try { watcher?.close(); } catch { /* ignore */ }
+        watcher = undefined;
+      });
+    } catch {
+      // fs.watch() may fail on some platforms -- poll fallback handles it
+    }
+
+    // Poll every 5 seconds as fallback
+    const pollTimer = setInterval(() => {
+      if (existsSync(sentinelPath)) {
+        finish({ ok: true });
+      }
+    }, 5000);
+  });
+
+  // Axon exit event watcher
+  const axonPromise = (async (): Promise<{ ok: boolean; error?: string }> => {
+    const { AxonClient } = await import("../axon/client.ts");
+    const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
+    const { waitForProcessCompletion } = await import("../axon/completion.ts");
+
+    const resolvedRoot = repoRoot ?? process.cwd();
+    const socketPath = process.env.AXON_SOCKET ??
+      getDaemonPaths(resolvedRoot).socketPath;
+
+    let client: InstanceType<typeof AxonClient>;
+    try {
+      client = await AxonClient.connect(socketPath);
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Axon connection failed during completion wait: ${err}`,
+      };
+    }
+
+    try {
+      const result = await waitForProcessCompletion(client, handle.id, timeoutMs);
+      if (result.error === "timeout") {
+        return { ok: false, error: `Drone timed out after ${timeoutMs}ms` };
+      }
+      if (result.error === "process_not_found") {
+        return { ok: false, error: `Drone ${handle.id} not found in Axon — likely crashed` };
+      }
+      return {
+        ok: result.ok,
+        error: result.ok ? undefined : `Drone exited with code ${result.exitCode}`,
+      };
+    } finally {
+      client.close();
+    }
+  })();
+
+  // Timeout
+  const timeoutPromise = new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    setTimeout(() => {
+      resolve({ ok: false, error: `Drone timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
+  });
+
+  // Race: first to resolve wins (sentinel, axon exit, or timeout)
+  return Promise.race([sentinelPromise, axonPromise, timeoutPromise]);
 }
 
 /**

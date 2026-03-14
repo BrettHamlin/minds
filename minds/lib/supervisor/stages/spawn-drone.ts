@@ -95,6 +95,7 @@ export const executeSpawnDrone = async (
       briefContent,
       busUrl: config.busUrl,
       mindName: config.mindName,
+      repoRoot: config.repoRoot,
     });
     ctx.droneHandle = newHandle;
     ctx.allDroneHandles.push(newHandle);
