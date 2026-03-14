@@ -420,6 +420,12 @@ export function lintTasks(
       const repoB = mindRepoMap.get(mindB);
       if (repoA && repoB && repoA !== repoB) continue;
 
+      // Non-code minds (build/test) intentionally own "**" — skip overlap checks
+      const regA = mindsRegistry.find(m => m.name === mindA);
+      const regB = mindsRegistry.find(m => m.name === mindB);
+      if (regA?.pipeline_template && regA.pipeline_template !== "code") continue;
+      if (regB?.pipeline_template && regB.pipeline_template !== "code") continue;
+
       const ownsA = allMindOwns.get(mindA)!;
       const ownsB = allMindOwns.get(mindB)!;
 
