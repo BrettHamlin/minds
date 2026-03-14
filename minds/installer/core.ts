@@ -486,6 +486,41 @@ function installDashboard(ctx: CopyContext, destMindsDir: string, log: LogFn): v
   }
 }
 
+/** Step: Clone eval-factory as optional sibling dependency (non-blocking) */
+function installEvalFactory(ctx: CopyContext, log: LogFn): void {
+  const evalFactoryDir = join(ctx.repoRoot, "..", "eval-factory");
+  if (existsSync(evalFactoryDir)) {
+    log("  eval-factory: found at ../eval-factory, skipping clone");
+    return;
+  }
+
+  log("  eval-factory: not found, cloning...");
+  const cloneResult = spawnSync(
+    "git",
+    ["clone", "--depth", "1", "https://github.com/BrettHamlin/eval-factory.git", evalFactoryDir],
+    { stdio: "pipe", timeout: 60_000 },
+  );
+
+  if (cloneResult.status !== 0) {
+    const stderr = cloneResult.stderr?.toString().trim() ?? "unknown error";
+    log(`  eval-factory: clone failed (non-fatal, eval-score stage will skip) — ${stderr}`);
+    return;
+  }
+
+  // Install dependencies in the cloned eval-factory
+  const installResult = spawnSync("bun", ["install"], {
+    cwd: evalFactoryDir,
+    stdio: "pipe",
+    timeout: 60_000,
+  });
+
+  if (installResult.status === 0) {
+    log("  eval-factory: cloned and dependencies installed");
+  } else {
+    log("  eval-factory: cloned but bun install failed (eval-score may not work)");
+  }
+}
+
 /** Step: Install Axon daemon binary (non-blocking — failure does not halt init) */
 async function installAxonBinary(ctx: CopyContext, destMindsDir: string, log: LogFn): Promise<void> {
   const binDir = join(destMindsDir, "bin");
@@ -571,6 +606,9 @@ export async function installCoreMinds(
 
   // Phase 5: Axon daemon binary (non-blocking)
   await installAxonBinary(ctx, destMindsDir, log);
+
+  // Phase 6: Optional eval-factory dependency (non-blocking)
+  installEvalFactory(ctx, log);
 
   return result;
 }

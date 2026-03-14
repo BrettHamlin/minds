@@ -91,6 +91,17 @@ export const executeLlmReview = async (
   }
   ctx.previousFeedback = previousFeedback;
 
+  // Build eval score section from upstream eval-score stage (if available)
+  let evalScoreSection: string | undefined;
+  const evalScore = ctx.store.evalScore as
+    | { score: number; fileCount: number; aggregationMethod: string; files: Array<{ file: string; score: number }> }
+    | undefined;
+  if (evalScore) {
+    const minFileScore = Math.min(...evalScore.files.map(f => f.score));
+    const perFile = evalScore.files.map(f => `- ${f.file}: ${f.score}/100`).join("\n");
+    evalScoreSection = `Overall: ${evalScore.score}/100 (${evalScore.fileCount} files, ${evalScore.aggregationMethod})\nMin file score: ${minFileScore}/100\n\nPer-file breakdown:\n${perFile}`;
+  }
+
   // Build review prompt (pipeline-aware checklist via BRE-624)
   const prompt = buildReviewPrompt({
     diff: checkResults.diff,
@@ -100,6 +111,7 @@ export const executeLlmReview = async (
     iteration,
     previousFeedback,
     pipelineTemplate: config.pipelineTemplate,
+    evalScoreSection,
   });
 
   // Call LLM for review

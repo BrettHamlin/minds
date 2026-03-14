@@ -15,6 +15,7 @@ export { executeRunTests } from "./run-tests.ts";
 export { executeBoundaryCheck } from "./boundary-check.ts";
 export { executeContractCheck } from "./contract-check.ts";
 export { executeLlmReview, applyForceRejections } from "./llm-review.ts";
+export { executeEvalScore } from "./eval-score.ts";
 
 // Re-export individual executors — build/test pipeline (BRE-621)
 export { executeRunCommand } from "./run-command.ts";
@@ -29,6 +30,7 @@ import { executeRunTests } from "./run-tests.ts";
 import { executeBoundaryCheck } from "./boundary-check.ts";
 import { executeContractCheck } from "./contract-check.ts";
 import { executeLlmReview } from "./llm-review.ts";
+import { executeEvalScore } from "./eval-score.ts";
 import { executeRunCommand } from "./run-command.ts";
 import { executeHealthCheck } from "./health-check.ts";
 import { executeCollectResults } from "./collect-results.ts";
@@ -46,6 +48,7 @@ const ALL_EXECUTORS: Record<string, typeof executeSpawnDrone> = {
   "boundary-check": executeBoundaryCheck,
   "contract-check": executeContractCheck,
   "llm-review": executeLlmReview,
+  "eval-score": executeEvalScore,
   // Build/test pipeline stages (BRE-621)
   "run-command": executeRunCommand,
   "health-check": executeHealthCheck,

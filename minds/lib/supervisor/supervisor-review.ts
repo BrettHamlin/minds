@@ -100,6 +100,7 @@ export interface ReviewPromptParams {
   iteration: number;
   previousFeedback?: string;
   pipelineTemplate?: string;
+  evalScoreSection?: string;
 }
 
 /**
@@ -109,12 +110,16 @@ export interface ReviewPromptParams {
  * This function is retained as a fallback for non-agent review scenarios.
  */
 export function buildReviewPrompt(params: ReviewPromptParams): string {
-  const { diff, testOutput, standards, tasks, iteration, previousFeedback, pipelineTemplate } = params;
+  const { diff, testOutput, standards, tasks, iteration, previousFeedback, pipelineTemplate, evalScoreSection } = params;
 
   const { truncatedDiff, truncatedTestOutput, taskList } = prepareReviewInputs(diff, testOutput, tasks);
 
   const previousSection = previousFeedback
     ? `\n## Previous Feedback (for context)\n\n${previousFeedback}\n`
+    : "";
+
+  const evalSection = evalScoreSection
+    ? `\n## Code Quality Analysis (eval-factory)\n\n${evalScoreSection}\n`
     : "";
 
   const checklist = formatReviewChecklist(pipelineTemplate);
@@ -136,7 +141,7 @@ ${truncatedDiff}
 \`\`\`
 ${truncatedTestOutput}
 \`\`\`
-
+${evalSection}
 ## Engineering Standards
 
 ${standards}
@@ -160,6 +165,7 @@ export interface AgentReviewPromptParams {
   testOutput: string;
   tasks: MindTask[];
   iteration: number;
+  evalScoreSection?: string;
 }
 
 /**
@@ -171,9 +177,13 @@ export interface AgentReviewPromptParams {
  * prompt rather than competing with the data in the user message.
  */
 export function buildAgentReviewPrompt(params: AgentReviewPromptParams): string {
-  const { diff, testOutput, tasks, iteration } = params;
+  const { diff, testOutput, tasks, iteration, evalScoreSection } = params;
 
   const { truncatedDiff, truncatedTestOutput, taskList } = prepareReviewInputs(diff, testOutput, tasks);
+
+  const evalSection = evalScoreSection
+    ? `\n## Code Quality Analysis (eval-factory)\n\n${evalScoreSection}\n`
+    : "";
 
   return `Review iteration ${iteration}.
 
@@ -191,7 +201,8 @@ ${truncatedDiff}
 
 \`\`\`
 ${truncatedTestOutput}
-\`\`\``;
+\`\`\`
+${evalSection}`;
 }
 
 // ---------------------------------------------------------------------------
