@@ -8,8 +8,7 @@
  * Selection order:
  * 1. forceBackend option (programmatic override)
  * 2. MINDS_MULTIPLEXER env var ("tmux" or "axon")
- * 3. Axon binary found + daemon starts successfully -> Axon
- * 4. Fallback -> tmux with warning
+ * 3. Default -> tmux (Axon requires explicit opt-in)
  */
 
 import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
@@ -32,9 +31,8 @@ export interface MultiplexerFactoryOptions {
  *
  * Selection order:
  * 1. forceBackend option -> use specified backend
- * 2. MINDS_MULTIPLEXER env var -> "tmux" for instant rollback, "axon" to force axon
- * 3. Axon binary found + daemon starts -> Axon
- * 4. Fallback -> tmux with warning
+ * 2. MINDS_MULTIPLEXER env var -> "axon" to opt in, "tmux" (or unset) for default
+ * 3. Default -> tmux
  *
  * Callers should call `mux.close?.()` when done to release any persistent
  * connections (e.g., AxonClient socket).
@@ -45,8 +43,9 @@ export async function createMultiplexer(
   const { repoRoot, forceBackend } = opts;
 
   // Determine desired backend: forceBackend takes priority over env var
+  // Default to tmux — Axon requires explicit opt-in via MINDS_MULTIPLEXER=axon
   const envBackend = process.env.MINDS_MULTIPLEXER?.toLowerCase();
-  const desired = forceBackend ?? envBackend ?? "auto";
+  const desired = forceBackend ?? envBackend ?? "tmux";
 
   // Immediate tmux path -- no Axon probing needed
   if (desired === "tmux") {
