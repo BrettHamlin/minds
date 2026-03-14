@@ -29,8 +29,32 @@ export const REVIEW_CHECKLIST: readonly string[] = [
   "Code follows project conventions",
 ];
 
-export function formatReviewChecklist(): string {
-  return REVIEW_CHECKLIST.map((item, i) => `${i + 1}. ${item}`).join("\n");
+export const BUILD_REVIEW_CHECKLIST: readonly string[] = [
+  "All assigned tasks are implemented",
+  "Build completed successfully",
+  "All expected artifacts produced",
+  "Error messages include sufficient context",
+  "Code follows project conventions",
+];
+
+export const TEST_REVIEW_CHECKLIST: readonly string[] = [
+  "All assigned tasks are implemented",
+  "Test suite executed successfully",
+  "All results reported clearly",
+  "Error messages include sufficient context",
+  "Code follows project conventions",
+];
+
+export function formatReviewChecklist(pipelineTemplate?: string): string {
+  let checklist: readonly string[];
+  if (pipelineTemplate === "build") {
+    checklist = BUILD_REVIEW_CHECKLIST;
+  } else if (pipelineTemplate === "test") {
+    checklist = TEST_REVIEW_CHECKLIST;
+  } else {
+    checklist = REVIEW_CHECKLIST;
+  }
+  return checklist.map((item, i) => `${i + 1}. ${item}`).join("\n");
 }
 
 function prepareReviewInputs(diff: string, testOutput: string, tasks: MindTask[]) {
@@ -75,6 +99,8 @@ export interface ReviewPromptParams {
   tasks: MindTask[];
   iteration: number;
   previousFeedback?: string;
+  pipelineTemplate?: string;
+  evalScoreSection?: string;
 }
 
 /**
@@ -84,7 +110,7 @@ export interface ReviewPromptParams {
  * This function is retained as a fallback for non-agent review scenarios.
  */
 export function buildReviewPrompt(params: ReviewPromptParams): string {
-  const { diff, testOutput, standards, tasks, iteration, previousFeedback } = params;
+  const { diff, testOutput, standards, tasks, iteration, previousFeedback, pipelineTemplate, evalScoreSection } = params;
 
   const { truncatedDiff, truncatedTestOutput, taskList } = prepareReviewInputs(diff, testOutput, tasks);
 
@@ -92,7 +118,11 @@ export function buildReviewPrompt(params: ReviewPromptParams): string {
     ? `\n## Previous Feedback (for context)\n\n${previousFeedback}\n`
     : "";
 
-  const checklist = formatReviewChecklist();
+  const evalSection = evalScoreSection
+    ? `\n## Code Quality Analysis (eval-factory)\n\n${evalScoreSection}\n`
+    : "";
+
+  const checklist = formatReviewChecklist(pipelineTemplate);
 
   return `You are reviewing code changes for iteration ${iteration} of a drone implementation cycle.
 
@@ -111,7 +141,7 @@ ${truncatedDiff}
 \`\`\`
 ${truncatedTestOutput}
 \`\`\`
-
+${evalSection}
 ## Engineering Standards
 
 ${standards}
@@ -135,6 +165,7 @@ export interface AgentReviewPromptParams {
   testOutput: string;
   tasks: MindTask[];
   iteration: number;
+  evalScoreSection?: string;
 }
 
 /**
@@ -146,9 +177,13 @@ export interface AgentReviewPromptParams {
  * prompt rather than competing with the data in the user message.
  */
 export function buildAgentReviewPrompt(params: AgentReviewPromptParams): string {
-  const { diff, testOutput, tasks, iteration } = params;
+  const { diff, testOutput, tasks, iteration, evalScoreSection } = params;
 
   const { truncatedDiff, truncatedTestOutput, taskList } = prepareReviewInputs(diff, testOutput, tasks);
+
+  const evalSection = evalScoreSection
+    ? `\n## Code Quality Analysis (eval-factory)\n\n${evalScoreSection}\n`
+    : "";
 
   return `Review iteration ${iteration}.
 
@@ -166,7 +201,8 @@ ${truncatedDiff}
 
 \`\`\`
 ${truncatedTestOutput}
-\`\`\``;
+\`\`\`
+${evalSection}`;
 }
 
 // ---------------------------------------------------------------------------

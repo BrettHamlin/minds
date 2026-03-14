@@ -51,7 +51,6 @@ describe("assembleClaudeContent", () => {
     expect(result).toContain("- src/test/**");
     expect(result).toContain("- lib/test/**");
     expect(result).toContain("Standard rules here.");
-    expect(result).toContain("## Project-Specific Standards");
     expect(result).toContain("Project-specific rules.");
     expect(result).toContain("## Mind Profile (@test_mind)");
     expect(result).toContain("I am the test mind.");

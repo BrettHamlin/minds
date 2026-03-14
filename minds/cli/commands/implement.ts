@@ -51,6 +51,7 @@ import type { MindDescription } from "../../mind.ts";
 import type { SupervisorResult } from "../../lib/supervisor/supervisor-types.ts";
 import type { ContractAnnotation } from "../../lib/check-contracts-core.ts";
 import { verifyCrossRepoContracts, buildCrossRepoChecks } from "../../lib/supervisor/cross-repo-contracts.ts";
+import { producesCode } from "../../lib/supervisor/pipeline-templates.ts";
 
 /**
  * Resolve the source minds directory (where scripts live).
@@ -176,6 +177,7 @@ function launchMindSupervisor(
   mindRepoRoot?: string,
   testCommand?: string,
   installCommand?: string,
+  pipelineTemplate?: string,
 ): { info: MindInfo; done: Promise<SupervisorResult> } {
   const supervisorConfig: SupervisorConfig = {
     mindName,
@@ -200,6 +202,7 @@ function launchMindSupervisor(
     mindRepoRoot,
     testCommand,
     installCommand,
+    pipelineTemplate,
   };
 
   // MindInfo placeholder -- will be updated when supervisor provides drone info
@@ -210,14 +213,15 @@ function launchMindSupervisor(
     worktree: "(pending)",
     branch: "(pending)",
     repo,
+    pipelineTemplate,
   };
 
   const done = runMindSupervisor(supervisorConfig).then((result) => {
     // Update info with actual values from the supervisor result
     info.worktree = result.worktree;
     info.branch = result.branch;
-    if (result.dronePaneId) {
-      info.paneId = result.dronePaneId;
+    if (result.droneId) {
+      info.paneId = result.droneId;
     }
 
     if (!result.ok) {
@@ -541,7 +545,7 @@ export async function runImplement(
   // ── Step 6: Start bus server ───────────────────────────────────────────────
 
   console.log("\nStep 6: Starting bus server...");
-  const callerPane = mux.getCurrentPane();
+  const callerPane = await mux.getCurrentPane();
   let busInfo;
   try {
     busInfo = await startMindsBus(orchestratorRoot, callerPane, ticketId);
@@ -575,7 +579,7 @@ export async function runImplement(
 
     // Kill all Mind panes
     for (const d of allDrones) {
-      mux.killPane(d.paneId);
+      await mux.killPane(d.paneId);
     }
 
     // Teardown bus with timeout to prevent hanging
@@ -678,6 +682,10 @@ export async function runImplement(
           repoBranchName = resolveBaseBranch(mindRepoRoot);
         }
 
+        // Look up pipeline_template from registry for this mind
+        const registryEntry = registry.find(m => m.name === mindName);
+        const mindPipelineTemplate = registryEntry?.pipeline_template;
+
         const { info, done } = launchMindSupervisor(
           mindRepoRoot ?? repoRoot,  // Use mind's repo root when available
           mindsSourceDir,
@@ -698,6 +706,7 @@ export async function runImplement(
           mindRepoRoot,
           repoConfig?.testCommand,
           repoConfig?.installCommand,
+          mindPipelineTemplate,
         );
         waveDrones.push(info);
         allDrones.push(info);
@@ -827,6 +836,17 @@ export async function runImplement(
       }
 
       for (const drone of drones) {
+        // Skip merge for non-code minds (build/test pipelines don't produce code to merge)
+        if (drone.pipelineTemplate && drone.pipelineTemplate !== "code") {
+          const regEntry = registry.find(m => m.name === drone.mindName);
+          const isNonCode = regEntry ? !producesCode(regEntry) : true;
+          if (isNonCode) {
+            console.log(`    Skipping merge for @${drone.mindName} (${drone.pipelineTemplate} pipeline — non-code)`);
+            result.mergeResults.push({ mind: drone.mindName, ok: true, repo: drone.repo });
+            continue;
+          }
+        }
+
         if (!drone.branch || drone.branch.startsWith("(") || !drone.worktree || drone.worktree.startsWith("(")) {
           console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved.`);
           result.mergeResults.push({ mind: drone.mindName, ok: false, error: "Placeholder worktree/branch", repo: drone.repo });

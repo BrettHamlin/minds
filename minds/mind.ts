@@ -3,6 +3,8 @@
  * No external dependencies — pure TypeScript types + runtime validation.
  */
 
+import type { PipelineStage } from "./lib/supervisor/pipeline-types.ts";
+
 export interface WorkUnit {
   request: string;
   context?: unknown;
@@ -41,6 +43,10 @@ export interface MindDescription {
   source?: "fission" | "task-scaffolded" | "manual";
   /** Repo alias for multi-repo workspaces. */
   repo?: string;
+  /** Explicit pipeline stages — highest priority in resolution order. */
+  pipeline?: PipelineStage[];
+  /** Named pipeline template (e.g. "code", "build", "test") — used when no explicit pipeline. */
+  pipeline_template?: string;
 }
 
 export interface Mind {
@@ -101,5 +107,20 @@ export function validateMindDescription(value: unknown): value is MindDescriptio
   if (obj.consumes !== undefined && (!Array.isArray(obj.consumes) || !obj.consumes.every((c) => typeof c === "string"))) return false;
   if (obj.source !== undefined && obj.source !== "fission" && obj.source !== "task-scaffolded" && obj.source !== "manual") return false;
   if (obj.repo !== undefined && (typeof obj.repo !== "string" || obj.repo.length === 0)) return false;
+
+  // Pipeline validation
+  if (obj.pipeline !== undefined) {
+    if (!Array.isArray(obj.pipeline)) return false;
+    for (const stage of obj.pipeline) {
+      if (typeof stage !== "object" || stage === null) return false;
+      const s = stage as Record<string, unknown>;
+      if (typeof s.type !== "string" || s.type.length === 0) return false;
+      if (s.label !== undefined && typeof s.label !== "string") return false;
+      if (s.on_fail !== undefined && s.on_fail !== "reject" && s.on_fail !== "warn" && s.on_fail !== "skip") return false;
+      if (s.config !== undefined && (typeof s.config !== "object" || s.config === null || Array.isArray(s.config))) return false;
+    }
+  }
+  if (obj.pipeline_template !== undefined && typeof obj.pipeline_template !== "string") return false;
+
   return true;
 }

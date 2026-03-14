@@ -42,7 +42,7 @@ let tmpDir: string;
 let mindsDir: string;
 let mindsJsonPath: string;
 
-beforeAll(() => {
+beforeAll(async () => {
   // Create isolated temp dir
   tmpDir = mkdtempSync("/tmp/core-minds-e2e-");
   mindsDir = join(tmpDir, ".minds");
@@ -53,7 +53,7 @@ beforeAll(() => {
 
   // Install core Minds using the dev source directory
   const mindsSourceDir = getMindsSourceDir();
-  installCoreMinds(mindsSourceDir, tmpDir, { quiet: true });
+  await installCoreMinds(mindsSourceDir, tmpDir, { quiet: true });
 });
 
 afterAll(() => {

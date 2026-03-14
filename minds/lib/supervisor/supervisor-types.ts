@@ -6,6 +6,7 @@
 import type { MindTask } from "../../cli/lib/implement-types.ts";
 import type { MindsEventType } from "../../transport/minds-events.ts";
 import type { ContractAnnotation } from "../check-contracts-core.ts";
+import type { DroneHandle } from "../drone-backend.ts";
 
 // ---------------------------------------------------------------------------
 // State enum
@@ -56,6 +57,10 @@ export interface SupervisorConfig {
   installCommand?: string;
   /** Additional infrastructure exclusion patterns (merged with defaults in boundary check). */
   infraExclusions?: string[];
+  /** Explicit pipeline stages for this mind (from MindDescription). */
+  pipeline?: import("./pipeline-types.ts").PipelineStage[];
+  /** Named pipeline template (e.g. "code", "build", "test"). */
+  pipelineTemplate?: string;
 }
 
 export interface ReviewFinding {
@@ -78,11 +83,12 @@ export interface SupervisorResult {
   approved: boolean;
   approvedWithWarnings: boolean;
   findings: ReviewFinding[];
-  dronePaneId?: string;
-  /** All drone pane IDs spawned across iterations (tracked for cleanup). */
-  allPaneIds: string[];
-  /** Total number of drone panes spawned across all iterations. */
-  totalPanesSpawned: number;
+  /** ID of the most recent drone (backward compat alias). */
+  droneId?: string;
+  /** All drone handles spawned across iterations (tracked for cleanup). */
+  allDroneHandles: DroneHandle[];
+  /** Total number of drones spawned across all iterations. */
+  totalDronesSpawned: number;
   worktree: string;
   branch: string;
   errors: string[];
@@ -130,26 +136,28 @@ export interface CheckResults {
 export interface SupervisorDeps {
   /** Spawn a drone in a new worktree (first iteration). */
   spawnDrone: (config: SupervisorConfig, briefContent: string) => Promise<{
-    paneId: string;
+    handle: DroneHandle;
     worktree: string;
     branch: string;
   }>;
 
   /** Re-launch a drone in an existing worktree (subsequent iterations). */
   relaunchDroneInWorktree: (opts: {
-    oldPaneId: string;
+    oldHandle: DroneHandle;
     callerPane: string;
     worktreePath: string;
     briefContent: string;
     busUrl: string;
     mindName: string;
-  }) => string;
+  }) => Promise<DroneHandle>;
 
-  /** Wait for drone completion (sentinel file + poll). */
+  /** Wait for drone completion (sentinel file + poll or Axon event). */
   waitForDroneCompletion: (
-    paneId: string,
+    handle: DroneHandle,
     worktreePath: string,
     timeoutMs: number,
+    pollIntervalMs?: number,
+    repoRoot?: string,
   ) => Promise<{ ok: boolean; error?: string }>;
 
   /** Publish a signal to the bus. */
@@ -173,8 +181,8 @@ export interface SupervisorDeps {
   /** Install the drone Stop hook for sentinel-based completion detection. */
   installDroneStopHook: (worktreePath: string) => void;
 
-  /** Kill a tmux pane. */
-  killPane: (paneId: string) => void;
+  /** Kill a drone. */
+  killDrone: (handle: DroneHandle) => Promise<void>;
 
   /** Delay between retry iterations (injectable for testing). */
   delay: (ms: number) => Promise<void>;

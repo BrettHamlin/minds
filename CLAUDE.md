@@ -117,4 +117,38 @@ The following message patterns are ALWAYS complex orchestration tasks requiring 
 
 **Why this matters:** MINIMAL depth skips orchestrator gate evaluation, feedback relay, and phase dispatch. This causes agents to receive no instructions and pipelines to stall silently.
 
+## AXON INTEGRATION RULES (MANDATORY)
+
+### Drone Operations ALWAYS Use TmuxMultiplexer — NEVER the Factory
+
+**Drones are tmux panes running Claude Code IDE sessions.** They are NOT Axon processes. The Axon multiplexer has fundamentally different semantics: `splitPane` spawns a process, `sendKeys` spawns another process. In tmux, `splitPane` creates an empty pane and `sendKeys` types into it.
+
+**These files MUST use `new TmuxMultiplexer()` directly — NEVER `createMultiplexer()`:**
+- `minds/lib/supervisor/supervisor-drone.ts` — drone completion detection
+- `minds/lib/drone-pane.ts` — drone pane creation and Claude Code launch
+- `minds/lib/supervisor/stages/spawn-drone.ts` — auto-accept keystroke
+
+**The multiplexer factory (`createMultiplexer`) is correct for Mind-level operations** (e.g., `mind-pane.ts`, `tmux-utils.ts`) where Axon routing is appropriate. But drone operations bypass the factory entirely.
+
+**Why this matters:** Using the factory for drones caused two production bugs:
+1. `process_not_found` — Axon was asked to wait for a tmux-spawned process it didn't know about
+2. `process already exists` — Axon's splitPane + sendKeys spawned colliding processes
+
+### Axon Backend vs Tmux Backend
+
+| Component | Backend | Why |
+|-----------|---------|-----|
+| Mind-level ops (`mind-pane.ts`) | Factory (Axon or tmux) | Minds may use Axon for process orchestration |
+| Drone spawning (`drone-pane.ts`) | TmuxMultiplexer only | Drones need Claude Code IDE, not shell processes |
+| Drone completion (`supervisor-drone.ts`) | TmuxMultiplexer only | Sentinel file + pane-alive polling |
+| Utility functions (`tmux-utils.ts`) | Factory (with fallback) | General-purpose, factory handles fallback |
+
+### E2E Testing Rules
+
+- **ALL E2E tests involving `minds implement` MUST run in a NEW tmux window** — never the current window
+- Test with `MINDS_MULTIPLEXER=axon` to verify Axon integration
+- Test with `MINDS_MULTIPLEXER=tmux` to verify tmux fallback
+- Clean up stale Axon daemons between runs: `pkill -f axon-cli` and remove `.minds/run/axon.sock`
+- Clean up stale worktrees and branches between runs
+
 <!-- MANUAL ADDITIONS END -->

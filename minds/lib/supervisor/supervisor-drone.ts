@@ -10,9 +10,9 @@ import { resolveMindsDir } from "../../shared/paths.ts";
 import { extractLastJsonLine } from "../../shared/parse-utils.ts";
 import { buildDroneBrief } from "../../cli/lib/drone-brief.ts";
 import { killPane, splitPane, launchClaudeInPane, shellQuote } from "../tmux-utils.ts";
-import type { TerminalMultiplexer } from "../terminal-multiplexer.ts";
 import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
 import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
+import type { DroneHandle } from "../drone-backend.ts";
 
 // ---------------------------------------------------------------------------
 // Hook entry shape for Claude Code settings.json
@@ -41,6 +41,7 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
     ownsFiles: config.ownsFiles,
     repo: config.repo,
     testCommand: config.testCommand,
+    pipelineTemplate: config.pipelineTemplate,
   });
 
   if (!feedbackFile) {
@@ -56,7 +57,7 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
 // ---------------------------------------------------------------------------
 
 export interface DroneSpawnResult {
-  paneId: string;
+  handle: DroneHandle;
   worktree: string;
   branch: string;
 }
@@ -109,7 +110,7 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
     throw new Error(`drone-pane.ts failed for @${config.mindName}: ${stderr}`);
   }
 
-  let result: { drone_pane: string; worktree: string; branch: string };
+  let result: { drone_pane: string; worktree: string; branch: string; backend?: string };
   try {
     // drone-pane.ts may emit log lines before the JSON (e.g. tmux pane guard).
     // Extract the last line that looks like JSON.
@@ -121,7 +122,10 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
   }
 
   return {
-    paneId: result.drone_pane,
+    handle: {
+      id: result.drone_pane,
+      backend: (result.backend as "axon" | "tmux") ?? "tmux",
+    },
     worktree: result.worktree,
     branch: result.branch,
   };
@@ -141,41 +145,41 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
  *   3. Write the updated DRONE-BRIEF.md to the existing worktree
  *   4. Launch Claude Code in the new pane pointed at the same worktree
  */
-export function relaunchDroneInWorktree(opts: {
-  oldPaneId: string;
+export async function relaunchDroneInWorktree(opts: {
+  oldHandle: DroneHandle;
   callerPane: string;
   worktreePath: string;
   briefContent: string;
   busUrl: string;
   mindName: string;
-}): string {
-  const { oldPaneId, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
+}): Promise<DroneHandle> {
+  const { oldHandle, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
 
   // Kill the old drone pane
-  killPane(oldPaneId);
+  await killPane(oldHandle.id);
 
   // Write updated DRONE-BRIEF.md to the SAME worktree
   writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
 
   // Create a new tmux pane via shared utility
-  const newPaneId = splitPane(callerPane);
+  const newPaneId = await splitPane(callerPane);
 
   // Launch Claude Code in the new pane, pointing at the existing worktree.
   // If this fails, kill the new pane to prevent leaking orphaned tmux panes.
   const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
   try {
-    launchClaudeInPane({
+    await launchClaudeInPane({
       paneId: newPaneId,
       worktreePath,
       prompt,
       busUrl,
     });
   } catch (err) {
-    killPane(newPaneId);
+    await killPane(newPaneId);
     throw err;
   }
 
-  return newPaneId;
+  return { id: newPaneId, backend: "tmux" };
 }
 
 // ---------------------------------------------------------------------------
@@ -252,24 +256,33 @@ export function installDroneStopHook(worktreePath: string): void {
  *
  * Falls back to pane-existence check if the sentinel never appears
  * (e.g., hook didn't fire due to crash).
+ *
+ * NOTE: Drones are always spawned via drone-pane.ts into tmux panes,
+ * regardless of the MINDS_MULTIPLEXER setting. Axon completion detection
+ * is NOT used here because Axon has no knowledge of tmux-spawned processes.
+ * The sentinel-file + tmux pane-alive polling works reliably for all drones.
  */
 export async function waitForDroneCompletion(
-  paneId: string,
+  handle: DroneHandle,
   worktreePath: string,
   timeoutMs: number,
   pollIntervalMs: number = 5000,
-  mux: TerminalMultiplexer = new TmuxMultiplexer(),
+  repoRoot?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
-  // TOCTOU guard: if the sentinel already exists AND the pane is already gone,
+  // Backend-aware "is alive" checker
+  console.warn(`[waitForDroneCompletion] handle=${JSON.stringify(handle)} repoRoot=${repoRoot} pollInterval=${pollIntervalMs}`);
+  const isAlive = await createIsAliveChecker(handle, repoRoot);
+
+  // TOCTOU guard: if the sentinel already exists AND the drone is already gone,
   // the drone completed before we started watching. Return success immediately.
   if (existsSync(sentinelPath)) {
-    if (!mux.isPaneAlive(paneId)) {
-      // Pane is gone + sentinel exists = drone completed successfully before we started watching
+    if (!await isAlive()) {
+      // Drone is gone + sentinel exists = completed successfully before we started watching
       return { ok: true };
     }
-    // Pane is still alive — sentinel is stale from a previous run, clean it up
+    // Drone is still alive — sentinel is stale from a previous run, clean it up
     try { rmSync(sentinelPath, { force: true }); } catch { /* ignore */ }
   }
 
@@ -307,25 +320,75 @@ export async function waitForDroneCompletion(
       // fs.watch() may fail on some platforms — fall through to poll
     }
 
-    // Poll fallback: check sentinel file + pane existence every interval
-    const pollTimer = setInterval(() => {
+    // Poll fallback: check sentinel file + drone existence every interval
+    const pollTimer = setInterval(async () => {
       // Primary: sentinel file exists
       if (existsSync(sentinelPath)) {
         done({ ok: true });
         return;
       }
 
-      // Fallback: pane no longer exists (crash, manual kill)
-      // If sentinel was NOT written but pane is gone, the drone crashed.
-      if (!mux.isPaneAlive(paneId)) {
-        done({ ok: false, error: `Drone pane ${paneId} died without writing sentinel — likely crashed` });
+      // Fallback: drone no longer alive (crash, manual kill)
+      // If sentinel was NOT written but drone is gone, it crashed.
+      if (!await isAlive()) {
+        done({ ok: false, error: `Drone ${handle.id} (${handle.backend}) died without writing sentinel — likely crashed` });
         return;
       }
     }, pollIntervalMs);
 
-    // Check immediately in case sentinel already exists or pane is already gone
+    // Check immediately in case sentinel already exists or drone is already gone
     if (existsSync(sentinelPath)) {
       done({ ok: true });
     }
   });
 }
+
+/**
+ * Create a backend-aware "is alive" checker for a drone.
+ *
+ * - tmux backend: uses TmuxMultiplexer.isPaneAlive()
+ * - axon backend: uses AxonClient.info() to check process state via a
+ *   persistent connection (created once, reused across polls)
+ */
+async function createIsAliveChecker(
+  handle: DroneHandle,
+  repoRoot?: string,
+): Promise<() => Promise<boolean>> {
+  if (handle.backend === "tmux") {
+    const mux = new TmuxMultiplexer();
+    return () => mux.isPaneAlive(handle.id);
+  }
+
+  // Axon backend: connect once and reuse
+  console.warn(`[createIsAliveChecker] Axon backend — handle=${handle.id} repoRoot=${repoRoot}`);
+  const { AxonClient } = await import("../axon/client.ts");
+  const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
+
+  // Resolve socket path: explicit env > repoRoot-based > cwd-based
+  const resolvedRoot = repoRoot ?? process.cwd();
+  const socketPath = process.env.AXON_SOCKET ??
+    getDaemonPaths(resolvedRoot).socketPath;
+  console.warn(`[createIsAliveChecker] socketPath=${socketPath} (resolvedRoot=${resolvedRoot})`);
+
+  let client: InstanceType<typeof AxonClient> | null = null;
+  try {
+    client = await AxonClient.connect(socketPath);
+    console.warn(`[createIsAliveChecker] Connected to Axon daemon OK`);
+  } catch (err) {
+    // Can't connect — return a checker that always says "not alive"
+    console.warn(`[createIsAliveChecker] CONNECT FAILED: ${err} — will always report not alive`);
+    return () => Promise.resolve(false);
+  }
+
+  return async () => {
+    try {
+      const info = await client!.info(handle.id);
+      return info.state === "Running" || info.state === "Starting";
+    } catch {
+      // Process not found or connection lost — drone is gone
+      console.warn(`[isAlive] ${handle.id} — Axon info() failed, reporting not alive`);
+      return false;
+    }
+  };
+}
+

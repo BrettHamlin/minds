@@ -6,14 +6,12 @@
  * ALL control flow deterministically:
  *
  *   1. Publish MIND_STARTED via bus
- *   2. Spawn Drone via drone-pane.ts (tmux pane with Claude Code Sonnet)
- *   3. Wait for Drone completion (sentinel file via Stop hook)
- *   4. Run deterministic checks: git diff, bun test (scoped)
- *   5. Publish REVIEW_STARTED
- *   6. Call `claude -p` with structured review prompt (diff + checklist -> JSON verdict)
- *   7. If approved: publish MIND_COMPLETE, exit
- *   8. If rejected: write REVIEW-FEEDBACK-{n}.md, re-launch drone IN SAME WORKTREE, go to step 3
- *   9. Max iterations then approve with warnings
+ *   2. Resolve the pipeline (explicit > template > default CODE_PIPELINE)
+ *   3. Register all stage executors
+ *   4. For each iteration, run the pipeline via runPipeline()
+ *   5. If approved: publish MIND_COMPLETE, exit
+ *   6. If rejected: write REVIEW-FEEDBACK-{n}.md, backoff, retry
+ *   7. Max iterations then approve with warnings (or fail on hard errors)
  *
  * The LLM is only invoked for the one thing that requires judgment: code review.
  *
@@ -25,25 +23,26 @@
  *   supervisor-checks.ts       — standards loading, deterministic verification
  *   supervisor-bus.ts          — bus signal publishing
  *   supervisor-llm.ts          — LLM review process lifecycle
+ *   pipeline-runner.ts         — generic stage runner (iterates pipeline stages)
+ *   pipeline-templates.ts      — pipeline templates and resolution
+ *   stage-registry.ts          — maps stage types to executors
+ *   stages/                    — individual stage executor implementations
  *   mind-supervisor.ts         — this file: orchestrator entry point
  */
 
-import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
+import { existsSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { MindsEventType } from "../../transport/minds-events.ts";
 import { killPane as killPaneImpl } from "../tmux-utils.ts";
-import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
+import type { DroneHandle } from "../drone-backend.ts";
 
 // Internal imports (used by runMindSupervisor below)
 import {
   SupervisorState,
   type SupervisorConfig,
   type SupervisorDeps,
-  type CheckResults,
   type ReviewFinding,
-  type ReviewVerdict,
   type SupervisorResult,
-  DEFAULT_REVIEW_TIMEOUT_MS,
   SENTINEL_FILENAME,
   BASE_RETRY_BACKOFF_MS,
   BACKOFF_MULTIPLIER,
@@ -51,17 +50,20 @@ import {
   errorMessage,
 } from "./supervisor-types.ts";
 import { createSupervisorStateMachine } from "./supervisor-state-machine.ts";
-import { buildReviewPrompt, parseReviewVerdict, buildFeedbackContent } from "./supervisor-review.ts";
+import { buildFeedbackContent } from "./supervisor-review.ts";
 import {
   spawnDrone as spawnDroneImpl,
   relaunchDroneInWorktree as relaunchDroneImpl,
   installDroneStopHook as installDroneStopHookImpl,
   waitForDroneCompletion as waitForDroneCompletionImpl,
-  buildSupervisorDroneBrief,
 } from "./supervisor-drone.ts";
 import { loadStandards, runDeterministicChecksDefault } from "./supervisor-checks.ts";
 import { publishSignalDefault } from "./supervisor-bus.ts";
 import { callLlmReviewDefault } from "./supervisor-llm.ts";
+import { runPipeline } from "./pipeline-runner.ts";
+import { resolvePipeline, CODE_PIPELINE } from "./pipeline-templates.ts";
+import { registerAllStages } from "./stages/index.ts";
+import type { StageContext } from "./pipeline-types.ts";
 
 // ---------------------------------------------------------------------------
 // Default dependencies (production implementations)
@@ -76,7 +78,24 @@ function createDefaultDeps(): SupervisorDeps {
     runDeterministicChecks: runDeterministicChecksDefault,
     callLlmReview: callLlmReviewDefault,
     installDroneStopHook: installDroneStopHookImpl,
-    killPane: killPaneImpl,
+    killDrone: async (handle: DroneHandle) => {
+      if (handle.backend === "tmux") {
+        await killPaneImpl(handle.id);
+      } else {
+        // Axon backend: kill via AxonClient
+        try {
+          const { AxonClient } = await import("../axon/client.ts");
+          const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
+          const socketPath = process.env.AXON_SOCKET ??
+            getDaemonPaths(process.cwd()).socketPath;
+          const client = await AxonClient.connect(socketPath);
+          await client.kill(handle.id);
+          client.close();
+        } catch {
+          // Best-effort kill
+        }
+      }
+    },
     delay: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
 }
@@ -84,37 +103,10 @@ function createDefaultDeps(): SupervisorDeps {
 // ---------------------------------------------------------------------------
 // Force-rejection helper (deterministic checks override LLM verdict)
 // ---------------------------------------------------------------------------
-
-function applyForceRejections(verdict: ReviewVerdict, checks: CheckResults): void {
-  if (!checks.testsPass && verdict.approved) {
-    verdict.approved = false;
-    verdict.findings.push({
-      file: "(tests)",
-      line: 0,
-      severity: "error",
-      message: "Tests are failing. Fix all test failures before approval.",
-    });
-  }
-  if (checks.boundaryPass === false && verdict.approved) {
-    verdict.approved = false;
-    verdict.findings.push(...(checks.boundaryFindings ?? []));
-  } else if (checks.boundaryPass === true) {
-    // Deterministic boundary check passed — strip any false LLM boundary findings.
-    // Boundary enforcement is fully deterministic; the LLM should not override it.
-    const before = verdict.findings.length;
-    verdict.findings = verdict.findings.filter(
-      (f) => !f.message.includes("boundary") && !f.message.includes("outside")
-    );
-    // If LLM rejected ONLY for boundary and we stripped all those findings, re-approve.
-    if (!verdict.approved && before > 0 && verdict.findings.length === 0) {
-      verdict.approved = true;
-    }
-  }
-  if (checks.contractsPass === false && verdict.approved) {
-    verdict.approved = false;
-    verdict.findings.push(...(checks.contractFindings ?? []));
-  }
-}
+// Canonical implementation lives in stages/llm-review.ts (BRE-619).
+// Re-exported here for backward compatibility.
+import { applyForceRejections } from "./stages/llm-review.ts";
+export { applyForceRejections };
 
 // ---------------------------------------------------------------------------
 // Main Supervisor Entry Point
@@ -130,6 +122,12 @@ export async function runMindSupervisor(
 
   const deps = { ...createDefaultDeps(), ...depsOverride };
 
+  // Register real stage executors (replaces stubs from stage-registry.ts)
+  registerAllStages();
+
+  // Resolve pipeline stages: explicit > template > default CODE_PIPELINE
+  const pipelineStages = resolvePipelineFromConfig(config);
+
   const sm = createSupervisorStateMachine(config);
   const result: SupervisorResult = {
     ok: false,
@@ -137,21 +135,20 @@ export async function runMindSupervisor(
     approved: false,
     approvedWithWarnings: false,
     findings: [],
-    allPaneIds: [],
-    totalPanesSpawned: 0,
+    allDroneHandles: [],
+    totalDronesSpawned: 0,
     worktree: config.worktreePath,
     branch: "",
     errors: [],
   };
 
   const allFindings: ReviewFinding[] = [];
-  const allSpawnedPanes: string[] = [];
+  const allDroneHandles: DroneHandle[] = [];
 
-  let currentDronePane: string | undefined;
+  let currentDroneHandle: DroneHandle | undefined;
   let currentWorktree = config.worktreePath;
   let currentBranch = "";
 
-  const reviewTimeoutMs = config.reviewTimeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
   const standards = loadStandards(config.repoRoot);
 
   try {
@@ -165,187 +162,85 @@ export async function runMindSupervisor(
 
     // ---- Main loop ----
     while (!sm.isMaxIterations()) {
-      // ---- Step 2: Spawn or re-launch Drone ----
       sm.transition(SupervisorState.DRONE_RUNNING);
       const iteration = sm.incrementIteration();
       result.iterations = iteration;
 
+      // Build stage context for this iteration
+      const ctx: StageContext = {
+        supervisorConfig: config,
+        deps,
+        standards,
+        iteration,
+        droneHandle: currentDroneHandle,
+        worktree: currentWorktree,
+        branch: currentBranch,
+        store: {},
+        allDroneHandles,
+      };
+
+      // Log iteration start
       if (iteration === 1) {
-        // First iteration: spawn drone via drone-pane.ts (creates worktree)
         console.log(`[supervisor] @${config.mindName}: Iteration ${iteration} -- spawning drone`);
-
-        const briefContent = buildSupervisorDroneBrief(config);
-
-        let drone: Awaited<ReturnType<typeof spawnDroneImpl>>;
-        try {
-          drone = await deps.spawnDrone(config, briefContent);
-        } catch (err) {
-          const msg = `Failed to spawn drone: ${errorMessage(err)}`;
-          console.error(`[supervisor] @${config.mindName}: ${msg}`);
-          result.errors.push(msg);
-          sm.transition(SupervisorState.FAILED);
-          break;
-        }
-
-        currentDronePane = drone.paneId;
-        allSpawnedPanes.push(drone.paneId);
-        currentWorktree = drone.worktree;
-        currentBranch = drone.branch;
-        result.dronePaneId = drone.paneId;
-        result.worktree = drone.worktree;
-        result.branch = drone.branch;
-
-        // Install the Stop hook for sentinel-based completion detection
-        deps.installDroneStopHook(drone.worktree);
-
-        // Auto-accept workspace trust dialog (fires after Claude Code loads).
-        // Claude Code prompts "trust this folder?" for new worktrees even with
-        // --dangerously-skip-permissions. "Yes" is pre-selected, so Enter accepts.
-        setTimeout(() => {
-          try { new TmuxMultiplexer().sendKeys(drone.paneId, ""); } catch { /* pane may be gone */ }
-        }, 3000);
-
-        console.log(`[supervisor] @${config.mindName}: Drone spawned in pane ${drone.paneId}`);
       } else {
-        // Subsequent iterations: re-launch drone in the SAME worktree
         console.log(`[supervisor] @${config.mindName}: Iteration ${iteration} -- re-launching drone in existing worktree`);
-
-        const feedbackFile = `REVIEW-FEEDBACK-${iteration - 1}.md`;
-        const briefContent = buildSupervisorDroneBrief(config, feedbackFile);
-
-        try {
-          const newPaneId = deps.relaunchDroneInWorktree({
-            oldPaneId: currentDronePane!,
-            callerPane: config.callerPane,
-            worktreePath: currentWorktree,
-            briefContent,
-            busUrl: config.busUrl,
-            mindName: config.mindName,
-          });
-          currentDronePane = newPaneId;
-          allSpawnedPanes.push(newPaneId);
-          result.dronePaneId = newPaneId;
-
-          // Reinstall the Stop hook (sentinel file was consumed by previous iteration)
-          deps.installDroneStopHook(currentWorktree);
-
-          // Auto-accept workspace trust dialog for re-launched drone
-          setTimeout(() => {
-            try { new TmuxMultiplexer().sendKeys(newPaneId, ""); } catch { /* pane may be gone */ }
-          }, 3000);
-        } catch (err) {
-          const msg = `Failed to re-launch drone: ${errorMessage(err)}`;
-          console.error(`[supervisor] @${config.mindName}: ${msg}`);
-          result.errors.push(msg);
-          sm.transition(SupervisorState.FAILED);
-          break;
-        }
-
-        console.log(`[supervisor] @${config.mindName}: Drone re-launched in pane ${currentDronePane}`);
       }
 
-      // ---- Step 3: Wait for Drone completion ----
-      const completion = await deps.waitForDroneCompletion(currentDronePane!, currentWorktree, config.droneTimeoutMs);
-      if (!completion.ok) {
-        const msg = completion.error ?? "Drone failed";
-        console.error(`[supervisor] @${config.mindName}: ${msg}`);
-        result.errors.push(msg);
-        deps.killPane(currentDronePane!);
-        sm.transition(SupervisorState.FAILED);
-        break;
+      // ---- Run pipeline stages for this iteration ----
+      const pipelineResult = await runPipeline(pipelineStages, ctx);
+
+      // Read back state from context (stages may have mutated it)
+      currentDroneHandle = ctx.droneHandle;
+      currentWorktree = ctx.worktree;
+      currentBranch = ctx.branch;
+      result.droneId = ctx.droneHandle?.id;
+      result.worktree = ctx.worktree;
+      result.branch = ctx.branch;
+
+      // Log drone spawn/relaunch completion
+      if (ctx.droneHandle) {
+        if (iteration === 1) {
+          console.log(`[supervisor] @${config.mindName}: Drone spawned (${ctx.droneHandle.backend}:${ctx.droneHandle.id})`);
+        } else {
+          console.log(`[supervisor] @${config.mindName}: Drone re-launched (${ctx.droneHandle.backend}:${ctx.droneHandle.id})`);
+        }
+      }
+
+      // If pipeline had a terminal failure (spawn failed, drone crashed), handle it
+      if (!pipelineResult.ok && pipelineResult.error) {
+        // Check if it was a spawn/relaunch or drone failure (terminal errors)
+        const isTerminal = pipelineResult.stageResults.some(r => r.terminal);
+        if (isTerminal) {
+          const msg = pipelineResult.error;
+          console.error(`[supervisor] @${config.mindName}: ${msg}`);
+          result.errors.push(msg);
+          sm.transition(SupervisorState.FAILED);
+          break;
+        }
       }
 
       console.log(`[supervisor] @${config.mindName}: Drone completed, running checks`);
 
-      // ---- Step 4: Deterministic checks ----
+      // Transition to CHECKING after drone stages, REVIEWING for LLM review
       sm.transition(SupervisorState.CHECKING);
-      const checks = deps.runDeterministicChecks({
-        worktreePath: currentWorktree,
-        baseBranch: config.baseBranch,
-        mindName: config.mindName,
-        tasks: config.tasks,
-        configOwnsFiles: config.ownsFiles,
-        requireBoundary: config.requireBoundary,
-        testCommand: config.testCommand,
-        infraExclusions: config.infraExclusions,
-        repo: config.repo,
-      });
-
-      // ---- Step 5: Publish REVIEW_STARTED ----
-      await deps.publishSignal(
-        config.busUrl, config.channel,
-        MindsEventType.REVIEW_STARTED,
-        config.mindName, config.waveId,
-        { iteration },
-      );
-
-      // ---- Step 6: LLM Review ----
-      sm.transition(SupervisorState.REVIEWING);
       console.log(`[supervisor] @${config.mindName}: Reviewing (iteration ${iteration})`);
-
-      // Read ALL previous feedback files for the reviewer's context
-      let previousFeedback: string | undefined;
-      if (iteration > 1) {
-        const feedbackParts: string[] = [];
-        for (let i = 1; i < iteration; i++) {
-          const fbPath = join(currentWorktree, `REVIEW-FEEDBACK-${i}.md`);
-          if (existsSync(fbPath)) {
-            feedbackParts.push(readFileSync(fbPath, "utf-8"));
-          }
-        }
-        if (feedbackParts.length > 0) {
-          previousFeedback = feedbackParts.join("\n\n---\n\n");
-        }
-      }
-
-      // Build standalone review prompt (no agent — agent mode provides tools
-      // which cause the model to return prose instead of JSON).
-      const prompt = buildReviewPrompt({
-        diff: checks.diff,
-        testOutput: checks.testOutput,
-        standards,
-        tasks: config.tasks,
-        iteration,
-        previousFeedback,
-      });
-
-      let verdict: ReviewVerdict;
-      try {
-        const rawResponse = await deps.callLlmReview(prompt, reviewTimeoutMs, {
-          worktreePath: currentWorktree,
-        });
-        verdict = parseReviewVerdict(rawResponse);
-      } catch (err) {
-        // LLM call failed or timed out -- treat as rejection with error finding
-        verdict = {
-          approved: false,
-          findings: [{
-            file: "(review)",
-            line: 0,
-            severity: "error",
-            message: `LLM review failed: ${errorMessage(err)}`,
-          }],
-        };
-      }
-
-      // Deterministic checks override LLM verdict (tests, boundary, contracts)
-      applyForceRejections(verdict, checks);
+      sm.transition(SupervisorState.REVIEWING);
 
       // Accumulate findings across all iterations, tagging each with its iteration
-      for (const finding of verdict.findings) {
+      for (const finding of pipelineResult.findings) {
         allFindings.push({ ...finding, iteration });
       }
       result.findings = allFindings;
 
-      // Propagate deferred cross-repo annotations from the latest check.
-      // Overwrites (not merges) — the latest iteration's contracts are authoritative
-      // since the drone may have fixed earlier issues.
-      if (checks.deferredCrossRepoAnnotations?.length) {
-        result.deferredCrossRepoAnnotations = checks.deferredCrossRepoAnnotations;
+      // Propagate deferred cross-repo annotations from check results
+      if (ctx.checkResults?.deferredCrossRepoAnnotations?.length) {
+        result.deferredCrossRepoAnnotations = ctx.checkResults.deferredCrossRepoAnnotations;
       }
 
-      // ---- Step 7: Verdict ----
-      if (verdict.approved) {
+      // ---- Verdict ----
+      const approved = pipelineResult.approved ?? pipelineResult.ok;
+
+      if (approved) {
         console.log(`[supervisor] @${config.mindName}: APPROVED on iteration ${iteration}`);
         sm.transition(SupervisorState.DONE);
         result.ok = true;
@@ -356,9 +251,10 @@ export async function runMindSupervisor(
       // Check if we're at max iterations after this rejection
       if (sm.isMaxIterations()) {
         // Hard failures (boundary violations, test failures) cannot be overridden
-        const hasBoundaryViolation = checks.boundaryPass === false;
-        const hasTestFailure = checks.testsPass === false;
-        const hasContractViolation = checks.contractsPass === false;
+        const checks = ctx.checkResults;
+        const hasBoundaryViolation = checks?.boundaryPass === false;
+        const hasTestFailure = checks?.testsPass === false;
+        const hasContractViolation = checks?.contractsPass === false;
 
         if (hasBoundaryViolation || hasTestFailure || hasContractViolation) {
           const reasons = [
@@ -385,13 +281,16 @@ export async function runMindSupervisor(
         break;
       }
 
-      // ---- Step 8: Write feedback to the SAME worktree ----
+      // ---- Write feedback to the SAME worktree ----
+      const verdict = ctx.verdict;
+      const verdictFindings = verdict?.findings ?? pipelineResult.findings;
       console.log(
-        `[supervisor] @${config.mindName}: REJECTED (${verdict.findings.length} findings). Writing feedback.`
+        `[supervisor] @${config.mindName}: REJECTED (${verdictFindings.length} findings). Writing feedback.`
       );
 
-      const testFailures = !checks.testsPass ? checks.testOutput : undefined;
-      const feedbackContent = buildFeedbackContent(iteration, verdict.findings, testFailures);
+      const checks = ctx.checkResults;
+      const testFailures = checks && !checks.testsPass ? checks.testOutput : undefined;
+      const feedbackContent = buildFeedbackContent(iteration, verdictFindings, testFailures);
       writeFileSync(join(currentWorktree, `REVIEW-FEEDBACK-${iteration}.md`), feedbackContent);
 
       // Publish REVIEW_FEEDBACK signal
@@ -399,12 +298,10 @@ export async function runMindSupervisor(
         config.busUrl, config.channel,
         MindsEventType.REVIEW_FEEDBACK,
         config.mindName, config.waveId,
-        { iteration, findingsCount: verdict.findings.length },
+        { iteration, findingsCount: verdictFindings.length },
       );
 
-      // Exponential backoff before next iteration to prevent rapid pane creation
-      // when drones fail quickly. Formula: BASE * MULTIPLIER^(iteration-1).
-      // iteration=1 → 5s, iteration=2 → 15s, iteration=3 → 45s, ...
+      // Exponential backoff before next iteration
       const backoffMs = Math.min(
         BASE_RETRY_BACKOFF_MS * Math.pow(BACKOFF_MULTIPLIER, iteration - 1),
         MAX_BACKOFF_MS,
@@ -413,8 +310,6 @@ export async function runMindSupervisor(
         `[supervisor] @${config.mindName}: Backoff ${backoffMs}ms before iteration ${iteration + 1}`,
       );
       await deps.delay(backoffMs);
-
-      // Loop continues: relaunchDroneInWorktree at the top of the next iteration
     }
 
     // Handle edge case where loop exits due to isMaxIterations at START
@@ -462,13 +357,13 @@ export async function runMindSupervisor(
       // Best effort -- bus may be down too
     }
   } finally {
-    // Record all tracked panes in the result for observability
-    result.allPaneIds = [...allSpawnedPanes];
-    result.totalPanesSpawned = allSpawnedPanes.length;
+    // Record all tracked drone handles in the result for observability
+    result.allDroneHandles = [...allDroneHandles];
+    result.totalDronesSpawned = allDroneHandles.length;
 
-    // Cleanup: kill ALL spawned drone panes (not just the last one)
-    for (const paneId of allSpawnedPanes) {
-      deps.killPane(paneId);
+    // Cleanup: kill ALL spawned drones (not just the last one)
+    for (const handle of allDroneHandles) {
+      await deps.killDrone(handle);
     }
 
     // Clean up sentinel file if present (skip if worktree was never resolved)
@@ -482,4 +377,32 @@ export async function runMindSupervisor(
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline resolution helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve pipeline stages from SupervisorConfig.
+ * Uses the same resolution order as resolvePipeline() but reads from config
+ * fields rather than MindDescription.
+ */
+function resolvePipelineFromConfig(config: SupervisorConfig) {
+  // If config has explicit pipeline stages, use them
+  if (config.pipeline && config.pipeline.length > 0) {
+    return config.pipeline;
+  }
+
+  // If config has a pipeline template name, resolve it
+  if (config.pipelineTemplate) {
+    // Build a minimal MindDescription-like object for resolvePipeline
+    return resolvePipeline({
+      name: config.mindName,
+      pipeline_template: config.pipelineTemplate,
+    } as any);
+  }
+
+  // Default: CODE_PIPELINE
+  return CODE_PIPELINE;
 }

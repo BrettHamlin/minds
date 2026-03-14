@@ -23,22 +23,24 @@
  *     [--bus-url <url>]             # when provided, injects BUS_URL env var into Claude Code spawn command
  *     [--channel <channel>]          # Minds bus channel (e.g. minds-BRE-456)
  *     [--wave-id <id>]               # wave ID for DRONE_SPAWNED event correlation
+ *     [--backend <axon|tmux>]        # force backend selection (default: auto-detect)
  *
  * Output: JSON to stdout
- *   { drone_pane, worktree, branch, base, claude_dir, mind_pane }
+ *   { drone_pane, drone_id, backend, worktree, branch, base, claude_dir, mind_pane }
  */
 
 import { execSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { basename, resolve } from "path";
-import { injectBusEnv } from "../transport/minds-bus-lifecycle.ts";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
 import { resolveMindsDir, encodeProjectPath } from "../shared/paths.js";
 import { loadStandards } from "./supervisor/supervisor-checks.ts";
 import { shellQuote } from "./tmux-utils.ts";
-import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
-import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
+import { getCurrentTmuxPane } from "./tmux-multiplexer.ts";
+import { createDroneBackend } from "./drone-backend-factory.ts";
+import { sanitizeProcessId } from "./axon/types.ts";
+import type { DroneHandle } from "./drone-backend.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -50,7 +52,7 @@ export function assembleClaudeContent(
   repoRoot: string,
   mindName: string,
   ticketId: string,
-  opts?: { repoAlias?: string; orchestratorRoot?: string },
+  opts?: { repoAlias?: string; orchestratorRoot?: string; pipelineTemplate?: string },
 ): string {
   const mindsBase = resolveMindsDir(repoRoot);
   const standardsRoot = opts?.orchestratorRoot ?? repoRoot;
@@ -84,6 +86,8 @@ export function assembleClaudeContent(
   const mindMdPath = resolve(mindsBase, mindName, "MIND.md");
   const mindMd = existsSync(mindMdPath) ? readFileSync(mindMdPath, "utf-8") : null;
 
+  const isNonCode = opts?.pipelineTemplate === "build" || opts?.pipelineTemplate === "test";
+
   const ownsFilesSection =
     ownsFiles.length > 0
       ? ownsFiles.map((f) => `- ${f}`).join("\n")
@@ -105,26 +109,39 @@ export function assembleClaudeContent(
       ].join("\n")
     : null;
 
+  // Non-code pipelines (build/test) skip file boundary and test command sections
+  const boundaryLines = isNonCode
+    ? []
+    : [
+        `Your file boundary (only touch files in these paths):`,
+        ownsFilesSection,
+        ``,
+      ];
+
+  const testCommandLines = isNonCode
+    ? []
+    : [
+        `## Test Command`,
+        ``,
+        `Run only your Mind's tests — never bare \`bun test\`:`,
+        `\`\`\``,
+        `bun test minds/${mindName}/`,
+        `\`\`\``,
+        ``,
+      ];
+
   return [
     `## Mind Identity`,
     ``,
     `You are the @${mindName} drone for ticket ${ticketId}.`,
     domainLine,
     ``,
-    `Your file boundary (only touch files in these paths):`,
-    ownsFilesSection,
-    ``,
+    ...boundaryLines,
     repoContextSection,
     `## Engineering Standards`,
     standards,
     mindProfileSection,
-    `## Test Command`,
-    ``,
-    `Run only your Mind's tests — never bare \`bun test\`:`,
-    `\`\`\``,
-    `bun test minds/${mindName}/`,
-    `\`\`\``,
-    ``,
+    ...testCommandLines,
     `## Active Task`,
     `Your current task brief is in DRONE-BRIEF.md at the worktree root.`,
     `If you've compacted or lost context, re-read that file.`,
@@ -156,7 +173,7 @@ export async function publishDroneSpawned(params: {
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 
 if (import.meta.main) { (async () => {
-  const mux: TerminalMultiplexer = new TmuxMultiplexer();
+  // getCurrentTmuxPane() is a standalone function — no multiplexer instance needed.
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -194,7 +211,7 @@ if (import.meta.main) { (async () => {
 
   const callerPane =
     getArg("--pane") ??
-    mux.getCurrentPane();
+    getCurrentTmuxPane();
 
   const mindPane = getArg("--mind-pane") ?? callerPane;
 
@@ -203,6 +220,7 @@ if (import.meta.main) { (async () => {
   const busUrl = getArg("--bus-url");
   const channel = getArg("--channel");
   const waveId = getArg("--wave-id");
+  const backendFlag = getArg("--backend") as "axon" | "tmux" | undefined;
 
   // ─── Repo context ────────────────────────────────────────────────────────────
 
@@ -357,23 +375,32 @@ if (import.meta.main) { (async () => {
 
   writeFileSync(resolve(worktreePath, "DRONE-BRIEF.md"), briefContent);
 
-  // ─── Split tmux pane ──────────────────────────────────────────────────────────
+  // ─── Create DroneBackend ────────────────────────────────────────────────────
 
-  let dronePane: string;
-  try {
-    dronePane = mux.splitPane(callerPane);
-  } catch (err) {
-    fail(`Failed to split tmux pane: ${err}`);
-  }
+  const backend = await createDroneBackend({
+    repoRoot,
+    forceBackend: backendFlag,
+    callerPane,
+  });
 
-  // ─── Launch Claude Code Sonnet (no collab/pipeline pack install) ──────────────
+  // ─── Spawn drone ──────────────────────────────────────────────────────────
 
   const initialPrompt = `Read DRONE-BRIEF.md and complete all tasks. When done, run the completion command at the bottom of the brief.`;
-  let launchCmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model sonnet --setting-sources project,local ${JSON.stringify(initialPrompt)}`;
-  if (busUrl) {
-    launchCmd = injectBusEnv(launchCmd, busUrl);
+  const processId = sanitizeProcessId(`drone-${mindName}-${ticketId}`);
+
+  let droneHandle: DroneHandle;
+  try {
+    droneHandle = await backend.spawn({
+      processId,
+      cwd: worktreePath,
+      command: "claude",
+      args: ["--dangerously-skip-permissions", "--model", "sonnet", "--setting-sources", "project,local", initialPrompt],
+      env: busUrl ? { BUS_URL: busUrl } : undefined,
+      callerPane,
+    });
+  } catch (err) {
+    fail(`Failed to spawn drone: ${err}`);
   }
-  mux.sendKeys(dronePane, launchCmd);
 
   // ─── Publish DRONE_SPAWNED if bus is configured ────────────────────────────────
 
@@ -383,17 +410,23 @@ if (import.meta.main) { (async () => {
       channel,
       waveId,
       mindName: mindName!,
-      paneId: dronePane!,
+      paneId: droneHandle.id,
       worktree: worktreePath,
       branch: branchName,
     });
   }
 
+  // ─── Cleanup backend ────────────────────────────────────────────────────
+
+  backend.close();
+
   // ─── Output result ────────────────────────────────────────────────────────────
 
   console.log(
     JSON.stringify({
-      drone_pane: dronePane,
+      drone_pane: droneHandle.id,  // backward compat
+      drone_id: droneHandle.id,
+      backend: droneHandle.backend,
       worktree: worktreePath,
       branch: branchName,
       base: baseBranch,
