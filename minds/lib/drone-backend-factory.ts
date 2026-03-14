@@ -8,8 +8,7 @@
  * Selection order:
  * 1. forceBackend option (programmatic override)
  * 2. MINDS_DRONE_BACKEND env var ("tmux" or "axon")
- * 3. Axon binary found + daemon starts successfully -> AxonDroneBackend
- * 4. Fallback -> TmuxDroneBackend with warning
+ * 3. Default -> TmuxDroneBackend (Axon requires explicit opt-in)
  */
 
 import type { DroneBackend } from "./drone-backend.ts";
@@ -33,9 +32,8 @@ export interface DroneBackendFactoryOptions {
  *
  * Selection order:
  * 1. forceBackend option -> use specified backend
- * 2. MINDS_DRONE_BACKEND env var -> "tmux" for instant rollback, "axon" to force axon
- * 3. Axon binary found + daemon starts -> AxonDroneBackend
- * 4. Fallback -> TmuxDroneBackend with warning
+ * 2. MINDS_DRONE_BACKEND env var -> "axon" to opt in, "tmux" (or unset) for default
+ * 3. Default -> TmuxDroneBackend
  *
  * Callers should call `backend.close()` when done to release any persistent
  * connections (e.g., AxonClient socket).
@@ -46,8 +44,12 @@ export async function createDroneBackend(
   const { repoRoot, forceBackend } = opts;
 
   // Determine desired backend: forceBackend takes priority over env var
+  // Default to tmux — Axon's event-based completion doesn't help for drones
+  // (Claude Code stays running after completing work, so sentinel file is
+  // the primary completion signal regardless of backend). Use Axon explicitly
+  // via MINDS_DRONE_BACKEND=axon when its process management features are needed.
   const envBackend = process.env.MINDS_DRONE_BACKEND?.toLowerCase();
-  const desired = forceBackend ?? envBackend ?? "auto";
+  const desired = forceBackend ?? envBackend ?? "tmux";
 
   // Immediate tmux path -- no Axon probing needed
   if (desired === "tmux") {

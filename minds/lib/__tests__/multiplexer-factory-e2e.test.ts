@@ -6,9 +6,9 @@
  * these scenarios exercise the real factory path with minimal mocking.
  *
  * 5 scenarios:
- * 1. Axon available -- binary exists and daemon starts -> AxonMultiplexer
+ * 1. Axon available -- MINDS_MULTIPLEXER=axon + binary exists and daemon starts -> AxonMultiplexer
  * 2. Binary missing -- no axon binary found -> TmuxMultiplexer
- * 3. Daemon start fails -- binary exists but daemon cannot start -> TmuxMultiplexer fallback
+ * 3. Default -- no env var or forceBackend -> TmuxMultiplexer (no Axon probing)
  * 4. Env override to tmux -- MINDS_MULTIPLEXER=tmux bypasses Axon entirely
  * 5. Env force axon -- MINDS_MULTIPLEXER=axon with no binary -> TmuxMultiplexer with warning
  */
@@ -145,43 +145,13 @@ describe("multiplexer-factory e2e", () => {
   }, 10_000);
 
   // -------------------------------------------------------------------------
-  // Scenario 3: Daemon start fails -- binary exists but daemon cannot start
+  // Scenario 3: Default (no env var) returns TmuxMultiplexer without Axon probing
   // -------------------------------------------------------------------------
-  test("falls back to TmuxMultiplexer when binary exists but daemon fails to start", async () => {
-    // Create a fake "axon" binary that exits immediately with an error.
-    // This simulates the binary existing but the daemon refusing to start.
-    const fakeRepo = path.join(os.tmpdir(), "mux-factory-e2e-fake-daemon");
-    const fakeBinDir = path.join(fakeRepo, ".minds", "bin");
-    fs.mkdirSync(fakeBinDir, { recursive: true });
-
-    const fakeBin = path.join(fakeBinDir, "axon");
-    fs.writeFileSync(fakeBin, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-
-    // Point AXON_BINARY at the fake binary to ensure resolveAxonBinary finds it
-    process.env.AXON_BINARY = fakeBin;
-
-    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
-
-    try {
-      const mux = await createMultiplexer({ repoRoot: fakeRepo });
-      expect(mux).toBeInstanceOf(TmuxMultiplexer);
-
-      // Factory should have logged a warning about daemon failure
-      expect(warnSpy).toHaveBeenCalled();
-      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
-      const hasFallbackWarning = messages.some(
-        (m) => m.includes("Failed to start Axon daemon") || m.includes("falling back to tmux"),
-      );
-      expect(hasFallbackWarning).toBe(true);
-    } finally {
-      warnSpy.mockRestore();
-      try {
-        fs.rmSync(fakeRepo, { recursive: true, force: true });
-      } catch {
-        // Ignore
-      }
-    }
-  }, 15_000);
+  test("defaults to TmuxMultiplexer when no env var or forceBackend set", async () => {
+    // No env var, no forceBackend — should default to tmux (no Axon probing)
+    const mux = await createMultiplexer({ repoRoot: EMPTY_REPO });
+    expect(mux).toBeInstanceOf(TmuxMultiplexer);
+  }, 5_000);
 
   // -------------------------------------------------------------------------
   // Scenario 4: Env override to tmux -- MINDS_MULTIPLEXER=tmux bypasses Axon
