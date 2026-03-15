@@ -36,6 +36,18 @@ export class TmuxDroneBackend implements DroneBackend {
 
     await this.mux.sendKeys(paneId, cmdString);
 
+    // Rebalance pane layout after drone spawn so panes stay evenly sized
+    if (sourcePane) {
+      try {
+        Bun.spawnSync(
+          ["tmux", "select-layout", "-t", sourcePane, "tiled"],
+          { stdout: "ignore", stderr: "ignore" },
+        );
+      } catch {
+        // Best-effort: layout rebalance is nice-to-have, not critical
+      }
+    }
+
     return { id: paneId, backend: "tmux" };
   }
 

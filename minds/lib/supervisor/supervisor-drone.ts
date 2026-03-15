@@ -178,6 +178,18 @@ async function relaunchDroneTmux(opts: {
   await killPane(oldHandle.id);
   const newPaneId = await splitPane(callerPane);
 
+  // Rebalance pane layout after drone spawn so panes stay evenly sized
+  if (callerPane) {
+    try {
+      Bun.spawnSync(
+        ["tmux", "select-layout", "-t", callerPane, "tiled"],
+        { stdout: "ignore", stderr: "ignore" },
+      );
+    } catch {
+      // Best-effort: layout rebalance is nice-to-have, not critical
+    }
+  }
+
   const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
   try {
     await launchClaudeInPane({
