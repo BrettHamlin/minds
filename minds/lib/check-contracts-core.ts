@@ -261,7 +261,7 @@ export function checkExportExists(content: string, interfaceName: string): boole
     new RegExp(`export\\s+(abstract\\s+)?class\\s+${escapeRegExp(interfaceName)}\\b`),
     new RegExp(`export\\s+enum\\s+${escapeRegExp(interfaceName)}\\b`),
     new RegExp(`export\\s+(default\\s+)?(async\\s+)?function\\s+${escapeRegExp(interfaceName)}\\b`),
-    new RegExp(`export\\s*\\{[^}]*\\b${escapeRegExp(interfaceName)}\\b[^}]*\\}`),
+    new RegExp(`export\\s*(type\\s+)?\\{[^}]*\\b${escapeRegExp(interfaceName)}\\b[^}]*\\}`),
   ];
   return exportPatterns.some((p) => p.test(content));
 }
