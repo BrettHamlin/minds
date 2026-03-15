@@ -187,9 +187,9 @@ function verifyConsumes(
 
     const content = readFileSync(tsFile, "utf-8");
     const localDefPatterns = [
-      new RegExp(`export\\s+function\\s+${escapeRegExp(ann.interfaceName)}\\b`),
+      new RegExp(`export\\s+(async\\s+)?function\\s+${escapeRegExp(ann.interfaceName)}\\b`),
       new RegExp(`export\\s+const\\s+${escapeRegExp(ann.interfaceName)}\\b`),
-      new RegExp(`function\\s+${escapeRegExp(ann.interfaceName)}\\s*\\(`),
+      new RegExp(`(async\\s+)?function\\s+${escapeRegExp(ann.interfaceName)}\\s*\\(`),
     ];
 
     if (localDefPatterns.some((p) => p.test(content))) {
@@ -254,12 +254,13 @@ function resolveEffectiveRoot(
  */
 export function checkExportExists(content: string, interfaceName: string): boolean {
   const exportPatterns = [
-    new RegExp(`export\\s+function\\s+${escapeRegExp(interfaceName)}\\b`),
+    new RegExp(`export\\s+(async\\s+)?function\\s+${escapeRegExp(interfaceName)}\\b`),
     new RegExp(`export\\s+const\\s+${escapeRegExp(interfaceName)}\\b`),
     new RegExp(`export\\s+type\\s+${escapeRegExp(interfaceName)}\\b`),
     new RegExp(`export\\s+interface\\s+${escapeRegExp(interfaceName)}\\b`),
-    new RegExp(`export\\s+class\\s+${escapeRegExp(interfaceName)}\\b`),
+    new RegExp(`export\\s+(abstract\\s+)?class\\s+${escapeRegExp(interfaceName)}\\b`),
     new RegExp(`export\\s+enum\\s+${escapeRegExp(interfaceName)}\\b`),
+    new RegExp(`export\\s+(default\\s+)?(async\\s+)?function\\s+${escapeRegExp(interfaceName)}\\b`),
     new RegExp(`export\\s*\\{[^}]*\\b${escapeRegExp(interfaceName)}\\b[^}]*\\}`),
   ];
   return exportPatterns.some((p) => p.test(content));
