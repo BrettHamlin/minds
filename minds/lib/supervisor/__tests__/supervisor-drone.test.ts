@@ -275,6 +275,147 @@ describe("waitForDroneCompletion", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Bus-based completion detection (tmux backend + bus params)
+// ---------------------------------------------------------------------------
+
+describe("waitForDroneCompletion — bus-based (tmux backend)", () => {
+  let tmpDir: string;
+  let busServer: ReturnType<typeof import("../../../transport/bus-server.ts").createServer>;
+  let busUrl: string;
+
+  beforeEach(async () => {
+    tmpDir = makeTestTmpDir("drone-bus");
+    const { createServer } = await import("../../../transport/bus-server.ts");
+    busServer = createServer({ port: 0 });
+    busUrl = `http://localhost:${busServer.port}`;
+  });
+
+  afterEach(async () => {
+    rmSync(tmpDir, { recursive: true, force: true });
+    busServer.stop(true);
+  });
+
+  async function publishHookStop(channel: string, source: string): Promise<void> {
+    await fetch(`${busUrl}/publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel, from: "minds", type: "HOOK_Stop", payload: { source } }),
+    });
+  }
+
+  test("resolves ok:true when HOOK_Stop received from matching drone", async () => {
+    const channel = "minds-BRE-668";
+    setTimeout(() => publishHookStop(channel, "drone:transport"), 50);
+
+    const result = await waitForDroneCompletion(
+      mockHandle("pane-1"),
+      tmpDir,
+      10_000,
+      undefined,
+      undefined,
+      busUrl,
+      channel,
+      "transport",
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  test("resolves ok:false on timeout when no HOOK_Stop arrives", async () => {
+    const channel = "minds-BRE-668";
+    const result = await waitForDroneCompletion(
+      mockHandle("pane-1"),
+      tmpDir,
+      300, // short timeout
+      undefined,
+      undefined,
+      busUrl,
+      channel,
+      "transport",
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("timed out");
+  });
+
+  test("ignores HOOK_Stop from a different drone (mindName filter)", async () => {
+    const channel = "minds-BRE-668";
+    // Publish HOOK_Stop from a different drone — should not trigger completion
+    await publishHookStop(channel, "drone:other-mind");
+    await new Promise(r => setTimeout(r, 20));
+
+    const result = await waitForDroneCompletion(
+      mockHandle("pane-1"),
+      tmpDir,
+      300, // short timeout — we expect this to time out
+      undefined,
+      undefined,
+      busUrl,
+      channel,
+      "transport", // waiting for "transport", not "other-mind"
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("timed out");
+  });
+
+  test("resolves ok:true when HOOK_Stop already in ring buffer (fast drone)", async () => {
+    const channel = "minds-BRE-668";
+    // Publish BEFORE subscribing — simulates drone completing before we start waiting
+    await publishHookStop(channel, "drone:transport");
+    await new Promise(r => setTimeout(r, 10)); // let buffer settle
+
+    const result = await waitForDroneCompletion(
+      mockHandle("pane-1"),
+      tmpDir,
+      5_000,
+      undefined,
+      undefined,
+      busUrl,
+      channel,
+      "transport",
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  test("accepts HOOK_Stop without mindName filter when mindName is empty", async () => {
+    const channel = "minds-BRE-668";
+    setTimeout(() => publishHookStop(channel, "drone:any-mind"), 50);
+
+    const result = await waitForDroneCompletion(
+      mockHandle("pane-1"),
+      tmpDir,
+      5_000,
+      undefined,
+      undefined,
+      busUrl,
+      channel,
+      "", // no mindName filter
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  test("falls back to sentinel path when busUrl not provided", async () => {
+    const sentinelPath = join(tmpDir, SENTINEL_FILENAME);
+    // nonexistent-pane-id + sentinel = TOCTOU guard → ok:true
+    writeFileSync(sentinelPath, "done");
+
+    const result = await waitForDroneCompletion(
+      mockHandle("nonexistent-pane-id"),
+      tmpDir,
+      5_000,
+      300,
+      // no busUrl/channel/mindName — should use sentinel fallback
+    );
+
+    expect(result.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Axon-backend completion detection
 // ---------------------------------------------------------------------------
 

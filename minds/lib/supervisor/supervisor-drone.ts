@@ -324,15 +324,115 @@ export function installDroneStopHook(worktreePath: string): void {
 // ---------------------------------------------------------------------------
 
 /**
+ * Subscribe to the Minds bus and wait for a HOOK_Stop event from the drone.
+ *
+ * Primary completion mechanism for the tmux backend (replaces sentinel file
+ * polling). The drone's Claude Code Stop hook publishes HOOK_Stop via
+ * send-event.ts. We subscribe via SSE and resolve when that event arrives.
+ *
+ * Filtering:
+ * - type === "HOOK_Stop"
+ * - payload.source === "drone:<mindName>" (when mindName is provided)
+ * - timestamp >= (now - 60s)  — rejects stale replayed events from previous iterations
+ *
+ * Safety net: timeout fires if HOOK_Stop never arrives (bus down, crashed drone).
+ */
+async function waitForDroneCompletionBus(
+  mindName: string,
+  busUrl: string,
+  channel: string,
+  timeoutMs: number,
+): Promise<{ ok: boolean; error?: string }> {
+  // Reject events older than 60s. Handles two cases:
+  //   1. Fast drone: completes before we subscribe → buffered event still accepted
+  //   2. Stale event from previous iteration → rejected (iterations take > 60s)
+  const minTimestampMs = Date.now() - 60_000;
+
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
+
+  try {
+    let response: Response;
+    try {
+      response = await fetch(`${busUrl}/subscribe/${encodeURIComponent(channel)}`, {
+        signal: abortController.signal,
+      });
+    } catch (err) {
+      if (abortController.signal.aborted) {
+        return { ok: false, error: `Drone timed out after ${timeoutMs}ms` };
+      }
+      return { ok: false, error: `Bus connection failed: ${err}` };
+    }
+
+    if (!response.ok || !response.body) {
+      return { ok: false, error: `Bus subscription failed: HTTP ${response.status}` };
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+
+    while (true) {
+      let readResult: ReadableStreamReadResult<Uint8Array>;
+      try {
+        readResult = await reader.read();
+      } catch (err) {
+        if (abortController.signal.aborted) {
+          return { ok: false, error: `Drone timed out after ${timeoutMs}ms` };
+        }
+        return { ok: false, error: `Bus stream error: ${err}` };
+      }
+
+      if (readResult.done) {
+        return { ok: false, error: "Bus stream closed before HOOK_Stop received" };
+      }
+
+      sseBuffer += decoder.decode(readResult.value, { stream: true });
+
+      // SSE events are separated by double newlines
+      const parts = sseBuffer.split("\n\n");
+      sseBuffer = parts.pop() ?? "";
+
+      for (const part of parts) {
+        if (!part.trim()) continue;
+
+        const dataMatch = part.match(/^data:\s*(.+)$/m);
+        if (!dataMatch) continue;
+
+        let msg: { type?: string; payload?: Record<string, unknown>; timestamp?: number };
+        try {
+          msg = JSON.parse(dataMatch[1]);
+        } catch {
+          continue;
+        }
+
+        if (msg.type !== "HOOK_Stop") continue;
+
+        // Filter by source when mindName is provided
+        if (mindName && msg.payload?.source !== `drone:${mindName}`) continue;
+
+        // Reject stale replayed events from previous iterations
+        if (msg.timestamp !== undefined && msg.timestamp < minTimestampMs) continue;
+
+        reader.cancel().catch(() => {});
+        return { ok: true };
+      }
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
  * Wait for drone completion.
  *
- * Routes based on the drone's backend:
+ * Routes based on the drone's backend and available configuration:
  * - **axon**: Uses Axon's native event-based completion detection via
  *   `waitForProcessCompletion()`. No sentinel file needed.
- * - **tmux**: Watches for a sentinel file created by a Claude Code Stop
- *   hook in the worktree's `.claude/settings.json`. Event-driven via
- *   `fs.watch()` with a poll fallback every 5 seconds. Falls back to
- *   pane-existence check if the sentinel never appears (e.g., crash).
+ * - **tmux + bus params**: Subscribes to the Minds bus SSE channel and
+ *   waits for a HOOK_Stop event from the drone. Event-driven, no polling.
+ * - **tmux (fallback)**: Watches for a sentinel file created by a Claude
+ *   Code Stop hook. Event-driven via `fs.watch()` with a poll fallback.
  */
 export async function waitForDroneCompletion(
   handle: DroneHandle,
@@ -340,6 +440,9 @@ export async function waitForDroneCompletion(
   timeoutMs: number,
   pollIntervalMs: number = 5000,
   repoRoot?: string,
+  busUrl?: string,
+  channel?: string,
+  mindName?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   // Axon backend: use native event-based completion detection,
   // but also race against sentinel file detection. Claude Code does not
@@ -350,7 +453,13 @@ export async function waitForDroneCompletion(
     return waitForDroneCompletionAxon(handle, worktreePath, timeoutMs, repoRoot);
   }
 
-  // tmux backend: sentinel file polling (existing path)
+  // tmux backend: bus-based completion (primary path)
+  // Subscribe to the Minds bus and wait for HOOK_Stop from this drone.
+  if (busUrl && channel) {
+    return waitForDroneCompletionBus(mindName ?? "", busUrl, channel, timeoutMs);
+  }
+
+  // tmux backend: sentinel file polling (fallback when bus params unavailable)
   const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
 
   // Backend-aware "is alive" checker

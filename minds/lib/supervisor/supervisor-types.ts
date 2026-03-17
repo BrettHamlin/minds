@@ -152,13 +152,16 @@ export interface SupervisorDeps {
     repoRoot: string;
   }) => Promise<DroneHandle>;
 
-  /** Wait for drone completion (sentinel file + poll or Axon event). */
+  /** Wait for drone completion (bus event, sentinel file + poll, or Axon event). */
   waitForDroneCompletion: (
     handle: DroneHandle,
     worktreePath: string,
     timeoutMs: number,
     pollIntervalMs?: number,
     repoRoot?: string,
+    busUrl?: string,
+    channel?: string,
+    mindName?: string,
   ) => Promise<{ ok: boolean; error?: string }>;
 
   /** Publish a signal to the bus. */

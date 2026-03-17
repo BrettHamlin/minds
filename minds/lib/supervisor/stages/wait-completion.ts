@@ -19,6 +19,9 @@ export const executeWaitCompletion = async (
     config.droneTimeoutMs,
     undefined, // use default poll interval
     config.repoRoot,
+    config.busUrl,
+    config.channel,
+    config.mindName,
   );
 
   if (!completion.ok) {
