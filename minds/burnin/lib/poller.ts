@@ -36,6 +36,8 @@ export const IMPLEMENT_PATTERNS: PollPatterns = {
   success: [/All waves merged successfully/i, /Implementation complete\./i],
   failure: [
     /Implementation completed with errors/i,
+    /completed with failures/i,
+    /failed with exit code/i,
     /Wave \d+ did not complete/i,
     /Merge failed/i,
     /Error starting bus/i,
