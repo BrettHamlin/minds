@@ -4,6 +4,8 @@ description: Generate Mind-aware tasks for collab development. Decomposes work a
 
 > **IMPORTANT:** Execute these steps directly and sequentially. Do NOT wrap this workflow in PAI Algorithm phases, ISC criteria, capability selection, or any other meta-framework. Follow the numbered steps exactly as written.
 
+> **NEVER ask interactive questions.** Do NOT present menus, multiple-choice options, or ask the user to choose an approach. If prior work exists for the ticket (commits, partial implementations), analyze the current state yourself and generate tasks for what remains. If no spec/plan exists, fetch the ticket from Linear and generate tasks directly. Always proceed autonomously.
+
 ## Path Detection
 
 Determine the Minds source directory before running any commands. In the dev repo (has `minds/cli/`), use `minds/`. In installed repos, use `.minds/`.

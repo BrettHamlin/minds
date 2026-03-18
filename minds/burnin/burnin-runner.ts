@@ -117,11 +117,12 @@ async function main(): Promise<never> {
       console.log(`[${ticket.ticketId}] Running /minds.tasks`);
       await sendCommand(paneId, `/minds.tasks ${ticket.ticketId}`, gravitasRoot);
 
+      // Tasks stall at 10 min — complex tickets need heavy codebase exploration + Linear fetches
       const pollOpts: PollOptions = {
         timeoutMs: timeoutTasksMs,
         pollIntervalMs,
         scrollback: 500,
-        stallThresholdMs,
+        stallThresholdMs: Math.max(stallThresholdMs, 10 * 60 * 1000),
       };
       const result = await pollForCompletion(paneId, TASKS_PATTERNS, pollOpts, gravitasRoot);
 
