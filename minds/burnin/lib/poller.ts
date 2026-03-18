@@ -39,6 +39,8 @@ export const IMPLEMENT_PATTERNS: PollPatterns = {
     /Wave \d+ did not complete/i,
     /Merge failed/i,
     /Error starting bus/i,
+    /port.*already in use/i,
+    /EADDRINUSE/i,
     /FATAL:/i,
   ],
 };
