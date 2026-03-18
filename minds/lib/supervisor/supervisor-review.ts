@@ -306,11 +306,15 @@ export function buildFeedbackContent(
 
     if (boundaryFindings.length > 0) {
       content += `## Boundary Violations\n\n`;
-      content += `You modified files outside your allowed scope. `;
-      content += `**Revert these changes** — use \`git checkout -- <file>\` to undo them. `;
-      content += `If a task requires files outside your boundary, skip that task.\n\n`;
+      content += `You created or modified files outside your allowed scope. For each file below, you have exactly TWO options — pick one and commit it:\n\n`;
+      content += `**Option A — Move the file inside your boundary**: Create the file at a path that IS within your \`owns_files\`. For example, if the violation is a test file, put it in a directory you own.\n\n`;
+      content += `**Option B — Skip the task entirely**: If the file genuinely belongs to another Mind's domain and you cannot move it, use \`git checkout -- <file>\` to revert it and do NOT recreate it. Leave a comment in your commit message explaining what was skipped.\n\n`;
+      content += `**Do NOT recreate the file at the same path again.** That will cause the same rejection.\n\n`;
       for (const f of boundaryFindings) {
-        content += `- ${f.file} — ${f.message}\n`;
+        content += `- \`${f.file}\` — ${f.message}\n`;
+        if (f.suggestion) {
+          content += `  **Suggestion:** ${f.suggestion}\n`;
+        }
       }
       content += `\n`;
     }
