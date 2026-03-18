@@ -72,15 +72,19 @@ export async function launchClaudeInPane(
     model?: string;
     prompt: string;
     busUrl?: string;
+    channel?: string;
   },
   mux?: TerminalMultiplexer,
 ): Promise<void> {
   const resolvedMux = mux ?? await getDefaultMux();
-  const { paneId, worktreePath, model = "sonnet", prompt, busUrl } = opts;
+  const { paneId, worktreePath, model = "sonnet", prompt, busUrl, channel } = opts;
   const escapedPrompt = JSON.stringify(prompt);
   let cmd = `cd ${shellQuote(worktreePath)} && claude --dangerously-skip-permissions --model ${model} --setting-sources project,local ${escapedPrompt}`;
   if (busUrl) {
     cmd = `BUS_URL=${shellQuote(busUrl)} ${cmd}`;
+  }
+  if (channel) {
+    cmd = `MINDS_CHANNEL=${shellQuote(channel)} ${cmd}`;
   }
   await resolvedMux.sendKeys(paneId, cmd);
 }

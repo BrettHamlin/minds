@@ -92,6 +92,7 @@ describe("createMultiplexer", () => {
   });
 
   it("returns AxonMultiplexer when binary, daemon, and client all succeed (mocked)", async () => {
+    process.env.MINDS_MULTIPLEXER = "axon";
     // Mock resolveAxonBinary to return a fake path
     const resolveMod = await import("../axon/resolve-binary.ts");
     const resolveStub = spyOn(resolveMod, "resolveAxonBinary").mockReturnValue("/fake/axon");
