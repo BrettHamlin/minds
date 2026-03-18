@@ -235,3 +235,30 @@ When a feature requires a Mind that does NOT exist in `minds.json`, declare its 
 - Tasks within the same Mind: sequential by default, `[P]` if independent
 - Tasks across different Minds: parallel by default, dependent only if consuming another Mind's output
 - Always list Mind-level dependencies in section headers: `## @execution Tasks (depends on: @pipeline_core)`
+
+### Export Removal Order (MANDATORY)
+
+When one Mind removes an export that another Mind currently imports:
+- The **consumer** must update/remove its imports FIRST (earlier wave)
+- The **producer** removes the export SECOND (later wave)
+- Getting this backwards causes `SyntaxError: Export named '...' not found`
+
+**Example — CORRECT:**
+```
+## @blueprint-api Tasks (Wave 1)
+- [ ] T001 @blueprint-api Remove imports of buildDetailBodyHtml from api.ts
+
+## @blueprint-routes Tasks (depends on: @blueprint-api) (Wave 2)
+- [ ] T002 @blueprint-routes Remove buildDetailBodyHtml function from routes.ts
+```
+
+**WRONG (will fail):**
+```
+## @blueprint-routes Tasks (Wave 1)
+- [ ] T001 @blueprint-routes Remove buildDetailBodyHtml from routes.ts  ← breaks api.ts imports!
+
+## @blueprint-api Tasks (Wave 2)
+- [ ] T002 @blueprint-api Remove imports of buildDetailBodyHtml from api.ts
+```
+
+**Rule:** You cannot remove/rename an export while any file outside your Mind still imports it. The consuming Mind must go first.
