@@ -157,11 +157,14 @@ async function main(): Promise<never> {
       console.log(`[${ticket.ticketId}] Running /minds.implement`);
       await sendCommand(paneId, `/minds.implement ${ticket.ticketId}`, gravitasRoot);
 
+      // Implement stall threshold is 10x tasks: drones work in separate panes,
+      // so the main pane can be silent for 10+ minutes while drones are active.
+      const implementStallMs = Math.max(stallThresholdMs * 10, 20 * 60 * 1000); // min 20 min
       const pollOpts: PollOptions = {
         timeoutMs: timeoutImplementMs,
         pollIntervalMs,
         scrollback: 1000,
-        stallThresholdMs,
+        stallThresholdMs: implementStallMs,
       };
       const result = await pollForCompletion(paneId, IMPLEMENT_PATTERNS, pollOpts, gravitasRoot);
 
