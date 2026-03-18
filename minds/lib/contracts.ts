@@ -312,16 +312,18 @@ export function lintTasks(
     }
 
     // ── 1. dangling_consume ─────────────────────────────────────────────────
+    // Downgraded to warning: consumes: may reference existing code (not task-produced).
+    // The runtime contract checker will verify the import actually exists.
     if (t.consumes) {
       const hasProducer =
         (t.consumes.path && byPath.has(t.consumes.path)) ||
         byIface.has(t.consumes.interface);
 
       if (!hasProducer) {
-        errors.push({
+        warnings.push({
           type: "dangling_consume",
           task: t.id,
-          message: `Task ${t.id} consumes "${t.consumes.interface}" but no task produces it`,
+          message: `Task ${t.id} consumes "${t.consumes.interface}" but no task in this ticket produces it (may be existing code)`,
         });
       } else {
         consumedIfaces.add(t.consumes.interface);

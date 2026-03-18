@@ -146,7 +146,7 @@ describe("generateContracts", () => {
 // ─── lintTasks ────────────────────────────────────────────────────────────────
 
 describe("lintTasks", () => {
-  it("flags dangling_consume: consumes with no matching produces", () => {
+  it("warns dangling_consume: consumes with no matching produces (may be existing code)", () => {
     const content = `
 ## @execution Tasks (depends on: @signals)
 - [ ] T001 @execution Use resolveSignal — consumes: resolveSignal() from minds/signals/resolve.ts
@@ -154,10 +154,12 @@ describe("lintTasks", () => {
     const tasks = parseTasks(content);
     const result = lintTasks(tasks, REGISTRY as any);
 
-    const err = result.errors.find((e) => e.type === "dangling_consume");
-    expect(err).toBeDefined();
-    expect(err!.task).toBe("T001");
-    expect(err!.message).toContain("resolveSignal()");
+    // Dangling consume is a warning, not an error — the code may already exist
+    const warn = result.warnings.find((w) => w.type === "dangling_consume");
+    expect(warn).toBeDefined();
+    expect(warn!.task).toBe("T001");
+    expect(warn!.message).toContain("resolveSignal()");
+    expect(result.errors.find((e) => e.type === "dangling_consume")).toBeUndefined();
   });
 
   it("flags boundary_violation: file paths outside Mind's owns_files", () => {
