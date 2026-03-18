@@ -157,14 +157,14 @@ async function main(): Promise<never> {
       console.log(`[${ticket.ticketId}] Running /minds.implement`);
       await sendCommand(paneId, `/minds.implement ${ticket.ticketId}`, gravitasRoot);
 
-      // Implement stall threshold is 10x tasks: drones work in separate panes,
-      // so the main pane can be silent for 10+ minutes while drones are active.
-      const implementStallMs = Math.max(stallThresholdMs * 10, 20 * 60 * 1000); // min 20 min
+      // Disable stall detection for implement: the orchestrator pane goes silent
+      // for long stretches while drones work in separate panes. The timeout is
+      // the only safety net — stall detection produces too many false positives.
       const pollOpts: PollOptions = {
         timeoutMs: timeoutImplementMs,
         pollIntervalMs,
         scrollback: 1000,
-        stallThresholdMs: implementStallMs,
+        stallThresholdMs: timeoutImplementMs + 1, // effectively disabled
       };
       const result = await pollForCompletion(paneId, IMPLEMENT_PATTERNS, pollOpts, gravitasRoot);
 
