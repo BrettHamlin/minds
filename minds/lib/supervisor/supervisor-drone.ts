@@ -192,7 +192,7 @@ async function relaunchDroneTmux(opts: {
     }
   }
 
-  const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
+  const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, run the completion command at the bottom of DRONE-BRIEF.md.`;
   try {
     // Retry iterations use Opus — if Sonnet couldn't fix it, the problem is hard enough
     // to warrant the upgrade. Most minds pass on iteration 1 with Sonnet.
@@ -248,7 +248,7 @@ async function relaunchDroneAxon(opts: {
       `drone-${mindName}-relaunch-${Date.now()}`
     );
 
-    const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
+    const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, run the completion command at the bottom of DRONE-BRIEF.md.`;
 
     // Mirror the exact args from drone-pane.ts Axon spawn path
     await client.spawn(
