@@ -102,7 +102,25 @@ This command generates tasks for developing the **collab repo itself**, where wo
 
    Then write the file to `specs/{TICKET_ID}/tasks.md`.
 
-8. **Report**: Output summary:
+8. **Lint and fix** (MANDATORY — do not skip): After writing tasks.md, run the linter and fix any errors before reporting.
+
+   ```bash
+   bun {MINDS_DIR}/cli/bin/minds.ts lint specs/{TICKET_ID}/tasks.md --json
+   ```
+
+   The linter outputs `{ valid, errors, warnings }`. If `valid` is false:
+
+   - Read each error's `type`, `task`, and `message`
+   - Fix the failing tasks directly in tasks.md:
+     - **boundary_violation**: The task references a file outside the Mind's `owns_files`. Either reassign the task to the correct Mind, or if it's a new Mind, add `owns: <path>` to the section header.
+     - **unregistered_mind**: The Mind doesn't exist in `minds.json` and no `owns:` was declared in the section header. Add `owns: <path>` to the section header.
+     - **missing_deps_header**: A task has `consumes:` but the section header lacks `(depends on: ...)`. Add the dependency.
+   - Re-run the linter. Repeat until `valid` is true (max 3 attempts).
+   - If still failing after 3 attempts, output the errors and stop — do not run implement.
+
+   Warnings (e.g. `dangling_consume`) are informational — don't block on them.
+
+9. **Report**: Output summary:
    - Total task count
    - Tasks per Mind
    - Cross-Mind contracts identified

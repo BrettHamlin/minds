@@ -39,6 +39,15 @@ program
   });
 
 program
+  .command("lint <tasks-path>")
+  .description("Lint a tasks.md file against the Mind registry")
+  .option("--json", "Output machine-readable JSON")
+  .action(async (tasksPath: string, options: { json?: boolean }) => {
+    const { runLintTasks } = await import("../commands/lint-tasks.js");
+    await runLintTasks(tasksPath, options);
+  });
+
+program
   .command("coverage")
   .description("Check which repo files are covered by minds' owns_files")
   .action(async () => {
