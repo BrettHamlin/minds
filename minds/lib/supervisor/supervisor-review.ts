@@ -74,13 +74,15 @@ export const REVIEW_RESPONSE_FORMAT = `Respond with ONLY a JSON object. Do NOT w
       "file": "path/to/file.ts",
       "line": 42,
       "severity": "error" | "warning",
-      "message": "Description of the issue"
+      "message": "Description of the issue",
+      "suggestion": "Specific fix: change X to Y on line N, or revert Z because..."
     }
   ]
 }
 
 If approved, findings must be an empty array.
-If any issue is found, set approved to false and list all findings.`;
+If any issue is found, set approved to false and list all findings.
+IMPORTANT: Every finding MUST include a "suggestion" field with a specific, actionable fix — not just what's wrong, but exactly how to fix it. Reference specific lines, function names, and values. The drone receiving this feedback has zero context from prior attempts.`;
 
 // ---------------------------------------------------------------------------
 // Review Prompt Construction
@@ -307,6 +309,9 @@ export function buildFeedbackContent(
       for (const f of otherFindings) {
         const severity = f.severity === "error" ? "**Error**" : "Warning";
         content += `- ${severity}: ${f.file}:${f.line} — ${f.message}\n`;
+        if (f.suggestion) {
+          content += `  **Fix:** ${f.suggestion}\n`;
+        }
       }
     }
   }

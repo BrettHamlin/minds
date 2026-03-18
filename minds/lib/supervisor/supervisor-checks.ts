@@ -104,14 +104,35 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
     }
   }
 
-  // Convert glob patterns to directory paths for test command
-  // Strip repo prefixes first (test paths are repo-relative)
+  // Convert owns_files to test filter paths for bun test.
+  // owns_files can be globs ("packages/engine/**"), directories, or individual files.
+  // bun test expects directory paths or test file paths as filters.
   let testPaths: string[] = [];
   if (ownsFilesResolved?.length) {
-    testPaths = ownsFilesResolved
-      .map((p) => stripRepoPrefix(p))
-      .map((p) => p.replace(/\*+$/, "").replace(/\/+$/, "") + "/")
-      .filter((p) => p !== "/" && !p.startsWith(".minds/"));
+    const seen = new Set<string>();
+    for (const raw of ownsFilesResolved) {
+      const p = stripRepoPrefix(raw);
+      if (p.startsWith(".minds/")) continue;
+
+      // Glob pattern (e.g. "packages/engine/**") → strip glob suffix to get directory
+      if (p.includes("*")) {
+        const dir = p.replace(/\*+$/, "").replace(/\/+$/, "") + "/";
+        if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
+        continue;
+      }
+
+      // Individual file → use parent directory (deduplicated)
+      // bun test can't filter by individual source files
+      if (p.includes(".")) {
+        const dir = p.replace(/\/[^/]+$/, "") + "/";
+        if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
+        continue;
+      }
+
+      // Directory path → add trailing slash
+      const dir = p.replace(/\/+$/, "") + "/";
+      if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
+    }
   }
 
   // Fall back to the Mind's own directory if no source owns_files found

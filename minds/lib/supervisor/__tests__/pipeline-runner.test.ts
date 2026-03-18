@@ -35,7 +35,6 @@ function stubDeps(): SupervisorDeps {
       diff: "", testOutput: "", testsPass: true, findings: [],
     }),
     callLlmReview: async () => '{"approved":true,"findings":[]}',
-    installDroneStopHook: () => {},
     killDrone: async () => {},
     delay: async () => {},
   };

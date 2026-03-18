@@ -264,4 +264,24 @@ describe("checkExportExists", () => {
   test("returns false for partial name match", () => {
     expect(checkExportExists("export function fooBar() {}", "foo")).toBe(false);
   });
+
+  test("dotted name: detects exported interface with method", () => {
+    const content = `export interface BlueStore {\n  addNode(id: string): void;\n  removeNode(id: string): void;\n}`;
+    expect(checkExportExists(content, "BlueStore.addNode")).toBe(true);
+  });
+
+  test("dotted name: detects exported class with method", () => {
+    const content = `export class GraphStore {\n  getEdges(): Edge[] { return []; }\n}`;
+    expect(checkExportExists(content, "GraphStore.getEdges")).toBe(true);
+  });
+
+  test("dotted name: false when parent not exported", () => {
+    const content = `interface BlueStore {\n  addNode(id: string): void;\n}`;
+    expect(checkExportExists(content, "BlueStore.addNode")).toBe(false);
+  });
+
+  test("dotted name: false when member not present", () => {
+    const content = `export interface BlueStore {\n  removeNode(id: string): void;\n}`;
+    expect(checkExportExists(content, "BlueStore.addNode")).toBe(false);
+  });
 });

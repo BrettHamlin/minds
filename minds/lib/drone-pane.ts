@@ -30,7 +30,7 @@
  */
 
 import { execSync } from "child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from "fs";
 import { basename, resolve } from "path";
 import { publishMindsEvent } from "../transport/publish-event.ts";
 import { MindsEventType } from "../transport/minds-events.ts";
@@ -230,6 +230,7 @@ if (import.meta.main) { (async () => {
   const repoAlias = getArg("--repo-alias");
   const installCmd = getArg("--install-cmd");
   const orchestratorRoot = getArg("--orchestrator-root");
+  const ownsFilesRaw = getArg("--owns-files");
 
   // ─── Base branch ─────────────────────────────────────────────────────────────
 
@@ -265,6 +266,40 @@ if (import.meta.main) { (async () => {
     run(`git worktree add ${shellQuote(worktreePath)} -b ${shellQuote(branchName)} ${shellQuote(baseBranch)}`);
   } catch (err) {
     fail(`Failed to create worktree at ${worktreePath}: ${err}`);
+  }
+
+  // ─── Copy untracked files within owns_files boundary ─────────────────────────
+  // Worktrees only contain committed files. Untracked files in the main repo
+  // (e.g. newly created source files not yet committed) won't be present.
+  // Copy them so the drone can work with the full source context.
+
+  if (ownsFilesRaw) {
+    const ownsPatterns = ownsFilesRaw.split(",").map(p => p.trim()).filter(Boolean);
+    try {
+      // Get untracked files from the main repo
+      const untrackedOutput = run(`git -C ${shellQuote(repoRoot)} ls-files --others --exclude-standard`);
+      const untrackedFiles = untrackedOutput.split("\n").filter(Boolean);
+
+      for (const file of untrackedFiles) {
+        // Check if this file falls within any owns_files pattern
+        const matchesOwns = ownsPatterns.some(pattern => {
+          const dir = pattern.replace(/\*+$/, "").replace(/\/+$/, "");
+          return file.startsWith(dir + "/") || file === dir;
+        });
+        if (!matchesOwns) continue;
+
+        const srcPath = resolve(repoRoot, file);
+        const destPath = resolve(worktreePath, file);
+        const destDir = resolve(destPath, "..");
+        if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+        if (!existsSync(destPath)) {
+          copyFileSync(srcPath, destPath);
+        }
+      }
+    } catch (err) {
+      // Non-fatal: drone can still work without untracked files
+      process.stderr.write(`Warning: failed to copy untracked files: ${err}\n`);
+    }
   }
 
   // ─── Install dependencies ─────────────────────────────────────────────────────
@@ -395,7 +430,7 @@ if (import.meta.main) { (async () => {
       cwd: worktreePath,
       command: "claude",
       args: ["--dangerously-skip-permissions", "--model", "sonnet", "--setting-sources", "project,local", initialPrompt],
-      env: busUrl ? { BUS_URL: busUrl } : undefined,
+      env: busUrl ? { BUS_URL: busUrl, ...(channel ? { MINDS_CHANNEL: channel } : {}) } : undefined,
       callerPane,
     });
   } catch (err) {

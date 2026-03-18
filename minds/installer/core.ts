@@ -391,22 +391,54 @@ function installTsconfig(ctx: CopyContext, repoRoot: string, log: LogFn): void {
   }
 }
 
-/** Step: Populate .minds/minds.json from pre-generated core registry */
+/** Step: Populate .minds/minds.json from pre-generated core registry.
+ * On force install, merges core minds into the existing registry so that
+ * domain minds (added by fission or manual scaffolding) are preserved. */
 function installMindsRegistry(ctx: CopyContext, destMindsDir: string, log: LogFn): void {
   const mindsJsonPath = join(destMindsDir, "minds.json");
   const coreRegistryPath = join(dirname(_dir), "installer", "core-minds-registry.json");
-  if (existsSync(coreRegistryPath)) {
-    if (copyFileWithTracking(ctx, coreRegistryPath, mindsJsonPath)) {
+
+  if (!existsSync(coreRegistryPath)) {
+    if (existsSync(mindsJsonPath) && !ctx.force) {
+      ctx.result.skipped.push(relative(ctx.repoRoot, mindsJsonPath));
+    } else {
+      writeFileSync(mindsJsonPath, "[]\n");
+      ctx.result.copied.push(relative(ctx.repoRoot, mindsJsonPath));
+      log("  Generated .minds/minds.json registry placeholder (core registry not found)");
+    }
+    return;
+  }
+
+  // If target doesn't exist yet, just copy the core registry
+  if (!existsSync(mindsJsonPath)) {
+    copyFileWithTracking(ctx, coreRegistryPath, mindsJsonPath);
+    log("  Populated .minds/minds.json from core registry");
+    return;
+  }
+
+  // Target exists — merge: update core minds, preserve domain minds
+  try {
+    const coreMinds = JSON.parse(readFileSync(coreRegistryPath, "utf-8")) as Array<{ name: string }>;
+    const coreNames = new Set(coreMinds.map(m => m.name));
+    const existing = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{ name: string }>;
+
+    // Keep domain minds (not in core registry) from the existing file
+    const domainMinds = existing.filter(m => !coreNames.has(m.name));
+
+    // Merge: core minds first, then domain minds
+    const merged = [...coreMinds, ...domainMinds];
+    writeFileSync(mindsJsonPath, JSON.stringify(merged, null, 2) + "\n");
+    ctx.result.copied.push(relative(ctx.repoRoot, mindsJsonPath));
+
+    if (domainMinds.length > 0) {
+      log(`  Merged .minds/minds.json: ${coreMinds.length} core + ${domainMinds.length} domain minds preserved`);
+    } else {
       log("  Populated .minds/minds.json from core registry");
     }
-  } else if (existsSync(mindsJsonPath) && !ctx.force) {
-    // Core registry not available and target already exists — skip.
-    // (copyFileWithTracking is not used here because there is no source file to copy.)
-    ctx.result.skipped.push(relative(ctx.repoRoot, mindsJsonPath));
-  } else {
-    writeFileSync(mindsJsonPath, "[]\n");
-    ctx.result.copied.push(relative(ctx.repoRoot, mindsJsonPath));
-    log("  Generated .minds/minds.json registry placeholder (core registry not found)");
+  } catch {
+    // Parse failed — fall back to overwrite
+    copyFileWithTracking(ctx, coreRegistryPath, mindsJsonPath);
+    log("  Populated .minds/minds.json from core registry (merge failed, overwritten)");
   }
 }
 

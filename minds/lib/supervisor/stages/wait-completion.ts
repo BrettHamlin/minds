@@ -26,7 +26,6 @@ export const executeWaitCompletion = async (
 
   if (!completion.ok) {
     const error = completion.error ?? "Drone failed";
-    await deps.killDrone(droneHandle!);
     return { ok: false, terminal: true, error };
   }
 

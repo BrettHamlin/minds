@@ -577,9 +577,11 @@ export async function runImplement(
     console.log("\nGraceful shutdown...");
     abortController.abort();
 
-    // Kill all Mind panes
+    // Kill all drone panes (skip the orchestrator's own pane)
     for (const d of allDrones) {
-      await mux.killPane(d.paneId);
+      if (d.paneId && d.paneId !== callerPane && !d.paneId.startsWith("(")) {
+        await mux.killPane(d.paneId);
+      }
     }
 
     // Teardown bus with timeout to prevent hanging
@@ -794,6 +796,20 @@ export async function runImplement(
       result.errors.push(
         `Wave ${wave.id} incomplete: missing ${completionResult.missing.join(", ")}`,
       );
+
+      // Wait for all supervisor promises to settle before breaking.
+      // Without this, supervisors may still be mid-iteration when Step 11
+      // cleans up worktrees, causing "cd: no such file or directory" errors.
+      console.log(`  Waiting for remaining supervisors to settle...`);
+      await Promise.allSettled(supervisorPromises);
+
+      // Kill drone panes for this failed wave before breaking
+      for (const drone of waveDrones) {
+        if (drone.paneId && drone.paneId !== callerPane && !drone.paneId.startsWith("(")) {
+          await mux.killPane(drone.paneId);
+        }
+      }
+
       break; // Stop executing further waves
     }
 
@@ -802,10 +818,19 @@ export async function runImplement(
     result.wavesCompleted++;
     console.log(`  Wave ${wave.id} complete.`);
 
-    // Supervisors handle their own drone pane cleanup.
     // Wait for any supervisor promises that haven't resolved yet (edge case:
     // bus got the MIND_COMPLETE but the supervisor promise is still settling).
     const waveSettlements = await Promise.allSettled(supervisorPromises);
+
+    // ── Per-wave drone pane cleanup ─────────────────────────────────────────
+    // Kill all drone panes for this wave. Supervisors do NOT kill drones —
+    // implement.ts owns the kill to avoid double-killing and ensure all drones
+    // in a wave are cleaned up together. Skip the orchestrator's own pane.
+    for (const drone of waveDrones) {
+      if (drone.paneId && drone.paneId !== callerPane && !drone.paneId.startsWith("(")) {
+        await mux.killPane(drone.paneId);
+      }
+    }
 
     // ── Per-wave merge (grouped by repo) ────────────────────────────────────
     // Merge this wave's branches into main BEFORE the next wave starts.

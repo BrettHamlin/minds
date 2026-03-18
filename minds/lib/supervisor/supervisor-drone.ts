@@ -4,24 +4,14 @@
  * Mind supervisor.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, watch } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { resolveMindsDir } from "../../shared/paths.ts";
 import { extractLastJsonLine } from "../../shared/parse-utils.ts";
 import { buildDroneBrief } from "../../cli/lib/drone-brief.ts";
 import { killPane, splitPane, launchClaudeInPane, shellQuote } from "../tmux-utils.ts";
-import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
-import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
+import type { SupervisorConfig } from "./supervisor-types.ts";
 import type { DroneHandle } from "../drone-backend.ts";
-
-// ---------------------------------------------------------------------------
-// Hook entry shape for Claude Code settings.json
-// ---------------------------------------------------------------------------
-
-export interface HookEntry {
-  matcher: string;
-  hooks: Array<{ type: string; command: string }>;
-}
 
 // ---------------------------------------------------------------------------
 // Build Drone Brief
@@ -42,6 +32,7 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
     repo: config.repo,
     testCommand: config.testCommand,
     pipelineTemplate: config.pipelineTemplate,
+    busUrl: config.busUrl,
   });
 
   if (!feedbackFile) {
@@ -92,6 +83,9 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
   if (config.mindRepoRoot && config.mindRepoRoot !== config.repoRoot) {
     args.push("--orchestrator-root", config.repoRoot);
   }
+  if (config.ownsFiles?.length) {
+    args.push("--owns-files", config.ownsFiles.join(","));
+  }
 
   const proc = Bun.spawn(args, {
     cwd: config.repoRoot,
@@ -140,8 +134,9 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
  * previous commits and the feedback file we just wrote.
  *
  * Steps:
- *   1. Write the updated DRONE-BRIEF.md to the existing worktree
- *   2. Dispatch to the appropriate backend (Axon or tmux)
+ *   1. Verify worktree still exists (may have been cleaned up by a previous failed run)
+ *   2. Write the updated DRONE-BRIEF.md to the existing worktree
+ *   3. Dispatch to the appropriate backend (Axon or tmux)
  */
 export async function relaunchDroneInWorktree(opts: {
   oldHandle: DroneHandle;
@@ -151,8 +146,14 @@ export async function relaunchDroneInWorktree(opts: {
   busUrl: string;
   mindName: string;
   repoRoot: string;
+  channel?: string;
 }): Promise<DroneHandle> {
   const { oldHandle, worktreePath, briefContent } = opts;
+
+  // Guard: verify the worktree still exists before attempting relaunch
+  if (!existsSync(worktreePath)) {
+    throw new Error(`Worktree does not exist: ${worktreePath} — cannot relaunch drone`);
+  }
 
   // Write updated DRONE-BRIEF.md (common to both backends)
   writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
@@ -172,8 +173,9 @@ async function relaunchDroneTmux(opts: {
   callerPane: string;
   worktreePath: string;
   busUrl: string;
+  channel?: string;
 }): Promise<DroneHandle> {
-  const { oldHandle, callerPane, worktreePath, busUrl } = opts;
+  const { oldHandle, callerPane, worktreePath, busUrl, channel } = opts;
 
   await killPane(oldHandle.id);
   const newPaneId = await splitPane(callerPane);
@@ -192,11 +194,15 @@ async function relaunchDroneTmux(opts: {
 
   const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
   try {
+    // Retry iterations use Opus — if Sonnet couldn't fix it, the problem is hard enough
+    // to warrant the upgrade. Most minds pass on iteration 1 with Sonnet.
     await launchClaudeInPane({
       paneId: newPaneId,
       worktreePath,
+      model: "opus",
       prompt,
       busUrl,
+      channel,
     });
   } catch (err) {
     await killPane(newPaneId);
@@ -216,8 +222,9 @@ async function relaunchDroneAxon(opts: {
   busUrl: string;
   mindName: string;
   repoRoot: string;
+  channel?: string;
 }): Promise<DroneHandle> {
-  const { oldHandle, worktreePath, busUrl, mindName, repoRoot } = opts;
+  const { oldHandle, worktreePath, busUrl, mindName, repoRoot, channel } = opts;
 
   const { AxonClient } = await import("../axon/client.ts");
   const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
@@ -247,8 +254,8 @@ async function relaunchDroneAxon(opts: {
     await client.spawn(
       newProcessId,
       "claude",
-      ["--dangerously-skip-permissions", "--model", "sonnet", "--setting-sources", "project,local", prompt],
-      busUrl ? { BUS_URL: busUrl } : null,
+      ["--dangerously-skip-permissions", "--model", "opus", "--setting-sources", "project,local", prompt],
+      busUrl ? { BUS_URL: busUrl, ...(channel ? { MINDS_CHANNEL: channel } : {}) } : null,
       worktreePath,
     );
 
@@ -259,76 +266,15 @@ async function relaunchDroneAxon(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Drone Stop Hook Installation
+// Drone Completion Detection (bus-only)
 // ---------------------------------------------------------------------------
 
 /**
- * Install a Claude Code Stop hook in the worktree's `.claude/` directory.
- * When Claude Code exits, the hook writes a sentinel file to the worktree root.
- * This is event-driven (no process-tree polling).
- */
-export function installDroneStopHook(worktreePath: string): void {
-  const claudeDir = join(worktreePath, ".claude");
-  if (!existsSync(claudeDir)) {
-    mkdirSync(claudeDir, { recursive: true });
-  }
-
-  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
-
-  // Write a local settings.json with a Stop hook that creates the sentinel file
-  const sentinelHookEntry = {
-    matcher: "",
-    hooks: [
-      {
-        type: "command" as const,
-        command: `touch ${shellQuote(sentinelPath)}`,
-      },
-    ],
-  };
-
-  const settingsPath = join(claudeDir, "settings.json");
-
-  // Merge with existing settings if present
-  let existing: Record<string, unknown> = {};
-  if (existsSync(settingsPath)) {
-    try {
-      existing = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    } catch {
-      // Ignore corrupt settings
-    }
-  }
-
-  // Preserve existing Stop hooks -- append our sentinel hook instead of replacing
-  const existingHooks = (existing.hooks as Record<string, unknown[]> | undefined) ?? {};
-  const existingStopHooks = Array.isArray(existingHooks.Stop) ? existingHooks.Stop : [];
-
-  // Remove any previous sentinel hook (idempotent -- prevents duplicates on reinstall)
-  const filteredStopHooks = existingStopHooks.filter((entry: HookEntry) => {
-    if (!entry || !Array.isArray(entry.hooks)) return true;
-    return !entry.hooks.some((h) => h.command?.includes(SENTINEL_FILENAME));
-  });
-
-  const merged = {
-    ...existing,
-    hooks: {
-      ...existingHooks,
-      Stop: [...filteredStopHooks, sentinelHookEntry],
-    },
-  };
-
-  writeFileSync(settingsPath, JSON.stringify(merged, null, 2));
-}
-
-// ---------------------------------------------------------------------------
-// Drone Completion Detection
-// ---------------------------------------------------------------------------
-
-/**
- * Subscribe to the Minds bus and wait for a HOOK_Stop event from the drone.
+ * Wait for drone completion by subscribing to the Minds bus SSE channel
+ * and waiting for a HOOK_Stop event from the drone.
  *
- * Primary completion mechanism for the tmux backend (replaces sentinel file
- * polling). The drone's Claude Code Stop hook publishes HOOK_Stop via
- * send-event.ts. We subscribe via SSE and resolve when that event arrives.
+ * This is the sole completion detection mechanism. The drone's Claude Code
+ * Stop hook publishes HOOK_Stop via send-event.ts.
  *
  * Filtering:
  * - type === "HOOK_Stop"
@@ -337,16 +283,25 @@ export function installDroneStopHook(worktreePath: string): void {
  *
  * Safety net: timeout fires if HOOK_Stop never arrives (bus down, crashed drone).
  */
-async function waitForDroneCompletionBus(
-  mindName: string,
-  busUrl: string,
-  channel: string,
+export async function waitForDroneCompletion(
+  _handle: DroneHandle,
+  _worktreePath: string,
   timeoutMs: number,
+  _pollIntervalMs?: number,
+  _repoRoot?: string,
+  busUrl?: string,
+  channel?: string,
+  mindName?: string,
 ): Promise<{ ok: boolean; error?: string }> {
+  if (!busUrl || !channel) {
+    return { ok: false, error: "Bus URL and channel are required for drone completion detection" };
+  }
+
   // Reject events older than 60s. Handles two cases:
   //   1. Fast drone: completes before we subscribe → buffered event still accepted
   //   2. Stale event from previous iteration → rejected (iterations take > 60s)
   const minTimestampMs = Date.now() - 60_000;
+  const filterMindName = mindName ?? "";
 
   const abortController = new AbortController();
   const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
@@ -409,7 +364,7 @@ async function waitForDroneCompletionBus(
         if (msg.type !== "HOOK_Stop") continue;
 
         // Filter by source when mindName is provided
-        if (mindName && msg.payload?.source !== `drone:${mindName}`) continue;
+        if (filterMindName && msg.payload?.source !== `drone:${filterMindName}`) continue;
 
         // Reject stale replayed events from previous iterations
         if (msg.timestamp !== undefined && msg.timestamp < minTimestampMs) continue;
@@ -421,277 +376,5 @@ async function waitForDroneCompletionBus(
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-/**
- * Wait for drone completion.
- *
- * Routes based on the drone's backend and available configuration:
- * - **axon**: Uses Axon's native event-based completion detection via
- *   `waitForProcessCompletion()`. No sentinel file needed.
- * - **tmux + bus params**: Subscribes to the Minds bus SSE channel and
- *   waits for a HOOK_Stop event from the drone. Event-driven, no polling.
- * - **tmux (fallback)**: Watches for a sentinel file created by a Claude
- *   Code Stop hook. Event-driven via `fs.watch()` with a poll fallback.
- */
-export async function waitForDroneCompletion(
-  handle: DroneHandle,
-  worktreePath: string,
-  timeoutMs: number,
-  pollIntervalMs: number = 5000,
-  repoRoot?: string,
-  busUrl?: string,
-  channel?: string,
-  mindName?: string,
-): Promise<{ ok: boolean; error?: string }> {
-  // Axon backend: use native event-based completion detection,
-  // but also race against sentinel file detection. Claude Code does not
-  // exit after completing work (it waits for the next prompt), so the
-  // Axon Exited event may never arrive. The sentinel file is the reliable
-  // signal that work is done.
-  if (handle.backend === "axon") {
-    return waitForDroneCompletionAxon(handle, worktreePath, timeoutMs, repoRoot);
-  }
-
-  // tmux backend: bus-based completion (primary path)
-  // Subscribe to the Minds bus and wait for HOOK_Stop from this drone.
-  if (busUrl && channel) {
-    return waitForDroneCompletionBus(mindName ?? "", busUrl, channel, timeoutMs);
-  }
-
-  // tmux backend: sentinel file polling (fallback when bus params unavailable)
-  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
-
-  // Backend-aware "is alive" checker
-  console.warn(`[waitForDroneCompletion] handle=${JSON.stringify(handle)} repoRoot=${repoRoot} pollInterval=${pollIntervalMs}`);
-  const isAlive = await createIsAliveChecker(handle, repoRoot);
-
-  // TOCTOU guard: if the sentinel already exists AND the drone is already gone,
-  // the drone completed before we started watching. Return success immediately.
-  if (existsSync(sentinelPath)) {
-    if (!await isAlive()) {
-      // Drone is gone + sentinel exists = completed successfully before we started watching
-      return { ok: true };
-    }
-    // Drone is still alive — sentinel is stale from a previous run, clean it up
-    try { rmSync(sentinelPath, { force: true }); } catch { /* ignore */ }
-  }
-
-  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    let resolved = false;
-    const done = (result: { ok: boolean; error?: string }) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeoutTimer);
-      clearInterval(pollTimer);
-      try { watcher?.close(); } catch { /* ignore */ }
-      resolve(result);
-    };
-
-    // Timeout
-    const timeoutTimer = setTimeout(() => {
-      done({ ok: false, error: `Drone timed out after ${timeoutMs}ms` });
-    }, timeoutMs);
-
-    // fs.watch() on the worktree directory for the sentinel file
-    let watcher: ReturnType<typeof watch> | undefined;
-    try {
-      watcher = watch(worktreePath, (eventType, filename) => {
-        if (filename === SENTINEL_FILENAME && existsSync(sentinelPath)) {
-          done({ ok: true });
-        }
-      });
-      watcher.on("error", () => {
-        // On macOS (kqueue), deleting the watched directory emits an error.
-        // Close gracefully and let the poll fallback handle detection.
-        try { watcher?.close(); } catch { /* ignore */ }
-        watcher = undefined;
-      });
-    } catch {
-      // fs.watch() may fail on some platforms — fall through to poll
-    }
-
-    // Poll fallback: check sentinel file + drone existence every interval
-    const pollTimer = setInterval(async () => {
-      // Primary: sentinel file exists
-      if (existsSync(sentinelPath)) {
-        done({ ok: true });
-        return;
-      }
-
-      // Fallback: drone no longer alive (crash, manual kill)
-      // If sentinel was NOT written but drone is gone, it crashed.
-      if (!await isAlive()) {
-        done({ ok: false, error: `Drone ${handle.id} (${handle.backend}) died without writing sentinel — likely crashed` });
-        return;
-      }
-    }, pollIntervalMs);
-
-    // Check immediately in case sentinel already exists or drone is already gone
-    if (existsSync(sentinelPath)) {
-      done({ ok: true });
-    }
-  });
-}
-
-/**
- * Wait for drone completion using Axon's native event-based system.
- *
- * Delegates to `waitForProcessCompletion()` from the Axon completion module,
- * which subscribes to Axon events and resolves when the process exits.
- * This avoids sentinel-file polling entirely when the drone was spawned via Axon.
- */
-async function waitForDroneCompletionAxon(
-  handle: DroneHandle,
-  worktreePath: string,
-  timeoutMs: number,
-  repoRoot?: string,
-): Promise<{ ok: boolean; error?: string }> {
-  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
-
-  // Race two completion signals:
-  // 1. Sentinel file detection (reliable -- Claude Code creates this on Stop hook)
-  // 2. Axon process exit event (fires if the process actually exits)
-  //
-  // Claude Code stays running after completing work (waiting for next prompt),
-  // so the Axon Exited event may not arrive. The sentinel file is the primary
-  // completion signal; Axon exit is a bonus for detecting crashes.
-
-  // Sentinel file watcher -- same approach as tmux backend
-  const sentinelPromise = new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    // Check immediately in case sentinel already exists
-    if (existsSync(sentinelPath)) {
-      resolve({ ok: true });
-      return;
-    }
-
-    // Watch + poll for sentinel
-    let done = false;
-    const finish = (result: { ok: boolean; error?: string }) => {
-      if (done) return;
-      done = true;
-      clearInterval(pollTimer);
-      try { watcher?.close(); } catch { /* ignore */ }
-      resolve(result);
-    };
-
-    let watcher: ReturnType<typeof watch> | undefined;
-    try {
-      watcher = watch(worktreePath, (_eventType, filename) => {
-        if (filename === SENTINEL_FILENAME && existsSync(sentinelPath)) {
-          finish({ ok: true });
-        }
-      });
-      watcher.on("error", () => {
-        try { watcher?.close(); } catch { /* ignore */ }
-        watcher = undefined;
-      });
-    } catch {
-      // fs.watch() may fail on some platforms -- poll fallback handles it
-    }
-
-    // Poll every 5 seconds as fallback
-    const pollTimer = setInterval(() => {
-      if (existsSync(sentinelPath)) {
-        finish({ ok: true });
-      }
-    }, 5000);
-  });
-
-  // Axon exit event watcher
-  const axonPromise = (async (): Promise<{ ok: boolean; error?: string }> => {
-    const { AxonClient } = await import("../axon/client.ts");
-    const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
-    const { waitForProcessCompletion } = await import("../axon/completion.ts");
-
-    const resolvedRoot = repoRoot ?? process.cwd();
-    const socketPath = process.env.AXON_SOCKET ??
-      getDaemonPaths(resolvedRoot).socketPath;
-
-    let client: InstanceType<typeof AxonClient>;
-    try {
-      client = await AxonClient.connect(socketPath);
-    } catch (err) {
-      return {
-        ok: false,
-        error: `Axon connection failed during completion wait: ${err}`,
-      };
-    }
-
-    try {
-      const result = await waitForProcessCompletion(client, handle.id, timeoutMs);
-      if (result.error === "timeout") {
-        return { ok: false, error: `Drone timed out after ${timeoutMs}ms` };
-      }
-      if (result.error === "process_not_found") {
-        return { ok: false, error: `Drone ${handle.id} not found in Axon — likely crashed` };
-      }
-      return {
-        ok: result.ok,
-        error: result.ok ? undefined : `Drone exited with code ${result.exitCode}`,
-      };
-    } finally {
-      client.close();
-    }
-  })();
-
-  // Timeout
-  const timeoutPromise = new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    setTimeout(() => {
-      resolve({ ok: false, error: `Drone timed out after ${timeoutMs}ms` });
-    }, timeoutMs);
-  });
-
-  // Race: first to resolve wins (sentinel, axon exit, or timeout)
-  return Promise.race([sentinelPromise, axonPromise, timeoutPromise]);
-}
-
-/**
- * Create a backend-aware "is alive" checker for a drone.
- *
- * - tmux backend: uses TmuxMultiplexer.isPaneAlive()
- * - axon backend: uses AxonClient.info() to check process state via a
- *   persistent connection (created once, reused across polls)
- */
-async function createIsAliveChecker(
-  handle: DroneHandle,
-  repoRoot?: string,
-): Promise<() => Promise<boolean>> {
-  if (handle.backend === "tmux") {
-    const mux = new TmuxMultiplexer();
-    return () => mux.isPaneAlive(handle.id);
-  }
-
-  // Axon backend: connect once and reuse
-  console.warn(`[createIsAliveChecker] Axon backend — handle=${handle.id} repoRoot=${repoRoot}`);
-  const { AxonClient } = await import("../axon/client.ts");
-  const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
-
-  // Resolve socket path: explicit env > repoRoot-based > cwd-based
-  const resolvedRoot = repoRoot ?? process.cwd();
-  const socketPath = process.env.AXON_SOCKET ??
-    getDaemonPaths(resolvedRoot).socketPath;
-  console.warn(`[createIsAliveChecker] socketPath=${socketPath} (resolvedRoot=${resolvedRoot})`);
-
-  let client: InstanceType<typeof AxonClient> | null = null;
-  try {
-    client = await AxonClient.connect(socketPath);
-    console.warn(`[createIsAliveChecker] Connected to Axon daemon OK`);
-  } catch (err) {
-    // Can't connect — return a checker that always says "not alive"
-    console.warn(`[createIsAliveChecker] CONNECT FAILED: ${err} — will always report not alive`);
-    return () => Promise.resolve(false);
-  }
-
-  return async () => {
-    try {
-      const info = await client!.info(handle.id);
-      return info.state === "Running" || info.state === "Starting";
-    } catch {
-      // Process not found or connection lost — drone is gone
-      console.warn(`[isAlive] ${handle.id} — Axon info() failed, reporting not alive`);
-      return false;
-    }
-  };
 }
 

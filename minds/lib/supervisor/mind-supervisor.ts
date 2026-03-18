@@ -30,7 +30,7 @@
  *   mind-supervisor.ts         — this file: orchestrator entry point
  */
 
-import { existsSync, writeFileSync, rmSync } from "fs";
+import { existsSync, writeFileSync } from "fs";
 import { join } from "path";
 import { MindsEventType } from "../../transport/minds-events.ts";
 import { killPane as killPaneImpl } from "../tmux-utils.ts";
@@ -43,7 +43,6 @@ import {
   type SupervisorDeps,
   type ReviewFinding,
   type SupervisorResult,
-  SENTINEL_FILENAME,
   BASE_RETRY_BACKOFF_MS,
   BACKOFF_MULTIPLIER,
   MAX_BACKOFF_MS,
@@ -54,7 +53,6 @@ import { buildFeedbackContent } from "./supervisor-review.ts";
 import {
   spawnDrone as spawnDroneImpl,
   relaunchDroneInWorktree as relaunchDroneImpl,
-  installDroneStopHook as installDroneStopHookImpl,
   waitForDroneCompletion as waitForDroneCompletionImpl,
 } from "./supervisor-drone.ts";
 import { loadStandards, runDeterministicChecksDefault } from "./supervisor-checks.ts";
@@ -77,24 +75,9 @@ function createDefaultDeps(): SupervisorDeps {
     publishSignal: publishSignalDefault,
     runDeterministicChecks: runDeterministicChecksDefault,
     callLlmReview: callLlmReviewDefault,
-    installDroneStopHook: installDroneStopHookImpl,
     killDrone: async (handle: DroneHandle) => {
-      if (handle.backend === "tmux") {
-        await killPaneImpl(handle.id);
-      } else {
-        // Axon backend: kill via AxonClient
-        try {
-          const { AxonClient } = await import("../axon/client.ts");
-          const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
-          const socketPath = process.env.AXON_SOCKET ??
-            getDaemonPaths(process.cwd()).socketPath;
-          const client = await AxonClient.connect(socketPath);
-          await client.kill(handle.id);
-          client.close();
-        } catch {
-          // Best-effort kill
-        }
-      }
+      // Only tmux backend — Axon support removed
+      await killPaneImpl(handle.id);
     },
     delay: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
@@ -288,8 +271,20 @@ export async function runMindSupervisor(
         `[supervisor] @${config.mindName}: REJECTED (${verdictFindings.length} findings). Writing feedback.`
       );
 
+      // Log findings to stdout so they survive worktree cleanup
+      for (const f of verdictFindings) {
+        const sug = f.suggestion ? ` | Fix: ${f.suggestion}` : "";
+        console.log(`[supervisor] @${config.mindName}:   ${f.severity}: ${f.file}:${f.line} — ${f.message}${sug}`);
+      }
+
       const checks = ctx.checkResults;
       const testFailures = checks && !checks.testsPass ? checks.testOutput : undefined;
+      if (testFailures) {
+        // Log truncated test output so failures are visible in the implement log
+        const truncated = testFailures.length > 2000 ? testFailures.slice(-2000) + "\n[truncated]" : testFailures;
+        console.log(`[supervisor] @${config.mindName}: Test output:\n${truncated}`);
+      }
+
       const feedbackContent = buildFeedbackContent(iteration, verdictFindings, testFailures);
       writeFileSync(join(currentWorktree, `REVIEW-FEEDBACK-${iteration}.md`), feedbackContent);
 
@@ -357,23 +352,12 @@ export async function runMindSupervisor(
       // Best effort -- bus may be down too
     }
   } finally {
-    // Record all tracked drone handles in the result for observability
+    // Record all tracked drone handles in the result for observability.
+    // The supervisor does NOT kill drones — implement.ts owns per-wave cleanup
+    // to avoid double-killing and to ensure all drones in a wave are killed
+    // together after the wave completes.
     result.allDroneHandles = [...allDroneHandles];
     result.totalDronesSpawned = allDroneHandles.length;
-
-    // Cleanup: kill ALL spawned drones (not just the last one)
-    for (const handle of allDroneHandles) {
-      await deps.killDrone(handle);
-    }
-
-    // Clean up sentinel file if present (skip if worktree was never resolved)
-    const isPlaceholderWorktree = !currentWorktree || currentWorktree.startsWith("(");
-    if (!isPlaceholderWorktree) {
-      const sentinelPath = join(currentWorktree, SENTINEL_FILENAME);
-      if (existsSync(sentinelPath)) {
-        try { rmSync(sentinelPath, { force: true }); } catch { /* ignore */ }
-      }
-    }
   }
 
   return result;

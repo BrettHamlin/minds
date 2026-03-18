@@ -68,6 +68,8 @@ export interface ReviewFinding {
   line: number;
   severity: "error" | "warning";
   message: string;
+  /** Actionable fix suggestion from the reviewer (Opus). */
+  suggestion?: string;
   /** Which supervisor iteration produced this finding (1-based). */
   iteration?: number;
 }
@@ -150,9 +152,10 @@ export interface SupervisorDeps {
     busUrl: string;
     mindName: string;
     repoRoot: string;
+    channel?: string;
   }) => Promise<DroneHandle>;
 
-  /** Wait for drone completion (bus event, sentinel file + poll, or Axon event). */
+  /** Wait for drone completion via bus HOOK_Stop event. */
   waitForDroneCompletion: (
     handle: DroneHandle,
     worktreePath: string,
@@ -182,9 +185,6 @@ export interface SupervisorDeps {
   /** Call LLM for code review. */
   callLlmReview: (prompt: string, timeoutMs: number, opts?: { worktreePath?: string; agentName?: string }) => Promise<string>;
 
-  /** Install the drone Stop hook for sentinel-based completion detection. */
-  installDroneStopHook: (worktreePath: string) => void;
-
   /** Kill a drone. */
   killDrone: (handle: DroneHandle) => Promise<void>;
 
@@ -211,7 +211,6 @@ export function errorMessage(err: unknown): string {
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_REVIEW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (Opus + tool use)
-export const SENTINEL_FILENAME = ".drone-complete";
 export const MAX_DIFF_CHARS = 50_000;
 export const MAX_TEST_OUTPUT_CHARS = 20_000;
 

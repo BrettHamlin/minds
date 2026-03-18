@@ -145,21 +145,26 @@ export function parseTasks(content: string): ParsedTask[] {
     const parallel = /^\s*-\s+\[ \]\s+T\d+\s+@[\w-]+\s+\[P\]/.test(line);
 
     // Parse produces annotation: produces: <interface> at <path>
+    // Interface may be wrapped in backticks — strip them.
+    // Only the FIRST produces: is parsed — multiple produces per task is an authoring error
+    // (caught by lintTasks as a warning).
     let produces: ParsedTask["produces"];
     const pm = rest.match(/produces:\s+(.+?)\s+at\s+(\S+)/);
     if (pm) {
-      produces = { interface: pm[1].trim(), path: pm[2] };
+      produces = { interface: pm[1].trim().replace(/^`+|`+$/g, ""), path: pm[2] };
     }
 
     // Parse consumes annotation: consumes: <interface> from <path>  OR  consumes: <token>
+    // Interface may be wrapped in backticks — strip them.
+    // Only the FIRST consumes: is parsed — multiple consumes per task is an authoring error.
     let consumes: ParsedTask["consumes"];
     const cfm = rest.match(/consumes:\s+(.+?)\s+from\s+(\S+)/);
     if (cfm) {
-      consumes = { interface: cfm[1].trim(), path: cfm[2] };
+      consumes = { interface: cfm[1].trim().replace(/^`+|`+$/g, ""), path: cfm[2] };
     } else {
       const csm = rest.match(/consumes:\s+(\S+)/);
       if (csm) {
-        consumes = { interface: csm[1], path: "" };
+        consumes = { interface: csm[1].replace(/^`+|`+$/g, ""), path: "" };
       }
     }
 
@@ -287,6 +292,25 @@ export function lintTasks(
   const consumedPaths = new Set<string>();
 
   for (const t of tasks) {
+    // ── 0. multiple_annotations ─────────────────────────────────────────────
+    // Warn when a task has more than one produces: or consumes: — only the first is parsed.
+    const producesCount = (t.description.match(/produces:/g) || []).length;
+    const consumesCount = (t.description.match(/consumes:/g) || []).length;
+    if (producesCount > 1) {
+      warnings.push({
+        type: "multiple_annotations",
+        task: t.id,
+        message: `Task ${t.id} has ${producesCount} produces: annotations but only the first is parsed. Split into separate tasks.`,
+      });
+    }
+    if (consumesCount > 1) {
+      warnings.push({
+        type: "multiple_annotations",
+        task: t.id,
+        message: `Task ${t.id} has ${consumesCount} consumes: annotations but only the first is parsed. Split into separate tasks.`,
+      });
+    }
+
     // ── 1. dangling_consume ─────────────────────────────────────────────────
     if (t.consumes) {
       const hasProducer =
@@ -599,15 +623,25 @@ export function lintTasks(
  * Strips consumes: annotations first (imports are expected to cross boundaries).
  */
 function extractPathsForBoundaryCheck(description: string): string[] {
-  // Remove consumes: annotations — cross-boundary imports are intentional
-  const text = description.replace(/consumes:\s+\S+(?:\s+from\s+\S+)?/g, "");
+  // BRE-672: Strip everything from consumes: to end — the annotation is always last
+  // and may contain comma-separated interface/path pairs.
+  const text = description.replace(/\s*—?\s*consumes:\s+.+$/g, "");
   const paths: string[] = [];
-  // Match path-like tokens: letter/underscore-started segments separated by /
-  const re = /\b([a-zA-Z_][\w.\-]*(?:\/[a-zA-Z_][\w.\-]*)+)\b/g;
+  // BRE-671: Only match actual file paths, not natural language word/word patterns.
+  // A token is treated as a path if it:
+  //   (a) ends with a file extension (.ts, .js, .json, .md, etc.), OR
+  //   (b) starts with a known source directory prefix (src/, lib/, packages/, minds/, .minds/, tests/, etc.)
+  // This avoids false positives like "empty/non-array/missing" (3 slash-separated English words).
+  const re = /\b([a-zA-Z_.][\w.\-]*(?:\/[a-zA-Z_][\w.\-]*)+)\b/g;
+  const SOURCE_DIR_PREFIXES = /^(?:src|lib|pkg|packages|modules|minds|\.minds|tests|test|spec|specs|scripts|bin|dist|build|app|config|public|assets|components|views|routes|api|services|utils|helpers|core)\//;
   let m;
   while ((m = re.exec(text)) !== null) {
-    // Strip repo prefix so "backend:src/api/foo.ts" → "src/api/foo.ts" for boundary check
-    paths.push(stripRepoPrefix(m[1]));
+    const candidate = m[1];
+    const hasExtension = /\.\w{1,5}$/.test(candidate);
+    const looksLikePath = SOURCE_DIR_PREFIXES.test(candidate);
+    if (hasExtension || looksLikePath) {
+      paths.push(stripRepoPrefix(candidate));
+    }
   }
   return paths;
 }
@@ -618,7 +652,7 @@ function extractPathsForBoundaryCheck(description: string): string[] {
 function stripAnnotationsForLeakage(description: string): string {
   return description
     .replace(/produces:\s+.+?\s+at\s+\S+/g, "")
-    .replace(/consumes:\s+\S+(?:\s+from\s+\S+)?/g, "");
+    .replace(/\s*—?\s*consumes:\s+.+$/g, "");
 }
 
 /**

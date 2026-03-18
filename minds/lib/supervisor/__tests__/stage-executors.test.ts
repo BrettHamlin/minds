@@ -51,7 +51,6 @@ function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
     publishSignal: mock(async () => {}),
     runDeterministicChecks: mock(() => makePassingChecks()),
     callLlmReview: mock(async () => JSON.stringify({ approved: true, findings: [] })),
-    installDroneStopHook: mock(() => {}),
     killDrone: mock(async () => {}),
     delay: mock(async () => {}),
     ...overrides,
@@ -117,7 +116,6 @@ describe("spawn-drone executor", () => {
     expect(ctx.worktree).toBe(join(tmpDir, "worktree"));
     expect(ctx.branch).toBe("minds/BRE-500-transport");
     expect(ctx.allDroneHandles.map(h => h.id)).toContain("%10");
-    expect(ctx.deps.installDroneStopHook).toHaveBeenCalledTimes(1);
   });
 
   test("subsequent iteration: re-launches drone in existing worktree", async () => {
@@ -137,7 +135,6 @@ describe("spawn-drone executor", () => {
     expect(ctx.droneHandle).toEqual(mockHandle("%12"));
     expect(ctx.allDroneHandles.map(h => h.id)).toContain("%12");
     expect(deps.relaunchDroneInWorktree).toHaveBeenCalledTimes(1);
-    expect(deps.installDroneStopHook).toHaveBeenCalledTimes(1);
   });
 
   test("spawn failure returns terminal error", async () => {
@@ -184,7 +181,7 @@ describe("wait-completion executor", () => {
     expect(ctx.deps.waitForDroneCompletion).toHaveBeenCalledTimes(1);
   });
 
-  test("failure: drone crashes returns terminal error and kills drone", async () => {
+  test("failure: drone crashes returns terminal error without killing drone", async () => {
     const deps = makeMockDeps({
       waitForDroneCompletion: mock(async () => ({
         ok: false,
@@ -198,7 +195,8 @@ describe("wait-completion executor", () => {
     expect(result.ok).toBe(false);
     expect(result.terminal).toBe(true);
     expect(result.error).toContain("Drone pane died");
-    expect(deps.killDrone).toHaveBeenCalledWith(mockHandle("%10"));
+    // Supervisor does NOT kill drones — implement.ts owns per-wave cleanup
+    expect(deps.killDrone).not.toHaveBeenCalled();
   });
 });
 

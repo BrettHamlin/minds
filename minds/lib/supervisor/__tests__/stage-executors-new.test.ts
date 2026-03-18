@@ -46,7 +46,6 @@ function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
       findings: [],
     })),
     callLlmReview: mock(async () => JSON.stringify({ approved: true, findings: [] })),
-    installDroneStopHook: mock(() => {}),
     killDrone: mock(async () => {}),
     delay: mock(async () => {}),
     ...overrides,

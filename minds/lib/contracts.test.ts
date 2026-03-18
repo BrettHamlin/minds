@@ -280,6 +280,50 @@ describe("lintTasks", () => {
     expect(boundaryErrors).toHaveLength(0);
   });
 
+  it("BRE-671: does NOT flag boundary_violation on natural language word/word patterns", () => {
+    const content = `
+## @signals Tasks
+- [ ] T001 @signals Handle nodeIds/edgeIds mapping and valid/invalid states
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, REGISTRY as any);
+
+    const boundaryErrors = result.errors.filter(
+      (e) => e.type === "boundary_violation"
+    );
+    expect(boundaryErrors).toHaveLength(0);
+  });
+
+  it("BRE-671: still flags real file paths outside boundary", () => {
+    const content = `
+## @signals Tasks
+- [ ] T001 @signals Update minds/execution/handler.ts and src/api/handler.ts
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, REGISTRY as any);
+
+    const boundaryErrors = result.errors.filter(
+      (e) => e.type === "boundary_violation"
+    );
+    expect(boundaryErrors.length).toBeGreaterThan(0);
+  });
+
+  it("BRE-672: strips multi-path consumes annotations (comma-separated)", () => {
+    // Both paths are in @pipeline_core's boundary, consumed by @execution.
+    // Without the fix, the second path survives stripping and triggers boundary_violation.
+    const content = `
+## @execution Tasks
+- [ ] T001 @execution Refactor handler — consumes: buildBrief() from minds/pipeline_core/enricher.ts, RefineResponse from minds/pipeline_core/types.ts
+`;
+    const tasks = parseTasks(content);
+    const result = lintTasks(tasks, REGISTRY as any);
+
+    const boundaryErrors = result.errors.filter(
+      (e) => e.type === "boundary_violation"
+    );
+    expect(boundaryErrors).toHaveLength(0);
+  });
+
   it("passes clean tasks with valid: true and no errors or warnings", () => {
     const content = `
 ## @pipeline_core Tasks

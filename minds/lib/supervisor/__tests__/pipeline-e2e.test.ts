@@ -105,7 +105,6 @@ function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
     publishSignal: mock(async () => {}),
     runDeterministicChecks: mock(() => makePassingChecks()),
     callLlmReview: mock(async () => makeApprovalResponse()),
-    installDroneStopHook: mock(() => {}),
     killDrone: mock(async () => {}),
     delay: mock(async () => {}),
     ...overrides,
@@ -799,7 +798,7 @@ describe("Drone lifecycle across pipeline types", () => {
     }
   });
 
-  test("cleanup kills panes for all pipeline types", async () => {
+  test("supervisor does not kill drones — implement.ts owns per-wave cleanup", async () => {
     mkdirSync(join(tmpDir, "worktree"), { recursive: true });
     for (const template of [undefined, "build", "test"] as const) {
       const config = makeConfig({
@@ -808,9 +807,11 @@ describe("Drone lifecycle across pipeline types", () => {
       });
       const deps = makeMockDeps();
 
-      await runMindSupervisor(config, deps);
+      const result = await runMindSupervisor(config, deps);
 
-      expect(deps.killDrone).toHaveBeenCalled();
+      // Supervisor tracks drones but does NOT kill them
+      expect(result.allDroneHandles.length).toBeGreaterThan(0);
+      expect(deps.killDrone).not.toHaveBeenCalled();
     }
   });
 });

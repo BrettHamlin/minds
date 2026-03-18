@@ -14,7 +14,8 @@ import { join } from "path";
 import type { DroneBackend, DroneHandle, DroneSpawnOpts, DroneCompletionResult } from "../drone-backend.ts";
 import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
 import { shellQuote } from "../tmux-utils.ts";
-import { SENTINEL_FILENAME } from "../supervisor/supervisor-types.ts";
+/** Sentinel filename — legacy completion detection for the DroneBackend interface. */
+const SENTINEL_FILENAME = ".drone-complete";
 
 export class TmuxDroneBackend implements DroneBackend {
   private readonly mux: TmuxMultiplexer;

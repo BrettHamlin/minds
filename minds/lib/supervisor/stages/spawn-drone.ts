@@ -74,9 +74,6 @@ export const executeSpawnDrone = async (
     ctx.worktree = drone.worktree;
     ctx.branch = drone.branch;
 
-    // Install the Stop hook for sentinel-based completion detection
-    deps.installDroneStopHook(drone.worktree);
-
     // Auto-accept workspace trust dialog (fires after Claude Code loads)
     autoAcceptTrustDialog(drone.handle, config.repoRoot);
 
@@ -96,12 +93,10 @@ export const executeSpawnDrone = async (
       busUrl: config.busUrl,
       mindName: config.mindName,
       repoRoot: config.repoRoot,
+      channel: config.channel,
     });
     ctx.droneHandle = newHandle;
     ctx.allDroneHandles.push(newHandle);
-
-    // Reinstall the Stop hook (sentinel file was consumed by previous iteration)
-    deps.installDroneStopHook(ctx.worktree);
 
     // Auto-accept workspace trust dialog for re-launched drone
     autoAcceptTrustDialog(newHandle, config.repoRoot);

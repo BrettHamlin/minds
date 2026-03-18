@@ -19,6 +19,7 @@ export interface DroneBriefParams {
   repo?: string; // repo alias for multi-repo context
   testCommand?: string; // custom test command (default: "bun test")
   pipelineTemplate?: string; // "code" (default), "build", or "test"
+  busUrl?: string; // bus server URL for completion signal
 }
 
 /**
@@ -87,7 +88,18 @@ Files outside these paths will be rejected by the deterministic boundary check.
     : "";
 
   // Instructions section: pipeline-aware
+  // Resolve the correct relative path prefix for the publish script.
+  // In source repos it's "minds/", in installed repos it's ".minds/".
+  const mindsPrefix = mindsDir?.endsWith(".minds") ? ".minds" : "minds";
   let instructions: string;
+  const channel = `minds-${ticketId}`;
+  const busEnv = params.busUrl ? `BUS_URL="${params.busUrl}" ` : "";
+  const completionStep = `When ALL tasks are done and committed, signal completion by running this exact command:
+\`\`\`bash
+${busEnv}bun ${mindsPrefix}/transport/minds-publish.ts --channel "${channel}" --type HOOK_Stop --payload '{"source":"drone:${mindName}"}'
+\`\`\`
+Do NOT use \`/exit\`. The supervisor will handle session cleanup.`;
+
   if (pipelineTemplate === "build") {
     instructions = `## 🔧 Instructions
 
@@ -95,7 +107,7 @@ Files outside these paths will be rejected by the deterministic boundary check.
 2. Implement ALL tasks in order (unless marked [P] for parallel-safe).
 3. Execute the build commands specified in MIND.md. Report build output.
 4. Commit your work with a descriptive message referencing ${ticketId}.
-5. When ALL tasks are done and committed, type \`/exit\` to close this session.
+5. ${completionStep}
 `;
   } else if (pipelineTemplate === "test") {
     instructions = `## 🔧 Instructions
@@ -104,7 +116,7 @@ Files outside these paths will be rejected by the deterministic boundary check.
 2. Implement ALL tasks in order (unless marked [P] for parallel-safe).
 3. Execute the test/verification commands specified in MIND.md. Report results.
 4. Commit your work with a descriptive message referencing ${ticketId}.
-5. When ALL tasks are done and committed, type \`/exit\` to close this session.
+5. ${completionStep}
 `;
   } else {
     instructions = `## 🔧 Instructions
@@ -114,7 +126,7 @@ Files outside these paths will be rejected by the deterministic boundary check.
 3. Write tests for each change (TDD: red -> green -> refactor).
 4. Run \`${effectiveTestCmd}\` to verify your changes pass.
 5. Commit your work with a descriptive message referencing ${ticketId}.
-6. When ALL tasks are done and committed, type \`/exit\` to close this session.
+6. ${completionStep}
 `;
   }
 

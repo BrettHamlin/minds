@@ -97,7 +97,6 @@ function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
     publishSignal: mock(async () => {}),
     runDeterministicChecks: mock(() => makePassingChecks()),
     callLlmReview: mock(async () => makeApprovalResponse()),
-    installDroneStopHook: mock(() => {}),
     killDrone: mock(async () => {}),
     delay: mock(async () => {}), // zero-wait for tests
     ...overrides,
@@ -306,11 +305,8 @@ describe("runMindSupervisor integration", () => {
     // Verify no review was attempted (drone never completed)
     expect(deps.callLlmReview).toHaveBeenCalledTimes(0);
 
-    // Verify killDrone was called for the crashed drone
-    const killDroneCalls = (deps.killDrone as ReturnType<typeof mock>).mock.calls;
-    // killDrone is called once explicitly for the crashed drone, and once in finally cleanup
-    const killedIds = killDroneCalls.map((c: unknown[]) => (c[0] as DroneHandle).id);
-    expect(killedIds).toContain("%10");
+    // Supervisor does NOT kill drones — implement.ts owns per-wave cleanup
+    expect(deps.killDrone).not.toHaveBeenCalled();
 
     // Verify MIND_FAILED was published
     const publishCalls = (deps.publishSignal as ReturnType<typeof mock>).mock.calls;
@@ -419,27 +415,7 @@ describe("runMindSupervisor integration", () => {
     expect(result.findings.some((f) => f.message.includes("timed out"))).toBe(true);
   });
 
-  test("installDroneStopHook called for each iteration", async () => {
-    const config = makeConfig({ maxIterations: 2 });
-    mkdirSync(join(tmpDir, "worktree"), { recursive: true });
-
-    let reviewCallCount = 0;
-    const deps = makeMockDeps({
-      callLlmReview: mock(async () => {
-        reviewCallCount++;
-        if (reviewCallCount === 1) return makeRejectionResponse();
-        return makeApprovalResponse();
-      }),
-      relaunchDroneInWorktree: mock(async () => mockHandle("%15")),
-    });
-
-    await runMindSupervisor(config, deps);
-
-    // installDroneStopHook should be called twice: once after spawn, once after relaunch
-    expect(deps.installDroneStopHook).toHaveBeenCalledTimes(2);
-  });
-
-  test("cleanup kills all spawned panes even after failure", async () => {
+  test("supervisor tracks drones but does NOT kill them (implement.ts owns per-wave cleanup)", async () => {
     const config = makeConfig({ maxIterations: 2 });
     mkdirSync(join(tmpDir, "worktree"), { recursive: true });
 
@@ -458,12 +434,8 @@ describe("runMindSupervisor integration", () => {
     expect(result.ok).toBe(false);
     // Both drones (%10 from spawn, %16 from relaunch) should be tracked
     expect(result.allDroneHandles).toHaveLength(2);
-    // killDrone should be called for each tracked drone in cleanup
-    const killCalls = (deps.killDrone as ReturnType<typeof mock>).mock.calls;
-    const killedIds = killCalls.map((c: unknown[]) => (c[0] as DroneHandle).id);
-    // One explicit kill for the crashed drone + two in finally cleanup
-    expect(killedIds.filter((p: string) => p === "%10")).toHaveLength(1);
-    expect(killedIds.filter((p: string) => p === "%16")).toHaveLength(2); // explicit + cleanup
+    // Supervisor does NOT kill drones — implement.ts owns per-wave cleanup
+    expect(deps.killDrone).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------

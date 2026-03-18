@@ -40,23 +40,25 @@ export function parseAnnotations(tasksText: string, forMind: string): ContractAn
     const [, taskId, taskMind] = taskMatch;
     if (taskMind !== forMind) continue;
 
-    // Parse produces: annotations
-    const producesMatch = line.match(/produces:\s*`([^`]+)`\s+at\s+(\S+)/);
+    // Parse produces: annotations — handle both backticked and non-backticked forms
+    const producesMatch = line.match(/produces:\s*`([^`]+)`\s+at\s+(\S+)/)
+      ?? line.match(/produces:\s+(.+?)\s+at\s+(\S+)/);
     if (producesMatch) {
       annotations.push({
         type: "produces",
-        interfaceName: producesMatch[1].replace(/[()]/g, ""), // strip parens
+        interfaceName: producesMatch[1].replace(/[()]/g, "").replace(/^`+|`+$/g, ""),
         filePath: producesMatch[2],
         taskId,
       });
     }
 
-    // Parse consumes: annotations
-    const consumesMatch = line.match(/consumes:\s*`([^`]+)`\s+from\s+(\S+)/);
+    // Parse consumes: annotations — handle both backticked and non-backticked forms
+    const consumesMatch = line.match(/consumes:\s*`([^`]+)`\s+from\s+(\S+)/)
+      ?? line.match(/consumes:\s+(.+?)\s+from\s+(\S+)/);
     if (consumesMatch) {
       annotations.push({
         type: "consumes",
-        interfaceName: consumesMatch[1].replace(/[()]/g, ""), // strip parens
+        interfaceName: consumesMatch[1].replace(/[()]/g, "").replace(/^`+|`+$/g, ""),
         filePath: consumesMatch[2],
         taskId,
       });
@@ -253,6 +255,17 @@ function resolveEffectiveRoot(
  * Scans for all common TypeScript export forms.
  */
 export function checkExportExists(content: string, interfaceName: string): boolean {
+  // Dotted names like "BlueStore.addNode" mean "method addNode on exported BlueStore".
+  // Verify the parent (BlueStore) is exported and the member (addNode) exists on it.
+  if (interfaceName.includes(".")) {
+    const [parent, member] = interfaceName.split(".", 2);
+    const parentExported = checkExportExists(content, parent);
+    if (!parentExported) return false;
+    // Check that the member name appears in the file (method, property, or field)
+    const memberPattern = new RegExp(`\\b${escapeRegExp(member)}\\b`);
+    return memberPattern.test(content);
+  }
+
   const exportPatterns = [
     new RegExp(`export\\s+(async\\s+)?function\\s+${escapeRegExp(interfaceName)}\\b`),
     new RegExp(`export\\s+const\\s+${escapeRegExp(interfaceName)}\\b`),
