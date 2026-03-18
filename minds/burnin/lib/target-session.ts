@@ -72,19 +72,23 @@ export async function launchClaudeCode(
     "--text", `cd ${repoPath} && claude --dangerously-skip-permissions`,
   ]);
 
-  // Poll for Claude Code ready prompt (up to 30s)
-  const deadline = Date.now() + 30_000;
+  // Wait for Claude Code to fully start — look for the ready indicator.
+  // Claude Code v2.1.78 shows "▐▛███▜▌" banner + status bar when ready.
+  // We must NOT match the launch command itself (contains "claude").
+  await Bun.sleep(5000); // Give it 5s minimum to start
+  const deadline = Date.now() + 60_000; // Up to 60s total
   while (Date.now() < deadline) {
     const { stdout } = await runTmuxCli(gravitasRoot, [
       "capture", "--window", paneId, "--scrollback", "50",
     ]);
-    // Claude Code shows a prompt with > or the project name
-    if (/>\s*$/.test(stdout) || /claude/i.test(stdout)) {
+    // Look for Claude Code's banner or the input prompt indicator
+    if (/▐▛███▜▌/.test(stdout) || /bypass permissions on/.test(stdout)) {
+      await Bun.sleep(3000); // Extra wait for hooks/skills to load
       return;
     }
-    await Bun.sleep(2000);
+    await Bun.sleep(3000);
   }
-  // Proceed even if we didn't detect the prompt — it may just be styled differently
+  // Proceed after timeout — it may have a different UI
 }
 
 /**
