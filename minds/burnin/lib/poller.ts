@@ -74,12 +74,54 @@ export async function capturePaneOutput(
 
 // ── Poll Loop ──────────────────────────────────────────────────────────
 
+/**
+ * Extract only new content that appeared after the baseline snapshot.
+ *
+ * Strategy: the baseline is the pane content captured BEFORE a command is sent.
+ * Each poll captures the full scrollback. We find where the baseline ends in the
+ * current capture and only scan what follows. This prevents matching patterns
+ * from old scrollback (previous sessions, prior commands).
+ *
+ * We match on the last N lines of the baseline to handle minor reflow/trimming
+ * that tmux may do to the scrollback buffer.
+ */
+export function extractNewContent(fullOutput: string, baseline: string): string {
+  if (!baseline) return fullOutput;
+
+  // Use the last N lines of the baseline as an anchor to find where the
+  // baseline ends in the current capture. Everything after that is new.
+  // We try the last 5 lines first, falling back to fewer if needed.
+  // This handles tmux trimming old scrollback from the top.
+  const baselineLines = baseline.split("\n");
+  // Remove trailing empty lines (tmux often adds whitespace at the end)
+  while (baselineLines.length > 0 && baselineLines[baselineLines.length - 1].trim() === "") {
+    baselineLines.pop();
+  }
+
+  if (baselineLines.length === 0) return fullOutput;
+
+  // Try progressively shorter anchors (last 5, 4, 3, 2, 1 lines)
+  const maxAnchor = Math.min(5, baselineLines.length);
+  for (let len = maxAnchor; len >= 1; len--) {
+    const anchor = baselineLines.slice(-len).join("\n");
+    const anchorIndex = fullOutput.indexOf(anchor);
+    if (anchorIndex !== -1) {
+      return fullOutput.slice(anchorIndex + anchor.length);
+    }
+  }
+
+  // Baseline anchor not found — the scrollback has been entirely
+  // replaced with new content, so everything is new.
+  return fullOutput;
+}
+
 export async function pollForCompletion(
   paneTarget: string,
   patterns: PollPatterns,
   opts: PollOptions,
   gravitasRoot: string,
   captureImpl: typeof capturePaneOutput = capturePaneOutput,
+  baseline: string = "",
 ): Promise<PollResult> {
   const startTime = Date.now();
   let lastOutput = "";
@@ -91,32 +133,34 @@ export async function pollForCompletion(
       return { status: "timeout", output: lastOutput, markers: [], elapsedMs: elapsed };
     }
 
-    const output = await captureImpl(paneTarget, opts.scrollback, gravitasRoot);
+    const fullOutput = await captureImpl(paneTarget, opts.scrollback, gravitasRoot);
+    const newOutput = extractNewContent(fullOutput, baseline);
+
+    // Check failure FIRST — failure takes priority over success.
+    // If both patterns match, we want to report failure, not false success.
+    const failureMarkers: string[] = [];
+    for (const re of patterns.failure) {
+      if (re.test(newOutput)) failureMarkers.push(re.source);
+    }
+    if (failureMarkers.length > 0) {
+      return { status: "failure", output: fullOutput, markers: failureMarkers, elapsedMs: Date.now() - startTime };
+    }
 
     // Check for success patterns
     const successMarkers: string[] = [];
     for (const re of patterns.success) {
-      if (re.test(output)) successMarkers.push(re.source);
+      if (re.test(newOutput)) successMarkers.push(re.source);
     }
     if (successMarkers.length > 0) {
-      return { status: "success", output, markers: successMarkers, elapsedMs: Date.now() - startTime };
-    }
-
-    // Check for failure patterns
-    const failureMarkers: string[] = [];
-    for (const re of patterns.failure) {
-      if (re.test(output)) failureMarkers.push(re.source);
-    }
-    if (failureMarkers.length > 0) {
-      return { status: "failure", output, markers: failureMarkers, elapsedMs: Date.now() - startTime };
+      return { status: "success", output: fullOutput, markers: successMarkers, elapsedMs: Date.now() - startTime };
     }
 
     // Stall detection: no new output for stallThresholdMs
-    if (output !== lastOutput) {
+    if (fullOutput !== lastOutput) {
       lastChangeTime = Date.now();
-      lastOutput = output;
+      lastOutput = fullOutput;
     } else if (Date.now() - lastChangeTime >= opts.stallThresholdMs) {
-      return { status: "stalled", output, markers: [], elapsedMs: Date.now() - startTime };
+      return { status: "stalled", output: fullOutput, markers: [], elapsedMs: Date.now() - startTime };
     }
 
     await Bun.sleep(opts.pollIntervalMs);

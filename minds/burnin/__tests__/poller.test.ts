@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   pollForCompletion,
+  extractNewContent,
   TASKS_PATTERNS,
   IMPLEMENT_PATTERNS,
   type PollOptions,
@@ -218,14 +219,118 @@ describe("poller", () => {
       expect(result.elapsedMs).toBeGreaterThanOrEqual(0);
     });
 
-    test("17. failure takes priority over partial success match", async () => {
-      // Both success and failure patterns present — failure patterns are checked second,
-      // but let's verify behavior when only failure is present
+    test("17. failure takes priority when both success and failure patterns match", async () => {
+      // Both success and failure patterns present in same output — failure wins
       const capture = mockCapture([
-        "FATAL: something broke badly",
+        "Implementation complete. But also FATAL: something broke badly",
       ]);
 
       const result = await pollForCompletion("%1", IMPLEMENT_PATTERNS, FAST_OPTS, "/tmp", capture);
+      expect(result.status).toBe("failure");
+    });
+  });
+
+  // ── extractNewContent ─────────────────────────────────────────────
+
+  describe("extractNewContent", () => {
+    test("18. returns full output when baseline is empty", () => {
+      const result = extractNewContent("Hello world", "");
+      expect(result).toBe("Hello world");
+    });
+
+    test("19. strips baseline prefix and returns only new content", () => {
+      const baseline = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
+      const fullOutput = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nNew line 6\nNew line 7";
+      const result = extractNewContent(fullOutput, baseline);
+      expect(result).toBe("\nNew line 6\nNew line 7");
+    });
+
+    test("20. returns full output when baseline anchor not found (scrollback replaced)", () => {
+      const baseline = "Old content A\nOld content B\nOld content C\nOld content D\nOld content E";
+      const fullOutput = "Entirely new content\nNothing from baseline";
+      const result = extractNewContent(fullOutput, baseline);
+      expect(result).toBe("Entirely new content\nNothing from baseline");
+    });
+
+    test("21. handles baseline with fewer than 5 non-empty lines", () => {
+      const baseline = "Line 1\nLine 2";
+      const fullOutput = "Line 1\nLine 2\nNew stuff";
+      const result = extractNewContent(fullOutput, baseline);
+      expect(result).toBe("\nNew stuff");
+    });
+
+    test("22. handles baseline with trailing empty lines", () => {
+      // Trailing empty lines in baseline are stripped before anchor computation.
+      // The anchor "Line 2" (last non-empty line) is found in the output.
+      const baseline = "Line 1\n\n\nLine 2\n\n";
+      const fullOutput = "Line 1\n\n\nLine 2\n\nNew output here";
+      const result = extractNewContent(fullOutput, baseline);
+      expect(result).toBe("\n\nNew output here");
+    });
+  });
+
+  // ── Baseline filtering (false positive prevention) ────────────────
+
+  describe("baseline filtering", () => {
+    test("23. ignores old Error: in scrollback when baseline is provided", async () => {
+      // Simulate: scrollback contains old "Error: Exit code 1" from a prior run.
+      // After the command is sent, new output is just "Processing..." — no error.
+      const oldContent = "Previous session output\nError: Exit code 1\nSome other old stuff\nMore old lines\nEnd of old session";
+      const capture = mockCapture([
+        oldContent + "\nProcessing task generation...",
+        oldContent + "\nProcessing task generation...\nStill working...",
+        oldContent + "\nProcessing task generation...\nStill working...\nTotal task count: 5\nvalid: true",
+      ]);
+
+      const result = await pollForCompletion(
+        "%1", TASKS_PATTERNS, FAST_OPTS, "/tmp", capture,
+        oldContent, // baseline captured before command was sent
+      );
+      // Should succeed — the old "Error:" is in the baseline and ignored
+      expect(result.status).toBe("success");
+    });
+
+    test("24. still catches real Error: in new output after baseline", async () => {
+      const oldContent = "Previous clean session\nNo errors here\nAll good\nReady\nWaiting for input";
+      const capture = mockCapture([
+        oldContent + "\nRunning tasks...",
+        oldContent + "\nRunning tasks...\nError: Could not parse tasks file",
+      ]);
+
+      const result = await pollForCompletion(
+        "%1", TASKS_PATTERNS, FAST_OPTS, "/tmp", capture,
+        oldContent,
+      );
+      expect(result.status).toBe("failure");
+      expect(result.markers).toContain("Error:");
+    });
+
+    test("25. ignores old 'valid.*false' in scrollback with baseline", async () => {
+      const oldContent = "Prior lint run\nLint result: valid: false\n3 errors\nFixed and re-ran\nDone with old session";
+      const capture = mockCapture([
+        oldContent + "\nNew lint run starting...",
+        oldContent + "\nNew lint run starting...\nTotal task count: 8\nvalid: true",
+      ]);
+
+      const result = await pollForCompletion(
+        "%1", TASKS_PATTERNS, FAST_OPTS, "/tmp", capture,
+        oldContent,
+      );
+      expect(result.status).toBe("success");
+    });
+
+    test("26. without baseline, old Error: causes false positive (demonstrates the bug)", async () => {
+      // Same scenario as test 23 but WITHOUT baseline — shows the false positive
+      const oldContent = "Previous session output\nError: Exit code 1\nSome other old stuff";
+      const capture = mockCapture([
+        oldContent + "\nProcessing task generation...",
+      ]);
+
+      const result = await pollForCompletion(
+        "%1", TASKS_PATTERNS, FAST_OPTS, "/tmp", capture,
+        // no baseline — old behavior
+      );
+      // Without baseline, the old "Error:" matches and causes a false failure
       expect(result.status).toBe("failure");
     });
   });

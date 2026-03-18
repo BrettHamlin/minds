@@ -28,6 +28,7 @@ import {
 } from "./lib/target-session.ts";
 import {
   pollForCompletion,
+  capturePaneOutput,
   TASKS_PATTERNS,
   IMPLEMENT_PATTERNS,
   type PollOptions,
@@ -115,6 +116,11 @@ async function main(): Promise<never> {
       saveSession(gravitasRoot, state);
 
       console.log(`[${ticket.ticketId}] Running /minds.tasks`);
+
+      // Clear stale scrollback, then snapshot baseline before sending command.
+      // The poller will only pattern-match against content that appears AFTER this baseline.
+      await clearScrollback(paneId);
+      const tasksBaseline = await capturePaneOutput(paneId, 500, gravitasRoot);
       await sendCommand(paneId, `/minds.tasks ${ticket.ticketId}`, gravitasRoot);
 
       // Tasks stall at 10 min — complex tickets need heavy codebase exploration + Linear fetches
@@ -124,7 +130,7 @@ async function main(): Promise<never> {
         scrollback: 500,
         stallThresholdMs: Math.max(stallThresholdMs, 10 * 60 * 1000),
       };
-      const result = await pollForCompletion(paneId, TASKS_PATTERNS, pollOpts, gravitasRoot);
+      const result = await pollForCompletion(paneId, TASKS_PATTERNS, pollOpts, gravitasRoot, capturePaneOutput, tasksBaseline);
 
       if (result.status === "success") {
         console.log(`[${ticket.ticketId}] Tasks phase succeeded`);
@@ -156,6 +162,10 @@ async function main(): Promise<never> {
 
     if (ticket.phase === "implement") {
       console.log(`[${ticket.ticketId}] Running /minds.implement`);
+
+      // Clear stale scrollback from tasks phase, then snapshot baseline.
+      await clearScrollback(paneId);
+      const implBaseline = await capturePaneOutput(paneId, 1000, gravitasRoot);
       await sendCommand(paneId, `/minds.implement ${ticket.ticketId}`, gravitasRoot);
 
       // Long stall threshold for implement: the orchestrator pane goes silent
@@ -167,7 +177,7 @@ async function main(): Promise<never> {
         scrollback: 1000,
         stallThresholdMs: 30 * 60 * 1000, // 30 min
       };
-      const result = await pollForCompletion(paneId, IMPLEMENT_PATTERNS, pollOpts, gravitasRoot);
+      const result = await pollForCompletion(paneId, IMPLEMENT_PATTERNS, pollOpts, gravitasRoot, capturePaneOutput, implBaseline);
 
       if (result.status === "success") {
         console.log(`[${ticket.ticketId}] Implement phase succeeded`);

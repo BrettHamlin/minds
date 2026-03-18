@@ -92,6 +92,15 @@ export async function launchClaudeCode(
 }
 
 /**
+ * Clear a pane's scrollback history.
+ * Uses tmux clear-history (wipes scrollback buffer) combined with
+ * terminal reset (clears visible area). Safe for TUI apps like Claude Code.
+ */
+export async function clearScrollback(paneId: string): Promise<void> {
+  await runShell(["tmux", "clear-history", "-t", paneId]);
+}
+
+/**
  * Send a command/text to a Claude Code session in a tmux pane.
  */
 export async function sendCommand(
