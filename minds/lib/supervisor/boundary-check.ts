@@ -14,6 +14,7 @@ import { stripRepoPrefix } from "../../shared/repo-path.ts";
 export interface BoundaryViolation {
   file: string;
   message: string;
+  severity?: "error" | "warning";
 }
 
 export interface BoundaryCheckResult {
@@ -157,17 +158,28 @@ export function checkBoundary(
 
     // Check ownership boundary (use stripped paths for matching)
     if (!matchesOwnership(file, localOwnsFiles)) {
+      // Test files get a warning, not a hard violation — they're low-risk
+      // and often need updating when the code they test changes.
+      const isTestFile = /\.(test|spec)\.(ts|tsx|js|jsx)$/.test(file) || /\/__tests__\//.test(file);
+
       // Show original (with-prefix) owns_files in violation messages for clarity
       const allowedDirs = ownsFiles.map((p) => `  - ${p}`).join("\n");
       violations.push({
         file,
-        message: `You modified \`${file}\`, which is outside your boundary. ` +
-          `As @${mindName}, you may only modify files within:\n${allowedDirs}\n` +
-          `Revert your changes to this file. If the task requires changes here, ` +
-          `skip that part — it belongs to a different Mind.`,
+        message: isTestFile
+          ? `You modified test file \`${file}\`, which is outside your boundary. ` +
+            `This is allowed as a warning since test changes are low-risk, ` +
+            `but verify the test still passes.`
+          : `You modified \`${file}\`, which is outside your boundary. ` +
+            `As @${mindName}, you may only modify files within:\n${allowedDirs}\n` +
+            `Revert your changes to this file. If the task requires changes here, ` +
+            `skip that part — it belongs to a different Mind.`,
+        ...(isTestFile ? { severity: "warning" as const } : {}),
       });
     }
   }
 
-  return { pass: violations.length === 0, violations };
+  // Pass if no hard errors — warnings (test file modifications) don't block
+  const hasErrors = violations.some(v => v.severity !== "warning");
+  return { pass: !hasErrors, violations };
 }
