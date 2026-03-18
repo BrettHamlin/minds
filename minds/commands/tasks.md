@@ -167,6 +167,34 @@ Rules:
 - Do NOT reference other Minds by name in task descriptions — only the import path is allowed
 - The contract linter validates all annotations before dispatch begins
 
+### Tests Stay With Implementation (MANDATORY)
+
+When a task involves modifying or creating source code, the corresponding tests MUST be part of the SAME Mind's tasks — even if the test files are in a directory nominally owned by a different Mind (e.g., `tests/`, `__tests__/`, `*.test.ts`).
+
+**Why:** If you split "implement feature" into `@blueprint-api` and "test feature" into `@server-core`, the test mind can't run until the implementation mind finishes, AND the test mind will try to modify test files that may be outside its boundary. This causes wave ordering failures and boundary violations.
+
+**Rules:**
+- If a task creates/modifies `src/api/foo.ts`, the task to test it (`tests/api/foo.test.ts`) goes to the SAME mind
+- The implementing Mind's `owns_files` boundary is temporarily expanded to include test files for code it implements — add these paths to the task descriptions
+- Do NOT create a separate "test mind" or assign test-writing tasks to `@server-core` or similar infrastructure minds unless the tests are purely for pre-existing code unrelated to any other mind's implementation work
+- If a Mind writes code, it writes the tests for that code. Period.
+
+**Example:**
+```
+## @blueprint-api Tasks
+- [ ] T001 @blueprint-api Refactor JSON response types in packages/modules/blueprint/api.ts
+- [ ] T002 @blueprint-api Update tests for JSON responses in tests/modules/blueprint/api.test.ts
+```
+
+NOT:
+```
+## @blueprint-api Tasks
+- [ ] T001 @blueprint-api Refactor JSON response types in packages/modules/blueprint/api.ts
+
+## @server-core Tasks (depends on: @blueprint-api)
+- [ ] T002 @server-core Update tests for JSON responses in tests/modules/blueprint/api.test.ts
+```
+
 ### Anti-Leakage (MANDATORY)
 
 Each Mind's tasks must be self-contained. A task description must NEVER:

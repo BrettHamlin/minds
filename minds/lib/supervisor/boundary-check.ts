@@ -93,6 +93,8 @@ export interface CheckBoundaryOptions {
   infraExclusions?: string[];
   /** Infrastructure files to allow for this mind (removes from exclusion list). */
   infraAllowed?: string[];
+  /** Files explicitly referenced in the drone's task descriptions — pre-approved by task decomposition. */
+  taskFiles?: string[];
 }
 
 export function checkBoundary(
@@ -143,6 +145,14 @@ export function checkBoundary(
     // Skip ownership check if no boundary defined
     if (localOwnsFiles.length === 0) {
       continue;
+    }
+
+    // Allow files explicitly referenced in task descriptions (pre-approved by task decomposition)
+    if (options?.taskFiles?.length) {
+      const normalizedTaskFiles = options.taskFiles.map(f => stripRepoPrefix(normalizeMindsPrefix(f)));
+      if (normalizedTaskFiles.some(tf => file === tf || file.endsWith(tf) || tf.endsWith(file))) {
+        continue;
+      }
     }
 
     // Check ownership boundary (use stripped paths for matching)

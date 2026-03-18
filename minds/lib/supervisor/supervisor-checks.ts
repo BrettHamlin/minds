@@ -169,11 +169,25 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
   // Pass ownsFiles through so agent generation can use it
   result.ownsFiles = ownsFiles;
 
+  // Extract file paths mentioned in task descriptions — these are pre-approved by task decomposition
+  const taskFiles: string[] = [];
+  if (tasks) {
+    const pathRe = /(?:^|\s)((?:[\w@.-]+\/)+[\w.-]+\.[\w]+)/g;
+    for (const t of tasks) {
+      let match: RegExpExecArray | null;
+      while ((match = pathRe.exec(t.description)) !== null) {
+        taskFiles.push(match[1]);
+      }
+      pathRe.lastIndex = 0;
+    }
+  }
+
   if (diff) {
     const boundaryResult = checkBoundary(diff, ownsFiles, mindName, {
       requireBoundary,
       infraExclusions,
       infraAllowed,
+      taskFiles: taskFiles.length > 0 ? taskFiles : undefined,
     });
     result.boundaryPass = boundaryResult.pass;
     result.boundaryFindings = boundaryResult.violations.map((v) => ({

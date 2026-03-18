@@ -442,4 +442,29 @@ diff --git a/package.json b/package.json
     expect(result.pass).toBe(false);
     expect(result.violations[0].message).toContain("protected infrastructure file");
   });
+
+  // -- taskFiles tests -------------------------------------------------------
+
+  test("taskFiles allows modification of files outside owns_files", () => {
+    const diff = `diff --git a/src/api/handler.ts b/src/api/handler.ts
++++ b/src/api/handler.ts
+diff --git a/tests/api/handler.test.ts b/tests/api/handler.test.ts
++++ b/tests/api/handler.test.ts`;
+
+    const result = checkBoundary(diff, ["src/api/"], "api_mind", {
+      taskFiles: ["tests/api/handler.test.ts"],
+    });
+    expect(result.pass).toBe(true);
+  });
+
+  test("taskFiles does not override infrastructure exclusion", () => {
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json`;
+
+    const result = checkBoundary(diff, ["src/"], "some_mind", {
+      taskFiles: ["package.json"],
+    });
+    expect(result.pass).toBe(false);
+    expect(result.violations[0].message).toContain("protected infrastructure file");
+  });
 });
