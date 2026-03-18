@@ -389,4 +389,57 @@ describe("checkBoundary — requireBoundary", () => {
     expect(result.pass).toBe(true);
     expect(result.violations).toHaveLength(0);
   });
+
+  // -- infraAllowed tests ---------------------------------------------------
+
+  test("infraAllowed removes package.json from exclusion list", () => {
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json
+diff --git a/src/client/index.ts b/src/client/index.ts
++++ b/src/client/index.ts`;
+
+    const result = checkBoundary(diff, ["src/client/", "package.json"], "client_mind", {
+      infraAllowed: ["package.json"],
+    });
+    expect(result.pass).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  test("infraAllowed does not remove non-listed infra files", () => {
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json
+diff --git a/tsconfig.json b/tsconfig.json
++++ b/tsconfig.json`;
+
+    const result = checkBoundary(diff, ["package.json", "tsconfig.json"], "client_mind", {
+      infraAllowed: ["package.json"],
+    });
+    // package.json is allowed, tsconfig.json is still blocked
+    expect(result.pass).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].file).toBe("tsconfig.json");
+  });
+
+  test("infraAllowed with bun.lock allows lock file modification", () => {
+    const diff = `diff --git a/bun.lock b/bun.lock
++++ b/bun.lock
+diff --git a/package.json b/package.json
++++ b/package.json`;
+
+    const result = checkBoundary(diff, ["package.json", "bun.lock"], "client_mind", {
+      infraAllowed: ["package.json", "bun.lock"],
+    });
+    expect(result.pass).toBe(true);
+  });
+
+  test("infraAllowed with empty array changes nothing", () => {
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json`;
+
+    const result = checkBoundary(diff, ["src/"], "some_mind", {
+      infraAllowed: [],
+    });
+    expect(result.pass).toBe(false);
+    expect(result.violations[0].message).toContain("protected infrastructure file");
+  });
 });

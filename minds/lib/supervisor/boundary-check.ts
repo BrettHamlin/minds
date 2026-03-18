@@ -91,6 +91,8 @@ export interface CheckBoundaryOptions {
   requireBoundary?: boolean;
   /** Additional infrastructure exclusion patterns (merged with defaults). */
   infraExclusions?: string[];
+  /** Infrastructure files to allow for this mind (removes from exclusion list). */
+  infraAllowed?: string[];
 }
 
 export function checkBoundary(
@@ -105,10 +107,14 @@ export function checkBoundary(
   // Strip repo prefixes for matching (diff paths are repo-relative)
   const localOwnsFiles = ownsFiles.map(f => stripRepoPrefix(f));
 
-  // Merge custom infra exclusions with defaults
-  const infraExcluded = options?.infraExclusions
+  // Merge custom infra exclusions with defaults, then remove allowed ones
+  let infraExcluded = options?.infraExclusions
     ? [...INFRASTRUCTURE_EXCLUDED, ...options.infraExclusions]
-    : INFRASTRUCTURE_EXCLUDED;
+    : [...INFRASTRUCTURE_EXCLUDED];
+  if (options?.infraAllowed?.length) {
+    const allowed = new Set(options.infraAllowed.map(f => normalizeMindsPrefix(f)));
+    infraExcluded = infraExcluded.filter(f => !allowed.has(normalizeMindsPrefix(f)));
+  }
 
   // Hard error: requireBoundary + empty ownsFiles means no boundary defined
   if (options?.requireBoundary && ownsFiles.length === 0) {

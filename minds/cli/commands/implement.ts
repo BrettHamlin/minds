@@ -178,6 +178,7 @@ function launchMindSupervisor(
   testCommand?: string,
   installCommand?: string,
   pipelineTemplate?: string,
+  infraAllowed?: string[],
 ): { info: MindInfo; done: Promise<SupervisorResult> } {
   const supervisorConfig: SupervisorConfig = {
     mindName,
@@ -203,6 +204,7 @@ function launchMindSupervisor(
     testCommand,
     installCommand,
     pipelineTemplate,
+    infraAllowed,
   };
 
   // MindInfo placeholder -- will be updated when supervisor provides drone info
@@ -747,6 +749,7 @@ export async function runImplement(
         // Look up pipeline_template from registry for this mind
         const registryEntry = registry.find(m => m.name === mindName);
         const mindPipelineTemplate = registryEntry?.pipeline_template;
+        const mindInfraAllowed = registryEntry?.infra_allowed;
 
         const { info, done } = launchMindSupervisor(
           mindRepoRoot ?? repoRoot,  // Use mind's repo root when available
@@ -769,6 +772,7 @@ export async function runImplement(
           repoConfig?.testCommand,
           repoConfig?.installCommand,
           mindPipelineTemplate,
+          mindInfraAllowed,
         );
         waveDrones.push(info);
         allDrones.push(info);

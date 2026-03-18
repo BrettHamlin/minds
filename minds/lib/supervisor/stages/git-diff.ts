@@ -28,6 +28,7 @@ export const executeGitDiff = async (
     requireBoundary: config.requireBoundary,
     testCommand: config.testCommand,
     infraExclusions: config.infraExclusions,
+    infraAllowed: config.infraAllowed,
     repo: config.repo,
   });
 

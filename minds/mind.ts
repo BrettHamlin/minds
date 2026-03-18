@@ -47,6 +47,8 @@ export interface MindDescription {
   pipeline?: PipelineStage[];
   /** Named pipeline template (e.g. "code", "build", "test") — used when no explicit pipeline. */
   pipeline_template?: string;
+  /** Infrastructure files this mind is allowed to modify (e.g. ["package.json", "bun.lock"]). */
+  infra_allowed?: string[];
 }
 
 export interface Mind {
@@ -121,6 +123,7 @@ export function validateMindDescription(value: unknown): value is MindDescriptio
     }
   }
   if (obj.pipeline_template !== undefined && typeof obj.pipeline_template !== "string") return false;
+  if (obj.infra_allowed !== undefined && (!Array.isArray(obj.infra_allowed) || !obj.infra_allowed.every((f: unknown) => typeof f === "string"))) return false;
 
   return true;
 }

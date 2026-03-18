@@ -51,12 +51,14 @@ export interface DeterministicCheckOptions {
   requireBoundary?: boolean;
   testCommand?: string;
   infraExclusions?: string[];
+  /** Infrastructure files this mind is allowed to modify (e.g. package.json for dependency additions). */
+  infraAllowed?: string[];
   /** Repo alias for cross-repo contract deferral. */
   repo?: string;
 }
 
 export function runDeterministicChecksDefault(options: DeterministicCheckOptions): CheckResults {
-  const { worktreePath, baseBranch, mindName, tasks, configOwnsFiles, requireBoundary, testCommand, infraExclusions, repo } = options;
+  const { worktreePath, baseBranch, mindName, tasks, configOwnsFiles, requireBoundary, testCommand, infraExclusions, infraAllowed, repo } = options;
   const findings: ReviewFinding[] = [];
 
   // Get diff relative to base branch
@@ -170,7 +172,8 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
   if (diff) {
     const boundaryResult = checkBoundary(diff, ownsFiles, mindName, {
       requireBoundary,
-      customInfraExclusions: infraExclusions,
+      infraExclusions,
+      infraAllowed,
     });
     result.boundaryPass = boundaryResult.pass;
     result.boundaryFindings = boundaryResult.violations.map((v) => ({
