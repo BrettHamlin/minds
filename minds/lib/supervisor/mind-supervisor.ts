@@ -285,7 +285,8 @@ export async function runMindSupervisor(
         console.log(`[supervisor] @${config.mindName}: Test output:\n${truncated}`);
       }
 
-      const feedbackContent = buildFeedbackContent(iteration, verdictFindings, testFailures);
+      const previousDiff = checks?.diff;
+      const feedbackContent = buildFeedbackContent(iteration, verdictFindings, testFailures, previousDiff);
       writeFileSync(join(currentWorktree, `REVIEW-FEEDBACK-${iteration}.md`), feedbackContent);
 
       // Publish REVIEW_FEEDBACK signal

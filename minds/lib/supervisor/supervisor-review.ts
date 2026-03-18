@@ -277,10 +277,21 @@ export function buildFeedbackContent(
   round: number,
   findings: ReviewFinding[],
   testFailures?: string,
+  previousAttemptDiff?: string,
 ): string {
   let content = `# Review Feedback (Round ${round})\n\n`;
   content += `Your changes were reviewed and need fixes before approval. `;
   content += `Address each finding below, then commit your fixes.\n\n`;
+
+  // Show what the previous drone tried so this session doesn't repeat the same approach
+  if (previousAttemptDiff && round > 1) {
+    const truncatedDiff = previousAttemptDiff.length > 5000
+      ? previousAttemptDiff.slice(0, 5000) + "\n\n[diff truncated]"
+      : previousAttemptDiff;
+    content += `## What Was Already Tried (Round ${round - 1})\n\n`;
+    content += `The previous attempt made these changes but they were rejected. **Do NOT repeat the same approach.** Try a different strategy.\n\n`;
+    content += `\`\`\`diff\n${truncatedDiff}\n\`\`\`\n\n`;
+  }
 
   if (testFailures) {
     content += `## Test Failures\n\n`;
