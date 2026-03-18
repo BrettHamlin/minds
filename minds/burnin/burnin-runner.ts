@@ -25,6 +25,7 @@ import {
   launchClaudeCode,
   sendCommand,
   captureAllPanes,
+  clearScrollback,
 } from "./lib/target-session.ts";
 import {
   pollForCompletion,
