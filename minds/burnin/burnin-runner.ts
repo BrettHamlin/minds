@@ -43,7 +43,7 @@ const { values } = parseArgs({
     target: { type: "string" },
     session: { type: "string" },
     "timeout-tasks": { type: "string", default: "300" },
-    "timeout-implement": { type: "string", default: "2400" },
+    "timeout-implement": { type: "string", default: "3600" },
     "poll-interval": { type: "string", default: "10" },
     "stall-threshold": { type: "string", default: "180" },
   },
