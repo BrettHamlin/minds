@@ -120,7 +120,7 @@ async function main(): Promise<never> {
 
       // Clear stale scrollback, then snapshot baseline before sending command.
       // The poller will only pattern-match against content that appears AFTER this baseline.
-      await clearScrollback(paneId);
+
       const tasksBaseline = await capturePaneOutput(paneId, 500, gravitasRoot);
       await sendCommand(paneId, `/minds.tasks ${ticket.ticketId}`, gravitasRoot);
 
@@ -165,7 +165,7 @@ async function main(): Promise<never> {
       console.log(`[${ticket.ticketId}] Running /minds.implement`);
 
       // Clear stale scrollback from tasks phase, then snapshot baseline.
-      await clearScrollback(paneId);
+
       const implBaseline = await capturePaneOutput(paneId, 1000, gravitasRoot);
       await sendCommand(paneId, `/minds.implement ${ticket.ticketId}`, gravitasRoot);
 

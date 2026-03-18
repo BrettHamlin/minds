@@ -28,7 +28,7 @@ export interface PollOptions {
 // ── Default Patterns ───────────────────────────────────────────────────
 
 export const TASKS_PATTERNS: PollPatterns = {
-  success: [/Total task count:/i, /tasks\.md/, /valid.*true/i],
+  success: [/Total task count:/i, /tasks\.md/, /valid.*true/i, /tasks generated across/i],
   failure: [/still failing after/i, /Error:/i, /valid.*false/i],
 };
 
