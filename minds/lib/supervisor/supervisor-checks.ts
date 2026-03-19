@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { join, relative } from "path";
-import { resolveMindsDir } from "../../shared/paths.ts";
+import { resolveMindsDir, matchesOwnership } from "../../shared/paths.ts";
 import { stripRepoPrefix } from "../../shared/repo-path.ts";
 import { checkBoundary, parseDiffPaths } from "./boundary-check.ts";
 import { parseAnnotations, verifyContracts } from "../check-contracts-core.ts";
@@ -132,9 +132,16 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
       ? [...new Set(new TextDecoder().decode(droneProc.stdout).trim().split("\n").filter(Boolean))]
       : [];
 
+    // Only include directories for files within the drone's boundary.
+    // If the drone touched files outside its boundary, the boundary check
+    // will catch that — but we shouldn't run tests for those files since
+    // the failures would be misleading (broken imports from other minds).
+    const localOwns = (ownsFilesResolved ?? []).map(f => stripRepoPrefix(f));
     const seen = new Set<string>();
     for (const file of droneFiles) {
       if (file.startsWith(".minds/")) continue;
+      // Skip files outside boundary (unless no boundary defined)
+      if (localOwns.length > 0 && !matchesOwnership(file, localOwns)) continue;
       const dir = file.replace(/\/[^/]+$/, "") + "/";
       if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
     }
