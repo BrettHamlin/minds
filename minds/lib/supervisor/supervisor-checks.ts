@@ -106,15 +106,22 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
     }
   }
 
-  // Scope tests to directories the drone ACTUALLY MODIFIED (from git diff),
-  // not all owns_files. This prevents running unrelated tests that happen
-  // to be in a broadly-owned directory (e.g., @server-core owns tests/**
-  // but the drone only changed tests/core/server.test.ts).
+  // Scope tests to directories the drone ACTUALLY MODIFIED in its own commits,
+  // not all files in the full branch diff (which includes prior waves' merges).
+  // Use git diff against the worktree's merge-base to isolate this drone's work.
   let testPaths: string[] = [];
-  if (diff) {
-    const modifiedFiles = parseDiffPaths(diff);
+  {
+    // Get just this drone's changes by diffing against the branch point
+    const droneProc = Bun.spawnSync(
+      ["git", "-C", worktreePath, "diff", "--name-only", `${baseBranch}..HEAD`],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const droneFiles = droneProc.exitCode === 0
+      ? new TextDecoder().decode(droneProc.stdout).trim().split("\n").filter(Boolean)
+      : [];
+
     const seen = new Set<string>();
-    for (const file of modifiedFiles) {
+    for (const file of droneFiles) {
       if (file.startsWith(".minds/")) continue;
       const dir = file.replace(/\/[^/]+$/, "") + "/";
       if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
