@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from "fs";
 import { join, relative } from "path";
 import { resolveMindsDir } from "../../shared/paths.ts";
 import { stripRepoPrefix } from "../../shared/repo-path.ts";
-import { checkBoundary } from "./boundary-check.ts";
+import { checkBoundary, parseDiffPaths } from "./boundary-check.ts";
 import { parseAnnotations, verifyContracts } from "../check-contracts-core.ts";
 import type { CheckResults, ReviewFinding } from "./supervisor-types.ts";
 
@@ -106,38 +106,41 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
     }
   }
 
-  // Convert owns_files to test filter paths for bun test.
-  // owns_files can be globs ("packages/engine/**"), directories, or individual files.
-  // bun test expects directory paths or test file paths as filters.
+  // Scope tests to directories the drone ACTUALLY MODIFIED (from git diff),
+  // not all owns_files. This prevents running unrelated tests that happen
+  // to be in a broadly-owned directory (e.g., @server-core owns tests/**
+  // but the drone only changed tests/core/server.test.ts).
   let testPaths: string[] = [];
-  if (ownsFilesResolved?.length) {
+  if (diff) {
+    const modifiedFiles = parseDiffPaths(diff);
     const seen = new Set<string>();
-    for (const raw of ownsFilesResolved) {
-      const p = stripRepoPrefix(raw);
-      if (p.startsWith(".minds/")) continue;
-
-      // Glob pattern (e.g. "packages/engine/**") → strip glob suffix to get directory
-      if (p.includes("*")) {
-        const dir = p.replace(/\*+$/, "").replace(/\/+$/, "") + "/";
-        if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
-        continue;
-      }
-
-      // Individual file → use parent directory (deduplicated)
-      // bun test can't filter by individual source files
-      if (p.includes(".")) {
-        const dir = p.replace(/\/[^/]+$/, "") + "/";
-        if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
-        continue;
-      }
-
-      // Directory path → add trailing slash
-      const dir = p.replace(/\/+$/, "") + "/";
+    for (const file of modifiedFiles) {
+      if (file.startsWith(".minds/")) continue;
+      const dir = file.replace(/\/[^/]+$/, "") + "/";
       if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
     }
   }
 
-  // Fall back to the Mind's own directory if no source owns_files found
+  // Fall back to owns_files if diff produced no testable paths
+  if (testPaths.length === 0 && ownsFilesResolved?.length) {
+    const seen = new Set<string>();
+    for (const raw of ownsFilesResolved) {
+      const p = stripRepoPrefix(raw);
+      if (p.startsWith(".minds/")) continue;
+      if (p.includes("*")) {
+        const dir = p.replace(/\*+$/, "").replace(/\/+$/, "") + "/";
+        if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
+      } else if (p.includes(".")) {
+        const dir = p.replace(/\/[^/]+$/, "") + "/";
+        if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
+      } else {
+        const dir = p.replace(/\/+$/, "") + "/";
+        if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
+      }
+    }
+  }
+
+  // Fall back to the Mind's own directory if nothing else
   if (testPaths.length === 0) {
     testPaths = [`${mindsRelative}/${mindName}/`];
   }
