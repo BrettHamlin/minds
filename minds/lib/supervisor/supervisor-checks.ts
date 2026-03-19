@@ -244,7 +244,19 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
   const testStdout = new TextDecoder().decode(testProc.stdout);
   const testStderr = new TextDecoder().decode(testProc.stderr);
   const testOutput = testStdout + (testStderr ? `\n${testStderr}` : "");
-  const testsPass = testProc.exitCode === 0;
+  let testsPass = testProc.exitCode === 0;
+
+  // Deletion-only drones may have no tests left to run. If bun test exits
+  // non-zero because it found no test files, and the diff is purely deletions
+  // (no added lines), treat it as a pass — the drone did what it was asked.
+  if (!testsPass && diff) {
+    const noTestsFound = /0 pass|no tests found|0 tests|no matching test/i.test(testOutput);
+    const isDeletionOnly = !diff.split("\n").some(line => line.startsWith("+") && !line.startsWith("+++"));
+    if (noTestsFound && isDeletionOnly) {
+      testsPass = true;
+      console.log(`[supervisor] @${mindName}: No tests found for deletion-only changes — treating as pass`);
+    }
+  }
 
   const result: CheckResults = { diff, testOutput, testsPass, findings };
 
