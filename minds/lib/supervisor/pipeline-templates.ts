@@ -28,6 +28,7 @@ export const CODE_PIPELINE: readonly PipelineStage[] = [
   { type: "run-tests", label: "Run Tests" },
   { type: "boundary-check", label: "Boundary Check" },
   { type: "contract-check", label: "Contract Check" },
+  { type: "e2e-tests", label: "E2E Tests" },
   { type: "llm-review", label: "LLM Review" },
 ] as const;
 

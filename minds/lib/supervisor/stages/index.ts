@@ -16,6 +16,7 @@ export { executeBoundaryCheck } from "./boundary-check.ts";
 export { executeContractCheck } from "./contract-check.ts";
 export { executeLlmReview, applyForceRejections } from "./llm-review.ts";
 export { executeEvalScore } from "./eval-score.ts";
+export { executeE2eTests } from "./e2e-tests.ts";
 
 // Re-export individual executors — build/test pipeline (BRE-621)
 export { executeRunCommand } from "./run-command.ts";
@@ -31,13 +32,15 @@ import { executeBoundaryCheck } from "./boundary-check.ts";
 import { executeContractCheck } from "./contract-check.ts";
 import { executeLlmReview } from "./llm-review.ts";
 import { executeEvalScore } from "./eval-score.ts";
+import { executeE2eTests } from "./e2e-tests.ts";
 import { executeRunCommand } from "./run-command.ts";
 import { executeHealthCheck } from "./health-check.ts";
 import { executeCollectResults } from "./collect-results.ts";
 
 /**
- * Map of stage type -> executor function for all 10 pipeline stages.
- * Includes 7 code pipeline stages + 3 build/test pipeline stages (BRE-621).
+ * Map of stage type -> executor function for all 12 pipeline stages.
+ * Includes 8 code pipeline stages (BRE-696 adds e2e-tests) + eval-score +
+ * 3 build/test pipeline stages (BRE-621).
  */
 const ALL_EXECUTORS: Record<string, typeof executeSpawnDrone> = {
   // Code pipeline stages
@@ -49,6 +52,7 @@ const ALL_EXECUTORS: Record<string, typeof executeSpawnDrone> = {
   "contract-check": executeContractCheck,
   "llm-review": executeLlmReview,
   "eval-score": executeEvalScore,
+  "e2e-tests": executeE2eTests,
   // Build/test pipeline stages (BRE-621)
   "run-command": executeRunCommand,
   "health-check": executeHealthCheck,
@@ -56,7 +60,7 @@ const ALL_EXECUTORS: Record<string, typeof executeSpawnDrone> = {
 };
 
 /**
- * Register all 10 pipeline stage executors into the stage registry.
+ * Register all 12 pipeline stage executors into the stage registry.
  *
  * Call this before running a pipeline via the generic runner (BRE-620).
  * The stage-registry.ts has stubs by default; this replaces them with

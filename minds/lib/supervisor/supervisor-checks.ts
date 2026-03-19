@@ -227,9 +227,22 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
     }
   }
 
-  // Fall back to the Mind's own directory if nothing else
+  // Fall back to owns_files directories first, then the Mind's own directory
   if (testPaths.length === 0) {
-    testPaths = [`${mindsRelative}/${mindName}/`];
+    if (localOwns.length > 0) {
+      // Use owns_files paths — these point to actual source (and tests)
+      const seen = new Set<string>();
+      for (const entry of localOwns) {
+        const stripped = entry.replace(/\*+$/, "").replace(/\/+$/, "") + "/";
+        if (stripped !== "/" && !seen.has(stripped)) {
+          seen.add(stripped);
+          testPaths.push(stripped);
+        }
+      }
+    }
+    if (testPaths.length === 0) {
+      testPaths = [`${mindsRelative}/${mindName}/`];
+    }
   }
 
   const baseCmd = testCommand ?? "bun test";
@@ -247,15 +260,30 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
   const testOutput = testStdout + (testStderr ? `\n${testStderr}` : "");
   let testsPass = testProc.exitCode === 0;
 
-  // Deletion-only drones may have no tests left to run. If bun test exits
-  // non-zero because it found no test files, and the diff is purely deletions
-  // (no added lines), treat it as a pass — the drone did what it was asked.
+  // Handle "no tests found" scenarios. If bun test exits non-zero because it
+  // found no test files, treat as pass in two cases:
+  //   1. Deletion-only diff (no added lines) — drone removed code, no tests left
+  //   2. Non-code-only diff (only .md, .json, .txt, etc.) — no testable code written
   if (!testsPass && diff) {
-    const noTestsFound = /0 pass|no tests found|0 tests|no matching test/i.test(testOutput);
-    const isDeletionOnly = !diff.split("\n").some(line => line.startsWith("+") && !line.startsWith("+++"));
-    if (noTestsFound && isDeletionOnly) {
-      testsPass = true;
-      console.log(`[supervisor] @${mindName}: No tests found for deletion-only changes — treating as pass`);
+    const noTestsFound = /0 pass|no tests found|0 tests|no matching test|did not match any test/i.test(testOutput);
+    if (noTestsFound) {
+      const isDeletionOnly = !diff.split("\n").some(line => line.startsWith("+") && !line.startsWith("+++"));
+      if (isDeletionOnly) {
+        testsPass = true;
+        console.log(`[supervisor] @${mindName}: No tests found for deletion-only changes — treating as pass`);
+      } else {
+        // Check if all changed files are non-code (markdown, json, txt, yaml, etc.)
+        const changedFiles = diff.split("\n")
+          .filter(line => line.startsWith("+++ b/") || line.startsWith("--- a/"))
+          .map(line => line.replace(/^[+-]{3} [ab]\//, ""))
+          .filter(f => f !== "/dev/null");
+        const NON_CODE_EXTENSIONS = /\.(md|json|txt|yaml|yml|toml|csv|html|css|svg|png|jpg|gif)$/i;
+        const allNonCode = changedFiles.length > 0 && changedFiles.every(f => NON_CODE_EXTENSIONS.test(f));
+        if (allNonCode) {
+          testsPass = true;
+          console.log(`[supervisor] @${mindName}: No tests found for non-code-only changes — treating as pass`);
+        }
+      }
     }
   }
 

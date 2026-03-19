@@ -33,8 +33,8 @@ function makeMind(overrides?: Partial<MindDescription>): MindDescription {
 // ---------------------------------------------------------------------------
 
 describe("CODE_PIPELINE", () => {
-  test("has exactly 7 stages", () => {
-    expect(CODE_PIPELINE).toHaveLength(7);
+  test("has exactly 8 stages", () => {
+    expect(CODE_PIPELINE).toHaveLength(8);
   });
 
   test("stages are in correct order", () => {
@@ -46,6 +46,7 @@ describe("CODE_PIPELINE", () => {
       "run-tests",
       "boundary-check",
       "contract-check",
+      "e2e-tests",
       "llm-review",
     ]);
   });

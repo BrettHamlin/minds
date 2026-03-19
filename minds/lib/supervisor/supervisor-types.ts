@@ -131,6 +131,8 @@ export interface CheckResults {
   ownsFiles?: string[];
   /** Cross-repo contract annotations deferred for post-wave verification. */
   deferredCrossRepoAnnotations?: ContractAnnotation[];
+  /** Whether all E2E tests in registry.json passed. Undefined if no registry found (skipped). */
+  e2eTestsPass?: boolean;
   /** Test files auto-expanded by boundary warnings — added to tasks for next iteration. */
   autoExpandedFiles?: string[];
   /** Files owned by other minds that this drone tried to modify — delegate to owning mind. */

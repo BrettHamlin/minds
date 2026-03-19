@@ -320,8 +320,8 @@ describe("Level 2: Code + Build mind", () => {
     expect(types).toEqual(["spawn-drone", "wait-completion", "run-command", "collect-results"]);
   });
 
-  test("L2.5 — code pipeline has exactly 7 stages", () => {
-    expect(CODE_PIPELINE).toHaveLength(7);
+  test("L2.5 — code pipeline has exactly 8 stages", () => {
+    expect(CODE_PIPELINE).toHaveLength(8);
     const types = CODE_PIPELINE.map((s) => s.type);
     expect(types).toEqual([
       "spawn-drone",
@@ -330,6 +330,7 @@ describe("Level 2: Code + Build mind", () => {
       "run-tests",
       "boundary-check",
       "contract-check",
+      "e2e-tests",
       "llm-review",
     ]);
   });

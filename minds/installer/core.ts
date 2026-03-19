@@ -86,6 +86,8 @@ const CLAUDE_COMMANDS: Array<{ src: string; dest: string }> = [
   { src: "implement.md", dest: "minds.implement.md" },
   { src: "drone.launch.md", dest: "minds.drone.launch.md" },
   { src: "fission.md", dest: "minds.fission.md" },
+  { src: "test.md", dest: "minds.test.md" },
+  { src: "compare-design.md", dest: "minds.compare-design.md" },
 ];
 
 /** Dev artifacts that should never be copied from source into .minds/ */
@@ -236,6 +238,7 @@ export interface MindsInstallResult {
   bunVerified: boolean;
   dashboardBuilt: boolean;
   axonInstalled: boolean;
+  e2eScaffold?: E2eScaffoldResult;
 }
 
 /**
@@ -594,6 +597,236 @@ async function installAxonBinary(ctx: CopyContext, destMindsDir: string, log: Lo
 }
 
 // ---------------------------------------------------------------------------
+// E2E test scaffolding
+// ---------------------------------------------------------------------------
+
+export interface E2eScaffoldResult {
+  created: string[];
+  skipped: string[];
+  errors: string[];
+  playwrightAdded: boolean;
+  baselineTagFound: boolean;
+}
+
+/**
+ * Build CLAUDE.md content for the tests/e2e/ directory.
+ * The mind label table is populated from the provided minds array.
+ * Each mind entry may have a `label` field; if absent, the label is `@<name>`.
+ */
+export function buildE2eClaudeMdContent(minds: Array<{ name: string; label?: string }>): string {
+  const mindRows = minds.length > 0
+    ? minds
+        .map((m) => {
+          const label = m.label ?? `@${m.name}`;
+          return `| ${m.name} | ${label} | tests/e2e/${m.name}.test.ts |`;
+        })
+        .join("\n")
+    : "| (none yet) | — | — |";
+
+  return `# E2E Tests
+
+This directory contains end-to-end tests for the application.
+Tests use Playwright and run via the \`/minds.test\` command.
+
+## Server Startup
+
+The test command starts the server at \`http://localhost:3099\`.
+Update \`.claude/commands/minds.test.md\` with your actual server startup command:
+
+\`\`\`bash
+PORT=3099 bun run <your-server-entrypoint>
+\`\`\`
+
+## Mind Labels
+
+Tests are organized by mind label. Register each test in \`registry.json\`.
+
+| Mind | Label | Test File |
+|------|-------|-----------|
+${mindRows}
+
+## Running Tests
+
+\`\`\`bash
+# All tests
+/minds.test
+
+# Tests for a specific mind
+/minds.test --mind @your-mind
+
+# Tests with visual screenshot comparison
+/minds.test --visual
+\`\`\`
+
+## Visual Design Comparison
+
+\`\`\`bash
+/minds.compare-design http://localhost:3099/page tests/e2e/fixtures/design.html
+\`\`\`
+
+## Adding a New Test
+
+1. Create \`tests/e2e/<feature>.test.ts\`:
+
+\`\`\`typescript
+import { test, expect } from "@playwright/test";
+
+test("scenario: <describe the user scenario>", async ({ page }) => {
+  await page.goto("http://localhost:3099/<path>");
+  await expect(page.locator("<selector>")).toBeVisible();
+});
+\`\`\`
+
+2. Register it in \`registry.json\`:
+
+\`\`\`json
+{
+  "tests": [
+    { "mind": "@your-mind", "file": "tests/e2e/<feature>.test.ts" }
+  ]
+}
+\`\`\`
+
+## Baseline Tag
+
+Visual comparisons use the \`v1.0.0\` git tag as the design baseline.
+Create it once your initial design is stable:
+
+\`\`\`bash
+git tag v1.0.0
+git push origin v1.0.0
+\`\`\`
+`;
+}
+
+/**
+ * Detect and add @playwright/test as a dev dependency to the target repo's
+ * package.json if not already present.
+ */
+export function ensurePlaywrightDep(repoRoot: string): { added: boolean; alreadyPresent: boolean; error?: string } {
+  const pkgPath = join(repoRoot, "package.json");
+  if (!existsSync(pkgPath)) {
+    return { added: false, alreadyPresent: false, error: "package.json not found at repo root" };
+  }
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
+    const deps = (pkg.dependencies ?? {}) as Record<string, string>;
+    if (devDeps["@playwright/test"] || deps["@playwright/test"]) {
+      return { added: false, alreadyPresent: true };
+    }
+    const addCmd = spawnSync("bun", ["add", "-d", "@playwright/test"], {
+      cwd: repoRoot,
+      stdio: "pipe",
+    });
+    if (addCmd.status === 0) {
+      return { added: true, alreadyPresent: false };
+    }
+    const stderr = addCmd.stderr?.toString().trim() ?? "unknown error";
+    return { added: false, alreadyPresent: false, error: `bun add failed: ${stderr}` };
+  } catch (err) {
+    return { added: false, alreadyPresent: false, error: (err as Error).message };
+  }
+}
+
+/**
+ * Check whether the v1.0.0 git tag exists in the target repo and log a
+ * suggestion if it is missing.
+ */
+export function checkBaselineTag(repoRoot: string): { hasTag: boolean; suggestion?: string } {
+  const result = spawnSync("git", ["tag", "-l", "v1.0.0"], {
+    cwd: repoRoot,
+    stdio: "pipe",
+  });
+  if (result.status !== 0) {
+    return { hasTag: false, suggestion: "git not available or not a git repository" };
+  }
+  const output = result.stdout?.toString().trim() ?? "";
+  if (output.includes("v1.0.0")) {
+    return { hasTag: true };
+  }
+  return {
+    hasTag: false,
+    suggestion: "Tag v1.0.0 not found. Create it with: git tag v1.0.0 && git push origin v1.0.0",
+  };
+}
+
+/**
+ * Scaffold the tests/e2e/ directory in the target repo during init.
+ * Creates the directory structure, CLAUDE.md, and empty registry.json.
+ * Detects and adds @playwright/test if missing.
+ * Checks for the v1.0.0 baseline tag and logs a suggestion if absent.
+ */
+export async function scaffoldE2eTests(
+  repoRoot: string,
+  opts: { quiet?: boolean; force?: boolean } = {}
+): Promise<E2eScaffoldResult> {
+  const { quiet = false, force = false } = opts;
+  const log: LogFn = quiet ? (..._args: unknown[]) => {} : console.log;
+  const result: E2eScaffoldResult = {
+    created: [],
+    skipped: [],
+    errors: [],
+    playwrightAdded: false,
+    baselineTagFound: false,
+  };
+
+  const e2eDir = join(repoRoot, "tests", "e2e");
+  ensureDir(e2eDir);
+
+  // Read installed minds registry to populate the label table
+  const mindsJsonPath = join(repoRoot, ".minds", "minds.json");
+  let minds: Array<{ name: string; label?: string }> = [];
+  if (existsSync(mindsJsonPath)) {
+    try {
+      minds = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{ name: string; label?: string }>;
+    } catch {
+      // Continue with empty list — non-fatal
+    }
+  }
+
+  // T007: Create empty registry.json with mind-to-test-file mapping schema
+  const registryPath = join(e2eDir, "registry.json");
+  if (!existsSync(registryPath) || force) {
+    writeFileSync(registryPath, JSON.stringify({ tests: [] }, null, 2) + "\n");
+    result.created.push(relative(repoRoot, registryPath));
+    log("  Created tests/e2e/registry.json");
+  } else {
+    result.skipped.push(relative(repoRoot, registryPath));
+  }
+
+  // T004: Write scenario-based CLAUDE.md template
+  const claudeMdPath = join(e2eDir, "CLAUDE.md");
+  if (!existsSync(claudeMdPath) || force) {
+    writeFileSync(claudeMdPath, buildE2eClaudeMdContent(minds));
+    result.created.push(relative(repoRoot, claudeMdPath));
+    log("  Created tests/e2e/CLAUDE.md");
+  } else {
+    result.skipped.push(relative(repoRoot, claudeMdPath));
+  }
+
+  // T005: Ensure @playwright/test dependency is present
+  const playwrightResult = ensurePlaywrightDep(repoRoot);
+  if (playwrightResult.added) {
+    result.playwrightAdded = true;
+    log("  Added @playwright/test dependency");
+  } else if (playwrightResult.alreadyPresent) {
+    log("  @playwright/test already present");
+  } else if (playwrightResult.error) {
+    result.errors.push(`playwright dep: ${playwrightResult.error}`);
+  }
+
+  // T006: Check for v1.0.0 baseline git tag
+  const tagResult = checkBaselineTag(repoRoot);
+  result.baselineTagFound = tagResult.hasTag;
+  if (!tagResult.hasTag && tagResult.suggestion) {
+    log(`  Note: ${tagResult.suggestion}`);
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -641,6 +874,9 @@ export async function installCoreMinds(
 
   // Phase 6: Optional eval-factory dependency (non-blocking)
   installEvalFactory(ctx, log);
+
+  // Phase 7: Scaffold E2E test infrastructure
+  result.e2eScaffold = await scaffoldE2eTests(repoRoot, { force, quiet });
 
   return result;
 }
