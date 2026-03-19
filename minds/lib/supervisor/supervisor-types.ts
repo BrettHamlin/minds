@@ -133,6 +133,8 @@ export interface CheckResults {
   deferredCrossRepoAnnotations?: ContractAnnotation[];
   /** Test files auto-expanded by boundary warnings — added to tasks for next iteration. */
   autoExpandedFiles?: string[];
+  /** Files owned by other minds that this drone tried to modify — delegate to owning mind. */
+  delegatedFiles?: Array<{ file: string; ownerMind: string }>;
 }
 
 /**

@@ -90,20 +90,29 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
   const mindsDir = resolveMindsDir(worktreePath);
   const mindsRelative = relative(worktreePath, mindsDir);
 
+  // Load full registry for ownership resolution (current mind + all minds)
+  let allMindsOwnership: Record<string, string[]> = {};
   let ownsFilesResolved = configOwnsFiles;
-  if (!ownsFilesResolved?.length) {
-    try {
-      const mindsJsonPath = join(mindsDir, "minds.json");
-      if (existsSync(mindsJsonPath)) {
-        const registry = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{ name: string; owns_files?: string[] }>;
+  try {
+    const mindsJsonPath = join(mindsDir, "minds.json");
+    if (existsSync(mindsJsonPath)) {
+      const registry = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{ name: string; owns_files?: string[] }>;
+      // Build ownership map for all minds
+      for (const m of registry) {
+        if (m.owns_files?.length) {
+          allMindsOwnership[m.name] = m.owns_files;
+        }
+      }
+      // Resolve current mind's owns_files if not provided via config
+      if (!ownsFilesResolved?.length) {
         const entry = registry.find((m) => m.name === mindName);
         if (entry?.owns_files?.length) {
           ownsFilesResolved = entry.owns_files;
         }
       }
-    } catch {
-      // Fall through to default
     }
+  } catch {
+    // Fall through to default
   }
 
   // Scope tests to directories the drone ACTUALLY MODIFIED in its own commits,
@@ -198,6 +207,7 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
       infraExclusions,
       infraAllowed,
       taskFiles: taskFiles.length > 0 ? taskFiles : undefined,
+      allMindsOwnership: Object.keys(allMindsOwnership).length > 0 ? allMindsOwnership : undefined,
     });
     result.boundaryPass = boundaryResult.pass;
     result.boundaryFindings = boundaryResult.violations.map((v) => ({
@@ -207,11 +217,20 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
       message: v.message,
     }));
 
-    // Auto-expand: test files that triggered warnings get added to taskFiles
-    // so the NEXT iteration allows them through the boundary check.
-    const testWarnings = boundaryResult.violations.filter(v => v.severity === "warning");
-    if (testWarnings.length > 0) {
-      result.autoExpandedFiles = testWarnings.map(v => v.file);
+    // Collect delegated tasks: boundary violations where another mind owns the file.
+    // The supervisor can create tasks for those minds in a later wave.
+    const delegations = boundaryResult.violations.filter(v => v.ownerMind);
+    if (delegations.length > 0) {
+      result.delegatedFiles = delegations.map(v => ({
+        file: v.file,
+        ownerMind: v.ownerMind!,
+      }));
+    }
+
+    // Unowned files that were allowed through (warnings) — track for audit
+    const unownedAllowed = boundaryResult.violations.filter(v => v.severity === "warning" && !v.ownerMind);
+    if (unownedAllowed.length > 0) {
+      result.autoExpandedFiles = unownedAllowed.map(v => v.file);
     }
   }
 
