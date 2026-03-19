@@ -63,7 +63,7 @@ describe("buildDroneBrief", () => {
     expect(brief).toContain("[P]");
   });
 
-  it("has no bus or signal references", () => {
+  it("contains bus-based completion command (HOOK_Stop)", () => {
     const brief = buildDroneBrief({
       ticketId: "BRE-123",
       mindName: "pipeline_core",
@@ -73,9 +73,13 @@ describe("buildDroneBrief", () => {
       featureDir: "specs/BRE-123-feature",
     });
 
-    expect(brief).not.toContain("minds-publish.ts");
+    // Drone brief must contain the bus completion command
+    expect(brief).toContain("minds-publish.ts");
+    expect(brief).toContain("HOOK_Stop");
+    expect(brief).toContain("drone:pipeline_core");
+    // Should NOT reference old MIND_COMPLETE signal or sentinel file
     expect(brief).not.toContain("MIND_COMPLETE");
-    expect(brief).not.toContain("Completion Signal");
+    expect(brief).not.toContain(".drone-complete");
   });
 
   it("omits dependencies section when no deps", () => {

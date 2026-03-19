@@ -76,7 +76,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Derive channel — prefer env var, fall back to empty (skip publish)
+  // Derive channel — env var only. No fallback: the Stop hook fires on every
+  // Claude Code response (not just final completion). If MINDS_CHANNEL isn't set,
+  // skip silently — completion is handled by the manual command in DRONE-BRIEF.md.
   if (!channel) {
     process.exit(0);
     return;

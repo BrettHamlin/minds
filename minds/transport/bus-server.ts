@@ -155,6 +155,12 @@ function handleSubscribe(channel: string, req: Request): Response {
       snapshotEvent = formatSnapshotEvent(snapshot, ++seqCounter);
     }
 
+    // SSE keepalive: send a comment every 30s to prevent client-side
+    // body timeouts (Bun's fetch drops idle SSE streams after ~5 min).
+    let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+    const HEARTBEAT_INTERVAL_MS = 30_000;
+    const heartbeatPayload = new TextEncoder().encode(": keepalive\n\n");
+
     const stream = new ReadableStream<Uint8Array>({
       start(ctrl) {
         controller = ctrl;
@@ -171,9 +177,22 @@ function handleSubscribe(channel: string, req: Request): Response {
         for (const msg of buffered) {
           ctrl.enqueue(sseEvent(msg));
         }
+
+        // Start heartbeat timer to keep connection alive
+        heartbeatTimer = setInterval(() => {
+          try {
+            ctrl.enqueue(heartbeatPayload);
+          } catch {
+            // Stream closed — timer will be cleaned up by cancel()
+          }
+        }, HEARTBEAT_INTERVAL_MS);
       },
       cancel() {
         channelSubs.delete(controller);
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = undefined;
+        }
       },
     });
 

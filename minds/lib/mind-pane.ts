@@ -37,8 +37,9 @@ import type { MindBusPublishCmds } from "../cli/lib/mind-brief.ts";
 import { resolveMindsDir, encodeProjectPath } from "../shared/paths.js";
 import { loadStandards } from "./supervisor/supervisor-checks.ts";
 import { shellQuote } from "./tmux-utils.ts";
-import { TmuxMultiplexer } from "./tmux-multiplexer.ts";
+import { getCurrentTmuxPane } from "./tmux-multiplexer.ts";
 import type { TerminalMultiplexer } from "./terminal-multiplexer.ts";
+import { createMultiplexer } from "./multiplexer-factory.ts";
 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
@@ -328,7 +329,7 @@ If you've compacted or lost context, re-read that file.`.replace(/\n{3,}/g, "\n\
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 
 if (import.meta.main) { (async () => {
-  const mux: TerminalMultiplexer = new TmuxMultiplexer();
+  // getCurrentTmuxPane() is a standalone function — no multiplexer instance needed.
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -366,7 +367,7 @@ if (import.meta.main) { (async () => {
 
   const callerPane =
     getArg("--pane") ??
-    mux.getCurrentPane();
+    getCurrentTmuxPane();
 
   const claudeFile = getArg("--claude-file");
   const briefFile = getArg("--brief-file");
@@ -521,11 +522,15 @@ if (import.meta.main) { (async () => {
 
   writeFileSync(resolve(worktreePath, "MIND-BRIEF.md"), briefContent);
 
+  // ─── Create multiplexer via factory ──────────────────────────────────────────
+
+  const mux: TerminalMultiplexer = await createMultiplexer({ repoRoot });
+
   // ─── Split tmux pane ──────────────────────────────────────────────────────────
 
   let mindPane: string;
   try {
-    mindPane = mux.splitPane(callerPane);
+    mindPane = await mux.splitPane(callerPane);
   } catch (err) {
     fail(`Failed to split tmux pane: ${err}`);
   }
@@ -537,7 +542,7 @@ if (import.meta.main) { (async () => {
   if (busUrl) {
     launchCmd = injectBusEnv(launchCmd, busUrl);
   }
-  mux.sendKeys(mindPane, launchCmd);
+  await mux.sendKeys(mindPane, launchCmd);
 
   // ─── Publish DRONE_SPAWNED if bus is configured ────────────────────────────────
 
@@ -552,6 +557,10 @@ if (import.meta.main) { (async () => {
       branch: branchName,
     });
   }
+
+  // ─── Cleanup multiplexer ────────────────────────────────────────────────────
+
+  mux.close?.();
 
   // ─── Output result ────────────────────────────────────────────────────────────
 

@@ -75,14 +75,17 @@ for (const pp of pipelinePaths) {
   }
 }
 
-// Enrich entries with owns_files from pipeline cluster files when not provided
+// Enrich entries with owns_files from pipeline cluster files when not provided.
+// Pass ALL files across clusters so generateOwnsPatterns can detect shared directories
+// and emit individual file paths instead of overlapping globs.
 if (pipelineClusters) {
   const clusterMap = new Map(pipelineClusters.map((c) => [c.clusterId, c]));
+  const allFiles = pipelineClusters.flatMap((c) => c.files);
   for (const entry of entries) {
     if (!entry.owns_files?.length) {
       const cluster = clusterMap.get(entry.clusterId);
       if (cluster?.files?.length) {
-        entry.owns_files = generateOwnsPatterns(cluster.files);
+        entry.owns_files = generateOwnsPatterns(cluster.files, allFiles);
       }
     }
   }

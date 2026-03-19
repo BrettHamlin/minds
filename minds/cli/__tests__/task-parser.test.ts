@@ -143,4 +143,64 @@ describe("buildDependencyGraph", () => {
 
     expect(graph).toEqual({});
   });
+
+  it("infers dependency from consumes/produces even without section header", () => {
+    // @server-core consumes an interface produced by @blueprint-api
+    // but has NO (depends on: ...) annotation — the wave planner must still
+    // infer the dependency from the contract annotations.
+    const tasks = `
+## @blueprint-routes Tasks
+- [ ] T001 @blueprint-routes Refactor route handlers
+
+## @server-core Tasks
+- [ ] T002 @server-core Update integration tests — consumes: ApiRouter from src/api/router.ts
+
+## @blueprint-api Tasks
+- [ ] T003 @blueprint-api Refactor API layer — produces: ApiRouter at src/api/router.ts
+`;
+    const groups = parseAndGroupTasks(tasks);
+    const graph = buildDependencyGraph(groups);
+
+    // server-core should depend on blueprint-api because it consumes ApiRouter
+    expect(graph["server-core"]).toContain("blueprint-api");
+  });
+
+  it("merges explicit and inferred dependencies without duplicates", () => {
+    const tasks = `
+## @pipeline_core Tasks
+- [ ] T001 @pipeline_core Add types — produces: LoadedPipeline at minds/pipeline_core/types.ts
+
+## @execution Tasks (depends on: @pipeline_core)
+- [ ] T002 @execution Use types — consumes: LoadedPipeline from minds/pipeline_core/types.ts
+`;
+    const groups = parseAndGroupTasks(tasks);
+    const graph = buildDependencyGraph(groups);
+
+    // pipeline_core should appear only once even though it's both explicit and inferred
+    expect(graph["execution"]).toEqual(["pipeline_core"]);
+  });
+
+  it("does not add self-dependency from same-mind consumes/produces", () => {
+    const tasks = `
+## @engine Tasks
+- [ ] T001 @engine Add parser — produces: Parser at src/parser.ts
+- [ ] T002 @engine Use parser — consumes: Parser from src/parser.ts
+`;
+    const groups = parseAndGroupTasks(tasks);
+    const graph = buildDependencyGraph(groups);
+
+    expect(graph).toEqual({});
+  });
+
+  it("ignores consumes referencing a mind not in the current task groups", () => {
+    const tasks = `
+## @frontend Tasks
+- [ ] T001 @frontend Update UI — consumes: ApiClient from src/api-client.ts
+`;
+    const groups = parseAndGroupTasks(tasks);
+    const graph = buildDependencyGraph(groups);
+
+    // No @backend mind in the groups, so no dependency should be inferred
+    expect(graph).toEqual({});
+  });
 });

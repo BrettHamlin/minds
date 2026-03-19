@@ -161,6 +161,21 @@ export function stripGlob(pattern: string): string {
   return pattern.replace(/\*+$/, "").replace(/\/+$/, "/");
 }
 
+/** Matches test/spec files across TS/JS extensions. */
+export const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|js|jsx)$/;
+
+/**
+ * Normalize an owns_files entry: strip repo prefix and normalize minds prefix.
+ * Canonical order: stripRepoPrefix first (removes "backend:"), then
+ * normalizeMindsPrefix (converts ".minds/" to "minds/").
+ *
+ * Use this instead of manually chaining stripRepoPrefix + normalizeMindsPrefix
+ * to avoid inconsistent ordering across call sites.
+ */
+export function normalizeOwnsEntry(entry: string): string {
+  return normalizeMindsPrefix(stripRepoPrefix(entry));
+}
+
 /**
  * Check whether a file path matches at least one owns_files prefix.
  * Handles `.minds/` vs `minds/` normalization and glob stripping on both sides.

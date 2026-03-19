@@ -77,11 +77,17 @@ export async function nameAndValidate(
     idToName.set(clusters[i].clusterId, names[i]);
   }
 
+  // Collect ALL files across all clusters + foundation for overlap detection
+  const allFiles = [
+    ...foundation.files,
+    ...clusters.flatMap(c => c.files),
+  ];
+
   // Build ProposedMinds
   const minds: ProposedMind[] = clusters.map((c, i) => {
     const name = names[i];
     const files = c.files.sort();
-    const ownsFiles = generateOwnsPatterns(files);
+    const ownsFiles = generateOwnsPatterns(files, allFiles);
     const llm = llmResults?.get(c.clusterId);
     const keywords = llm?.keywords?.length ? llm.keywords : extractKeywords(files);
     const domain = llm?.domain ?? generateDomain(name, files);
@@ -128,7 +134,7 @@ export async function nameAndValidate(
     name: "foundation" as const,
     domain: generateFoundationDomain(foundation.files),
     files: foundation.files,
-    owns_files: generateOwnsPatterns(foundation.files),
+    owns_files: generateOwnsPatterns(foundation.files, allFiles),
     exposes: foundation.files.map((f) => basename(f, extname(f))),
   };
 
@@ -262,7 +268,20 @@ function deduplicateNames(names: string[]): string[] {
 /*  Ownership patterns                                                 */
 /* ------------------------------------------------------------------ */
 
-export function generateOwnsPatterns(files: string[]): string[] {
+/**
+ * Generate non-overlapping owns_files patterns for a cluster's files.
+ *
+ * @param files - Files belonging to this cluster
+ * @param allFiles - ALL files across ALL clusters (used to detect shared directories).
+ *                   When omitted, falls back to listing individual files (safe but verbose).
+ */
+export function generateOwnsPatterns(files: string[], allFiles?: string[]): string[] {
+  // Build a set of files NOT in this cluster (for overlap detection)
+  const myFiles = new Set(files);
+  const otherFiles = allFiles
+    ? new Set(allFiles.filter(f => !myFiles.has(f)))
+    : undefined;
+
   // Group files by directory
   const dirFiles = new Map<string, string[]>();
   for (const f of files) {
@@ -278,9 +297,23 @@ export function generateOwnsPatterns(files: string[]): string[] {
       for (const f of dirFileList) {
         patterns.push(f);
       }
+    } else if (otherFiles) {
+      // Check if ANY file from another cluster lives in this directory (or subdirs).
+      // If so, we can't use a glob — list individual files instead.
+      const dirPrefix = dir + "/";
+      const hasOverlap = [...otherFiles].some(f => f.startsWith(dirPrefix) || dirname(f) === dir);
+      if (hasOverlap) {
+        for (const f of dirFileList) {
+          patterns.push(f);
+        }
+      } else {
+        patterns.push(`${dir}/**`);
+      }
     } else {
-      // If all files in the directory are in this cluster, use a glob
-      patterns.push(`${dir}/**`);
+      // No global context — list individual files to be safe
+      for (const f of dirFileList) {
+        patterns.push(f);
+      }
     }
   }
 

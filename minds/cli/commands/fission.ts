@@ -11,6 +11,7 @@ import { runPipeline, detectLanguage } from "../../fission/lib/pipeline.js";
 import { nameAndValidate, type NamingInput } from "../../fission/naming/naming.js";
 import { displayProposedMap, displaySummary } from "../../fission/lib/display.js";
 import { scaffoldAllMinds } from "../../fission/lib/scaffold-minds.js";
+import { detectProjectType } from "../../fission/lib/project-type.js";
 import type { PipelineResult } from "../../fission/lib/pipeline.js";
 
 /* ------------------------------------------------------------------ */
@@ -122,9 +123,15 @@ export async function runFission(
     return;
   }
 
-  // 10. Scaffold all Minds
+  // 10. Detect project type for build/verify mind scaffolding
+  const projectType = detectProjectType(target);
+  if (projectType !== "unknown") {
+    console.log(`\nDetected project type: ${projectType}`);
+  }
+
+  // 11. Scaffold all Minds (including build/verify when project type is known)
   console.log("\nScaffolding Minds...");
-  const scaffoldResult = await scaffoldAllMinds(proposedMap);
+  const scaffoldResult = await scaffoldAllMinds(proposedMap, { projectType });
 
   // 12. Display scaffold results
   if (scaffoldResult.created.length > 0) {

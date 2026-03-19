@@ -6,6 +6,7 @@
 import type { MindTask } from "../../cli/lib/implement-types.ts";
 import type { MindsEventType } from "../../transport/minds-events.ts";
 import type { ContractAnnotation } from "../check-contracts-core.ts";
+import type { DroneHandle } from "../drone-backend.ts";
 
 // ---------------------------------------------------------------------------
 // State enum
@@ -56,6 +57,12 @@ export interface SupervisorConfig {
   installCommand?: string;
   /** Additional infrastructure exclusion patterns (merged with defaults in boundary check). */
   infraExclusions?: string[];
+  /** Infrastructure files this mind is allowed to modify (e.g. ["package.json", "bun.lock"] for dependency additions). */
+  infraAllowed?: string[];
+  /** Explicit pipeline stages for this mind (from MindDescription). */
+  pipeline?: import("./pipeline-types.ts").PipelineStage[];
+  /** Named pipeline template (e.g. "code", "build", "test"). */
+  pipelineTemplate?: string;
 }
 
 export interface ReviewFinding {
@@ -63,6 +70,8 @@ export interface ReviewFinding {
   line: number;
   severity: "error" | "warning";
   message: string;
+  /** Actionable fix suggestion from the reviewer (Opus). */
+  suggestion?: string;
   /** Which supervisor iteration produced this finding (1-based). */
   iteration?: number;
 }
@@ -78,11 +87,12 @@ export interface SupervisorResult {
   approved: boolean;
   approvedWithWarnings: boolean;
   findings: ReviewFinding[];
-  dronePaneId?: string;
-  /** All drone pane IDs spawned across iterations (tracked for cleanup). */
-  allPaneIds: string[];
-  /** Total number of drone panes spawned across all iterations. */
-  totalPanesSpawned: number;
+  /** ID of the most recent drone (backward compat alias). */
+  droneId?: string;
+  /** All drone handles spawned across iterations (tracked for cleanup). */
+  allDroneHandles: DroneHandle[];
+  /** Total number of drones spawned across all iterations. */
+  totalDronesSpawned: number;
   worktree: string;
   branch: string;
   errors: string[];
@@ -121,6 +131,10 @@ export interface CheckResults {
   ownsFiles?: string[];
   /** Cross-repo contract annotations deferred for post-wave verification. */
   deferredCrossRepoAnnotations?: ContractAnnotation[];
+  /** Test files auto-expanded by boundary warnings — added to tasks for next iteration. */
+  autoExpandedFiles?: string[];
+  /** Files owned by other minds that this drone tried to modify — delegate to owning mind. */
+  delegatedFiles?: Array<{ file: string; ownerMind: string }>;
 }
 
 /**
@@ -130,26 +144,33 @@ export interface CheckResults {
 export interface SupervisorDeps {
   /** Spawn a drone in a new worktree (first iteration). */
   spawnDrone: (config: SupervisorConfig, briefContent: string) => Promise<{
-    paneId: string;
+    handle: DroneHandle;
     worktree: string;
     branch: string;
   }>;
 
   /** Re-launch a drone in an existing worktree (subsequent iterations). */
   relaunchDroneInWorktree: (opts: {
-    oldPaneId: string;
+    oldHandle: DroneHandle;
     callerPane: string;
     worktreePath: string;
     briefContent: string;
     busUrl: string;
     mindName: string;
-  }) => string;
+    repoRoot: string;
+    channel?: string;
+  }) => Promise<DroneHandle>;
 
-  /** Wait for drone completion (sentinel file + poll). */
+  /** Wait for drone completion via bus HOOK_Stop event. */
   waitForDroneCompletion: (
-    paneId: string,
+    handle: DroneHandle,
     worktreePath: string,
     timeoutMs: number,
+    pollIntervalMs?: number,
+    repoRoot?: string,
+    busUrl?: string,
+    channel?: string,
+    mindName?: string,
   ) => Promise<{ ok: boolean; error?: string }>;
 
   /** Publish a signal to the bus. */
@@ -170,11 +191,8 @@ export interface SupervisorDeps {
   /** Call LLM for code review. */
   callLlmReview: (prompt: string, timeoutMs: number, opts?: { worktreePath?: string; agentName?: string }) => Promise<string>;
 
-  /** Install the drone Stop hook for sentinel-based completion detection. */
-  installDroneStopHook: (worktreePath: string) => void;
-
-  /** Kill a tmux pane. */
-  killPane: (paneId: string) => void;
+  /** Kill a drone. */
+  killDrone: (handle: DroneHandle) => Promise<void>;
 
   /** Delay between retry iterations (injectable for testing). */
   delay: (ms: number) => Promise<void>;
@@ -199,7 +217,6 @@ export function errorMessage(err: unknown): string {
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_REVIEW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (Opus + tool use)
-export const SENTINEL_FILENAME = ".drone-complete";
 export const MAX_DIFF_CHARS = 50_000;
 export const MAX_TEST_OUTPUT_CHARS = 20_000;
 

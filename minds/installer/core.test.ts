@@ -32,14 +32,14 @@ describe("installCoreMinds — hooks installation", () => {
     rmSync(TMP, { recursive: true, force: true });
   });
 
-  it("copies hook files to .claude/hooks/ with executable permissions", () => {
+  it("copies hook files to .claude/hooks/ with executable permissions", async () => {
     const { srcDir, repoRoot } = setupTmpDirs();
     // Create a hooks source directory with a sample hook
     const hooksSrc = join(srcDir, "hooks");
     mkdirSync(hooksSrc, { recursive: true });
     writeFileSync(join(hooksSrc, "pre-commit.sh"), "#!/bin/bash\necho hello");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     const destHook = join(repoRoot, ".claude", "hooks", "pre-commit.sh");
     expect(existsSync(destHook)).toBe(true);
@@ -53,13 +53,13 @@ describe("installCoreMinds — hooks installation", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it("skips .gitkeep files in hooks directory", () => {
+  it("skips .gitkeep files in hooks directory", async () => {
     const { srcDir, repoRoot } = setupTmpDirs();
     const hooksSrc = join(srcDir, "hooks");
     mkdirSync(hooksSrc, { recursive: true });
     writeFileSync(join(hooksSrc, ".gitkeep"), "");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     const destGitkeep = join(repoRoot, ".claude", "hooks", ".gitkeep");
     expect(existsSync(destGitkeep)).toBe(false);
@@ -67,17 +67,17 @@ describe("installCoreMinds — hooks installation", () => {
     expect(existsSync(join(repoRoot, ".claude", "hooks"))).toBe(false);
   });
 
-  it("gracefully handles missing hooks directory", () => {
+  it("gracefully handles missing hooks directory", async () => {
     const { srcDir, repoRoot } = setupTmpDirs();
     // No hooks/ directory in source at all
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     expect(existsSync(join(repoRoot, ".claude", "hooks"))).toBe(false);
     expect(result.errors).toHaveLength(0);
   });
 
-  it("skips existing hook files when force is false", () => {
+  it("skips existing hook files when force is false", async () => {
     const { srcDir, repoRoot } = setupTmpDirs();
     const hooksSrc = join(srcDir, "hooks");
     mkdirSync(hooksSrc, { recursive: true });
@@ -88,14 +88,14 @@ describe("installCoreMinds — hooks installation", () => {
     mkdirSync(destDir, { recursive: true });
     writeFileSync(join(destDir, "post-push.sh"), "#!/bin/bash\nold content");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true, force: false });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true, force: false });
 
     // Should NOT overwrite
     expect(readFileSync(join(destDir, "post-push.sh"), "utf-8")).toBe("#!/bin/bash\nold content");
     expect(result.skipped).toContain(".claude/hooks/post-push.sh");
   });
 
-  it("overwrites existing hook files when force is true", () => {
+  it("overwrites existing hook files when force is true", async () => {
     const { srcDir, repoRoot } = setupTmpDirs();
     const hooksSrc = join(srcDir, "hooks");
     mkdirSync(hooksSrc, { recursive: true });
@@ -106,7 +106,7 @@ describe("installCoreMinds — hooks installation", () => {
     mkdirSync(destDir, { recursive: true });
     writeFileSync(join(destDir, "post-push.sh"), "#!/bin/bash\nold content");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true, force: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true, force: true });
 
     expect(readFileSync(join(destDir, "post-push.sh"), "utf-8")).toBe("#!/bin/bash\nnew content");
     expect(result.copied).toContain(".claude/hooks/post-push.sh");
@@ -122,7 +122,7 @@ describe("installCoreMinds — test artifact filtering", () => {
     rmSync(TMP, { recursive: true, force: true });
   });
 
-  it("skips directories matching test artifact prefixes (_ta_, _tb_, _tc_, _test_)", () => {
+  it("skips directories matching test artifact prefixes (_ta_, _tb_, _tc_, _test_)", async () => {
     const { srcDir, repoRoot } = setupTmpDirs();
 
     // Create a core Mind directory with test artifact subdirectories
@@ -147,7 +147,7 @@ describe("installCoreMinds — test artifact filtering", () => {
       writeFileSync(join(artifactDir, "artifact.json"), "{}");
     }
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     // Real module should be copied
     expect(existsSync(join(repoRoot, ".minds", "lib", "real-module.ts"))).toBe(true);
@@ -164,7 +164,7 @@ describe("installCoreMinds — test artifact filtering", () => {
     }
   });
 
-  it("skips __tests__ directories", () => {
+  it("skips __tests__ directories", async () => {
     const { srcDir, repoRoot } = setupTmpDirs();
 
     const libSrc = join(srcDir, "lib");
@@ -175,13 +175,13 @@ describe("installCoreMinds — test artifact filtering", () => {
     mkdirSync(testsDir, { recursive: true });
     writeFileSync(join(testsDir, "utils.test.ts"), "// test file");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     expect(existsSync(join(repoRoot, ".minds", "lib", "utils.ts"))).toBe(true);
     expect(existsSync(join(repoRoot, ".minds", "lib", "__tests__"))).toBe(false);
   });
 
-  it("still copies directories that do not match skip patterns", () => {
+  it("still copies directories that do not match skip patterns", async () => {
     const { srcDir, repoRoot } = setupTmpDirs();
 
     const libSrc = join(srcDir, "lib");
@@ -189,7 +189,7 @@ describe("installCoreMinds — test artifact filtering", () => {
     mkdirSync(subDir, { recursive: true });
     writeFileSync(join(subDir, "index.ts"), "export default {};");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     expect(existsSync(join(repoRoot, ".minds", "lib", "helpers", "index.ts"))).toBe(true);
   });
@@ -334,14 +334,14 @@ describe("installCoreMinds — commander dependency installation", () => {
     rmSync(TMP_CMD, { recursive: true, force: true });
   });
 
-  it("creates package.json in .minds/ and installs commander", () => {
+  it("creates package.json in .minds/ and installs commander", async () => {
     const srcDir = join(TMP_CMD, "minds-src");
     const repoRoot = join(TMP_CMD, "repo");
     mkdirSync(srcDir, { recursive: true });
     writeFileSync(join(srcDir, "server-base.ts"), "// sentinel");
     mkdirSync(repoRoot, { recursive: true });
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     const pkgJson = join(repoRoot, ".minds", "package.json");
     expect(existsSync(pkgJson)).toBe(true);
@@ -370,7 +370,7 @@ describe("installCoreMinds — settings.json generation", () => {
     rmSync(TMP_SETTINGS_INT, { recursive: true, force: true });
   });
 
-  it("generates .claude/settings.json when hooks are installed", () => {
+  it("generates .claude/settings.json when hooks are installed", async () => {
     const srcDir = join(TMP_SETTINGS_INT, "minds-src");
     const repoRoot = join(TMP_SETTINGS_INT, "repo");
     mkdirSync(srcDir, { recursive: true });
@@ -382,7 +382,7 @@ describe("installCoreMinds — settings.json generation", () => {
     mkdirSync(hooksSrc, { recursive: true });
     writeFileSync(join(hooksSrc, "PreToolUse.validate.ts"), "#!/usr/bin/env bun\nconsole.log('ok')");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     const settingsPath = join(repoRoot, ".claude", "settings.json");
     expect(existsSync(settingsPath)).toBe(true);
@@ -393,7 +393,7 @@ describe("installCoreMinds — settings.json generation", () => {
     expect(hooks.PreToolUse).toHaveLength(1);
   });
 
-  it("does not create settings.json when only .gitkeep is in hooks", () => {
+  it("does not create settings.json when only .gitkeep is in hooks", async () => {
     const srcDir = join(TMP_SETTINGS_INT, "minds-src");
     const repoRoot = join(TMP_SETTINGS_INT, "repo");
     mkdirSync(srcDir, { recursive: true });
@@ -404,14 +404,14 @@ describe("installCoreMinds — settings.json generation", () => {
     mkdirSync(hooksSrc, { recursive: true });
     writeFileSync(join(hooksSrc, ".gitkeep"), "");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     const settingsPath = join(repoRoot, ".claude", "settings.json");
     expect(existsSync(settingsPath)).toBe(false);
     expect(result.copied).not.toContain(".claude/settings.json");
   });
 
-  it("preserves existing settings.json content when merging hooks", () => {
+  it("preserves existing settings.json content when merging hooks", async () => {
     const srcDir = join(TMP_SETTINGS_INT, "minds-src");
     const repoRoot = join(TMP_SETTINGS_INT, "repo");
     mkdirSync(srcDir, { recursive: true });
@@ -430,7 +430,7 @@ describe("installCoreMinds — settings.json generation", () => {
     mkdirSync(hooksSrc, { recursive: true });
     writeFileSync(join(hooksSrc, "Stop.cleanup.ts"), "#!/usr/bin/env bun\n");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     const settings = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
     expect(settings.env).toEqual({ MY_VAR: "keep-me" });
@@ -447,7 +447,7 @@ describe("installCoreMinds — shouldSkipEntry applied to hooks", () => {
     rmSync(TMP, { recursive: true, force: true });
   });
 
-  it("skips hook files matching skip patterns (e.g. .test.ts) but copies legitimate hooks", () => {
+  it("skips hook files matching skip patterns (e.g. .test.ts) but copies legitimate hooks", async () => {
     const { srcDir, repoRoot } = setupTmpDirs();
     const hooksSrc = join(srcDir, "hooks");
     mkdirSync(hooksSrc, { recursive: true });
@@ -460,7 +460,7 @@ describe("installCoreMinds — shouldSkipEntry applied to hooks", () => {
     writeFileSync(join(hooksSrc, "another.test.js"), "// js test file that should be skipped");
     writeFileSync(join(hooksSrc, "smoke-result.json"), "{}");
 
-    const result = installCoreMinds(srcDir, repoRoot, { quiet: true });
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
 
     // Legitimate hook should be present
     const destHooksDir = join(repoRoot, ".claude", "hooks");
@@ -477,5 +477,93 @@ describe("installCoreMinds — shouldSkipEntry applied to hooks", () => {
     expect(copiedStr).not.toContain("something.test.ts");
     expect(copiedStr).not.toContain("another.test.js");
     expect(copiedStr).not.toContain("smoke-result.json");
+  });
+});
+
+describe("installCoreMinds — Axon binary installation", () => {
+  const TMP_AXON = join(import.meta.dir, "__test_tmp_axon__");
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    rmSync(TMP_AXON, { recursive: true, force: true });
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    rmSync(TMP_AXON, { recursive: true, force: true });
+  });
+
+  it("sets axonInstalled to false when download fails (non-blocking)", async () => {
+    const srcDir = join(TMP_AXON, "minds-src");
+    const repoRoot = join(TMP_AXON, "repo");
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(join(srcDir, "server-base.ts"), "// sentinel");
+    mkdirSync(repoRoot, { recursive: true });
+
+    // Mock fetch to always fail — simulates network error or missing release
+    globalThis.fetch = (async () => {
+      return new Response("Not found", { status: 404 });
+    }) as typeof fetch;
+
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
+
+    // Axon install should fail gracefully
+    expect(result.axonInstalled).toBe(false);
+    // The overall install should still succeed (no errors from Axon — it's non-blocking)
+    expect(result.errors.filter((e) => e.includes("Axon"))).toHaveLength(0);
+  });
+
+  it("sets axonInstalled to true when download succeeds", async () => {
+    const srcDir = join(TMP_AXON, "minds-src");
+    const repoRoot = join(TMP_AXON, "repo");
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(join(srcDir, "server-base.ts"), "// sentinel");
+    mkdirSync(repoRoot, { recursive: true });
+
+    // Create a fake binary and matching checksum
+    const fakeBinary = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
+    const hasher = new Bun.CryptoHasher("sha256");
+    hasher.update(fakeBinary);
+    const expectedHash = hasher.digest("hex");
+
+    const { getTargetTriple } = require("./axon-installer");
+    const triple = getTargetTriple();
+
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.includes("checksums.txt")) {
+        return new Response(`${expectedHash}  axon-${triple}\n`, { status: 200 });
+      }
+      if (urlStr.includes(`axon-${triple}`)) {
+        return new Response(fakeBinary, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    }) as typeof fetch;
+
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
+
+    expect(result.axonInstalled).toBe(true);
+    // Binary should exist at .minds/bin/axon
+    const binaryPath = join(repoRoot, ".minds", "bin", "axon");
+    expect(existsSync(binaryPath)).toBe(true);
+  });
+
+  it("includes axonInstalled field in result type", async () => {
+    const srcDir = join(TMP_AXON, "minds-src");
+    const repoRoot = join(TMP_AXON, "repo");
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(join(srcDir, "server-base.ts"), "// sentinel");
+    mkdirSync(repoRoot, { recursive: true });
+
+    // Fail the download
+    globalThis.fetch = (async () => {
+      return new Response("Not found", { status: 404 });
+    }) as typeof fetch;
+
+    const result = await installCoreMinds(srcDir, repoRoot, { quiet: true });
+
+    // Verify the field exists (boolean type)
+    expect(typeof result.axonInstalled).toBe("boolean");
   });
 });

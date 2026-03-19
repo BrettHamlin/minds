@@ -33,12 +33,12 @@ describe("shellQuote", () => {
 });
 
 describe("killPane", () => {
-  test("does not throw when pane does not exist", () => {
+  test("does not throw when pane does not exist", async () => {
     // killPane should silently handle non-existent panes
-    expect(() => killPane("%99999")).not.toThrow();
+    await expect(killPane("%99999")).resolves.toBeUndefined();
   });
 
-  test("does not throw when called with empty string", () => {
-    expect(() => killPane("")).not.toThrow();
+  test("does not throw when called with empty string", async () => {
+    await expect(killPane("")).resolves.toBeUndefined();
   });
 });

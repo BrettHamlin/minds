@@ -20,6 +20,7 @@ import type {
   SupervisorDeps,
   CheckResults,
 } from "../supervisor-types.ts";
+import type { DroneHandle } from "../../drone-backend.ts";
 import { MindsEventType } from "../../../transport/minds-events.ts";
 import { makeTestConfig, makeTestTmpDir } from "./test-helpers.ts";
 
@@ -79,21 +80,24 @@ function makeRejectionResponse(findings?: Array<{ file: string; line: number; se
   });
 }
 
+function mockHandle(id: string, backend: "axon" | "tmux" = "tmux"): DroneHandle {
+  return { id, backend };
+}
+
 /** Create a full set of mock deps. Override individual deps as needed. */
 function makeMockDeps(overrides?: Partial<SupervisorDeps>): SupervisorDeps {
   return {
     spawnDrone: mock(async () => ({
-      paneId: "%10",
+      handle: mockHandle("%10"),
       worktree: join(tmpDir, "worktree"),
       branch: "minds/BRE-500-transport",
     })),
-    relaunchDroneInWorktree: mock(() => "%11"),
+    relaunchDroneInWorktree: mock(async () => mockHandle("%11")),
     waitForDroneCompletion: mock(async () => ({ ok: true })),
     publishSignal: mock(async () => {}),
     runDeterministicChecks: mock(() => makePassingChecks()),
     callLlmReview: mock(async () => makeApprovalResponse()),
-    installDroneStopHook: mock(() => {}),
-    killPane: mock(() => {}),
+    killDrone: mock(async () => {}),
     delay: mock(async () => {}), // zero-wait for tests
     ...overrides,
   };
@@ -145,9 +149,9 @@ describe("runMindSupervisor integration", () => {
     expect(signalTypes).toContain(MindsEventType.MIND_COMPLETE);
     expect(signalTypes).not.toContain(MindsEventType.MIND_FAILED);
 
-    // Verify pane tracking
-    expect(result.allPaneIds).toContain("%10");
-    expect(result.totalPanesSpawned).toBe(1);
+    // Verify drone tracking
+    expect(result.allDroneHandles.map(h => h.id)).toContain("%10");
+    expect(result.totalDronesSpawned).toBe(1);
     expect(result.worktree).toBe(join(tmpDir, "worktree"));
     expect(result.branch).toBe("minds/BRE-500-transport");
   });
@@ -169,7 +173,7 @@ describe("runMindSupervisor integration", () => {
         }
         return makeApprovalResponse();
       }),
-      relaunchDroneInWorktree: mock(() => "%12"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%12")),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -199,10 +203,10 @@ describe("runMindSupervisor integration", () => {
     // Verify feedback file was written
     expect(existsSync(join(tmpDir, "worktree", "REVIEW-FEEDBACK-1.md"))).toBe(true);
 
-    // Verify all spawned panes tracked
-    expect(result.allPaneIds).toContain("%10");
-    expect(result.allPaneIds).toContain("%12");
-    expect(result.totalPanesSpawned).toBe(2);
+    // Verify all spawned drones tracked
+    expect(result.allDroneHandles.map(h => h.id)).toContain("%10");
+    expect(result.allDroneHandles.map(h => h.id)).toContain("%12");
+    expect(result.totalDronesSpawned).toBe(2);
   });
 
   // -----------------------------------------------------------------------
@@ -215,7 +219,7 @@ describe("runMindSupervisor integration", () => {
     const deps = makeMockDeps({
       // Always reject
       callLlmReview: mock(async () => makeRejectionResponse()),
-      relaunchDroneInWorktree: mock(() => "%13"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%13")),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -274,8 +278,8 @@ describe("runMindSupervisor integration", () => {
     expect(signalTypes).toContain(MindsEventType.MIND_FAILED);
     expect(signalTypes).not.toContain(MindsEventType.MIND_COMPLETE);
 
-    // Verify no panes were tracked (spawn failed)
-    expect(result.allPaneIds).toHaveLength(0);
+    // Verify no drones were tracked (spawn failed)
+    expect(result.allDroneHandles).toHaveLength(0);
   });
 
   // -----------------------------------------------------------------------
@@ -301,19 +305,16 @@ describe("runMindSupervisor integration", () => {
     // Verify no review was attempted (drone never completed)
     expect(deps.callLlmReview).toHaveBeenCalledTimes(0);
 
-    // Verify killPane was called for the crashed drone
-    const killPaneCalls = (deps.killPane as ReturnType<typeof mock>).mock.calls;
-    // killPane is called once explicitly for the crashed drone, and once in finally cleanup
-    const killedPanes = killPaneCalls.map((c: unknown[]) => c[0]);
-    expect(killedPanes).toContain("%10");
+    // Supervisor does NOT kill drones — implement.ts owns per-wave cleanup
+    expect(deps.killDrone).not.toHaveBeenCalled();
 
     // Verify MIND_FAILED was published
     const publishCalls = (deps.publishSignal as ReturnType<typeof mock>).mock.calls;
     const signalTypes = publishCalls.map((c: unknown[]) => c[2]);
     expect(signalTypes).toContain(MindsEventType.MIND_FAILED);
 
-    // Verify pane was tracked even though it crashed
-    expect(result.allPaneIds).toContain("%10");
+    // Verify drone was tracked even though it crashed
+    expect(result.allDroneHandles.map(h => h.id)).toContain("%10");
   });
 
   // -----------------------------------------------------------------------
@@ -335,7 +336,7 @@ describe("runMindSupervisor integration", () => {
         }
         return makePassingChecks();
       }),
-      relaunchDroneInWorktree: mock(() => "%14"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%14")),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -363,7 +364,7 @@ describe("runMindSupervisor integration", () => {
     const deps = makeMockDeps({
       callLlmReview: mock(async () => makeApprovalResponse()), // LLM says approve
       runDeterministicChecks: mock(() => boundaryFailChecks), // But boundary fails
-      relaunchDroneInWorktree: mock(() => "%14"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%14")),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -387,7 +388,7 @@ describe("runMindSupervisor integration", () => {
     const deps = makeMockDeps({
       callLlmReview: mock(async () => makeRejectionResponse()),
       runDeterministicChecks: mock(() => makeFailingChecks()), // Tests always fail
-      relaunchDroneInWorktree: mock(() => "%14"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%14")),
     });
 
     const result = await runMindSupervisor(config, deps);
@@ -414,34 +415,14 @@ describe("runMindSupervisor integration", () => {
     expect(result.findings.some((f) => f.message.includes("timed out"))).toBe(true);
   });
 
-  test("installDroneStopHook called for each iteration", async () => {
-    const config = makeConfig({ maxIterations: 2 });
-    mkdirSync(join(tmpDir, "worktree"), { recursive: true });
-
-    let reviewCallCount = 0;
-    const deps = makeMockDeps({
-      callLlmReview: mock(async () => {
-        reviewCallCount++;
-        if (reviewCallCount === 1) return makeRejectionResponse();
-        return makeApprovalResponse();
-      }),
-      relaunchDroneInWorktree: mock(() => "%15"),
-    });
-
-    await runMindSupervisor(config, deps);
-
-    // installDroneStopHook should be called twice: once after spawn, once after relaunch
-    expect(deps.installDroneStopHook).toHaveBeenCalledTimes(2);
-  });
-
-  test("cleanup kills all spawned panes even after failure", async () => {
+  test("supervisor tracks drones but does NOT kill them (implement.ts owns per-wave cleanup)", async () => {
     const config = makeConfig({ maxIterations: 2 });
     mkdirSync(join(tmpDir, "worktree"), { recursive: true });
 
     const deps = makeMockDeps({
       // First iteration: drone succeeds, review rejects
       callLlmReview: mock(async () => makeRejectionResponse()),
-      relaunchDroneInWorktree: mock(() => "%16"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%16")),
       // Second iteration: drone crashes
       waitForDroneCompletion: mock()
         .mockResolvedValueOnce({ ok: true })
@@ -451,14 +432,10 @@ describe("runMindSupervisor integration", () => {
     const result = await runMindSupervisor(config, deps);
 
     expect(result.ok).toBe(false);
-    // Both panes (%10 from spawn, %16 from relaunch) should be tracked
-    expect(result.allPaneIds).toHaveLength(2);
-    // killPane should be called for each tracked pane in cleanup
-    const killCalls = (deps.killPane as ReturnType<typeof mock>).mock.calls;
-    const killedPanes = killCalls.map((c: unknown[]) => c[0]);
-    // One explicit kill for the crashed drone + two in finally cleanup
-    expect(killedPanes.filter((p: string) => p === "%10")).toHaveLength(1);
-    expect(killedPanes.filter((p: string) => p === "%16")).toHaveLength(2); // explicit + cleanup
+    // Both drones (%10 from spawn, %16 from relaunch) should be tracked
+    expect(result.allDroneHandles).toHaveLength(2);
+    // Supervisor does NOT kill drones — implement.ts owns per-wave cleanup
+    expect(deps.killDrone).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
@@ -478,7 +455,7 @@ describe("runMindSupervisor integration", () => {
         if (reviewCallCount < 3) return makeRejectionResponse();
         return makeApprovalResponse();
       }),
-      relaunchDroneInWorktree: mock(() => `%${20 + reviewCallCount}`),
+      relaunchDroneInWorktree: mock(async () => mockHandle(`%${20 + reviewCallCount}`)),
       delay: mock(async (ms: number) => { delayCallsMs.push(ms); }),
     });
 
@@ -518,7 +495,7 @@ describe("runMindSupervisor integration", () => {
 
     const deps = makeMockDeps({
       callLlmReview: mock(async () => makeRejectionResponse()),
-      relaunchDroneInWorktree: mock(() => "%15"),
+      relaunchDroneInWorktree: mock(async () => mockHandle("%15")),
       delay: mock(async (ms: number) => { delayCallsMs.push(ms); }),
     });
 

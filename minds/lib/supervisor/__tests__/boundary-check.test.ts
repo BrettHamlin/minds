@@ -142,17 +142,33 @@ diff --git a/minds/transport/types.ts b/minds/transport/types.ts
     expect(result.violations).toHaveLength(0);
   });
 
-  test("rejects files outside owns_files boundary", () => {
+  test("rejects files owned by another mind", () => {
+    const diff = `diff --git a/minds/transport/publish.ts b/minds/transport/publish.ts
++++ b/minds/transport/publish.ts
+diff --git a/minds/signals/emit.ts b/minds/signals/emit.ts
++++ b/minds/signals/emit.ts`;
+
+    const result = checkBoundary(diff, ["minds/transport/"], "transport", {
+      allMindsOwnership: { signals: ["minds/signals/"] },
+    });
+    expect(result.pass).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].file).toBe("minds/signals/emit.ts");
+    expect(result.violations[0].ownerMind).toBe("signals");
+    expect(result.violations[0].message).toContain("owned by @signals");
+  });
+
+  test("allows unowned files as warnings", () => {
     const diff = `diff --git a/minds/transport/publish.ts b/minds/transport/publish.ts
 +++ b/minds/transport/publish.ts
 diff --git a/minds/signals/emit.ts b/minds/signals/emit.ts
 +++ b/minds/signals/emit.ts`;
 
     const result = checkBoundary(diff, ["minds/transport/"], "transport");
-    expect(result.pass).toBe(false);
+    expect(result.pass).toBe(true);
     expect(result.violations).toHaveLength(1);
-    expect(result.violations[0].file).toBe("minds/signals/emit.ts");
-    expect(result.violations[0].message).toContain("outside your boundary");
+    expect(result.violations[0].severity).toBe("warning");
+    expect(result.violations[0].message).toContain("not owned by any Mind");
   });
 
   test("supports multiple owns_files prefixes", () => {
@@ -177,16 +193,19 @@ diff --git a/src/middleware/cors/index.test.ts b/src/middleware/cors/index.test.
     expect(result.violations).toHaveLength(0);
   });
 
-  test("rejects files outside glob-suffixed boundary", () => {
+  test("rejects files outside glob-suffixed boundary when owned by another mind", () => {
     const diff = `diff --git a/src/middleware/cors/index.ts b/src/middleware/cors/index.ts
 +++ b/src/middleware/cors/index.ts
 diff --git a/src/middleware/csrf/index.ts b/src/middleware/csrf/index.ts
 +++ b/src/middleware/csrf/index.ts`;
 
-    const result = checkBoundary(diff, ["src/middleware/cors/**"], "cors");
+    const result = checkBoundary(diff, ["src/middleware/cors/**"], "cors", {
+      allMindsOwnership: { csrf: ["src/middleware/csrf/**"] },
+    });
     expect(result.pass).toBe(false);
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0].file).toBe("src/middleware/csrf/index.ts");
+    expect(result.violations[0].ownerMind).toBe("csrf");
   });
 
   test("skips ownership check when ownsFiles is empty", () => {
@@ -347,14 +366,27 @@ describe("checkBoundary — requireBoundary", () => {
     expect(result.violations[0].message).toContain("No boundary defined");
   });
 
-  test("requireBoundary true with non-empty ownsFiles still enforces boundary violations", () => {
+  test("requireBoundary true with non-empty ownsFiles — unowned file is warning", () => {
     const diff = `diff --git a/src/outside/file.ts b/src/outside/file.ts
 +++ b/src/outside/file.ts`;
 
     const result = checkBoundary(diff, ["src/api/"], "api_mind", { requireBoundary: true });
+    expect(result.pass).toBe(true); // warnings don't block
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe("warning");
+  });
+
+  test("requireBoundary true — owned-by-another-mind file is hard error", () => {
+    const diff = `diff --git a/src/outside/file.ts b/src/outside/file.ts
++++ b/src/outside/file.ts`;
+
+    const result = checkBoundary(diff, ["src/api/"], "api_mind", {
+      requireBoundary: true,
+      allMindsOwnership: { other_mind: ["src/outside/"] },
+    });
     expect(result.pass).toBe(false);
     expect(result.violations).toHaveLength(1);
-    expect(result.violations[0].message).toContain("outside your boundary");
+    expect(result.violations[0].ownerMind).toBe("other_mind");
   });
 
   test("requireBoundary true with empty ownsFiles and empty diff still fails", () => {
@@ -388,5 +420,83 @@ describe("checkBoundary — requireBoundary", () => {
     const result = checkBoundary(diff, [], "old_mind", undefined);
     expect(result.pass).toBe(true);
     expect(result.violations).toHaveLength(0);
+  });
+
+  // -- infraAllowed tests ---------------------------------------------------
+
+  test("infraAllowed removes package.json from exclusion list", () => {
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json
+diff --git a/src/client/index.ts b/src/client/index.ts
++++ b/src/client/index.ts`;
+
+    const result = checkBoundary(diff, ["src/client/", "package.json"], "client_mind", {
+      infraAllowed: ["package.json"],
+    });
+    expect(result.pass).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  test("infraAllowed does not remove non-listed infra files", () => {
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json
+diff --git a/tsconfig.json b/tsconfig.json
++++ b/tsconfig.json`;
+
+    const result = checkBoundary(diff, ["package.json", "tsconfig.json"], "client_mind", {
+      infraAllowed: ["package.json"],
+    });
+    // package.json is allowed, tsconfig.json is still blocked
+    expect(result.pass).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].file).toBe("tsconfig.json");
+  });
+
+  test("infraAllowed with bun.lock allows lock file modification", () => {
+    const diff = `diff --git a/bun.lock b/bun.lock
++++ b/bun.lock
+diff --git a/package.json b/package.json
++++ b/package.json`;
+
+    const result = checkBoundary(diff, ["package.json", "bun.lock"], "client_mind", {
+      infraAllowed: ["package.json", "bun.lock"],
+    });
+    expect(result.pass).toBe(true);
+  });
+
+  test("infraAllowed with empty array changes nothing", () => {
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json`;
+
+    const result = checkBoundary(diff, ["src/"], "some_mind", {
+      infraAllowed: [],
+    });
+    expect(result.pass).toBe(false);
+    expect(result.violations[0].message).toContain("protected infrastructure file");
+  });
+
+  // -- taskFiles tests -------------------------------------------------------
+
+  test("taskFiles allows modification of files outside owns_files", () => {
+    const diff = `diff --git a/src/api/handler.ts b/src/api/handler.ts
++++ b/src/api/handler.ts
+diff --git a/tests/api/handler.test.ts b/tests/api/handler.test.ts
++++ b/tests/api/handler.test.ts`;
+
+    const result = checkBoundary(diff, ["src/api/"], "api_mind", {
+      taskFiles: ["tests/api/handler.test.ts"],
+    });
+    expect(result.pass).toBe(true);
+  });
+
+  test("taskFiles does not override infrastructure exclusion", () => {
+    const diff = `diff --git a/package.json b/package.json
++++ b/package.json`;
+
+    const result = checkBoundary(diff, ["src/"], "some_mind", {
+      taskFiles: ["package.json"],
+    });
+    expect(result.pass).toBe(false);
+    expect(result.violations[0].message).toContain("protected infrastructure file");
   });
 });

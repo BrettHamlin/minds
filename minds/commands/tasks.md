@@ -4,6 +4,8 @@ description: Generate Mind-aware tasks for collab development. Decomposes work a
 
 > **IMPORTANT:** Execute these steps directly and sequentially. Do NOT wrap this workflow in PAI Algorithm phases, ISC criteria, capability selection, or any other meta-framework. Follow the numbered steps exactly as written.
 
+> **NEVER ask interactive questions.** Do NOT present menus, multiple-choice options, or ask the user to choose an approach. If prior work exists for the ticket (commits, partial implementations), analyze the current state yourself and generate tasks for what remains. If no spec/plan exists, fetch the ticket from Linear and generate tasks directly. Always proceed autonomously.
+
 ## Path Detection
 
 Determine the Minds source directory before running any commands. In the dev repo (has `minds/cli/`), use `minds/`. In installed repos, use `.minds/`.
@@ -102,7 +104,25 @@ This command generates tasks for developing the **collab repo itself**, where wo
 
    Then write the file to `specs/{TICKET_ID}/tasks.md`.
 
-8. **Report**: Output summary:
+8. **Lint and fix** (MANDATORY — do not skip): After writing tasks.md, run the linter and fix any errors before reporting.
+
+   ```bash
+   bun {MINDS_DIR}/cli/bin/minds.ts lint specs/{TICKET_ID}/tasks.md --json
+   ```
+
+   The linter outputs `{ valid, errors, warnings }`. If `valid` is false:
+
+   - Read each error's `type`, `task`, and `message`
+   - Fix the failing tasks directly in tasks.md:
+     - **boundary_violation**: The task references a file outside the Mind's `owns_files`. Either reassign the task to the correct Mind, or if it's a new Mind, add `owns: <path>` to the section header.
+     - **unregistered_mind**: The Mind doesn't exist in `minds.json` and no `owns:` was declared in the section header. Add `owns: <path>` to the section header.
+     - **missing_deps_header**: A task has `consumes:` but the section header lacks `(depends on: ...)`. Add the dependency.
+   - Re-run the linter. Repeat until `valid` is true (max 3 attempts).
+   - If still failing after 3 attempts, output the errors and stop — do not run implement.
+
+   Warnings (e.g. `dangling_consume`) are informational — don't block on them.
+
+9. **Report**: Output summary:
    - Total task count
    - Tasks per Mind
    - Cross-Mind contracts identified
@@ -149,6 +169,34 @@ Rules:
 - Do NOT reference other Minds by name in task descriptions — only the import path is allowed
 - The contract linter validates all annotations before dispatch begins
 
+### Tests Stay With Implementation (MANDATORY)
+
+When a task involves modifying or creating source code, the corresponding tests MUST be part of the SAME Mind's tasks — even if the test files are in a directory nominally owned by a different Mind (e.g., `tests/`, `__tests__/`, `*.test.ts`).
+
+**Why:** If you split "implement feature" into `@blueprint-api` and "test feature" into `@server-core`, the test mind can't run until the implementation mind finishes, AND the test mind will try to modify test files that may be outside its boundary. This causes wave ordering failures and boundary violations.
+
+**Rules:**
+- If a task creates/modifies `src/api/foo.ts`, the task to test it (`tests/api/foo.test.ts`) goes to the SAME mind
+- The implementing Mind's `owns_files` boundary is temporarily expanded to include test files for code it implements — add these paths to the task descriptions
+- Do NOT create a separate "test mind" or assign test-writing tasks to `@server-core` or similar infrastructure minds unless the tests are purely for pre-existing code unrelated to any other mind's implementation work
+- If a Mind writes code, it writes the tests for that code. Period.
+
+**Example:**
+```
+## @blueprint-api Tasks
+- [ ] T001 @blueprint-api Refactor JSON response types in packages/modules/blueprint/api.ts
+- [ ] T002 @blueprint-api Update tests for JSON responses in tests/modules/blueprint/api.test.ts
+```
+
+NOT:
+```
+## @blueprint-api Tasks
+- [ ] T001 @blueprint-api Refactor JSON response types in packages/modules/blueprint/api.ts
+
+## @server-core Tasks (depends on: @blueprint-api)
+- [ ] T002 @server-core Update tests for JSON responses in tests/modules/blueprint/api.test.ts
+```
+
 ### Anti-Leakage (MANDATORY)
 
 Each Mind's tasks must be self-contained. A task description must NEVER:
@@ -187,3 +235,30 @@ When a feature requires a Mind that does NOT exist in `minds.json`, declare its 
 - Tasks within the same Mind: sequential by default, `[P]` if independent
 - Tasks across different Minds: parallel by default, dependent only if consuming another Mind's output
 - Always list Mind-level dependencies in section headers: `## @execution Tasks (depends on: @pipeline_core)`
+
+### Export Removal Order (MANDATORY)
+
+When one Mind removes an export that another Mind currently imports:
+- The **consumer** must update/remove its imports FIRST (earlier wave)
+- The **producer** removes the export SECOND (later wave)
+- Getting this backwards causes `SyntaxError: Export named '...' not found`
+
+**Example — CORRECT:**
+```
+## @blueprint-api Tasks (Wave 1)
+- [ ] T001 @blueprint-api Remove imports of buildDetailBodyHtml from api.ts
+
+## @blueprint-routes Tasks (depends on: @blueprint-api) (Wave 2)
+- [ ] T002 @blueprint-routes Remove buildDetailBodyHtml function from routes.ts
+```
+
+**WRONG (will fail):**
+```
+## @blueprint-routes Tasks (Wave 1)
+- [ ] T001 @blueprint-routes Remove buildDetailBodyHtml from routes.ts  ← breaks api.ts imports!
+
+## @blueprint-api Tasks (Wave 2)
+- [ ] T002 @blueprint-api Remove imports of buildDetailBodyHtml from api.ts
+```
+
+**Rule:** You cannot remove/rename an export while any file outside your Mind still imports it. The consuming Mind must go first.

@@ -30,12 +30,26 @@ describe("checkBoundary — repo-qualified owns_files (MR-014)", () => {
     expect(result.violations).toHaveLength(0);
   });
 
-  test("backend:src/api/** does NOT match src/other/foo.ts → violation", () => {
+  test("backend:src/api/** does NOT match src/other/foo.ts → warning (unowned)", () => {
     const diff = makeDiff("src/other/foo.ts");
     const result = checkBoundary(diff, ["backend:src/api/**"], "api");
+    // Unowned files (no allMindsOwnership) produce warnings, not hard errors
+    expect(result.pass).toBe(true);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].file).toBe("src/other/foo.ts");
+    expect(result.violations[0].severity).toBe("warning");
+  });
+
+  test("backend:src/api/** does NOT match src/other/foo.ts → hard error when owned by another mind", () => {
+    const diff = makeDiff("src/other/foo.ts");
+    const result = checkBoundary(diff, ["backend:src/api/**"], "api", {
+      allMindsOwnership: { other: ["src/other/**"] },
+    });
     expect(result.pass).toBe(false);
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0].file).toBe("src/other/foo.ts");
+    expect(result.violations[0].severity).toBe("error");
+    expect(result.violations[0].ownerMind).toBe("other");
   });
 
   test("bare paths still work", () => {
@@ -50,11 +64,11 @@ describe("checkBoundary — repo-qualified owns_files (MR-014)", () => {
     expect(result.pass).toBe(true);
   });
 
-  test("violation message shows original (with-prefix) owns_files", () => {
+  test("violation message mentions the out-of-boundary file", () => {
     const diff = makeDiff("src/other/foo.ts");
     const result = checkBoundary(diff, ["backend:src/api/**"], "api");
-    expect(result.pass).toBe(false);
-    expect(result.violations[0].message).toContain("backend:src/api/**");
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].message).toContain("src/other/foo.ts");
   });
 
   test("custom infraExclusions merged with defaults", () => {

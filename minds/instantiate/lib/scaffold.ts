@@ -148,6 +148,10 @@ export interface ScaffoldOptions {
   skipIfExists?: boolean;
   /** Provenance tag to set on the minds.json entry. */
   source?: MindDescription["source"];
+  /** Named pipeline template (e.g. "code", "build", "test") for the minds.json entry. */
+  pipelineTemplate?: string;
+  /** Override MIND.md content instead of using the default template. */
+  mindMdContent?: string;
 }
 
 /**
@@ -188,7 +192,8 @@ export async function scaffoldMind(
 
   // Write MIND.md
   const mindMdPath = join(mindDir, "MIND.md");
-  writeFileSync(mindMdPath, generateMindMd(name, domain, prefix), "utf8");
+  const mindMdContent = opts.mindMdContent ?? generateMindMd(name, domain, prefix);
+  writeFileSync(mindMdPath, mindMdContent, "utf8");
 
   // Write server.ts
   const serverTsPath = join(mindDir, "server.ts");
@@ -218,6 +223,7 @@ export async function scaffoldMind(
     owns_files: opts.ownsFiles ?? [`${prefix}/${name}/`],
     capabilities: [],
     ...(opts.source ? { source: opts.source } : {}),
+    ...(opts.pipelineTemplate ? { pipeline_template: opts.pipelineTemplate } : {}),
   };
   entries.push(newEntry);
 

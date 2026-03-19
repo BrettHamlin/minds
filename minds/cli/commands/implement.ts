@@ -51,6 +51,7 @@ import type { MindDescription } from "../../mind.ts";
 import type { SupervisorResult } from "../../lib/supervisor/supervisor-types.ts";
 import type { ContractAnnotation } from "../../lib/check-contracts-core.ts";
 import { verifyCrossRepoContracts, buildCrossRepoChecks } from "../../lib/supervisor/cross-repo-contracts.ts";
+import { producesCode } from "../../lib/supervisor/pipeline-templates.ts";
 
 /**
  * Resolve the source minds directory (where scripts live).
@@ -176,6 +177,8 @@ function launchMindSupervisor(
   mindRepoRoot?: string,
   testCommand?: string,
   installCommand?: string,
+  pipelineTemplate?: string,
+  infraAllowed?: string[],
 ): { info: MindInfo; done: Promise<SupervisorResult> } {
   const supervisorConfig: SupervisorConfig = {
     mindName,
@@ -200,6 +203,8 @@ function launchMindSupervisor(
     mindRepoRoot,
     testCommand,
     installCommand,
+    pipelineTemplate,
+    infraAllowed,
   };
 
   // MindInfo placeholder -- will be updated when supervisor provides drone info
@@ -210,14 +215,15 @@ function launchMindSupervisor(
     worktree: "(pending)",
     branch: "(pending)",
     repo,
+    pipelineTemplate,
   };
 
   const done = runMindSupervisor(supervisorConfig).then((result) => {
     // Update info with actual values from the supervisor result
     info.worktree = result.worktree;
     info.branch = result.branch;
-    if (result.dronePaneId) {
-      info.paneId = result.dronePaneId;
+    if (result.droneId) {
+      info.paneId = result.droneId;
     }
 
     if (!result.ok) {
@@ -272,6 +278,66 @@ function mergeDroneWorktree(
   Bun.spawnSync(["git", "-C", repoRoot, "merge", "--abort"], { stdout: "pipe", stderr: "pipe" });
 
   return { ok: false, error: stderr || `exit code ${proc.exitCode}`, hasConflicts };
+}
+
+/**
+ * Merge a list of approved drones into the base branch (grouped by repo).
+ * Called both on wave success AND on wave failure to preserve approved work.
+ * Returns true if all merges succeeded.
+ */
+function mergeApprovedDrones(
+  drones: MindInfo[],
+  workspace: ResolvedWorkspace,
+  orchestratorRoot: string,
+  baseBranchName: string,
+  registry: import("../../mind.ts").MindDescription[],
+  result: ImplementResult,
+): boolean {
+  if (drones.length === 0) return true;
+  let allOk = true;
+  const dronesByRepo = groupDronesByRepo(drones);
+  for (const [repoKey, repoDrones] of dronesByRepo) {
+    const mergeRepoRoot = repoKey === "__default__"
+      ? orchestratorRoot
+      : (workspace.repoPaths.get(repoKey) ?? orchestratorRoot);
+    const repoBranch = resolveRepoBaseBranch(repoKey, workspace, baseBranchName);
+    const checkoutResult = checkoutBranch(mergeRepoRoot, repoBranch);
+    if (!checkoutResult.ok) {
+      console.error(`  Failed to checkout ${repoBranch} in ${repoKey}: ${checkoutResult.error}`);
+      for (const drone of repoDrones) {
+        result.mergeResults.push({ mind: drone.mindName, ok: false, error: `Checkout failed: ${checkoutResult.error}`, repo: drone.repo });
+      }
+      allOk = false;
+      continue;
+    }
+    for (const drone of repoDrones) {
+      if (drone.pipelineTemplate && drone.pipelineTemplate !== "code") {
+        const regEntry = registry.find(m => m.name === drone.mindName);
+        const isNonCode = regEntry ? !producesCode(regEntry) : true;
+        if (isNonCode) {
+          console.log(`    Skipping merge for @${drone.mindName} (non-code pipeline)`);
+          result.mergeResults.push({ mind: drone.mindName, ok: true, repo: drone.repo });
+          continue;
+        }
+      }
+      if (!drone.branch || drone.branch.startsWith("(") || !drone.worktree || drone.worktree.startsWith("(")) {
+        console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved.`);
+        result.mergeResults.push({ mind: drone.mindName, ok: false, error: "Placeholder worktree/branch", repo: drone.repo });
+        allOk = false;
+        continue;
+      }
+      console.log(`    Merging @${drone.mindName} (${drone.branch}) into ${repoKey}...`);
+      const mergeResult = mergeDroneWorktree(mergeRepoRoot, drone);
+      result.mergeResults.push({ mind: drone.mindName, ok: mergeResult.ok, error: mergeResult.error, repo: drone.repo });
+      if (mergeResult.ok) {
+        console.log(`    Merged @${drone.mindName} successfully.`);
+      } else {
+        console.error(`    Merge failed for @${drone.mindName}: ${mergeResult.error}`);
+        allOk = false;
+      }
+    }
+  }
+  return allOk;
 }
 
 /**
@@ -541,7 +607,7 @@ export async function runImplement(
   // ── Step 6: Start bus server ───────────────────────────────────────────────
 
   console.log("\nStep 6: Starting bus server...");
-  const callerPane = mux.getCurrentPane();
+  const callerPane = await mux.getCurrentPane();
   let busInfo;
   try {
     busInfo = await startMindsBus(orchestratorRoot, callerPane, ticketId);
@@ -573,9 +639,11 @@ export async function runImplement(
     console.log("\nGraceful shutdown...");
     abortController.abort();
 
-    // Kill all Mind panes
+    // Kill all drone panes (skip the orchestrator's own pane)
     for (const d of allDrones) {
-      mux.killPane(d.paneId);
+      if (d.paneId && d.paneId !== callerPane && !d.paneId.startsWith("(")) {
+        await mux.killPane(d.paneId);
+      }
     }
 
     // Teardown bus with timeout to prevent hanging
@@ -678,6 +746,11 @@ export async function runImplement(
           repoBranchName = resolveBaseBranch(mindRepoRoot);
         }
 
+        // Look up pipeline_template from registry for this mind
+        const registryEntry = registry.find(m => m.name === mindName);
+        const mindPipelineTemplate = registryEntry?.pipeline_template;
+        const mindInfraAllowed = registryEntry?.infra_allowed;
+
         const { info, done } = launchMindSupervisor(
           mindRepoRoot ?? repoRoot,  // Use mind's repo root when available
           mindsSourceDir,
@@ -698,6 +771,8 @@ export async function runImplement(
           mindRepoRoot,
           repoConfig?.testCommand,
           repoConfig?.installCommand,
+          mindPipelineTemplate,
+          mindInfraAllowed,
         );
         waveDrones.push(info);
         allDrones.push(info);
@@ -785,6 +860,31 @@ export async function runImplement(
       result.errors.push(
         `Wave ${wave.id} incomplete: missing ${completionResult.missing.join(", ")}`,
       );
+
+      // Wait for all supervisor promises to settle before breaking.
+      // Without this, supervisors may still be mid-iteration when Step 11
+      // cleans up worktrees, causing "cd: no such file or directory" errors.
+      console.log(`  Waiting for remaining supervisors to settle...`);
+      const failureSettlements = await Promise.allSettled(supervisorPromises);
+
+      // Kill drone panes for this failed wave before breaking
+      for (const drone of waveDrones) {
+        if (drone.paneId && drone.paneId !== callerPane && !drone.paneId.startsWith("(")) {
+          await mux.killPane(drone.paneId);
+        }
+      }
+
+      // Merge approved minds even though the wave failed — don't discard good work.
+      // A mind is approved if its supervisor promise fulfilled with ok:true.
+      const approvedDrones = waveDrones.filter((_, i) => {
+        const s = failureSettlements[i];
+        return s?.status === "fulfilled" && s.value.ok === true;
+      });
+      if (approvedDrones.length > 0) {
+        console.log(`\n  Merging ${approvedDrones.length} approved mind(s) despite wave failure...`);
+        mergeApprovedDrones(approvedDrones, workspace, orchestratorRoot, baseBranchName, registry, result);
+      }
+
       break; // Stop executing further waves
     }
 
@@ -793,59 +893,24 @@ export async function runImplement(
     result.wavesCompleted++;
     console.log(`  Wave ${wave.id} complete.`);
 
-    // Supervisors handle their own drone pane cleanup.
     // Wait for any supervisor promises that haven't resolved yet (edge case:
     // bus got the MIND_COMPLETE but the supervisor promise is still settling).
     const waveSettlements = await Promise.allSettled(supervisorPromises);
 
-    // ── Per-wave merge (grouped by repo) ────────────────────────────────────
-    // Merge this wave's branches into main BEFORE the next wave starts.
-    // This ensures wave-N+1 worktrees are branched from a main that includes
-    // wave-N's changes (preventing merge conflicts at the end).
-    // Group by repo to checkout the correct base branch once per repo.
-    console.log(`\n  Merging ${wave.id} branches into main...`);
-    let waveMergeOk = true;
-
-    // Group drones by repo
-    const dronesByRepo = groupDronesByRepo(waveDrones);
-
-    for (const [repoKey, drones] of dronesByRepo) {
-      const mergeRepoRoot = repoKey === "__default__"
-        ? orchestratorRoot
-        : (workspace.repoPaths.get(repoKey) ?? orchestratorRoot);
-
-      // Checkout correct base branch for this repo before merging
-      const repoBranch = resolveRepoBaseBranch(repoKey, workspace, baseBranchName);
-      const checkoutResult = checkoutBranch(mergeRepoRoot, repoBranch);
-      if (!checkoutResult.ok) {
-        console.error(`  Failed to checkout ${repoBranch} in ${repoKey}: ${checkoutResult.error}`);
-        for (const drone of drones) {
-          result.mergeResults.push({ mind: drone.mindName, ok: false, error: `Checkout failed: ${checkoutResult.error}`, repo: drone.repo });
-        }
-        waveMergeOk = false;
-        continue;
-      }
-
-      for (const drone of drones) {
-        if (!drone.branch || drone.branch.startsWith("(") || !drone.worktree || drone.worktree.startsWith("(")) {
-          console.warn(`  Skipping @${drone.mindName}: worktree/branch never resolved.`);
-          result.mergeResults.push({ mind: drone.mindName, ok: false, error: "Placeholder worktree/branch", repo: drone.repo });
-          waveMergeOk = false;
-          continue;
-        }
-
-        console.log(`    Merging @${drone.mindName} (${drone.branch}) into ${repoKey}...`);
-        const mergeResult = mergeDroneWorktree(mergeRepoRoot, drone);
-        result.mergeResults.push({ mind: drone.mindName, ok: mergeResult.ok, error: mergeResult.error, repo: drone.repo });
-
-        if (mergeResult.ok) {
-          console.log(`    Merged @${drone.mindName} successfully.`);
-        } else {
-          console.error(`    Merge failed for @${drone.mindName}: ${mergeResult.error}`);
-          waveMergeOk = false;
-        }
+    // ── Per-wave drone pane cleanup ─────────────────────────────────────────
+    // Kill all drone panes for this wave. Supervisors do NOT kill drones —
+    // implement.ts owns the kill to avoid double-killing and ensure all drones
+    // in a wave are cleaned up together. Skip the orchestrator's own pane.
+    for (const drone of waveDrones) {
+      if (drone.paneId && drone.paneId !== callerPane && !drone.paneId.startsWith("(")) {
+        await mux.killPane(drone.paneId);
       }
     }
+
+    // ── Per-wave merge ───────────────────────────────────────────────────────
+    // Merge all approved minds' branches into main BEFORE the next wave starts.
+    console.log(`\n  Merging ${wave.id} branches into main...`);
+    const waveMergeOk = mergeApprovedDrones(waveDrones, workspace, orchestratorRoot, baseBranchName, registry, result);
 
     if (!waveMergeOk) {
       result.ok = false;

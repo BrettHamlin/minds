@@ -10,7 +10,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { loadStandards } from "../supervisor-checks.ts";
+import { loadStandards, isDirFullyOwned } from "../supervisor-checks.ts";
 import { makeTestTmpDir } from "./test-helpers.ts";
 
 // ---------------------------------------------------------------------------
@@ -69,5 +69,62 @@ describe("loadStandards", () => {
     const result = loadStandards(tmpDir);
     expect(result).toBe(projectContent);
     expect(result).not.toStartWith("\n\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isDirFullyOwned
+// ---------------------------------------------------------------------------
+
+describe("isDirFullyOwned", () => {
+  test("directory under a glob-suffixed owns_files entry is fully owned", () => {
+    expect(isDirFullyOwned("tests/core/lib", ["tests/core/**"])).toBe(true);
+  });
+
+  test("directory under a trailing-slash owns_files entry is fully owned", () => {
+    expect(isDirFullyOwned("packages/core/lib", ["packages/core/"])).toBe(true);
+  });
+
+  test("directory under a bare directory owns_files entry is fully owned", () => {
+    expect(isDirFullyOwned("packages/core/lib", ["packages/core"])).toBe(true);
+  });
+
+  test("directory containing a specific file entry is NOT fully owned", () => {
+    // Mind owns tests/modules/blueprint/api.test.ts but NOT the whole directory
+    expect(isDirFullyOwned("tests/modules/blueprint", ["tests/modules/blueprint/api.test.ts"])).toBe(false);
+  });
+
+  test("directory not mentioned at all in owns_files is NOT fully owned", () => {
+    expect(isDirFullyOwned("tests/integration", ["packages/core/**", "tests/core/**"])).toBe(false);
+  });
+
+  test("returns true when ownsFiles is empty (no boundary defined)", () => {
+    expect(isDirFullyOwned("any/dir", [])).toBe(true);
+  });
+
+  test("exact directory match with glob", () => {
+    expect(isDirFullyOwned("tests/core", ["tests/core/**"])).toBe(true);
+  });
+
+  test("sibling directory is not owned", () => {
+    expect(isDirFullyOwned("tests/integration", ["tests/core/**"])).toBe(false);
+  });
+
+  test("handles .minds/ normalization", () => {
+    expect(isDirFullyOwned(".minds/transport", ["minds/transport/"])).toBe(true);
+  });
+
+  test("multiple owns_files entries — matches if any covers the dir", () => {
+    expect(isDirFullyOwned("tests/core/lib", ["packages/core/**", "tests/core/**"])).toBe(true);
+  });
+
+  test("specific file entry does not make parent directory owned", () => {
+    // Even with multiple entries, a specific file does not grant directory ownership
+    expect(isDirFullyOwned("tests/modules/blueprint", [
+      "packages/core/**",
+      "tests/core/**",
+      "tests/helpers/**",
+      "tests/modules/blueprint/api.test.ts",
+    ])).toBe(false);
   });
 });

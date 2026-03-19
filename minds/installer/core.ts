@@ -3,6 +3,7 @@ import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
 import { ensureDashboardBuilt } from "../shared/build-dashboard.js";
+import { installAxon, getPinnedVersion, getTargetTriple, checkAxonVersion } from "./axon-installer.js";
 
 /** Local ensureDir — avoids cross-Mind import from cli/utils/fs. */
 function ensureDir(dir: string): void {
@@ -234,6 +235,7 @@ export interface MindsInstallResult {
   errors: string[];
   bunVerified: boolean;
   dashboardBuilt: boolean;
+  axonInstalled: boolean;
 }
 
 /**
@@ -389,22 +391,54 @@ function installTsconfig(ctx: CopyContext, repoRoot: string, log: LogFn): void {
   }
 }
 
-/** Step: Populate .minds/minds.json from pre-generated core registry */
+/** Step: Populate .minds/minds.json from pre-generated core registry.
+ * On force install, merges core minds into the existing registry so that
+ * domain minds (added by fission or manual scaffolding) are preserved. */
 function installMindsRegistry(ctx: CopyContext, destMindsDir: string, log: LogFn): void {
   const mindsJsonPath = join(destMindsDir, "minds.json");
   const coreRegistryPath = join(dirname(_dir), "installer", "core-minds-registry.json");
-  if (existsSync(coreRegistryPath)) {
-    if (copyFileWithTracking(ctx, coreRegistryPath, mindsJsonPath)) {
+
+  if (!existsSync(coreRegistryPath)) {
+    if (existsSync(mindsJsonPath) && !ctx.force) {
+      ctx.result.skipped.push(relative(ctx.repoRoot, mindsJsonPath));
+    } else {
+      writeFileSync(mindsJsonPath, "[]\n");
+      ctx.result.copied.push(relative(ctx.repoRoot, mindsJsonPath));
+      log("  Generated .minds/minds.json registry placeholder (core registry not found)");
+    }
+    return;
+  }
+
+  // If target doesn't exist yet, just copy the core registry
+  if (!existsSync(mindsJsonPath)) {
+    copyFileWithTracking(ctx, coreRegistryPath, mindsJsonPath);
+    log("  Populated .minds/minds.json from core registry");
+    return;
+  }
+
+  // Target exists — merge: update core minds, preserve domain minds
+  try {
+    const coreMinds = JSON.parse(readFileSync(coreRegistryPath, "utf-8")) as Array<{ name: string }>;
+    const coreNames = new Set(coreMinds.map(m => m.name));
+    const existing = JSON.parse(readFileSync(mindsJsonPath, "utf-8")) as Array<{ name: string }>;
+
+    // Keep domain minds (not in core registry) from the existing file
+    const domainMinds = existing.filter(m => !coreNames.has(m.name));
+
+    // Merge: core minds first, then domain minds
+    const merged = [...coreMinds, ...domainMinds];
+    writeFileSync(mindsJsonPath, JSON.stringify(merged, null, 2) + "\n");
+    ctx.result.copied.push(relative(ctx.repoRoot, mindsJsonPath));
+
+    if (domainMinds.length > 0) {
+      log(`  Merged .minds/minds.json: ${coreMinds.length} core + ${domainMinds.length} domain minds preserved`);
+    } else {
       log("  Populated .minds/minds.json from core registry");
     }
-  } else if (existsSync(mindsJsonPath) && !ctx.force) {
-    // Core registry not available and target already exists — skip.
-    // (copyFileWithTracking is not used here because there is no source file to copy.)
-    ctx.result.skipped.push(relative(ctx.repoRoot, mindsJsonPath));
-  } else {
-    writeFileSync(mindsJsonPath, "[]\n");
-    ctx.result.copied.push(relative(ctx.repoRoot, mindsJsonPath));
-    log("  Generated .minds/minds.json registry placeholder (core registry not found)");
+  } catch {
+    // Parse failed — fall back to overwrite
+    copyFileWithTracking(ctx, coreRegistryPath, mindsJsonPath);
+    log("  Populated .minds/minds.json from core registry (merge failed, overwritten)");
   }
 }
 
@@ -484,6 +518,81 @@ function installDashboard(ctx: CopyContext, destMindsDir: string, log: LogFn): v
   }
 }
 
+/** Step: Clone eval-factory as optional sibling dependency (non-blocking) */
+function installEvalFactory(ctx: CopyContext, log: LogFn): void {
+  const evalFactoryDir = join(ctx.repoRoot, "..", "eval-factory");
+  if (existsSync(evalFactoryDir)) {
+    log("  eval-factory: found at ../eval-factory, skipping clone");
+    return;
+  }
+
+  log("  eval-factory: not found, cloning...");
+  const cloneResult = spawnSync(
+    "git",
+    ["clone", "--depth", "1", "https://github.com/BrettHamlin/eval-factory.git", evalFactoryDir],
+    { stdio: "pipe", timeout: 60_000 },
+  );
+
+  if (cloneResult.status !== 0) {
+    const stderr = cloneResult.stderr?.toString().trim() ?? "unknown error";
+    log(`  eval-factory: clone failed (non-fatal, eval-score stage will skip) — ${stderr}`);
+    return;
+  }
+
+  // Install dependencies in the cloned eval-factory
+  const installResult = spawnSync("bun", ["install"], {
+    cwd: evalFactoryDir,
+    stdio: "pipe",
+    timeout: 60_000,
+  });
+
+  if (installResult.status === 0) {
+    log("  eval-factory: cloned and dependencies installed");
+  } else {
+    log("  eval-factory: cloned but bun install failed (eval-score may not work)");
+  }
+}
+
+/** Step: Install Axon daemon binary (non-blocking — failure does not halt init) */
+async function installAxonBinary(ctx: CopyContext, destMindsDir: string, log: LogFn): Promise<void> {
+  const binDir = join(destMindsDir, "bin");
+  const installerDir = join(dirname(_dir), "installer");
+
+  try {
+    // Check if Axon is already installed and what version it is
+    const versionCheck = await checkAxonVersion(ctx.repoRoot, installerDir);
+
+    if (versionCheck.installed !== null && !versionCheck.needsUpgrade && !versionCheck.upgradeAvailable) {
+      // Up to date — skip download
+      log(`  Axon daemon: v${versionCheck.installed} (up to date)`);
+      ctx.result.axonInstalled = true;
+      return;
+    }
+
+    if (versionCheck.installed !== null && versionCheck.upgradeAvailable && !versionCheck.needsUpgrade) {
+      // Optional upgrade available — log but still upgrade
+      log(`  Axon upgrade available: v${versionCheck.installed} -> v${versionCheck.pinned}`);
+    }
+
+    if (versionCheck.installed !== null && versionCheck.needsUpgrade) {
+      log(`  Axon daemon: v${versionCheck.installed} below minimum v${versionCheck.minVersion}, upgrading...`);
+    }
+
+    // Download the pinned version
+    const version = getPinnedVersion(installerDir) ?? "0.1.0";
+    const result = await installAxon({
+      version,
+      targetDir: binDir,
+    });
+    log(`  Axon daemon: installed v${result.version} (${getTargetTriple()})`);
+    ctx.result.axonInstalled = true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`  Axon daemon: download failed (tmux fallback available) — ${msg}`);
+    ctx.result.axonInstalled = false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -494,14 +603,14 @@ function installDashboard(ctx: CopyContext, destMindsDir: string, log: LogFn): v
  * Populate .minds/minds.json from pre-generated core registry.
  * Verify Bun runtime is installed.
  */
-export function installCoreMinds(
+export async function installCoreMinds(
   mindsSourceDir: string,
   repoRoot: string,
   options: { force?: boolean; quiet?: boolean } = {}
-): MindsInstallResult {
+): Promise<MindsInstallResult> {
   const { force = false, quiet = false } = options;
   const log: LogFn = quiet ? (..._args: unknown[]) => {} : console.log;
-  const result: MindsInstallResult = { copied: [], skipped: [], errors: [], bunVerified: false, dashboardBuilt: false };
+  const result: MindsInstallResult = { copied: [], skipped: [], errors: [], bunVerified: false, dashboardBuilt: false, axonInstalled: false };
   const ctx: CopyContext = { force, repoRoot, result };
 
   const destMindsDir = join(repoRoot, ".minds");
@@ -526,6 +635,12 @@ export function installCoreMinds(
   verifyBunAndInstallDeps(ctx, destMindsDir, log);
   installHookSettings(ctx, repoRoot, log);
   installDashboard(ctx, destMindsDir, log);
+
+  // Phase 5: Axon daemon binary (non-blocking)
+  await installAxonBinary(ctx, destMindsDir, log);
+
+  // Phase 6: Optional eval-factory dependency (non-blocking)
+  installEvalFactory(ctx, log);
 
   return result;
 }

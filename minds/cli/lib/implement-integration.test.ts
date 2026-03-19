@@ -215,10 +215,10 @@ describe("Mind brief is lean work order", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Drone brief purity — zero bus/signal references
+// 3. Drone brief — bus completion command presence
 // ---------------------------------------------------------------------------
 
-describe("Drone brief purity", () => {
+describe("Drone brief completion command", () => {
   const droneBrief = buildDroneBrief({
     ticketId:     "BRE-477",
     mindName:     "signals",
@@ -228,20 +228,18 @@ describe("Drone brief purity", () => {
     featureDir:   "features/BRE-477",
   });
 
+  it("contains HOOK_Stop completion command", () => {
+    expect(droneBrief).toContain("HOOK_Stop");
+    expect(droneBrief).toContain("minds-publish.ts");
+    expect(droneBrief).toContain("drone:signals");
+  });
+
   it("does not contain DRONE_COMPLETE", () => {
     expect(droneBrief).not.toContain("DRONE_COMPLETE");
   });
 
   it("does not contain MIND_COMPLETE", () => {
     expect(droneBrief).not.toContain("MIND_COMPLETE");
-  });
-
-  it("does not contain 'bus' (case-insensitive)", () => {
-    expect(droneBrief.toLowerCase()).not.toContain("bus");
-  });
-
-  it("does not contain 'publish' (case-insensitive)", () => {
-    expect(droneBrief.toLowerCase()).not.toContain("publish");
   });
 
   it("does not contain 'Completion Signal'", () => {

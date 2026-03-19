@@ -22,7 +22,6 @@ import {
   postWelcomeMessage,
   createChannelRecord,
 } from "./services/channel.js";
-import { analyzeDescription, generateChannelNames } from "./services/llm.js";
 import { generateSpecContent, getSpecUrl } from "./services/spec-generator.js";
 import { startSessionCleanup } from "./services/session-cleanup.js";
 
@@ -220,19 +219,6 @@ async function handle(workUnit: WorkUnit): Promise<WorkResult> {
       };
       const channel = await createChannelRecord(specId, slackChannelId, name, nameSuggestions, isCustomName);
       return { status: "handled", data: channel };
-    }
-
-    // --- LLM ---
-    if (req.includes("analyze description")) {
-      const { description } = ctx as { description: string };
-      const result = await analyzeDescription(description);
-      return { status: "handled", data: result };
-    }
-
-    if (req.includes("generate channel names")) {
-      const { description, title } = ctx as { description: string; title: string };
-      const names = await generateChannelNames(description, title);
-      return { status: "handled", data: { names } };
     }
 
     // --- Maintenance ---

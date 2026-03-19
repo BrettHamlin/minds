@@ -6,7 +6,7 @@
  * not touch infrastructure files that no drone should modify.
  */
 
-import { normalizeMindsPrefix, matchesOwnership } from "../../shared/paths.ts";
+import { normalizeMindsPrefix, matchesOwnership, normalizeOwnsEntry } from "../../shared/paths.ts";
 import { stripRepoPrefix } from "../../shared/repo-path.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -14,6 +14,9 @@ import { stripRepoPrefix } from "../../shared/repo-path.ts";
 export interface BoundaryViolation {
   file: string;
   message: string;
+  severity?: "error" | "warning";
+  /** If set, this file is owned by another mind — delegate the change to them. */
+  ownerMind?: string;
 }
 
 export interface BoundaryCheckResult {
@@ -84,6 +87,27 @@ function isInfrastructureFile(filePath: string, infraExcluded: string[] = INFRAS
   return false;
 }
 
+/**
+ * Find which mind (other than the current one) owns a file.
+ * Returns the mind name, or undefined if no mind owns it.
+ * Expects pre-normalized ownership map (values already run through normalizeOwnsEntry).
+ */
+function findOwnerMind(
+  file: string,
+  currentMind: string,
+  normalizedOwnership?: Record<string, string[]>,
+): string | undefined {
+  if (!normalizedOwnership) return undefined;
+
+  for (const [mind, ownedFiles] of Object.entries(normalizedOwnership)) {
+    if (mind === currentMind) continue;
+    if (matchesOwnership(file, ownedFiles)) {
+      return mind;
+    }
+  }
+  return undefined;
+}
+
 // ── Main check function ────────────────────────────────────────────────────
 
 export interface CheckBoundaryOptions {
@@ -91,6 +115,12 @@ export interface CheckBoundaryOptions {
   requireBoundary?: boolean;
   /** Additional infrastructure exclusion patterns (merged with defaults). */
   infraExclusions?: string[];
+  /** Infrastructure files to allow for this mind (removes from exclusion list). */
+  infraAllowed?: string[];
+  /** Files explicitly referenced in the drone's task descriptions — pre-approved by task decomposition. */
+  taskFiles?: string[];
+  /** All minds' ownership: { mindName: owns_files[] }. Used to determine if an out-of-boundary file is owned by another mind or unowned. */
+  allMindsOwnership?: Record<string, string[]>;
 }
 
 export function checkBoundary(
@@ -102,13 +132,26 @@ export function checkBoundary(
   const violations: BoundaryViolation[] = [];
   const modifiedFiles = parseDiffPaths(diff);
 
-  // Strip repo prefixes for matching (diff paths are repo-relative)
-  const localOwnsFiles = ownsFiles.map(f => stripRepoPrefix(f));
+  // Normalize once: owns_files, taskFiles, allMindsOwnership
+  const localOwnsFiles = ownsFiles.map(f => normalizeOwnsEntry(f));
+  const normalizedTaskFiles = options?.taskFiles?.map(f => normalizeOwnsEntry(f));
+  const normalizedOwnership = options?.allMindsOwnership
+    ? Object.fromEntries(
+        Object.entries(options.allMindsOwnership).map(([mind, files]) => [
+          mind,
+          files.map(f => normalizeOwnsEntry(f)),
+        ]),
+      )
+    : undefined;
 
-  // Merge custom infra exclusions with defaults
-  const infraExcluded = options?.infraExclusions
+  // Merge custom infra exclusions with defaults, then remove allowed ones
+  let infraExcluded = options?.infraExclusions
     ? [...INFRASTRUCTURE_EXCLUDED, ...options.infraExclusions]
-    : INFRASTRUCTURE_EXCLUDED;
+    : [...INFRASTRUCTURE_EXCLUDED];
+  if (options?.infraAllowed?.length) {
+    const allowed = new Set(options.infraAllowed.map(f => normalizeOwnsEntry(f)));
+    infraExcluded = infraExcluded.filter(f => !allowed.has(normalizeOwnsEntry(f)));
+  }
 
   // Hard error: requireBoundary + empty ownsFiles means no boundary defined
   if (options?.requireBoundary && ownsFiles.length === 0) {
@@ -139,19 +182,38 @@ export function checkBoundary(
       continue;
     }
 
+    // Allow files explicitly referenced in task descriptions (pre-approved by task decomposition)
+    if (normalizedTaskFiles?.some(tf => file === tf || file.endsWith(tf) || tf.endsWith(file))) {
+      continue;
+    }
+
     // Check ownership boundary (use stripped paths for matching)
     if (!matchesOwnership(file, localOwnsFiles)) {
-      // Show original (with-prefix) owns_files in violation messages for clarity
-      const allowedDirs = ownsFiles.map((p) => `  - ${p}`).join("\n");
-      violations.push({
-        file,
-        message: `You modified \`${file}\`, which is outside your boundary. ` +
-          `As @${mindName}, you may only modify files within:\n${allowedDirs}\n` +
-          `Revert your changes to this file. If the task requires changes here, ` +
-          `skip that part — it belongs to a different Mind.`,
-      });
+      // Determine if another mind owns this file, or if it's unowned
+      const ownerMind = findOwnerMind(file, mindName, normalizedOwnership);
+
+      if (!ownerMind) {
+        // Unowned file — no mind claims it, so allow the change (warning only)
+        violations.push({
+          file,
+          severity: "warning",
+          message: `You modified \`${file}\`, which is outside your boundary and not owned by any Mind. ` +
+            `Allowed as unowned infrastructure — verify the change is correct.`,
+        });
+      } else {
+        // Owned by another mind — hard violation, delegate to owner
+        violations.push({
+          file,
+          severity: "error",
+          ownerMind,
+          message: `You modified \`${file}\`, which is owned by @${ownerMind}. ` +
+            `Revert your changes to this file. A task will be created for @${ownerMind} to handle this change.`,
+        });
+      }
     }
   }
 
-  return { pass: violations.length === 0, violations };
+  // Pass if no hard errors — warnings (test file modifications) don't block
+  const hasErrors = violations.some(v => v.severity !== "warning");
+  return { pass: !hasErrors, violations };
 }

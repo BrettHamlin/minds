@@ -15,7 +15,6 @@ export {
   type StateMachine,
   type SupervisorResult,
   DEFAULT_REVIEW_TIMEOUT_MS,
-  SENTINEL_FILENAME,
   MAX_DIFF_CHARS,
   MAX_TEST_OUTPUT_CHARS,
   errorMessage,
@@ -38,11 +37,10 @@ export {
   type AgentReviewPromptParams,
 } from "./supervisor-review.ts";
 
-// Drone spawning, re-launch, completion detection, brief construction, Stop hook
+// Drone spawning, re-launch, completion detection, brief construction
 export {
   spawnDrone,
   relaunchDroneInWorktree,
-  installDroneStopHook,
   waitForDroneCompletion,
   buildSupervisorDroneBrief,
   type DroneSpawnResult,

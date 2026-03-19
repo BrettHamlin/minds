@@ -29,8 +29,32 @@ export const REVIEW_CHECKLIST: readonly string[] = [
   "Code follows project conventions",
 ];
 
-export function formatReviewChecklist(): string {
-  return REVIEW_CHECKLIST.map((item, i) => `${i + 1}. ${item}`).join("\n");
+export const BUILD_REVIEW_CHECKLIST: readonly string[] = [
+  "All assigned tasks are implemented",
+  "Build completed successfully",
+  "All expected artifacts produced",
+  "Error messages include sufficient context",
+  "Code follows project conventions",
+];
+
+export const TEST_REVIEW_CHECKLIST: readonly string[] = [
+  "All assigned tasks are implemented",
+  "Test suite executed successfully",
+  "All results reported clearly",
+  "Error messages include sufficient context",
+  "Code follows project conventions",
+];
+
+export function formatReviewChecklist(pipelineTemplate?: string): string {
+  let checklist: readonly string[];
+  if (pipelineTemplate === "build") {
+    checklist = BUILD_REVIEW_CHECKLIST;
+  } else if (pipelineTemplate === "test") {
+    checklist = TEST_REVIEW_CHECKLIST;
+  } else {
+    checklist = REVIEW_CHECKLIST;
+  }
+  return checklist.map((item, i) => `${i + 1}. ${item}`).join("\n");
 }
 
 function prepareReviewInputs(diff: string, testOutput: string, tasks: MindTask[]) {
@@ -50,13 +74,15 @@ export const REVIEW_RESPONSE_FORMAT = `Respond with ONLY a JSON object. Do NOT w
       "file": "path/to/file.ts",
       "line": 42,
       "severity": "error" | "warning",
-      "message": "Description of the issue"
+      "message": "Description of the issue",
+      "suggestion": "Specific fix: change X to Y on line N, or revert Z because..."
     }
   ]
 }
 
 If approved, findings must be an empty array.
-If any issue is found, set approved to false and list all findings.`;
+If any issue is found, set approved to false and list all findings.
+IMPORTANT: Every finding MUST include a "suggestion" field with a specific, actionable fix — not just what's wrong, but exactly how to fix it. Reference specific lines, function names, and values. The drone receiving this feedback has zero context from prior attempts.`;
 
 // ---------------------------------------------------------------------------
 // Review Prompt Construction
@@ -75,6 +101,8 @@ export interface ReviewPromptParams {
   tasks: MindTask[];
   iteration: number;
   previousFeedback?: string;
+  pipelineTemplate?: string;
+  evalScoreSection?: string;
 }
 
 /**
@@ -84,7 +112,7 @@ export interface ReviewPromptParams {
  * This function is retained as a fallback for non-agent review scenarios.
  */
 export function buildReviewPrompt(params: ReviewPromptParams): string {
-  const { diff, testOutput, standards, tasks, iteration, previousFeedback } = params;
+  const { diff, testOutput, standards, tasks, iteration, previousFeedback, pipelineTemplate, evalScoreSection } = params;
 
   const { truncatedDiff, truncatedTestOutput, taskList } = prepareReviewInputs(diff, testOutput, tasks);
 
@@ -92,7 +120,11 @@ export function buildReviewPrompt(params: ReviewPromptParams): string {
     ? `\n## Previous Feedback (for context)\n\n${previousFeedback}\n`
     : "";
 
-  const checklist = formatReviewChecklist();
+  const evalSection = evalScoreSection
+    ? `\n## Code Quality Analysis (eval-factory)\n\n${evalScoreSection}\n`
+    : "";
+
+  const checklist = formatReviewChecklist(pipelineTemplate);
 
   return `You are reviewing code changes for iteration ${iteration} of a drone implementation cycle.
 
@@ -111,7 +143,7 @@ ${truncatedDiff}
 \`\`\`
 ${truncatedTestOutput}
 \`\`\`
-
+${evalSection}
 ## Engineering Standards
 
 ${standards}
@@ -135,6 +167,7 @@ export interface AgentReviewPromptParams {
   testOutput: string;
   tasks: MindTask[];
   iteration: number;
+  evalScoreSection?: string;
 }
 
 /**
@@ -146,9 +179,13 @@ export interface AgentReviewPromptParams {
  * prompt rather than competing with the data in the user message.
  */
 export function buildAgentReviewPrompt(params: AgentReviewPromptParams): string {
-  const { diff, testOutput, tasks, iteration } = params;
+  const { diff, testOutput, tasks, iteration, evalScoreSection } = params;
 
   const { truncatedDiff, truncatedTestOutput, taskList } = prepareReviewInputs(diff, testOutput, tasks);
+
+  const evalSection = evalScoreSection
+    ? `\n## Code Quality Analysis (eval-factory)\n\n${evalScoreSection}\n`
+    : "";
 
   return `Review iteration ${iteration}.
 
@@ -166,7 +203,8 @@ ${truncatedDiff}
 
 \`\`\`
 ${truncatedTestOutput}
-\`\`\``;
+\`\`\`
+${evalSection}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,10 +277,21 @@ export function buildFeedbackContent(
   round: number,
   findings: ReviewFinding[],
   testFailures?: string,
+  previousAttemptDiff?: string,
 ): string {
   let content = `# Review Feedback (Round ${round})\n\n`;
   content += `Your changes were reviewed and need fixes before approval. `;
   content += `Address each finding below, then commit your fixes.\n\n`;
+
+  // Show what the previous drone tried so this session doesn't repeat the same approach
+  if (previousAttemptDiff && round > 1) {
+    const truncatedDiff = previousAttemptDiff.length > 5000
+      ? previousAttemptDiff.slice(0, 5000) + "\n\n[diff truncated]"
+      : previousAttemptDiff;
+    content += `## What Was Already Tried (Round ${round - 1})\n\n`;
+    content += `The previous attempt made these changes but they were rejected. **Do NOT repeat the same approach.** Try a different strategy.\n\n`;
+    content += `\`\`\`diff\n${truncatedDiff}\n\`\`\`\n\n`;
+  }
 
   if (testFailures) {
     content += `## Test Failures\n\n`;
@@ -257,11 +306,15 @@ export function buildFeedbackContent(
 
     if (boundaryFindings.length > 0) {
       content += `## Boundary Violations\n\n`;
-      content += `You modified files outside your allowed scope. `;
-      content += `**Revert these changes** — use \`git checkout -- <file>\` to undo them. `;
-      content += `If a task requires files outside your boundary, skip that task.\n\n`;
+      content += `You created or modified files outside your allowed scope. For each file below, you have exactly TWO options — pick one and commit it:\n\n`;
+      content += `**Option A — Move the file inside your boundary**: Create the file at a path that IS within your \`owns_files\`. For example, if the violation is a test file, put it in a directory you own.\n\n`;
+      content += `**Option B — Skip the task entirely**: If the file genuinely belongs to another Mind's domain and you cannot move it, use \`git checkout -- <file>\` to revert it and do NOT recreate it. Leave a comment in your commit message explaining what was skipped.\n\n`;
+      content += `**Do NOT recreate the file at the same path again.** That will cause the same rejection.\n\n`;
       for (const f of boundaryFindings) {
-        content += `- ${f.file} — ${f.message}\n`;
+        content += `- \`${f.file}\` — ${f.message}\n`;
+        if (f.suggestion) {
+          content += `  **Suggestion:** ${f.suggestion}\n`;
+        }
       }
       content += `\n`;
     }
@@ -271,6 +324,9 @@ export function buildFeedbackContent(
       for (const f of otherFindings) {
         const severity = f.severity === "error" ? "**Error**" : "Warning";
         content += `- ${severity}: ${f.file}:${f.line} — ${f.message}\n`;
+        if (f.suggestion) {
+          content += `  **Fix:** ${f.suggestion}\n`;
+        }
       }
     }
   }

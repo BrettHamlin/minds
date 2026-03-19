@@ -50,6 +50,7 @@ export interface MindInfo {
   worktree: string;
   branch: string;
   repo?: string;  // Repo alias for multi-repo workspaces
+  pipelineTemplate?: string;  // "code" (default), "build", or "test"
 }
 
 /** @deprecated Use MindInfo instead — identical interface. */

@@ -126,7 +126,7 @@ export default createMind({
   name: "pipeline_core",
   domain: "Pipeline types, registry CRUD, signal definitions, transitions, paths, repo-registry, and feature directory resolution.",
   keywords: ["pipeline", "registry", "signal", "transition", "path", "feature", "metadata", "ticket", "repo", "types"],
-  owns_files: ["minds/pipeline_core/"],
+  owns_files: ["minds/pipeline_core/", "minds/shared/"],
   capabilities: [
     "load pipeline for ticket",
     "resolve signal name",

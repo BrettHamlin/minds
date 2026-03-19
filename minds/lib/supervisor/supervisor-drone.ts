@@ -4,24 +4,14 @@
  * Mind supervisor.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, watch } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { resolveMindsDir } from "../../shared/paths.ts";
 import { extractLastJsonLine } from "../../shared/parse-utils.ts";
 import { buildDroneBrief } from "../../cli/lib/drone-brief.ts";
 import { killPane, splitPane, launchClaudeInPane, shellQuote } from "../tmux-utils.ts";
-import type { TerminalMultiplexer } from "../terminal-multiplexer.ts";
-import { TmuxMultiplexer } from "../tmux-multiplexer.ts";
-import { SENTINEL_FILENAME, type SupervisorConfig } from "./supervisor-types.ts";
-
-// ---------------------------------------------------------------------------
-// Hook entry shape for Claude Code settings.json
-// ---------------------------------------------------------------------------
-
-export interface HookEntry {
-  matcher: string;
-  hooks: Array<{ type: string; command: string }>;
-}
+import type { SupervisorConfig } from "./supervisor-types.ts";
+import type { DroneHandle } from "../drone-backend.ts";
 
 // ---------------------------------------------------------------------------
 // Build Drone Brief
@@ -41,6 +31,8 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
     ownsFiles: config.ownsFiles,
     repo: config.repo,
     testCommand: config.testCommand,
+    pipelineTemplate: config.pipelineTemplate,
+    busUrl: config.busUrl,
   });
 
   if (!feedbackFile) {
@@ -56,7 +48,7 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
 // ---------------------------------------------------------------------------
 
 export interface DroneSpawnResult {
-  paneId: string;
+  handle: DroneHandle;
   worktree: string;
   branch: string;
 }
@@ -91,6 +83,9 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
   if (config.mindRepoRoot && config.mindRepoRoot !== config.repoRoot) {
     args.push("--orchestrator-root", config.repoRoot);
   }
+  if (config.ownsFiles?.length) {
+    args.push("--owns-files", config.ownsFiles.join(","));
+  }
 
   const proc = Bun.spawn(args, {
     cwd: config.repoRoot,
@@ -109,7 +104,7 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
     throw new Error(`drone-pane.ts failed for @${config.mindName}: ${stderr}`);
   }
 
-  let result: { drone_pane: string; worktree: string; branch: string };
+  let result: { drone_pane: string; worktree: string; branch: string; backend?: string };
   try {
     // drone-pane.ts may emit log lines before the JSON (e.g. tmux pane guard).
     // Extract the last line that looks like JSON.
@@ -121,7 +116,10 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
   }
 
   return {
-    paneId: result.drone_pane,
+    handle: {
+      id: result.drone_pane,
+      backend: (result.backend as "axon" | "tmux") ?? "tmux",
+    },
     worktree: result.worktree,
     branch: result.branch,
   };
@@ -136,196 +134,247 @@ export async function spawnDrone(config: SupervisorConfig, briefContent: string)
  * previous commits and the feedback file we just wrote.
  *
  * Steps:
- *   1. Kill the old drone pane
- *   2. Create a new tmux pane
- *   3. Write the updated DRONE-BRIEF.md to the existing worktree
- *   4. Launch Claude Code in the new pane pointed at the same worktree
+ *   1. Verify worktree still exists (may have been cleaned up by a previous failed run)
+ *   2. Write the updated DRONE-BRIEF.md to the existing worktree
+ *   3. Dispatch to the appropriate backend (Axon or tmux)
  */
-export function relaunchDroneInWorktree(opts: {
-  oldPaneId: string;
+export async function relaunchDroneInWorktree(opts: {
+  oldHandle: DroneHandle;
   callerPane: string;
   worktreePath: string;
   briefContent: string;
   busUrl: string;
   mindName: string;
-}): string {
-  const { oldPaneId, callerPane, worktreePath, briefContent, busUrl, mindName } = opts;
+  repoRoot: string;
+  channel?: string;
+}): Promise<DroneHandle> {
+  const { oldHandle, worktreePath, briefContent } = opts;
 
-  // Kill the old drone pane
-  killPane(oldPaneId);
+  // Guard: verify the worktree still exists before attempting relaunch
+  if (!existsSync(worktreePath)) {
+    throw new Error(`Worktree does not exist: ${worktreePath} — cannot relaunch drone`);
+  }
 
-  // Write updated DRONE-BRIEF.md to the SAME worktree
+  // Write updated DRONE-BRIEF.md (common to both backends)
   writeFileSync(join(worktreePath, "DRONE-BRIEF.md"), briefContent);
 
-  // Create a new tmux pane via shared utility
-  const newPaneId = splitPane(callerPane);
+  if (oldHandle.backend === "axon") {
+    return relaunchDroneAxon(opts);
+  }
+  return relaunchDroneTmux(opts);
+}
 
-  // Launch Claude Code in the new pane, pointing at the existing worktree.
-  // If this fails, kill the new pane to prevent leaking orphaned tmux panes.
-  const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, commit and exit cleanly.`;
+/**
+ * Re-launch a drone using the tmux backend.
+ * Kills the old pane, creates a new one, and launches Claude Code.
+ */
+async function relaunchDroneTmux(opts: {
+  oldHandle: DroneHandle;
+  callerPane: string;
+  worktreePath: string;
+  busUrl: string;
+  channel?: string;
+}): Promise<DroneHandle> {
+  const { oldHandle, callerPane, worktreePath, busUrl, channel } = opts;
+
+  await killPane(oldHandle.id);
+  const newPaneId = await splitPane(callerPane);
+
+  // Rebalance pane layout after drone spawn so panes stay evenly sized
+  if (callerPane) {
+    try {
+      Bun.spawnSync(
+        ["tmux", "select-layout", "-t", callerPane, "tiled"],
+        { stdout: "ignore", stderr: "ignore" },
+      );
+    } catch {
+      // Best-effort: layout rebalance is nice-to-have, not critical
+    }
+  }
+
+  const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, run the completion command at the bottom of DRONE-BRIEF.md.`;
   try {
-    launchClaudeInPane({
+    // Retry iterations use Opus — if Sonnet couldn't fix it, the problem is hard enough
+    // to warrant the upgrade. Most minds pass on iteration 1 with Sonnet.
+    await launchClaudeInPane({
       paneId: newPaneId,
       worktreePath,
+      model: "opus",
       prompt,
       busUrl,
+      channel,
     });
   } catch (err) {
-    killPane(newPaneId);
+    await killPane(newPaneId);
     throw err;
   }
 
-  return newPaneId;
+  return { id: newPaneId, backend: "tmux" };
 }
 
-// ---------------------------------------------------------------------------
-// Drone Stop Hook Installation
-// ---------------------------------------------------------------------------
-
 /**
- * Install a Claude Code Stop hook in the worktree's `.claude/` directory.
- * When Claude Code exits, the hook writes a sentinel file to the worktree root.
- * This is event-driven (no process-tree polling).
+ * Re-launch a drone using the Axon backend.
+ * Kills the old process (idempotent), spawns a new one with a unique ID.
  */
-export function installDroneStopHook(worktreePath: string): void {
-  const claudeDir = join(worktreePath, ".claude");
-  if (!existsSync(claudeDir)) {
-    mkdirSync(claudeDir, { recursive: true });
-  }
+async function relaunchDroneAxon(opts: {
+  oldHandle: DroneHandle;
+  worktreePath: string;
+  busUrl: string;
+  mindName: string;
+  repoRoot: string;
+  channel?: string;
+}): Promise<DroneHandle> {
+  const { oldHandle, worktreePath, busUrl, mindName, repoRoot, channel } = opts;
 
-  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
+  const { AxonClient } = await import("../axon/client.ts");
+  const { getDaemonPaths } = await import("../axon/daemon-lifecycle.ts");
+  const { sanitizeProcessId } = await import("../axon/types.ts");
 
-  // Write a local settings.json with a Stop hook that creates the sentinel file
-  const sentinelHookEntry = {
-    matcher: "",
-    hooks: [
-      {
-        type: "command" as const,
-        command: `touch ${shellQuote(sentinelPath)}`,
-      },
-    ],
-  };
+  const socketPath = process.env.AXON_SOCKET ??
+    getDaemonPaths(repoRoot).socketPath;
 
-  const settingsPath = join(claudeDir, "settings.json");
+  const client = await AxonClient.connect(socketPath);
 
-  // Merge with existing settings if present
-  let existing: Record<string, unknown> = {};
-  if (existsSync(settingsPath)) {
+  try {
+    // Kill old process (idempotent — may already be dead)
     try {
-      existing = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      await client.kill(oldHandle.id);
     } catch {
-      // Ignore corrupt settings
+      // Process already exited — fine
     }
+
+    // Generate unique process ID for this iteration
+    const newProcessId = sanitizeProcessId(
+      `drone-${mindName}-relaunch-${Date.now()}`
+    );
+
+    const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, run the completion command at the bottom of DRONE-BRIEF.md.`;
+
+    // Mirror the exact args from drone-pane.ts Axon spawn path
+    await client.spawn(
+      newProcessId,
+      "claude",
+      ["--dangerously-skip-permissions", "--model", "opus", "--setting-sources", "project,local", prompt],
+      busUrl ? { BUS_URL: busUrl, ...(channel ? { MINDS_CHANNEL: channel } : {}) } : null,
+      worktreePath,
+    );
+
+    return { id: newProcessId, backend: "axon" };
+  } finally {
+    client.close();
   }
-
-  // Preserve existing Stop hooks -- append our sentinel hook instead of replacing
-  const existingHooks = (existing.hooks as Record<string, unknown[]> | undefined) ?? {};
-  const existingStopHooks = Array.isArray(existingHooks.Stop) ? existingHooks.Stop : [];
-
-  // Remove any previous sentinel hook (idempotent -- prevents duplicates on reinstall)
-  const filteredStopHooks = existingStopHooks.filter((entry: HookEntry) => {
-    if (!entry || !Array.isArray(entry.hooks)) return true;
-    return !entry.hooks.some((h) => h.command?.includes(SENTINEL_FILENAME));
-  });
-
-  const merged = {
-    ...existing,
-    hooks: {
-      ...existingHooks,
-      Stop: [...filteredStopHooks, sentinelHookEntry],
-    },
-  };
-
-  writeFileSync(settingsPath, JSON.stringify(merged, null, 2));
 }
 
 // ---------------------------------------------------------------------------
-// Drone Completion Detection
+// Drone Completion Detection (bus-only)
 // ---------------------------------------------------------------------------
 
 /**
- * Wait for drone completion by watching for a sentinel file.
+ * Wait for drone completion by subscribing to the Minds bus SSE channel
+ * and waiting for a HOOK_Stop event from the drone.
  *
- * The sentinel file is created by a Claude Code Stop hook installed in
- * the worktree's `.claude/settings.json`. This is event-driven via
- * `fs.watch()` with a poll fallback every 5 seconds.
+ * This is the sole completion detection mechanism. The drone's Claude Code
+ * Stop hook publishes HOOK_Stop via send-event.ts.
  *
- * Falls back to pane-existence check if the sentinel never appears
- * (e.g., hook didn't fire due to crash).
+ * Filtering:
+ * - type === "HOOK_Stop"
+ * - payload.source === "drone:<mindName>" (when mindName is provided)
+ * - timestamp >= (now - 60s)  — rejects stale replayed events from previous iterations
+ *
+ * Safety net: timeout fires if HOOK_Stop never arrives (bus down, crashed drone).
  */
 export async function waitForDroneCompletion(
-  paneId: string,
-  worktreePath: string,
+  _handle: DroneHandle,
+  _worktreePath: string,
   timeoutMs: number,
-  pollIntervalMs: number = 5000,
-  mux: TerminalMultiplexer = new TmuxMultiplexer(),
+  _pollIntervalMs?: number,
+  _repoRoot?: string,
+  busUrl?: string,
+  channel?: string,
+  mindName?: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const sentinelPath = join(worktreePath, SENTINEL_FILENAME);
-
-  // TOCTOU guard: if the sentinel already exists AND the pane is already gone,
-  // the drone completed before we started watching. Return success immediately.
-  if (existsSync(sentinelPath)) {
-    if (!mux.isPaneAlive(paneId)) {
-      // Pane is gone + sentinel exists = drone completed successfully before we started watching
-      return { ok: true };
-    }
-    // Pane is still alive — sentinel is stale from a previous run, clean it up
-    try { rmSync(sentinelPath, { force: true }); } catch { /* ignore */ }
+  if (!busUrl || !channel) {
+    return { ok: false, error: "Bus URL and channel are required for drone completion detection" };
   }
 
-  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    let resolved = false;
-    const done = (result: { ok: boolean; error?: string }) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeoutTimer);
-      clearInterval(pollTimer);
-      try { watcher?.close(); } catch { /* ignore */ }
-      resolve(result);
-    };
+  // Reject events older than 60s. Handles two cases:
+  //   1. Fast drone: completes before we subscribe → buffered event still accepted
+  //   2. Stale event from previous iteration → rejected (iterations take > 60s)
+  const minTimestampMs = Date.now() - 60_000;
+  const filterMindName = mindName ?? "";
 
-    // Timeout
-    const timeoutTimer = setTimeout(() => {
-      done({ ok: false, error: `Drone timed out after ${timeoutMs}ms` });
-    }, timeoutMs);
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
-    // fs.watch() on the worktree directory for the sentinel file
-    let watcher: ReturnType<typeof watch> | undefined;
+  try {
+    let response: Response;
     try {
-      watcher = watch(worktreePath, (eventType, filename) => {
-        if (filename === SENTINEL_FILENAME && existsSync(sentinelPath)) {
-          done({ ok: true });
+      response = await fetch(`${busUrl}/subscribe/${encodeURIComponent(channel)}`, {
+        signal: abortController.signal,
+      });
+    } catch (err) {
+      if (abortController.signal.aborted) {
+        return { ok: false, error: `Drone timed out after ${timeoutMs}ms` };
+      }
+      return { ok: false, error: `Bus connection failed: ${err}` };
+    }
+
+    if (!response.ok || !response.body) {
+      return { ok: false, error: `Bus subscription failed: HTTP ${response.status}` };
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+
+    while (true) {
+      let readResult: ReadableStreamReadResult<Uint8Array>;
+      try {
+        readResult = await reader.read();
+      } catch (err) {
+        if (abortController.signal.aborted) {
+          return { ok: false, error: `Drone timed out after ${timeoutMs}ms` };
         }
-      });
-      watcher.on("error", () => {
-        // On macOS (kqueue), deleting the watched directory emits an error.
-        // Close gracefully and let the poll fallback handle detection.
-        try { watcher?.close(); } catch { /* ignore */ }
-        watcher = undefined;
-      });
-    } catch {
-      // fs.watch() may fail on some platforms — fall through to poll
-    }
-
-    // Poll fallback: check sentinel file + pane existence every interval
-    const pollTimer = setInterval(() => {
-      // Primary: sentinel file exists
-      if (existsSync(sentinelPath)) {
-        done({ ok: true });
-        return;
+        return { ok: false, error: `Bus stream error: ${err}` };
       }
 
-      // Fallback: pane no longer exists (crash, manual kill)
-      // If sentinel was NOT written but pane is gone, the drone crashed.
-      if (!mux.isPaneAlive(paneId)) {
-        done({ ok: false, error: `Drone pane ${paneId} died without writing sentinel — likely crashed` });
-        return;
+      if (readResult.done) {
+        return { ok: false, error: "Bus stream closed before HOOK_Stop received" };
       }
-    }, pollIntervalMs);
 
-    // Check immediately in case sentinel already exists or pane is already gone
-    if (existsSync(sentinelPath)) {
-      done({ ok: true });
+      sseBuffer += decoder.decode(readResult.value, { stream: true });
+
+      // SSE events are separated by double newlines
+      const parts = sseBuffer.split("\n\n");
+      sseBuffer = parts.pop() ?? "";
+
+      for (const part of parts) {
+        if (!part.trim()) continue;
+
+        const dataMatch = part.match(/^data:\s*(.+)$/m);
+        if (!dataMatch) continue;
+
+        let msg: { type?: string; payload?: Record<string, unknown>; timestamp?: number };
+        try {
+          msg = JSON.parse(dataMatch[1]);
+        } catch {
+          continue;
+        }
+
+        if (msg.type !== "HOOK_Stop") continue;
+
+        // Filter by source when mindName is provided
+        if (filterMindName && msg.payload?.source !== `drone:${filterMindName}`) continue;
+
+        // Reject stale replayed events from previous iterations
+        if (msg.timestamp !== undefined && msg.timestamp < minTimestampMs) continue;
+
+        reader.cancel().catch(() => {});
+        return { ok: true };
+      }
     }
-  });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
+
