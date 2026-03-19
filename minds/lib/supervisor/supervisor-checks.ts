@@ -132,16 +132,23 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
       ? [...new Set(new TextDecoder().decode(droneProc.stdout).trim().split("\n").filter(Boolean))]
       : [];
 
-    // Only include directories for files within the drone's boundary.
-    // If the drone touched files outside its boundary, the boundary check
-    // will catch that — but we shouldn't run tests for those files since
-    // the failures would be misleading (broken imports from other minds).
+    // Only include files within the drone's boundary. Use specific test files
+    // when possible instead of directories — running `bun test dir/` picks up
+    // ALL tests in that directory, including ones from other minds.
     const localOwns = (ownsFilesResolved ?? []).map(f => stripRepoPrefix(f));
     const seen = new Set<string>();
     for (const file of droneFiles) {
       if (file.startsWith(".minds/")) continue;
       // Skip files outside boundary (unless no boundary defined)
       if (localOwns.length > 0 && !matchesOwnership(file, localOwns)) continue;
+
+      // If this is a test file, add it directly (not the directory)
+      if (/\.(test|spec)\.(ts|tsx|js|jsx)$/.test(file)) {
+        if (!seen.has(file)) { seen.add(file); testPaths.push(file); }
+        continue;
+      }
+
+      // For source files, add the directory — bun test will find tests there
       const dir = file.replace(/\/[^/]+$/, "") + "/";
       if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
     }
