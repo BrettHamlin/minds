@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { join, relative } from "path";
-import { resolveMindsDir, matchesOwnership } from "../../shared/paths.ts";
+import { resolveMindsDir, matchesOwnership, stripGlob, normalizeMindsPrefix } from "../../shared/paths.ts";
 import { stripRepoPrefix } from "../../shared/repo-path.ts";
 import { checkBoundary, parseDiffPaths } from "./boundary-check.ts";
 import { parseAnnotations, verifyContracts } from "../check-contracts-core.ts";
@@ -41,6 +41,44 @@ export function loadStandards(repoRoot: string): string {
 // integration tests in __tests__/mind-supervisor-integration.test.ts
 // where the full supervisor loop is exercised with mocked deps.
 // ---------------------------------------------------------------------------
+
+/**
+ * Check whether a directory is covered by a directory-level owns_files entry
+ * (as opposed to only being touched via a specific file entry within it).
+ *
+ * Example: owns_files = ["tests/core/**", "tests/modules/blueprint/api.test.ts"]
+ *   isDirFullyOwned("tests/core/lib", ...) → true  (tests/core/** covers the dir)
+ *   isDirFullyOwned("tests/modules/blueprint", ...) → false  (only a specific file is owned)
+ *
+ * This prevents adding "tests/modules/blueprint/" as a test directory when the
+ * mind only owns one specific file in it.
+ */
+export function isDirFullyOwned(dir: string, ownsFiles: string[]): boolean {
+  // If no ownership defined, treat everything as owned (no boundary)
+  if (ownsFiles.length === 0) return true;
+
+  const normalizedDir = normalizeMindsPrefix(dir).replace(/\/+$/, "") + "/";
+
+  for (const entry of ownsFiles) {
+    const normalized = stripGlob(normalizeMindsPrefix(stripRepoPrefix(entry)));
+    // Directory/glob entry: "tests/core/**" → stripped to "tests/core/"
+    // The directory is fully owned if the owns_files prefix covers the entire dir
+    if (normalized.endsWith("/") && normalizedDir.startsWith(normalized)) {
+      return true;
+    }
+    // Bare directory (no trailing slash, no glob, no dots): "tests/core"
+    // normalizedDir "tests/core/" starts with "tests/core" — but we need the
+    // entry to be a directory prefix, not a specific file
+    if (!normalized.includes(".") && !normalized.endsWith("/")) {
+      const asDir = normalized + "/";
+      if (normalizedDir.startsWith(asDir)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 export interface DeterministicCheckOptions {
   worktreePath: string;
@@ -148,25 +186,40 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
         continue;
       }
 
-      // For source files, add the directory — bun test will find tests there
-      const dir = file.replace(/\/[^/]+$/, "") + "/";
-      if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
+      // For source files, add the parent directory ONLY if the entire directory
+      // is within owned boundaries (i.e., at least one owns_files entry covers
+      // the directory as a prefix, not just a specific file within it).
+      // This prevents adding a directory like tests/modules/blueprint/ when the
+      // mind only owns tests/modules/blueprint/api.test.ts specifically.
+      const dir = file.replace(/\/[^/]+$/, "");
+      if (dir && !seen.has(dir + "/") && isDirFullyOwned(dir, localOwns)) {
+        seen.add(dir + "/");
+        testPaths.push(dir + "/");
+      }
     }
   }
 
-  // Fall back to owns_files if diff produced no testable paths
+  // Fall back to owns_files if diff produced no testable paths.
+  // Mirror the primary path's logic: add test files by exact path (not directory)
+  // to avoid bun test discovering unowned sibling test files in the same directory.
   if (testPaths.length === 0 && ownsFilesResolved?.length) {
     const seen = new Set<string>();
     for (const raw of ownsFilesResolved) {
       const p = stripRepoPrefix(raw);
       if (p.startsWith(".minds/")) continue;
       if (p.includes("*")) {
+        // Glob pattern → use the directory prefix
         const dir = p.replace(/\*+$/, "").replace(/\/+$/, "") + "/";
         if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
+      } else if (/\.(test|spec)\.(ts|tsx|js|jsx)$/.test(p)) {
+        // Specific test file → add by exact path (don't expand to directory)
+        if (!seen.has(p)) { seen.add(p); testPaths.push(p); }
       } else if (p.includes(".")) {
+        // Other specific file (source) → use parent directory
         const dir = p.replace(/\/[^/]+$/, "") + "/";
         if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
       } else {
+        // Bare directory name
         const dir = p.replace(/\/+$/, "") + "/";
         if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
       }
