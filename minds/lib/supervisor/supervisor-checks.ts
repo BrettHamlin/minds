@@ -117,16 +117,19 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
 
   // Scope tests to directories the drone ACTUALLY MODIFIED in its own commits,
   // not all files in the full branch diff (which includes prior waves' merges).
-  // Use git diff against the worktree's merge-base to isolate this drone's work.
+  //
+  // Strategy: use `git log --name-only baseBranch..HEAD` to get files changed
+  // by commits on this branch. This is more precise than `git diff` because
+  // it only includes files from the drone's own commits, not files that were
+  // already different on the base branch.
   let testPaths: string[] = [];
   {
-    // Get just this drone's changes by diffing against the branch point
     const droneProc = Bun.spawnSync(
-      ["git", "-C", worktreePath, "diff", "--name-only", `${baseBranch}..HEAD`],
+      ["git", "-C", worktreePath, "log", "--name-only", "--pretty=format:", `${baseBranch}..HEAD`],
       { stdout: "pipe", stderr: "pipe" },
     );
     const droneFiles = droneProc.exitCode === 0
-      ? new TextDecoder().decode(droneProc.stdout).trim().split("\n").filter(Boolean)
+      ? [...new Set(new TextDecoder().decode(droneProc.stdout).trim().split("\n").filter(Boolean))]
       : [];
 
     const seen = new Set<string>();
