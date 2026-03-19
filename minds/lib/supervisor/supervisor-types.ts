@@ -131,6 +131,8 @@ export interface CheckResults {
   ownsFiles?: string[];
   /** Cross-repo contract annotations deferred for post-wave verification. */
   deferredCrossRepoAnnotations?: ContractAnnotation[];
+  /** Test files auto-expanded by boundary warnings — added to tasks for next iteration. */
+  autoExpandedFiles?: string[];
 }
 
 /**

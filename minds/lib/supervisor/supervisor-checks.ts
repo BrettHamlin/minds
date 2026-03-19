@@ -193,9 +193,16 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
     result.boundaryFindings = boundaryResult.violations.map((v) => ({
       file: v.file,
       line: 0,
-      severity: "error" as const,
+      severity: (v.severity === "warning" ? "warning" : "error") as "error" | "warning",
       message: v.message,
     }));
+
+    // Auto-expand: test files that triggered warnings get added to taskFiles
+    // so the NEXT iteration allows them through the boundary check.
+    const testWarnings = boundaryResult.violations.filter(v => v.severity === "warning");
+    if (testWarnings.length > 0) {
+      result.autoExpandedFiles = testWarnings.map(v => v.file);
+    }
   }
 
   // -- Contract check --------------------------------------------------------
