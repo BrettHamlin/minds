@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { join, relative } from "path";
-import { resolveMindsDir, matchesOwnership, stripGlob, normalizeMindsPrefix } from "../../shared/paths.ts";
+import { resolveMindsDir, matchesOwnership, stripGlob, normalizeMindsPrefix, TEST_FILE_RE, normalizeOwnsEntry } from "../../shared/paths.ts";
 import { stripRepoPrefix } from "../../shared/repo-path.ts";
 import { checkBoundary, parseDiffPaths } from "./boundary-check.ts";
 import { parseAnnotations, verifyContracts } from "../check-contracts-core.ts";
@@ -60,7 +60,7 @@ export function isDirFullyOwned(dir: string, ownsFiles: string[]): boolean {
   const normalizedDir = normalizeMindsPrefix(dir).replace(/\/+$/, "") + "/";
 
   for (const entry of ownsFiles) {
-    const normalized = stripGlob(normalizeMindsPrefix(stripRepoPrefix(entry)));
+    const normalized = stripGlob(normalizeOwnsEntry(entry));
     // Directory/glob entry: "tests/core/**" → stripped to "tests/core/"
     // The directory is fully owned if the owns_files prefix covers the entire dir
     if (normalized.endsWith("/") && normalizedDir.startsWith(normalized)) {
@@ -153,6 +153,9 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
     // Fall through to default
   }
 
+  // Pre-compute normalized ownership list — used by both test scoping and boundary check
+  const localOwns = (ownsFilesResolved ?? []).map(f => normalizeOwnsEntry(f));
+
   // Scope tests to directories the drone ACTUALLY MODIFIED in its own commits,
   // not all files in the full branch diff (which includes prior waves' merges).
   //
@@ -173,7 +176,6 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
     // Only include files within the drone's boundary. Use specific test files
     // when possible instead of directories — running `bun test dir/` picks up
     // ALL tests in that directory, including ones from other minds.
-    const localOwns = (ownsFilesResolved ?? []).map(f => stripRepoPrefix(f));
     const seen = new Set<string>();
     for (const file of droneFiles) {
       if (file.startsWith(".minds/")) continue;
@@ -181,7 +183,7 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
       if (localOwns.length > 0 && !matchesOwnership(file, localOwns)) continue;
 
       // If this is a test file, add it directly (not the directory)
-      if (/\.(test|spec)\.(ts|tsx|js|jsx)$/.test(file)) {
+      if (TEST_FILE_RE.test(file)) {
         if (!seen.has(file)) { seen.add(file); testPaths.push(file); }
         continue;
       }
@@ -202,16 +204,15 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
   // Fall back to owns_files if diff produced no testable paths.
   // Mirror the primary path's logic: add test files by exact path (not directory)
   // to avoid bun test discovering unowned sibling test files in the same directory.
-  if (testPaths.length === 0 && ownsFilesResolved?.length) {
+  if (testPaths.length === 0 && localOwns.length > 0) {
     const seen = new Set<string>();
-    for (const raw of ownsFilesResolved) {
-      const p = stripRepoPrefix(raw);
-      if (p.startsWith(".minds/")) continue;
+    for (const p of localOwns) {
+      if (p.startsWith("minds/")) continue; // already normalized from .minds/ → minds/
       if (p.includes("*")) {
         // Glob pattern → use the directory prefix
         const dir = p.replace(/\*+$/, "").replace(/\/+$/, "") + "/";
         if (dir !== "/" && !seen.has(dir)) { seen.add(dir); testPaths.push(dir); }
-      } else if (/\.(test|spec)\.(ts|tsx|js|jsx)$/.test(p)) {
+      } else if (TEST_FILE_RE.test(p)) {
         // Specific test file → add by exact path (don't expand to directory)
         if (!seen.has(p)) { seen.add(p); testPaths.push(p); }
       } else if (p.includes(".")) {
