@@ -104,7 +104,9 @@ This command generates tasks for developing the **collab repo itself**, where wo
 
    Then write the file to `specs/{TICKET_ID}/tasks.md`.
 
-8. **Lint and fix** (MANDATORY — do not skip): After writing tasks.md, run the linter and fix any errors before reporting.
+8. **Verify file paths** (MANDATORY — do not skip): Re-read each task. For every task that says "modify/update/add X in path/to/file.ts", verify the symbol X actually exists at that file path. Open the file and check. If the symbol is defined in a different file, fix the task description to reference the correct file. If the correct file is outside the Mind's boundary, add it to the `owns:` annotation in the section header.
+
+9. **Lint and fix** (MANDATORY — do not skip): After writing tasks.md, run the linter and fix any errors before reporting.
 
    ```bash
    bun {MINDS_DIR}/cli/bin/minds.ts lint specs/{TICKET_ID}/tasks.md --json
@@ -122,7 +124,7 @@ This command generates tasks for developing the **collab repo itself**, where wo
 
    Warnings (e.g. `dangling_consume`) are informational — don't block on them.
 
-9. **Report**: Output summary:
+10. **Report**: Output summary:
    - Total task count
    - Tasks per Mind
    - Cross-Mind contracts identified
