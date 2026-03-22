@@ -242,8 +242,17 @@ if (import.meta.main) { (async () => {
 
   // ─── Branch and worktree path ─────────────────────────────────────────────────
 
-  // Branch: minds/{ticketId}-{mindName}
-  const branchName = `minds/${ticketId}-${mindName}`;
+  // Branch: minds/{ticketId}-{mindName}, with numeric suffix if branch already exists
+  let branchName = `minds/${ticketId}-${mindName}`;
+  {
+    let branchSuffix = 2;
+    while (true) {
+      const check = execSync(`git branch --list "${branchName}"`, { cwd: repoRoot, encoding: "utf-8" }).trim();
+      if (!check) break;
+      branchName = `minds/${ticketId}-${mindName}-${branchSuffix}`;
+      branchSuffix++;
+    }
+  }
 
   // Worktree path: collab-dev-{ticketId}-{mindName}, with numeric suffix if taken
   const parentDir = resolve(repoRoot, "..");

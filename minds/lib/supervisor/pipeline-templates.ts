@@ -29,6 +29,7 @@ export const CODE_PIPELINE: readonly PipelineStage[] = [
   { type: "boundary-check", label: "Boundary Check" },
   { type: "contract-check", label: "Contract Check" },
   { type: "e2e-tests", label: "E2E Tests" },
+  { type: "compare-design", label: "Compare Design", on_fail: "reject" },
   { type: "llm-review", label: "LLM Review" },
 ] as const;
 
@@ -57,6 +58,9 @@ export const TEST_PIPELINE: readonly PipelineStage[] = [
   { type: "collect-results", label: "Collect Test Results" },
   { type: "health-check", label: "Health Check", on_fail: "skip" },
 ] as const;
+
+// VERIFY_PIPELINE removed — visual verification now uses compare-design stage in CODE_PIPELINE.
+// The supervisor runs compare-design via claude -p and handles fixes through the standard iteration loop.
 
 // ---------------------------------------------------------------------------
 // Template registry

@@ -31,6 +31,14 @@ program
   });
 
 program
+  .command("tasks <ticket-id>")
+  .description("Generate Mind-aware tasks for a ticket")
+  .action(async (ticketId: string) => {
+    const { runTasks } = await import("../commands/tasks.js");
+    await runTasks(ticketId);
+  });
+
+program
   .command("implement <ticket-id>")
   .description("Dispatch Mind drones to implement tasks for a ticket")
   .action(async (ticketId: string, options: Record<string, unknown>) => {
@@ -53,6 +61,15 @@ program
   .action(async () => {
     const { runCoverage } = await import("../commands/coverage.js");
     await runCoverage();
+  });
+
+program
+  .command("remember <mind-name> [entry]")
+  .description("Append a learning entry to a Mind's MEMORY.md")
+  .option("--file <path>", "Read entry content from a file")
+  .action(async (mindName: string, entry: string | undefined, options: { file?: string }) => {
+    const { runRemember } = await import("../commands/remember.js");
+    await runRemember(mindName, { entry, file: options.file });
   });
 
 program.parse();

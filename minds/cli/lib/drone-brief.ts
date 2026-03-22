@@ -20,6 +20,7 @@ export interface DroneBriefParams {
   testCommand?: string; // custom test command (default: "bun test")
   pipelineTemplate?: string; // "code" (default), "build", or "test"
   busUrl?: string; // bus server URL for completion signal
+  memoryContent?: string; // curated MEMORY.md content for this mind
 }
 
 /**
@@ -60,9 +61,10 @@ export function buildDroneBrief(params: DroneBriefParams): string {
     repo,
     testCommand,
     pipelineTemplate,
+    memoryContent,
   } = params;
 
-  const isNonCode = pipelineTemplate === "build" || pipelineTemplate === "test";
+  const isNonCode = pipelineTemplate === "build" || pipelineTemplate === "test" || pipelineTemplate === "verify";
 
   const taskList = formatTaskList(tasks);
   const defaultTestCmd = `bun test ${mindsDir ? `${mindsDir}/${mindName}/` : `minds/${mindName}/`}`;
@@ -73,6 +75,10 @@ export function buildDroneBrief(params: DroneBriefParams): string {
       ? `\n---\n\n## 🔗 Dependencies\n\n${dependencies.map((d) => `@${d}`).join(", ")} — completed and merged in previous waves.\n`
       : "";
 
+  const memorySection = memoryContent
+    ? `\n---\n\n## 💾 Mind Memory (MANDATORY)\n\nThese are mandatory rules for @${mindName}. You MUST follow every instruction below. The reviewer will reject your work if any of these are violated.\n\n${memoryContent}\n`
+    : "";
+
   const repoRow = repo ? `\n| **Repo** | ${repo} |` : "";
 
   // File boundary section: only for code pipelines
@@ -81,6 +87,12 @@ export function buildDroneBrief(params: DroneBriefParams): string {
 
 You may ONLY create or modify files within these paths:
 ${ownsFiles.map((f) => `- \`${f}\``).join("\n")}
+
+**NEVER modify these files** (they will always be rejected):
+- \`.claude/settings.json\`, \`.claude/settings.local.json\`
+- \`CLAUDE.md\`, \`.claude/CLAUDE.md\`
+- \`.minds/minds.json\`
+- \`package.json\`, \`bun.lock\` (unless listed in infra_allowed)
 
 Files outside these paths will be rejected by the deterministic boundary check.
 
@@ -117,6 +129,14 @@ Do NOT use \`/exit\`. The supervisor will handle session cleanup.`;
 3. Execute the test/verification commands specified in MIND.md. Report results.
 4. Commit your work with a descriptive message referencing ${ticketId}.
 5. ${completionStep}
+`;
+  } else if (pipelineTemplate === "verify") {
+    instructions = `## 🔧 Instructions
+
+1. Read and understand the verification task above.
+2. Execute the verification steps exactly as described.
+3. Write your findings to VERIFICATION-FINDINGS.md in the repo root. If no issues found, write "NO_FINDINGS" to the file.
+4. ${completionStep}
 `;
   } else {
     instructions = `## 🔧 Instructions
@@ -157,5 +177,5 @@ ${taskList}
 ## ✅ Completion Criteria
 
 All tasks above are checked off AND all tests pass.
-${depsSection}${boundarySection}${instructions}`;
+${depsSection}${boundarySection}${memorySection}${instructions}`;
 }

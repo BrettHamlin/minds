@@ -19,7 +19,7 @@
  *  11. Cleanup: teardown bus, remove worktrees
  */
 
-import { existsSync, readFileSync, readdirSync, unlinkSync } from "fs";
+import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync, mkdirSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { parseAndGroupTasks } from "../lib/task-parser.ts";
 import { computeWaves, formatWavePlan } from "../lib/wave-planner.ts";
@@ -35,7 +35,7 @@ import {
 } from "../../transport/minds-bus-lifecycle.ts";
 import { publishWaveStarted, publishWaveComplete } from "../../transport/wave-event.ts";
 import { cleanupDroneWorktree, pruneOrphanedWorktrees } from "../../lib/cleanup.ts";
-import { resolveMindsDir, getRepoRoot } from "../../shared/paths.js";
+import { resolveMindsDir, getRepoRoot, matchesOwnership } from "../../shared/paths.js";
 import { ensureDashboardBuilt } from "../../shared/build-dashboard.js";
 import type {
   ImplementOptions,
@@ -47,6 +47,11 @@ import { scaffoldFromTasks } from "../../instantiate/lib/scaffold.ts";
 import { loadWorkspace, type ResolvedWorkspace } from "../../shared/workspace-loader.ts";
 import { loadMultiRepoRegistries } from "../../shared/registry-loader.ts";
 import { parseTasks, lintTasks } from "../../lib/contracts.ts";
+import { detectMockup } from "../lib/mockup-detect.ts";
+import { detectE2eInfra } from "../lib/tasks-context.ts";
+import { startDevServer, stopDevServer } from "../lib/dev-server.ts";
+// verify-brief.ts and verify-fix-tasks.ts removed — visual verification
+// now uses compare-design stage in the supervisor pipeline.
 import type { MindDescription } from "../../mind.ts";
 import type { SupervisorResult } from "../../lib/supervisor/supervisor-types.ts";
 import type { ContractAnnotation } from "../../lib/check-contracts-core.ts";
@@ -179,6 +184,8 @@ function launchMindSupervisor(
   installCommand?: string,
   pipelineTemplate?: string,
   infraAllowed?: string[],
+  customBriefContent?: string,
+  mockupInfo?: { mockupPath: string; routePath: string; serverUrl: string },
 ): { info: MindInfo; done: Promise<SupervisorResult> } {
   const supervisorConfig: SupervisorConfig = {
     mindName,
@@ -205,6 +212,8 @@ function launchMindSupervisor(
     installCommand,
     pipelineTemplate,
     infraAllowed,
+    customBriefContent,
+    mockupInfo,
   };
 
   // MindInfo placeholder -- will be updated when supervisor provides drone info
@@ -382,6 +391,102 @@ export function resolveRepoBaseBranch(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Visual verification helpers                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Determine which mind should fix a visual difference.
+ * Extracts file paths from the diff text and matches against registry owns_files.
+ * Falls back to the first mind from the task groups.
+ */
+function findOwningMind(
+  diff: string,
+  registry: MindDescription[],
+  taskGroups: Array<{ mind: string }>,
+): string {
+  // Extract file paths from the diff text and match against owns_files
+  const pathRe = /\b([a-zA-Z_.][\w.\-]*(?:\/[a-zA-Z_][\w.\-]*)+)\b/g;
+  let m;
+  while ((m = pathRe.exec(diff)) !== null) {
+    const path = m[1];
+    for (const mind of registry) {
+      if (matchesOwnership(path, mind.owns_files)) {
+        return mind.name;
+      }
+    }
+  }
+  // Fall back to the first mind in the task groups
+  return taskGroups[0]?.mind ?? registry[0]?.name ?? "unknown";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Deterministic E2E test registration                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * After all waves merge, scan tests/e2e/ for test files and ensure they're
+ * registered in tests/e2e/registry.json. This replaces relying on drones
+ * to manually edit registry.json — the implement CLI handles it deterministically.
+ */
+function autoRegisterE2eTests(
+  repoRoot: string,
+  taskGroups: Array<{ mind: string; tasks: Array<{ description: string }> }>,
+): void {
+  const e2eDir = join(repoRoot, "tests", "e2e");
+  const registryPath = join(e2eDir, "registry.json");
+
+  if (!existsSync(e2eDir)) return;
+
+  // Detect schema from existing entries (reuse detectE2eInfra)
+  const e2eInfra = detectE2eInfra(repoRoot);
+  const mindKey = e2eInfra.schema?.mindKey ?? "mind";
+  const fileKey = e2eInfra.schema?.fileKey ?? "file";
+
+  // Read existing registry (or create empty one)
+  let registry: { tests: Array<Record<string, string>> } = { tests: [] };
+  if (existsSync(registryPath)) {
+    try {
+      registry = JSON.parse(readFileSync(registryPath, "utf-8"));
+      if (!Array.isArray(registry.tests)) registry.tests = [];
+    } catch {
+      registry = { tests: [] };
+    }
+  }
+
+  // Build a set of already-registered files
+  const registeredFiles = new Set(registry.tests.map((t) => t[fileKey]));
+
+  // Scan for test files in tests/e2e/
+  const testFiles = readdirSync(e2eDir).filter(
+    (f) => f.endsWith(".test.ts") || f.endsWith(".test.js"),
+  );
+
+  let added = 0;
+  for (const file of testFiles) {
+    const filePath = `tests/e2e/${file}`;
+    if (registeredFiles.has(filePath)) continue;
+
+    // Derive mind name from filename: config-module.test.ts → config-module
+    const mindName = file.replace(/\.test\.(ts|js)$/, "");
+
+    // Verify this mind was part of the current ticket's tasks
+    const isMindInTasks = taskGroups.some((g) => g.mind === mindName);
+    if (!isMindInTasks) continue;
+
+    registry.tests.push({ [mindKey]: `@${mindName}`, [fileKey]: filePath });
+    added++;
+  }
+
+  if (added > 0) {
+    writeFileSync(registryPath, JSON.stringify(registry, null, 2) + "\n");
+    console.log(`\nStep 9a: Auto-registered ${added} E2E test(s) in registry.json`);
+    for (const entry of registry.tests.slice(-added)) {
+      console.log(`  ${entry[mindKey]} → ${entry[fileKey]}`);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main orchestrator                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -503,7 +608,37 @@ export async function runImplement(
     }
   }
 
-  // ── Step 3a: Lint tasks with workspace awareness (MR-008) ─────────────────
+  // ── Step 3a: Scaffold unregistered minds with owns: annotations ───────────
+  // Must run BEFORE lint so new minds are in the registry for boundary checks.
+
+  const scaffoldResults = await scaffoldFromTasks(taskGroups, registry);
+  const scaffoldedMinds = scaffoldResults.filter((r) => r.registered);
+  if (scaffoldedMinds.length > 0) {
+    console.log(`\nStep 3a: Scaffolded ${scaffoldedMinds.length} new mind(s):`);
+    for (const r of scaffoldedMinds) {
+      const mindName = r.mindDir.split("/").pop();
+      console.log(`  Scaffolded @${mindName} → ${r.mindDir}`);
+    }
+
+    // Reload registry so lint and wave execution pick up the new minds
+    if (workspace.isMultiRepo) {
+      const updatedRegistry = loadMultiRepoRegistries(workspace.repoPaths);
+      registry.length = 0;
+      registry.push(...updatedRegistry);
+    } else {
+      const mindsJsonPath = join(mindsDir, "minds.json");
+      const updatedRegistry = JSON.parse(readFileSync(mindsJsonPath, "utf-8"));
+      registry.length = 0;
+      registry.push(...updatedRegistry);
+    }
+    registeredMinds.clear();
+    for (const m of registry) {
+      registeredMinds.add(m.name);
+    }
+    console.log(`  Registry reloaded: ${registeredMinds.size} registered minds.`);
+  }
+
+  // ── Step 3b: Lint tasks with workspace awareness (MR-008) ─────────────────
 
   const lintWorkspace = workspace.isMultiRepo
     ? { repoAliases: [...workspace.repoPaths.keys()] }
@@ -523,35 +658,6 @@ export async function runImplement(
     for (const warn of lintResult.warnings) {
       console.warn(`  Warning [${warn.type}] ${warn.task}: ${warn.message}`);
     }
-  }
-
-  // ── Step 3b: Scaffold unregistered minds with owns: annotations ───────────
-
-  const scaffoldResults = await scaffoldFromTasks(taskGroups, registry);
-  const scaffoldedMinds = scaffoldResults.filter((r) => r.registered);
-  if (scaffoldedMinds.length > 0) {
-    console.log(`\nStep 3b: Scaffolded ${scaffoldedMinds.length} new mind(s):`);
-    for (const r of scaffoldedMinds) {
-      const mindName = r.mindDir.split("/").pop();
-      console.log(`  Scaffolded @${mindName} → ${r.mindDir}`);
-    }
-
-    // Reload registry so wave execution picks up the new minds
-    if (workspace.isMultiRepo) {
-      const updatedRegistry = loadMultiRepoRegistries(workspace.repoPaths);
-      registry.length = 0;
-      registry.push(...updatedRegistry);
-    } else {
-      const mindsJsonPath = join(mindsDir, "minds.json");
-      const updatedRegistry = JSON.parse(readFileSync(mindsJsonPath, "utf-8"));
-      registry.length = 0;
-      registry.push(...updatedRegistry);
-    }
-    registeredMinds.clear();
-    for (const m of registry) {
-      registeredMinds.add(m.name);
-    }
-    console.log(`  Registry reloaded: ${registeredMinds.size} registered minds.`);
   }
 
   // ── Step 4: Compute execution waves ────────────────────────────────────────
@@ -956,6 +1062,149 @@ export async function runImplement(
   // ── Step 9: Merge summary ──────────────────────────────────────────────────
   // Per-wave merges already happened above (inside the wave loop).
   // This section just reports the summary.
+
+  // ── Step 9a: Auto-register E2E tests in registry.json (deterministic) ──────
+  // After all waves merge, scan tests/e2e/ for test files created by drones.
+  // Register any unregistered files in registry.json so the E2E stage picks them up.
+  // This replaces relying on drones to manually edit registry.json.
+  if (result.ok) {
+    autoRegisterE2eTests(orchestratorRoot, taskGroups);
+  }
+
+  // ── Step 9b: Post-merge visual verification ────────────────────────────────
+  // After all waves merge, the supervisor runs compare-design via claude -p to
+  // compare the live page against the design mockup. If differences are found,
+  // they become fix tasks for regular implementation drones with compare-design
+  // in their pipeline — same iteration loop as code review.
+
+  if (result.ok) {
+    const mockupDetected = detectMockup(tasksContent);
+    if (mockupDetected) {
+      console.log("\n=== Post-Merge Visual Verification ===");
+      console.log(`  Mockup: ${mockupDetected.mockupPath}`);
+      console.log(`  Route: ${mockupDetected.routePath}`);
+
+      const MAX_VERIFY_ATTEMPTS = 3;
+      let verifyPass = false;
+
+      for (let attempt = 1; attempt <= MAX_VERIFY_ATTEMPTS; attempt++) {
+        console.log(`\n  Verification attempt ${attempt}/${MAX_VERIFY_ATTEMPTS}...`);
+
+        let server;
+        try {
+          server = await startDevServer(orchestratorRoot);
+          console.log(`  Server started at ${server.url}`);
+        } catch (err) {
+          console.error(`  Failed to start dev server: ${err}`);
+          result.errors.push(`Visual verification: server failed to start`);
+          break;
+        }
+
+        try {
+          // Run compare-design: screenshots via Playwright CLI, visual comparison via claude -p
+          const { runCompareDesign } = await import(
+            "../../lib/supervisor/stages/compare-design.ts"
+          );
+          const { callLlmReviewDefault } = await import(
+            "../../lib/supervisor/supervisor-llm.ts"
+          );
+
+          const { passed, differences } = await runCompareDesign(
+            server.url, mockupDetected.routePath, mockupDetected.mockupPath, callLlmReviewDefault,
+          );
+
+          if (passed) {
+            console.log("  Visual verification PASSED — page matches mockup.");
+            verifyPass = true;
+            break;
+          }
+
+          console.log(`  Visual verification: ${differences.length} difference(s) found.`);
+
+          if (attempt === MAX_VERIFY_ATTEMPTS) {
+            console.log("  Max verification attempts reached. Remaining differences:");
+            for (const d of differences.slice(0, 5)) console.log(`    - ${d.slice(0, 200)}`);
+            result.errors.push("Visual verification: differences remain after max attempts");
+            break;
+          }
+
+          // Convert differences into fix tasks for regular implementation drones
+          const fixTasks = differences.map((diff, i) => ({
+            id: `VF${String(i + 1).padStart(3, "0")}`,
+            mind: findOwningMind(diff, registry, taskGroups),
+            description: `Fix visual difference: ${diff}`,
+            parallel: false,
+            sectionHasDepsHeader: false,
+            sectionDeclaredDeps: [] as string[],
+            sectionOwnsFiles: [] as string[],
+          }));
+
+          // Group by mind
+          const fixByMind = new Map<string, typeof fixTasks>();
+          for (const task of fixTasks) {
+            const existing = fixByMind.get(task.mind) ?? [];
+            existing.push(task);
+            fixByMind.set(task.mind, existing);
+          }
+
+          // Launch fix drones with compare-design in their pipeline (mockupInfo set)
+          for (const [mindName, tasks] of fixByMind) {
+            const mindReg = registry.find(m => m.name === mindName);
+            const owns = mindReg?.owns_files;
+            console.log(`  Launching fix drone for @${mindName} (${tasks.length} tasks)...`);
+
+            const { done: fixDone } = launchMindSupervisor(
+              orchestratorRoot,
+              mindsSourceDir,
+              mindName,
+              ticketId,
+              `fix-${attempt}`,
+              busInfo.busUrl,
+              busPort,
+              channel,
+              tasks,
+              featureDir,
+              [],
+              callerPane,
+              baseBranchName,
+              owns,
+              true,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              { mockupPath: mockupDetected.mockupPath, routePath: mockupDetected.routePath, serverUrl: server.url },
+            );
+            const fixResult = await fixDone;
+            if (fixResult.ok && fixResult.branch) {
+              const mergeProc = Bun.spawnSync(
+                ["git", "merge", "--no-ff", fixResult.branch, "-m", `fix: visual verification attempt ${attempt} (@${mindName})`],
+                { cwd: orchestratorRoot, stdout: "pipe", stderr: "pipe" },
+              );
+              if (mergeProc.exitCode === 0) {
+                console.log(`  Fix @${mindName} merged.`);
+              } else {
+                console.error(`  Fix merge failed for @${mindName}`);
+              }
+            }
+            if (fixResult.worktree) {
+              cleanupDroneWorktree(fixResult.worktree, orchestratorRoot);
+            }
+          }
+        } finally {
+          await stopDevServer(server);
+          console.log("  Server stopped.");
+        }
+      }
+
+      if (verifyPass) {
+        console.log("\n  Visual verification complete — page matches mockup.");
+      }
+    }
+  }
 
   // ── Step 10: Report final status ───────────────────────────────────────────
 

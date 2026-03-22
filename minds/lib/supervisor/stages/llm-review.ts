@@ -55,6 +55,15 @@ export function applyForceRejections(verdict: ReviewVerdict, checks: CheckResult
     verdict.approved = false;
     verdict.findings.push(...(checks.contractFindings ?? []));
   }
+  if (checks.compareDesignPass === false && verdict.approved) {
+    verdict.approved = false;
+    verdict.findings.push({
+      file: "(visual-verification)",
+      line: 0,
+      severity: "error",
+      message: "Visual verification failed — page does not match mockup. Fix visual differences before approval.",
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +111,13 @@ export const executeLlmReview = async (
     evalScoreSection = `Overall: ${evalScore.score}/100 (${evalScore.fileCount} files, ${evalScore.aggregationMethod})\nMin file score: ${minFileScore}/100\n\nPer-file breakdown:\n${perFile}`;
   }
 
+  // Read mind's curated MEMORY.md for the reviewer to check against
+  const { resolveMindsDir } = await import("../../../shared/paths.ts");
+  const mindsDir = resolveMindsDir(config.repoRoot);
+  const memoryMdPath = join(mindsDir, config.mindName, "memory", "MEMORY.md");
+  const rawMemory = existsSync(memoryMdPath) ? readFileSync(memoryMdPath, "utf-8").trim() : "";
+  const memoryContent = rawMemory.length > 0 ? rawMemory : undefined;
+
   // Build review prompt (pipeline-aware checklist via BRE-624)
   const prompt = buildReviewPrompt({
     diff: checkResults.diff,
@@ -112,6 +128,7 @@ export const executeLlmReview = async (
     previousFeedback,
     pipelineTemplate: config.pipelineTemplate,
     evalScoreSection,
+    memoryContent,
   });
 
   // Call LLM for review

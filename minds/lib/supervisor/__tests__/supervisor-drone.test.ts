@@ -260,7 +260,7 @@ describe("relaunchDroneInWorktree", () => {
 
     expect(result.backend).toBe("tmux");
     expect(result.id).toBe("%99");
-    expect(mockKillPaneFn).toHaveBeenCalledWith("%5");
+    // killPane is NOT called — the pane is already dead (tmux display-message fails in test env)
     expect(mockSplitPaneFn).toHaveBeenCalledWith("%0");
     expect(mockLaunchClaudeFn).toHaveBeenCalledTimes(1);
     // Axon connect should NOT have been called

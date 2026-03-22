@@ -92,3 +92,5 @@ registerExecutor("run-command", notImplemented("run-command"));
 registerExecutor("health-check", notImplemented("health-check"));
 registerExecutor("collect-results", notImplemented("collect-results"));
 registerExecutor("eval-score", notImplemented("eval-score"));
+registerExecutor("e2e-tests", notImplemented("e2e-tests"));
+registerExecutor("compare-design", notImplemented("compare-design"));

@@ -1,5 +1,5 @@
 ---
-description: Visual comparison between two URLs or a URL and a local mock HTML file. Reports structural and visual differences.
+description: Visual comparison between two URLs or a URL and a local mock HTML file. Uses Playwright screenshots for pixel-level comparison.
 ---
 
 > **IMPORTANT:** Execute these steps directly and sequentially. Do NOT wrap this workflow in PAI Algorithm phases, ISC criteria, capability selection, or any other meta-framework. Follow the numbered steps exactly as written.
@@ -13,13 +13,13 @@ $ARGUMENTS
 Expected: `<source-a> <source-b>`
 
 Each source is one of:
-- A URL (`http://` or `https://`) — fetched live and screenshotted
-- A path to a local HTML file — read directly from disk
+- A URL (`http://` or `https://`) — loaded in Playwright and screenshotted
+- A path to a local HTML file — opened in Playwright via `file://` and screenshotted
 
 Examples:
 ```
-http://localhost:3099/blueprint/spec/my-spec tests/e2e/fixtures/prototype-v4b.html
-http://localhost:3099/blueprint/spec/my-spec http://localhost:3100/blueprint/spec/my-spec
+http://localhost:3099/config tests/e2e/fixtures/prototype-v4b.html
+http://localhost:3099/config ~/Documents/blueprint/configv1.html
 ```
 
 ## Step 1: Parse Arguments
@@ -34,94 +34,85 @@ Usage: /minds.compare-design <source-a> <source-b>
 Each source is a URL (http/https) or a path to a local HTML file.
 ```
 
-## Step 2: Fetch HTML Content
+## Step 2: Take Screenshots with Playwright
 
-For each source:
-
-- **If URL** (`starts with http://` or `https://`):
-  ```bash
-  curl -sf <URL> -o /tmp/compare-a.html   # or compare-b.html
-  ```
-  If curl fails (non-2xx or network error), stop and report the error.
-
-- **If file path**:
-  Read the file directly with the Read tool.
-  If the file does not exist, stop and report: `File not found: <path>`
-
-Write the content to `/tmp/compare-a.html` and `/tmp/compare-b.html` for structural analysis.
-
-## Step 3: Take Screenshots (URL sources only)
-
-For each source that is a URL, take a full-page screenshot:
+For each source, take a full-page screenshot using Playwright:
 
 ```bash
-bunx playwright screenshot "<URL>" /tmp/compare-screenshot-a.png --full-page
-bunx playwright screenshot "<URL>" /tmp/compare-screenshot-b.png --full-page
+# For URLs:
+npx playwright screenshot "<URL>" /tmp/compare-screenshot-a.png --full-page
+
+# For local files (expand ~ to $HOME):
+npx playwright screenshot "file://<absolute-path>" /tmp/compare-screenshot-b.png --full-page
 ```
 
-If Playwright is not installed, skip this step and note it in the report.
+If a URL returns a non-2xx status (404, 500, connection refused), that IS a finding:
+```
+- VF001: Page unreachable
+  HAVE: Server responds with 404 / connection refused / error
+  WANT: Full page renders
+  FIX: Ensure the module is loaded and the route is registered
+```
 
-Read the screenshot(s) with the image read tool for visual inspection.
+Read BOTH screenshots with the image Read tool. You are a multimodal LLM — visually inspect and compare them.
 
-## Step 4: Structural Comparison
+**Do NOT use curl to fetch HTML.** Playwright screenshots are the only comparison method. You are comparing what the pages LOOK like, not their HTML source.
 
-Extract and diff the structural elements from both HTML files:
+## Step 3: Visual Comparison
+
+Look at both screenshots and identify ALL visual differences:
+
+1. **Layout** — missing sections, wrong panel order, different grid/flex structure
+2. **Colors** — background colors, text colors, border colors, accent colors
+3. **Typography** — wrong font family, font size, font weight, line height
+4. **Spacing** — padding, margins, gaps between elements
+5. **Components** — missing buttons, icons, inputs, cards, toggles
+6. **Content** — missing labels, wrong text, missing headings
+7. **Visual indicators** — status dots, badges, change markers, hover states
+
+Be specific — reference exact CSS properties, hex colors, pixel values where visible.
+
+## Step 4: Cleanup
 
 ```bash
-# IDs
-grep -oE 'id="[^"]+"' /tmp/compare-a.html | sort -u > /tmp/compare-ids-a.txt
-grep -oE 'id="[^"]+"' /tmp/compare-b.html | sort -u > /tmp/compare-ids-b.txt
-
-# CSS classes (unique)
-grep -oE 'class="[^"]+"' /tmp/compare-a.html | tr ' ' '\n' | grep -v '^$' | sort -u > /tmp/compare-classes-a.txt
-grep -oE 'class="[^"]+"' /tmp/compare-b.html | tr ' ' '\n' | grep -v '^$' | sort -u > /tmp/compare-classes-b.txt
-
-# Diffs
-diff /tmp/compare-ids-a.txt /tmp/compare-ids-b.txt > /tmp/compare-ids-diff.txt || true
-diff /tmp/compare-classes-a.txt /tmp/compare-classes-b.txt > /tmp/compare-classes-diff.txt || true
+rm -f /tmp/compare-screenshot-a.png /tmp/compare-screenshot-b.png
 ```
 
-Read the diff files and identify:
-- IDs present in A but missing from B
-- IDs present in B but missing from A
-- Significant class differences (ignore utility/state classes like `hidden`, `active`)
+## Step 5: Report
 
-## Step 5: Cleanup
-
-```bash
-rm -f /tmp/compare-a.html /tmp/compare-b.html \
-      /tmp/compare-ids-a.txt /tmp/compare-ids-b.txt \
-      /tmp/compare-ids-diff.txt \
-      /tmp/compare-classes-a.txt /tmp/compare-classes-b.txt \
-      /tmp/compare-classes-diff.txt \
-      /tmp/compare-screenshot-a.png /tmp/compare-screenshot-b.png
-```
-
-## Step 6: Report
-
-Output a structured comparison report:
+If the pages match (no meaningful differences), output exactly:
 
 ```
-Design Comparison Report
-═══════════════════════════════════════════
-Source A:  <SOURCE_A>
-Source B:  <SOURCE_B>
-
-STRUCTURAL DIFF
-  IDs in A not in B:   <list or "none">
-  IDs in B not in A:   <list or "none">
-  Matching IDs:        <count>
-  Class differences:   <summary or "none">
-
-VISUAL OBSERVATIONS  (from screenshots, if taken)
-  <analysis — are key sections present, layout intact, content readable?>
-
-VERDICT:  MATCH | MINOR_DIFFERENCES | SIGNIFICANT_DIFFERENCES
-  <one-sentence explanation>
-═══════════════════════════════════════════
+NO_DIFFERENCES
 ```
 
-**Verdict rules:**
-- `MATCH` — no structural differences, visuals look equivalent
-- `MINOR_DIFFERENCES` — a few extra/missing classes or minor layout shifts, no missing sections
-- `SIGNIFICANT_DIFFERENCES` — missing key IDs, broken layout, or sections absent from one source
+If there ARE differences, output a summary line followed by numbered findings. Each finding has three fields:
+
+- **HAVE** — what the live page currently shows (exact CSS values, visual state)
+- **WANT** — what the mockup shows (exact CSS values, visual state)
+- **FIX** — exactly what code change to make, including the file path
+
+Start with a one-line summary: `SUMMARY: N layout differences, N color differences, N missing elements`
+
+Then list each finding:
+
+```
+SUMMARY: 2 CSS differences, 0 layout differences, 0 missing elements
+
+- VF001: CSS mismatch on .hsub
+  HAVE: font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #6b7688;
+  WANT: font-size: 13px; color: #6b7688;
+  FIX: Remove font-family from .hsub in packages/modules/config/templates/settings.ts
+
+- VF002: CSS mismatch on .module-card-body
+  HAVE: padding: 0 18px 18px;
+  WANT: padding: 0 18px 18px; margin-top: 0;
+  FIX: Add margin-top: 0 to .module-card-body in packages/modules/config/templates/settings.ts
+
+- VF003: Page returns 404
+  HAVE: Server responds with 404 Not Found
+  WANT: Full settings page renders
+  FIX: Add "config" to the modules array in din.config.ts
+```
+
+Do NOT output verdicts, report headers, or any other formatting. Just `NO_DIFFERENCES` or the summary + numbered findings with HAVE/WANT/FIX.

@@ -878,5 +878,21 @@ export async function installCoreMinds(
   // Phase 7: Scaffold E2E test infrastructure
   result.e2eScaffold = await scaffoldE2eTests(repoRoot, { force, quiet });
 
+  // Auto-commit E2E scaffolded files so they're tracked before drones run.
+  // Untracked files cause merge conflicts when drones write to them in worktrees.
+  if (result.e2eScaffold && result.e2eScaffold.created.length > 0) {
+    const e2eFiles = result.e2eScaffold.created;
+    const addResult = spawnSync("git", ["add", ...e2eFiles], { cwd: repoRoot });
+    if (addResult.status === 0) {
+      const commitResult = spawnSync(
+        "git", ["commit", "-m", "chore(minds): track E2E test scaffolding (registry.json, CLAUDE.md)"],
+        { cwd: repoRoot },
+      );
+      if (commitResult.status === 0 && !quiet) {
+        log("  Committed E2E scaffolded files to git");
+      }
+    }
+  }
+
   return result;
 }

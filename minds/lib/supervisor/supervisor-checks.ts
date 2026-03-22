@@ -117,6 +117,19 @@ export function runDeterministicChecksDefault(options: DeterministicCheckOptions
     diff = "";
   }
 
+  // Empty diff means the drone likely never committed. Log a warning — the
+  // contract check will catch any unimplemented produces: annotations as hard
+  // violations. An empty diff is not always wrong (config-only tasks may have
+  // no code changes), but produces: contracts must still be satisfied.
+  if (diffProc.exitCode === 0 && diff.trim().length === 0) {
+    findings.push({
+      file: "(git diff)",
+      line: 0,
+      severity: "warning" as const,
+      message: "Drone produced an empty diff — no commits detected. If tasks declare produces: contracts, they will fail the contract check.",
+    });
+  }
+
   // Run scoped tests — prefer owns_files source dirs, fall back to Mind dir.
   // owns_files patterns like "src/middleware/rate-limit/**" tell us where the
   // actual source (and tests) live. The Mind dir (.minds/{name}/) may have no tests.

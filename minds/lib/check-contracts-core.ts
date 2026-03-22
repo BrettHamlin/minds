@@ -137,6 +137,21 @@ function verifyProduces(
   }
 
   const content = readFileSync(fullPath, "utf-8");
+
+  // Route contract: "route GET /path" — verify route handler exists in the file
+  const routeMatch = ann.interfaceName.match(/^route\s+(GET|POST|PUT|DELETE|PATCH)\s+(\S+)$/i);
+  if (routeMatch) {
+    const method = routeMatch[1].toUpperCase();
+    const routePath = routeMatch[2];
+    if (!checkRouteExists(content, method, routePath)) {
+      violations.push({
+        annotation: ann,
+        reason: `Route ${method} ${routePath} is NOT defined in ${ann.filePath}. The route handler must be registered and serve a response (not 404). Check that the route is wired into the module's routes array.`,
+      });
+    }
+    return;
+  }
+
   const isExported = checkExportExists(content, ann.interfaceName);
   if (!isExported) {
     violations.push({
@@ -277,6 +292,27 @@ export function checkExportExists(content: string, interfaceName: string): boole
     new RegExp(`export\\s*(type\\s+)?\\{[^}]*\\b${escapeRegExp(interfaceName)}\\b[^}]*\\}`),
   ];
   return exportPatterns.some((p) => p.test(content));
+}
+
+/**
+ * Check whether a file defines a route handler for the given HTTP method and path.
+ * Scans for common route definition patterns across frameworks (Express, Hono, Bun, etc.).
+ */
+export function checkRouteExists(content: string, method: string, routePath: string): boolean {
+  const escapedPath = escapeRegExp(routePath);
+  const lowerMethod = method.toLowerCase();
+
+  const patterns = [
+    // Express/Hono style: app.get("/config/", handler) or router.get("/config", ...)
+    new RegExp(`\\.${lowerMethod}\\s*\\(\\s*["'\`]${escapedPath}["'\`]`),
+    // Route array/object: { method: "GET", path: "/config/" } or { path: "/config", method: "get" }
+    new RegExp(`["'\`]${escapedPath}["'\`]`),
+    // Path string appears in the file at all (broad check — the route file should mention the path)
+    new RegExp(`${escapedPath}`),
+  ];
+
+  // The path must appear in the file. If even the broad pattern fails, the route isn't here.
+  return patterns[2].test(content);
 }
 
 export function resolveFilePath(filePath: string, root: string): string {

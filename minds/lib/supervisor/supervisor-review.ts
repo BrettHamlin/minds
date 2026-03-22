@@ -82,7 +82,16 @@ export const REVIEW_RESPONSE_FORMAT = `Respond with ONLY a JSON object. Do NOT w
 
 If approved, findings must be an empty array.
 If any issue is found, set approved to false and list all findings.
-IMPORTANT: Every finding MUST include a "suggestion" field with a specific, actionable fix — not just what's wrong, but exactly how to fix it. Reference specific lines, function names, and values. The drone receiving this feedback has zero context from prior attempts.`;
+IMPORTANT: Every finding MUST include a "suggestion" field with a specific, actionable fix — not just what's wrong, but exactly how to fix it. Reference specific lines, function names, and values. The drone receiving this feedback has zero context from prior attempts.
+
+When a fix involves following a pattern that exists elsewhere in the codebase, your suggestion MUST include:
+1. The exact file path of the reference implementation (e.g., "see packages/modules/blueprint/module.ts")
+2. A code snippet showing the correct pattern from that reference file
+3. What the drone did wrong vs what the reference does right
+
+Example suggestion: "Import configRoutes from ./routes.ts and pass routes: configRoutes to defineModule(). Reference: packages/modules/blueprint/module.ts does it like this: \`import { blueprintRoutes } from './routes'; export default defineModule({ routes: blueprintRoutes, apiRoutes: blueprintApiRoutes });\`"
+
+Do NOT say "wire routes correctly" — show the exact code pattern from an existing file.`;
 
 // ---------------------------------------------------------------------------
 // Review Prompt Construction
@@ -103,6 +112,7 @@ export interface ReviewPromptParams {
   previousFeedback?: string;
   pipelineTemplate?: string;
   evalScoreSection?: string;
+  memoryContent?: string;
 }
 
 /**
@@ -112,7 +122,7 @@ export interface ReviewPromptParams {
  * This function is retained as a fallback for non-agent review scenarios.
  */
 export function buildReviewPrompt(params: ReviewPromptParams): string {
-  const { diff, testOutput, standards, tasks, iteration, previousFeedback, pipelineTemplate, evalScoreSection } = params;
+  const { diff, testOutput, standards, tasks, iteration, previousFeedback, pipelineTemplate, evalScoreSection, memoryContent } = params;
 
   const { truncatedDiff, truncatedTestOutput, taskList } = prepareReviewInputs(diff, testOutput, tasks);
 
@@ -122,6 +132,10 @@ export function buildReviewPrompt(params: ReviewPromptParams): string {
 
   const evalSection = evalScoreSection
     ? `\n## Code Quality Analysis (eval-factory)\n\n${evalScoreSection}\n`
+    : "";
+
+  const memorySection = memoryContent
+    ? `\n## Mind Memory (MANDATORY — reject if violated)\n\nThe following are mandatory rules for this mind. If any instruction below was not followed in the diff, you MUST reject and list which memory item was violated.\n\n${memoryContent}\n`
     : "";
 
   const checklist = formatReviewChecklist(pipelineTemplate);
@@ -147,10 +161,10 @@ ${evalSection}
 ## Engineering Standards
 
 ${standards}
-${previousSection}
+${previousSection}${memorySection}
 ## Instructions
 
-Review the diff against the tasks and engineering standards. Check:
+Review the diff against the tasks, engineering standards, and mind memory. Check:
 ${checklist}
 
 ${REVIEW_RESPONSE_FORMAT}

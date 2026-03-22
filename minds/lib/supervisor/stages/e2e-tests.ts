@@ -13,7 +13,7 @@
  *   { "tests": [{ "mind": "@my-mind", "file": "tests/e2e/my.test.ts" }] }
  */
 
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import type { PipelineStage, StageContext, StageResult } from "../pipeline-types.ts";
 import type { ReviewFinding } from "../supervisor-types.ts";
@@ -66,9 +66,12 @@ export const executeE2eTests = async (
 
   const registry = readE2eRegistry(worktreePath, registryPath);
 
-  // Filter to entries for the current mind only
-  const mindLabel = "@" + ctx.supervisorConfig.mindName;
-  const mindEntries = registry ? registry.tests.filter((e) => e.mind === mindLabel) : [];
+  // Filter to entries for the current mind only.
+  // Tolerate both "@config-module" and "config-module" since drones may omit the @ prefix.
+  const mindName = ctx.supervisorConfig.mindName;
+  const mindEntries = registry
+    ? registry.tests.filter((e) => e.mind === `@${mindName}` || e.mind === mindName)
+    : [];
 
   // Gracefully skip when no registry exists or no entries for this mind
   if (!registry || mindEntries.length === 0) {
@@ -100,12 +103,20 @@ export const executeE2eTests = async (
       const stdout = new TextDecoder().decode(proc.stdout);
       const stderr = new TextDecoder().decode(proc.stderr);
       const output = (stdout + stderr).trim();
+
+      // Write full output to a file the drone can read — the finding message
+      // is too small for useful diagnostics on multi-test failures.
+      const failureFile = join(worktreePath, "E2E-FAILURES.md");
+      const header = `# E2E Test Failures\n\nTest: ${entry.file}\nMind: ${entry.mind}\nExit code: ${proc.exitCode}\n\n`;
+      const existing = existsSync(failureFile) ? readFileSync(failureFile, "utf-8") + "\n---\n\n" : "";
+      writeFileSync(failureFile, existing + header + "```\n" + output + "\n```\n");
+
       const excerpt = output.length > 500 ? output.slice(0, 500) + "…" : output;
       findings.push({
         file: entry.file,
         line: 0,
         severity: "error",
-        message: `E2E test failed [${entry.mind}]: ${excerpt || `exit code ${proc.exitCode}`}`,
+        message: `E2E test failed [${entry.mind}]: ${excerpt || `exit code ${proc.exitCode}`}. Full output in E2E-FAILURES.md — read it for details.`,
       });
     }
   }

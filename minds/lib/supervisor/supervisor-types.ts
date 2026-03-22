@@ -61,8 +61,16 @@ export interface SupervisorConfig {
   infraAllowed?: string[];
   /** Explicit pipeline stages for this mind (from MindDescription). */
   pipeline?: import("./pipeline-types.ts").PipelineStage[];
-  /** Named pipeline template (e.g. "code", "build", "test"). */
+  /** Named pipeline template (e.g. "code", "build", "test", "verify"). */
   pipelineTemplate?: string;
+  /** Custom drone brief content — overrides the auto-generated brief when set. Used for verification drones. */
+  customBriefContent?: string;
+  /** Mockup info for visual verification. When set, compare-design stage runs in the pipeline. */
+  mockupInfo?: {
+    mockupPath: string;
+    routePath: string;
+    serverUrl: string;
+  };
 }
 
 export interface ReviewFinding {
@@ -133,6 +141,8 @@ export interface CheckResults {
   deferredCrossRepoAnnotations?: ContractAnnotation[];
   /** Whether all E2E tests in registry.json passed. Undefined if no registry found (skipped). */
   e2eTestsPass?: boolean;
+  /** Whether the visual comparison against the mockup passed. Undefined if no mockup configured. */
+  compareDesignPass?: boolean;
   /** Test files auto-expanded by boundary warnings — added to tasks for next iteration. */
   autoExpandedFiles?: string[];
   /** Files owned by other minds that this drone tried to modify — delegate to owning mind. */

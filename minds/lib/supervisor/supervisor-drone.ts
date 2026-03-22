@@ -18,7 +18,17 @@ import type { DroneHandle } from "../drone-backend.ts";
 // ---------------------------------------------------------------------------
 
 export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile?: string): string {
+  // Custom brief content overrides the auto-generated brief (used for verification drones)
+  if (config.customBriefContent && !feedbackFile) {
+    return config.customBriefContent;
+  }
+
   const mindsDir = resolveMindsDir(config.repoRoot);
+
+  // Read mind's curated MEMORY.md if it exists and has content
+  const memoryMdPath = join(mindsDir, config.mindName, "memory", "MEMORY.md");
+  const rawMemory = existsSync(memoryMdPath) ? readFileSync(memoryMdPath, "utf-8").trim() : "";
+  const memoryContent = rawMemory.length > 0 ? rawMemory : undefined;
 
   const base = buildDroneBrief({
     ticketId: config.ticketId,
@@ -33,6 +43,7 @@ export function buildSupervisorDroneBrief(config: SupervisorConfig, feedbackFile
     testCommand: config.testCommand,
     pipelineTemplate: config.pipelineTemplate,
     busUrl: config.busUrl,
+    memoryContent,
   });
 
   if (!feedbackFile) {
@@ -166,7 +177,10 @@ export async function relaunchDroneInWorktree(opts: {
 
 /**
  * Re-launch a drone using the tmux backend.
- * Kills the old pane, creates a new one, and launches Claude Code.
+ *
+ * Checks if the existing pane is still alive. If yes, sends feedback directly
+ * to the same session (preserving full context). If pane is dead, falls back
+ * to the original kill-and-relaunch behavior.
  */
 async function relaunchDroneTmux(opts: {
   oldHandle: DroneHandle;
@@ -177,10 +191,35 @@ async function relaunchDroneTmux(opts: {
 }): Promise<DroneHandle> {
   const { oldHandle, callerPane, worktreePath, busUrl, channel } = opts;
 
+  // Check if the specific pane is still alive
+  const { TmuxMultiplexer } = await import("../tmux-multiplexer.ts");
+  const tmux = new TmuxMultiplexer();
+  const paneAlive = await tmux.isPaneAlive(oldHandle.id);
+
+  if (paneAlive) {
+    // Brief delay to ensure Claude Code has returned to the input prompt
+    await Bun.sleep(2000);
+
+    // Send feedback directly — two-step pattern from tmux-send.ts: text with -l, wait, C-m
+    const feedbackMsg = `The reviewer found issues with your changes. Read the REVIEW-FEEDBACK-*.md files in the worktree root for details. Fix all issues, then signal completion again by running the completion command at the bottom of DRONE-BRIEF.md.`;
+
+    Bun.spawnSync(
+      ["tmux", "send-keys", "-t", oldHandle.id, "-l", feedbackMsg],
+      { stdout: "ignore", stderr: "ignore" },
+    );
+    await Bun.sleep(1000);
+    Bun.spawnSync(
+      ["tmux", "send-keys", "-t", oldHandle.id, "C-m"],
+      { stdout: "ignore", stderr: "ignore" },
+    );
+
+    return oldHandle;
+  }
+
+  // Pane is dead — original kill-and-relaunch behavior
   await killPane(oldHandle.id);
   const newPaneId = await splitPane(callerPane);
 
-  // Rebalance pane layout after drone spawn so panes stay evenly sized
   if (callerPane) {
     try {
       Bun.spawnSync(
@@ -188,14 +227,12 @@ async function relaunchDroneTmux(opts: {
         { stdout: "ignore", stderr: "ignore" },
       );
     } catch {
-      // Best-effort: layout rebalance is nice-to-have, not critical
+      // Best-effort
     }
   }
 
   const prompt = `Read DRONE-BRIEF.md and REVIEW-FEEDBACK-*.md files. Fix all issues from the review feedback, then complete any remaining tasks. When done, run the completion command at the bottom of DRONE-BRIEF.md.`;
   try {
-    // Retry iterations use Opus — if Sonnet couldn't fix it, the problem is hard enough
-    // to warrant the upgrade. Most minds pass on iteration 1 with Sonnet.
     await launchClaudeInPane({
       paneId: newPaneId,
       worktreePath,

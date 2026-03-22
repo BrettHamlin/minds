@@ -162,7 +162,7 @@ describe("lintTasks", () => {
     expect(result.errors.find((e) => e.type === "dangling_consume")).toBeUndefined();
   });
 
-  it("flags boundary_violation: file paths outside Mind's owns_files", () => {
+  it("flags boundary_violation as warning: file paths outside Mind's owns_files", () => {
     const content = `
 ## @signals Tasks
 - [ ] T001 @signals Modify minds/execution/handler.ts to add logging
@@ -170,10 +170,10 @@ describe("lintTasks", () => {
     const tasks = parseTasks(content);
     const result = lintTasks(tasks, REGISTRY as any);
 
-    const err = result.errors.find((e) => e.type === "boundary_violation");
-    expect(err).toBeDefined();
-    expect(err!.task).toBe("T001");
-    expect(err!.message).toContain("minds/execution/handler.ts");
+    const warn = result.warnings.find((w) => w.type === "boundary_violation");
+    expect(warn).toBeDefined();
+    expect(warn!.task).toBe("T001");
+    expect(warn!.message).toContain("minds/execution/handler.ts");
   });
 
   it("flags cross_mind_leakage: @mind_name in task description body", () => {
@@ -276,8 +276,8 @@ describe("lintTasks", () => {
     const tasks = parseTasks(content);
     const result = lintTasks(tasks, registry as any);
 
-    const boundaryErrors = result.errors.filter(
-      (e) => e.type === "boundary_violation"
+    const boundaryErrors = result.warnings.filter(
+      (w) => w.type === "boundary_violation"
     );
     expect(boundaryErrors).toHaveLength(0);
   });
@@ -290,8 +290,8 @@ describe("lintTasks", () => {
     const tasks = parseTasks(content);
     const result = lintTasks(tasks, REGISTRY as any);
 
-    const boundaryErrors = result.errors.filter(
-      (e) => e.type === "boundary_violation"
+    const boundaryErrors = result.warnings.filter(
+      (w) => w.type === "boundary_violation"
     );
     expect(boundaryErrors).toHaveLength(0);
   });
@@ -304,8 +304,8 @@ describe("lintTasks", () => {
     const tasks = parseTasks(content);
     const result = lintTasks(tasks, REGISTRY as any);
 
-    const boundaryErrors = result.errors.filter(
-      (e) => e.type === "boundary_violation"
+    const boundaryErrors = result.warnings.filter(
+      (w) => w.type === "boundary_violation"
     );
     expect(boundaryErrors.length).toBeGreaterThan(0);
   });
@@ -320,8 +320,8 @@ describe("lintTasks", () => {
     const tasks = parseTasks(content);
     const result = lintTasks(tasks, REGISTRY as any);
 
-    const boundaryErrors = result.errors.filter(
-      (e) => e.type === "boundary_violation"
+    const boundaryErrors = result.warnings.filter(
+      (w) => w.type === "boundary_violation"
     );
     expect(boundaryErrors).toHaveLength(0);
   });

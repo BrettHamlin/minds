@@ -33,8 +33,8 @@ function makeMind(overrides?: Partial<MindDescription>): MindDescription {
 // ---------------------------------------------------------------------------
 
 describe("CODE_PIPELINE", () => {
-  test("has exactly 8 stages", () => {
-    expect(CODE_PIPELINE).toHaveLength(8);
+  test("has exactly 9 stages", () => {
+    expect(CODE_PIPELINE).toHaveLength(9);
   });
 
   test("stages are in correct order", () => {
@@ -47,6 +47,7 @@ describe("CODE_PIPELINE", () => {
       "boundary-check",
       "contract-check",
       "e2e-tests",
+      "compare-design",
       "llm-review",
     ]);
   });
@@ -58,10 +59,10 @@ describe("CODE_PIPELINE", () => {
     }
   });
 
-  test("no stages have on_fail set (all default to reject)", () => {
-    for (const stage of CODE_PIPELINE) {
-      expect(stage.on_fail).toBeUndefined();
-    }
+  test("compare-design stage has explicit on_fail: reject", () => {
+    const cdStage = CODE_PIPELINE.find((s) => s.type === "compare-design");
+    expect(cdStage).toBeDefined();
+    expect(cdStage!.on_fail).toBe("reject");
   });
 });
 

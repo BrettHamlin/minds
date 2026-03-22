@@ -56,7 +56,6 @@ export interface LintResult {
 export interface LintError {
   type:
     | "dangling_consume"
-    | "boundary_violation"
     | "cross_mind_leakage"
     | "missing_dependency_header"
     | "ownership_overlap"
@@ -66,13 +65,14 @@ export interface LintError {
     | "repo_unknown"
     | "cross_repo_owns_mismatch"
     | "one_mind_one_repo"
-    | "missing_repo_multirepo";
+    | "missing_repo_multirepo"
+    | "implicit_cross_mind_dep";
   task: string;
   message: string;
 }
 
 export interface LintWarning {
-  type: "unused_produce" | "extra_dependency_header" | "overly_broad_owns" | "no_owner";
+  type: "unused_produce" | "extra_dependency_header" | "overly_broad_owns" | "no_owner" | "ui_missing_e2e" | "boundary_violation" | "multiple_annotations" | "dangling_consume";
   task: string;
   message: string;
 }
@@ -331,13 +331,13 @@ export function lintTasks(
       }
     }
 
-    // ── 2. boundary_violation ───────────────────────────────────────────────
+    // ── 2. boundary_violation (advisory — the drone handles actual file placement) ──
     const ownsFiles = mindOwns.get(t.mind);
     if (ownsFiles) {
       const pathsToCheck = extractPathsForBoundaryCheck(t.description);
       for (const p of pathsToCheck) {
         if (!matchesOwnership(p, ownsFiles)) {
-          errors.push({
+          warnings.push({
             type: "boundary_violation",
             task: t.id,
             message: `Task ${t.id} references path "${p}" outside @${t.mind}'s owns_files`,
@@ -614,6 +614,47 @@ export function lintTasks(
     }
   }
 
+  // ── Implicit cross-mind dependency check ────────────────────────────────────
+  // If a task's description references a file path owned by a DIFFERENT mind,
+  // and the section header doesn't declare depends on: that mind, it's an error.
+  // This catches cases like @server-core referencing packages/modules/config/module.ts
+  // without declaring depends on: @config-module.
+  for (const t of tasks) {
+    const paths = extractPathsForBoundaryCheck(t.description);
+    for (const p of paths) {
+      // Find which mind owns this path (if any)
+      for (const [ownerMind, ownerPaths] of mindOwns) {
+        if (ownerMind === t.mind) continue; // same mind — no dependency needed
+        if (ownerPaths.some((op) => matchesOwnership(p, [op]))) {
+          // This task references a file owned by another mind
+          // Check if the section declares depends on: that mind
+          if (!t.sectionDeclaredDeps.includes(ownerMind)) {
+            errors.push({
+              type: "implicit_cross_mind_dep",
+              task: t.id,
+              message: `Task ${t.id} (@${t.mind}) references path "${p}" which is owned by @${ownerMind}, but the section header does not declare (depends on: @${ownerMind}). Add the dependency so @${t.mind} runs in a later wave.`,
+            });
+          }
+          break; // only report once per path
+        }
+      }
+    }
+  }
+
+  // ── UI / E2E check ──────────────────────────────────────────────────────────
+  // If any task description references a design mockup but no task targets
+  // tests/e2e/, warn that E2E visual tests are missing.
+  const MOCKUP_RE = /\bmockup\b|\bdesign mock\b|\.html\b|\.fig\b|\.png\b/i;
+  const hasMockupRef = tasks.some((t) => MOCKUP_RE.test(t.description));
+  const hasE2eTask = tasks.some((t) => /tests\/e2e\//.test(t.description));
+  if (hasMockupRef && !hasE2eTask) {
+    warnings.push({
+      type: "ui_missing_e2e",
+      task: "(global)",
+      message: "Tasks reference a design mockup but no task targets tests/e2e/ — E2E visual tests should be registered in tests/e2e/registry.json",
+    });
+  }
+
   return { valid: errors.length === 0, errors, warnings };
 }
 
@@ -659,12 +700,18 @@ function stripAnnotationsForLeakage(description: string): string {
 
 /**
  * Extract @mind_name references from text (returns the name without @).
+ * Skips @refs inside quotes (e.g., registry JSON entries like "@config-module")
+ * and known package scopes like @playwright, @types.
  */
 function extractMindRefs(text: string): string[] {
   const refs: string[] = [];
-  const re = /@(\w+)/g;
+  // Strip quoted strings first to avoid matching @refs inside JSON values
+  const stripped = text.replace(/"[^"]*"/g, "");
+  const re = /@([\w][\w-]*)/g;
   let m;
-  while ((m = re.exec(text)) !== null) {
+  while ((m = re.exec(stripped)) !== null) {
+    // Skip known package scopes (e.g., @playwright/test, @types/node)
+    if (m[1] === "playwright" || m[1] === "types") continue;
     refs.push(m[1]);
   }
   return refs;
